@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/GankedTV.Api/GankedTV.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/GankedTV.Api.Tests/GankedTV.Api.Tests.csproj" />
+  </Folder>
+</Solution>
