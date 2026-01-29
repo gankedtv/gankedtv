@@ -1,0 +1,52 @@
+# .NET
+server/**/bin/
+server/**/obj/
+server/**/*.user
+server/**/*.userosscache
+server/**/*.suo
+server/**/*.cache
+server/**/*.DotSettings.user
+
+# Node/Bun
+web/node_modules/
+web/dist/
+web/dist-ssr/
+web/*.local
+web/coverage/
+web/*.tsbuildinfo
+web/.eslintcache
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# AI
+CLAUDE.md
+.claude
+
+# Docker
+docker-compose.override.yml
+
+# Test results
+server/**/TestResults/
+
+# Vite/Vitest
+*.timestamp-*-*.mjs
+web/__screenshots__/
+web/cypress/videos/
+web/cypress/screenshots/
