@@ -11,7 +11,7 @@ Social media platform to share your gaming clips.
 
 ## Prerequisites
 
-- [.NET 9 SDK](https://dotnet.microsoft.com/download)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download)
 - [Bun](https://bun.sh)
 - [Docker](https://www.docker.com/get-started)
 
