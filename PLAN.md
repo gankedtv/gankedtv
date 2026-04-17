@@ -147,7 +147,22 @@ CREATE TABLE likes (
     created_at  TIMESTAMPTZ DEFAULT now(),
     PRIMARY KEY (user_id, clip_id)
 );
+
+-- Refresh tokens (rotated on each /auth/refresh call)
+CREATE TABLE refresh_tokens (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash   TEXT NOT NULL,                  -- SHA-256 of the raw token; raw token is only sent to the client
+    expires_at   TIMESTAMPTZ NOT NULL,
+    revoked_at   TIMESTAMPTZ,                    -- set when rotated or explicitly revoked
+    created_at   TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens(user_id);
+CREATE INDEX idx_refresh_tokens_token_hash ON refresh_tokens(token_hash);
 ```
+
+**Username generation on OAuth signup:** OAuth providers don't guarantee unique usernames (Discord usernames are not globally unique post-handle-migration; Google has none). On signup: take the provider username (or email local-part for Google), lowercase, slugify (`[a-z0-9_-]`, max 24 chars), and append `-{4 hex}` if it collides with an existing row. The user can later change it via `PATCH /me`.
 
 ---
 
@@ -156,13 +171,20 @@ CREATE TABLE likes (
 ### Auth
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/auth/discord/start` | Redirect to Discord OAuth |
-| GET | `/auth/discord/callback` | Handle Discord callback, issue JWT |
-| GET | `/auth/google/start` | Redirect to Google OAuth |
-| GET | `/auth/google/callback` | Handle Google callback, issue JWT |
-| POST | `/auth/refresh` | Refresh access token |
+| GET | `/auth/discord/start` | Redirect to Discord OAuth (sets signed `state` cookie) |
+| GET | `/auth/discord/callback` | Validate `state`, handle Discord callback, issue JWT + refresh token |
+| GET | `/auth/google/start` | Redirect to Google OAuth (sets signed `state` cookie) |
+| GET | `/auth/google/callback` | Validate `state`, handle Google callback, issue JWT + refresh token |
+| POST | `/auth/refresh` | Rotate access token (consumes one refresh token, issues a new one) |
 | GET | `/me` | Get current user profile |
 | PATCH | `/me` | Update username, bio, avatar |
+
+**OAuth security note:** Both providers use the OAuth 2.0 `state` parameter to prevent CSRF on the callback. `/start` generates a random nonce, signs it (HMAC) together with an optional `returnTo`, sets it in a short-lived (5 min) HttpOnly cookie, and forwards it as `state` in the redirect. `/callback` validates the signature and matches the cookie before issuing tokens.
+
+### Users
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/users/{username}` | Public user profile + their public/ready clips |
 
 ### Clips
 | Method | Endpoint | Description |
@@ -338,8 +360,8 @@ cd web && bun dev
 
 ### Environment Variables
 ```env
-# Database
-DATABASE_URL=Host=localhost;Port=5432;Database=gankedtv;Username=gankedtv;Password=secret
+# Database (local dev: docker-compose exposes Postgres on host port 5435)
+DATABASE_URL=Host=localhost;Port=5435;Database=gankedtv;Username=gankedtv;Password=gankedtv_dev
 
 # MinIO
 MINIO_ENDPOINT=localhost:9000
@@ -380,6 +402,10 @@ MAX_CLIP_DURATION_SECS=120
 - `AWSSDK.S3` works with MinIO — just set the `ServiceURL` to your MinIO endpoint
 - Set presigned URL expiry to ~15 minutes for uploads
 - For downloads, you can either use presigned GETs or set the thumbnails bucket to public-read
+
+**MinIO bucket bootstrap:**
+- Ensure `clips` and `thumbnails` buckets exist on API startup (idempotent `PutBucket`).
+- Run during `IHostedService.StartAsync` so the API fails fast if MinIO is unreachable.
 
 **FFmpeg Thumbnails:**
 ```bash

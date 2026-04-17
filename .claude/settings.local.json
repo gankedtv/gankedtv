@@ -6,7 +6,11 @@
       "Bash(gh repo *)",
       "Bash(pipx install *)",
       "Bash(graphify --version)",
-      "Bash(graphify install *)"
+      "Bash(graphify install *)",
+      "Bash(gh api *)",
+      "Bash(gh label *)",
+      "Bash(bash -n /tmp/gankedtv_issues.sh)",
+      "Bash(echo \"---exit: $?---\")"
     ]
   }
 }
