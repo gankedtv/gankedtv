@@ -6,7 +6,7 @@ const theme = useThemeStore()
 
 <template>
   <button
-    class="theme-toggle"
+    class="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border bg-transparent text-text-secondary transition-[background-color,border-color,color] duration-200 hover:border-border-hover hover:bg-surface-overlay hover:text-text-primary"
     :aria-label="theme.isDark ? 'Switch to light mode' : 'Switch to dark mode'"
     @click="theme.toggle()"
   >
@@ -49,27 +49,7 @@ const theme = useThemeStore()
 </template>
 
 <style scoped>
-.theme-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 1px solid var(--color-border);
-  background: transparent;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  transition: background 0.2s, border-color 0.2s, color 0.2s;
-  flex-shrink: 0;
-}
-
-.theme-toggle:hover {
-  background: var(--color-surface-overlay);
-  border-color: var(--color-border-hover);
-  color: var(--color-text-primary);
-}
-
+/* Kept only for Vue Transition hooks — cannot be expressed as Tailwind utilities */
 .icon-enter-active,
 .icon-leave-active {
   transition: opacity 0.15s ease, transform 0.15s ease;

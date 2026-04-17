@@ -3,9 +3,9 @@ import AppNav from '@/components/AppNav.vue'
 </script>
 
 <template>
-  <div class="app">
+  <div class="min-h-screen">
     <AppNav />
-    <main class="app__main">
+    <main class="pt-16">
       <RouterView v-slot="{ Component }">
         <Transition name="fade" mode="out-in">
           <component :is="Component" />
@@ -16,14 +16,7 @@ import AppNav from '@/components/AppNav.vue'
 </template>
 
 <style>
-.app {
-  min-height: 100vh;
-}
-
-.app__main {
-  padding-top: 64px;
-}
-
+/* Kept only for Vue Transition hooks — cannot be expressed as Tailwind utilities */
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.15s ease;

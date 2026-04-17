@@ -117,6 +117,41 @@ Brand, neon, error, warning stay the same in both modes.
 
 ---
 
+## Tailwind Usage Rule
+
+**Always use Tailwind utility classes in Vue templates.** This is non-negotiable.
+
+The `@theme` tokens in `base.css` map directly to Tailwind utilities:
+
+| CSS custom property | Tailwind utility |
+|---------------------|-----------------|
+| `--color-surface-base` | `bg-surface-base` |
+| `--color-surface-raised` | `bg-surface-raised` |
+| `--color-surface-overlay` | `bg-surface-overlay` |
+| `--color-text-primary` | `text-text-primary` |
+| `--color-text-secondary` | `text-text-secondary` |
+| `--color-text-muted` | `text-text-muted` |
+| `--color-brand` | `bg-brand`, `text-brand`, `border-brand` |
+| `--color-brand-light` | `bg-brand-light`, `text-brand-light` |
+| `--color-neon` | `text-neon`, `bg-neon` |
+| `--color-border` | `border-border` |
+| `--color-border-hover` | `border-border-hover` |
+| `--font-display` | `font-display` |
+| `--font-heading` | `font-heading` |
+| `--font-body` | `font-body` |
+| `--font-mono` | `font-mono` |
+| `--radius-sm/md/lg/xl` | `rounded-sm/md/lg/xl` |
+
+**Only use `<style>` blocks for things Tailwind can't do:**
+- Keyframe animations (`@keyframes`)
+- Complex pseudo-selectors (`::before`/`::after` with `content`)
+- Third-party component overrides
+- Vue `<Transition>` class hooks (`.fade-enter-from` etc.)
+
+**Never** write `var(--color-*)` or `font-family: 'Rajdhani'` in a `<style>` block when a Tailwind class exists for it.
+
+---
+
 ## Anti-patterns
 
 - No white or off-white backgrounds as default (dark-first)
@@ -124,3 +159,4 @@ Brand, neon, error, warning stay the same in both modes.
 - No Inter, Roboto, system-ui as display fonts
 - No purple-gradient-on-white (generic AI aesthetic)
 - No uniform grid layouts where asymmetry would serve better
+- No scoped CSS for layout/color/typography — use Tailwind utilities
