@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build:*)",
+      "Bash(bun run type-check:*)",
+      "Bash(gh repo *)",
+      "Bash(pipx install *)",
+      "Bash(graphify --version)",
+      "Bash(graphify install *)"
+    ]
+  }
+}

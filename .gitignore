@@ -35,10 +35,6 @@ Thumbs.db
 *.log
 logs/
 
-# AI
-CLAUDE.md
-.claude
-
 # Docker
 docker-compose.override.yml
 
