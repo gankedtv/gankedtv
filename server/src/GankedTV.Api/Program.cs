@@ -29,15 +29,15 @@ builder.Services.AddDbContext<GankedTvDbContext>(opts =>
 
 builder.Services.Configure<MinioOptions>(opts =>
 {
-    opts.Endpoint  = Environment.GetEnvironmentVariable("S3_ENDPOINT")   ?? builder.Configuration["Minio:Endpoint"]  ?? "http://localhost:9000";
+    opts.Endpoint = Environment.GetEnvironmentVariable("S3_ENDPOINT") ?? builder.Configuration["Minio:Endpoint"] ?? "http://localhost:9000";
     opts.AccessKey = Environment.GetEnvironmentVariable("S3_ACCESS_KEY") ?? builder.Configuration["Minio:AccessKey"] ?? "minioadmin";
     opts.SecretKey = Environment.GetEnvironmentVariable("S3_SECRET_KEY") ?? builder.Configuration["Minio:SecretKey"] ?? "minioadmin";
     // .env.example ships `S3_PUBLIC_URL=` (empty); treat empty/whitespace as unset so the config fallback wins.
-    var envPublic  = Environment.GetEnvironmentVariable("S3_PUBLIC_URL");
+    var envPublic = Environment.GetEnvironmentVariable("S3_PUBLIC_URL");
     opts.PublicUrl = !string.IsNullOrWhiteSpace(envPublic) ? envPublic : builder.Configuration["Minio:PublicUrl"];
-    var clips      = builder.Configuration["Minio:ClipsBucket"];
-    var thumbs     = builder.Configuration["Minio:ThumbnailsBucket"];
-    if (!string.IsNullOrWhiteSpace(clips))  opts.ClipsBucket = clips;
+    var clips = builder.Configuration["Minio:ClipsBucket"];
+    var thumbs = builder.Configuration["Minio:ThumbnailsBucket"];
+    if (!string.IsNullOrWhiteSpace(clips)) opts.ClipsBucket = clips;
     if (!string.IsNullOrWhiteSpace(thumbs)) opts.ThumbnailsBucket = thumbs;
 });
 
@@ -59,10 +59,10 @@ builder.Services.AddHostedService<BucketBootstrapHostedService>();
 builder.Services.AddOptions<JwtOptions>()
     .Configure(opts =>
     {
-        opts.Secret   = Environment.GetEnvironmentVariable("JWT_SECRET")   ?? builder.Configuration["Jwt:Secret"]   ?? "";
-        opts.Issuer   = Environment.GetEnvironmentVariable("JWT_ISSUER")   ?? builder.Configuration["Jwt:Issuer"]   ?? "gankedtv";
+        opts.Secret = Environment.GetEnvironmentVariable("JWT_SECRET") ?? builder.Configuration["Jwt:Secret"] ?? "";
+        opts.Issuer = Environment.GetEnvironmentVariable("JWT_ISSUER") ?? builder.Configuration["Jwt:Issuer"] ?? "gankedtv";
         opts.Audience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? builder.Configuration["Jwt:Audience"] ?? "gankedtv-web";
-        var expiry    = Environment.GetEnvironmentVariable("JWT_EXPIRY_MINUTES") ?? builder.Configuration["Jwt:ExpiryMinutes"];
+        var expiry = Environment.GetEnvironmentVariable("JWT_EXPIRY_MINUTES") ?? builder.Configuration["Jwt:ExpiryMinutes"];
         if (int.TryParse(expiry, out var mins) && mins > 0) opts.ExpiryMinutes = mins;
     })
     .Validate(o => Encoding.UTF8.GetByteCount(o.Secret) >= 32,
@@ -85,13 +85,13 @@ builder.Services.AddOptions<OAuthOptions>()
     .Configure(opts =>
     {
         opts.StateSecret = Environment.GetEnvironmentVariable("OAUTH_STATE_SECRET") ?? builder.Configuration["OAuth:StateSecret"] ?? "";
-        opts.WebOrigin   = Environment.GetEnvironmentVariable("WEB_ORIGIN")         ?? builder.Configuration["OAuth:WebOrigin"]   ?? "http://localhost:5173";
-        opts.Discord.ClientId     = Environment.GetEnvironmentVariable("DISCORD_CLIENT_ID")     ?? builder.Configuration["OAuth:Discord:ClientId"]     ?? "";
+        opts.WebOrigin = Environment.GetEnvironmentVariable("WEB_ORIGIN") ?? builder.Configuration["OAuth:WebOrigin"] ?? "http://localhost:5173";
+        opts.Discord.ClientId = Environment.GetEnvironmentVariable("DISCORD_CLIENT_ID") ?? builder.Configuration["OAuth:Discord:ClientId"] ?? "";
         opts.Discord.ClientSecret = Environment.GetEnvironmentVariable("DISCORD_CLIENT_SECRET") ?? builder.Configuration["OAuth:Discord:ClientSecret"] ?? "";
-        opts.Discord.RedirectUri  = Environment.GetEnvironmentVariable("DISCORD_REDIRECT_URI")  ?? builder.Configuration["OAuth:Discord:RedirectUri"]  ?? "";
-        opts.Google.ClientId      = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID")      ?? builder.Configuration["OAuth:Google:ClientId"]      ?? "";
-        opts.Google.ClientSecret  = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_SECRET")  ?? builder.Configuration["OAuth:Google:ClientSecret"]  ?? "";
-        opts.Google.RedirectUri   = Environment.GetEnvironmentVariable("GOOGLE_REDIRECT_URI")   ?? builder.Configuration["OAuth:Google:RedirectUri"]   ?? "";
+        opts.Discord.RedirectUri = Environment.GetEnvironmentVariable("DISCORD_REDIRECT_URI") ?? builder.Configuration["OAuth:Discord:RedirectUri"] ?? "";
+        opts.Google.ClientId = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID") ?? builder.Configuration["OAuth:Google:ClientId"] ?? "";
+        opts.Google.ClientSecret = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_SECRET") ?? builder.Configuration["OAuth:Google:ClientSecret"] ?? "";
+        opts.Google.RedirectUri = Environment.GetEnvironmentVariable("GOOGLE_REDIRECT_URI") ?? builder.Configuration["OAuth:Google:RedirectUri"] ?? "";
     })
     .Validate(o => Encoding.UTF8.GetByteCount(o.StateSecret) >= 32,
         "OAUTH_STATE_SECRET must be at least 32 bytes.")

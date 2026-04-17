@@ -22,6 +22,12 @@ make clean                    # Stop and remove volumes
 make logs                     # View infrastructure logs
 ```
 
+### Git hooks
+```bash
+make hooks                    # One-time: install pre-push hook via core.hooksPath
+```
+Hook lives at `.githooks/pre-push` and mirrors CI, scoped to changed top-level dirs (`server/` or `web/`). Bypass with `PREPUSH_SKIP=1 git push` or `git push --no-verify`.
+
 ### Server (from repository root)
 ```bash
 dotnet build server           # Build

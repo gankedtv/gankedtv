@@ -86,6 +86,16 @@ bun run lint              # Run linter
 bun run test:unit         # Run tests
 ```
 
+### Local quality gate
+
+Run once to install the pre-push git hook:
+
+```bash
+make hooks
+```
+
+This points git at `.githooks/` (via `core.hooksPath`). On `git push`, the hook runs the same checks CI runs, scoped to whichever top-level area changed (`server/` or `web/`). Bypass with `PREPUSH_SKIP=1 git push` or `git push --no-verify` when truly needed.
+
 ## Docker
 
 ### Start Infrastructure
