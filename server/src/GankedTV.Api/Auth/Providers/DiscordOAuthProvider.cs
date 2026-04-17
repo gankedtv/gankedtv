@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace GankedTV.Api.Auth.Providers;
@@ -15,11 +16,16 @@ public sealed class DiscordOAuthProvider : IOAuthProvider
 
     private readonly IHttpClientFactory _httpFactory;
     private readonly OAuthProviderOptions _options;
+    private readonly ILogger<DiscordOAuthProvider>? _logger;
 
-    public DiscordOAuthProvider(IHttpClientFactory httpFactory, IOptions<OAuthOptions> options)
+    public DiscordOAuthProvider(
+        IHttpClientFactory httpFactory,
+        IOptions<OAuthOptions> options,
+        ILogger<DiscordOAuthProvider>? logger = null)
     {
         _httpFactory = httpFactory;
         _options = options.Value.Discord;
+        _logger = logger;
     }
 
     public string Name => ProviderName;
@@ -38,7 +44,7 @@ public sealed class DiscordOAuthProvider : IOAuthProvider
         return OAuthQueryString.Append(AuthorizeEndpoint, query);
     }
 
-    public async Task<OAuthUserInfo> ExchangeCodeAsync(string code, string? overrideRedirectUri, CancellationToken ct)
+    public async Task<OAuthUserInfo> ExchangeCodeAsync(string code, string? overrideRedirectUri = null, CancellationToken ct = default)
     {
         var redirect = overrideRedirectUri ?? _options.RedirectUri;
         var http = _httpFactory.CreateClient(ProviderName);
@@ -55,8 +61,7 @@ public sealed class DiscordOAuthProvider : IOAuthProvider
         using var tokenResp = await http.PostAsync(TokenEndpoint, tokenForm, ct);
         if (!tokenResp.IsSuccessStatusCode)
         {
-            var body = await tokenResp.Content.ReadAsStringAsync(ct);
-            throw new OAuthExchangeException($"Discord token exchange failed ({(int)tokenResp.StatusCode}): {body}");
+            throw await BuildExchangeExceptionAsync("token exchange", tokenResp, ct);
         }
         var tokenBody = await tokenResp.Content.ReadFromJsonAsync<DiscordTokenResponse>(cancellationToken: ct)
             ?? throw new OAuthExchangeException("Discord token response was empty.");
@@ -66,18 +71,47 @@ public sealed class DiscordOAuthProvider : IOAuthProvider
         using var userResp = await http.SendAsync(userReq, ct);
         if (!userResp.IsSuccessStatusCode)
         {
-            var body = await userResp.Content.ReadAsStringAsync(ct);
-            throw new OAuthExchangeException($"Discord userinfo failed ({(int)userResp.StatusCode}): {body}");
+            throw await BuildExchangeExceptionAsync("userinfo", userResp, ct);
         }
         var user = await userResp.Content.ReadFromJsonAsync<DiscordUser>(cancellationToken: ct)
             ?? throw new OAuthExchangeException("Discord userinfo was empty.");
 
-        var avatar = BuildAvatarUrl(user.Id, user.Avatar);
         return new OAuthUserInfo(
             ProviderUserId: user.Id,
             Email: user.Email,
             Username: user.Username,
-            AvatarUrl: avatar);
+            AvatarUrl: BuildAvatarUrl(user.Id, user.Avatar),
+            EmailVerified: user.Verified ?? false);
+    }
+
+    private async Task<OAuthExchangeException> BuildExchangeExceptionAsync(
+        string stage,
+        HttpResponseMessage response,
+        CancellationToken ct)
+    {
+        var status = (int)response.StatusCode;
+        string? parsedError = null;
+        try
+        {
+            var err = await response.Content.ReadFromJsonAsync<OAuthErrorResponse>(cancellationToken: ct);
+            parsedError = err?.Error;
+        }
+        catch
+        {
+            // Unparseable body — we intentionally do not include it in the exception message.
+        }
+
+        // Full body at Debug for operators; never in the exception message (would bleed into
+        // API responses / logs of downstream callers).
+        if (_logger is not null && _logger.IsEnabled(LogLevel.Debug))
+        {
+            var body = await response.Content.ReadAsStringAsync(ct);
+            _logger.LogDebug("Discord {Stage} failed ({Status}): {Body}", stage, status, body);
+        }
+
+        return parsedError is null
+            ? new OAuthExchangeException($"Discord {stage} failed ({status}).")
+            : new OAuthExchangeException($"Discord {stage} failed ({status}): {parsedError}.");
     }
 
     private static string? BuildAvatarUrl(string id, string? hash)
@@ -99,10 +133,15 @@ public sealed class DiscordOAuthProvider : IOAuthProvider
         [property: JsonPropertyName("id")] string Id,
         [property: JsonPropertyName("username")] string? Username,
         [property: JsonPropertyName("email")] string? Email,
-        [property: JsonPropertyName("avatar")] string? Avatar);
+        [property: JsonPropertyName("avatar")] string? Avatar,
+        [property: JsonPropertyName("verified")] bool? Verified);
 }
 
 public sealed class OAuthExchangeException : Exception
 {
     public OAuthExchangeException(string message) : base(message) { }
 }
+
+internal sealed record OAuthErrorResponse(
+    [property: JsonPropertyName("error")] string? Error,
+    [property: JsonPropertyName("error_description")] string? ErrorDescription);

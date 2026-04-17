@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace GankedTV.Api.Auth.Providers;
@@ -15,11 +16,16 @@ public sealed class GoogleOAuthProvider : IOAuthProvider
 
     private readonly IHttpClientFactory _httpFactory;
     private readonly OAuthProviderOptions _options;
+    private readonly ILogger<GoogleOAuthProvider>? _logger;
 
-    public GoogleOAuthProvider(IHttpClientFactory httpFactory, IOptions<OAuthOptions> options)
+    public GoogleOAuthProvider(
+        IHttpClientFactory httpFactory,
+        IOptions<OAuthOptions> options,
+        ILogger<GoogleOAuthProvider>? logger = null)
     {
         _httpFactory = httpFactory;
         _options = options.Value.Google;
+        _logger = logger;
     }
 
     public string Name => ProviderName;
@@ -40,7 +46,7 @@ public sealed class GoogleOAuthProvider : IOAuthProvider
         return OAuthQueryString.Append(AuthorizeEndpoint, query);
     }
 
-    public async Task<OAuthUserInfo> ExchangeCodeAsync(string code, string? overrideRedirectUri, CancellationToken ct)
+    public async Task<OAuthUserInfo> ExchangeCodeAsync(string code, string? overrideRedirectUri = null, CancellationToken ct = default)
     {
         var redirect = overrideRedirectUri ?? _options.RedirectUri;
         var http = _httpFactory.CreateClient(ProviderName);
@@ -57,8 +63,7 @@ public sealed class GoogleOAuthProvider : IOAuthProvider
         using var tokenResp = await http.PostAsync(TokenEndpoint, tokenForm, ct);
         if (!tokenResp.IsSuccessStatusCode)
         {
-            var body = await tokenResp.Content.ReadAsStringAsync(ct);
-            throw new OAuthExchangeException($"Google token exchange failed ({(int)tokenResp.StatusCode}): {body}");
+            throw await BuildExchangeExceptionAsync("token exchange", tokenResp, ct);
         }
         var tokenBody = await tokenResp.Content.ReadFromJsonAsync<GoogleTokenResponse>(cancellationToken: ct)
             ?? throw new OAuthExchangeException("Google token response was empty.");
@@ -68,8 +73,7 @@ public sealed class GoogleOAuthProvider : IOAuthProvider
         using var userResp = await http.SendAsync(userReq, ct);
         if (!userResp.IsSuccessStatusCode)
         {
-            var body = await userResp.Content.ReadAsStringAsync(ct);
-            throw new OAuthExchangeException($"Google userinfo failed ({(int)userResp.StatusCode}): {body}");
+            throw await BuildExchangeExceptionAsync("userinfo", userResp, ct);
         }
         var user = await userResp.Content.ReadFromJsonAsync<GoogleUser>(cancellationToken: ct)
             ?? throw new OAuthExchangeException("Google userinfo was empty.");
@@ -82,7 +86,36 @@ public sealed class GoogleOAuthProvider : IOAuthProvider
             ProviderUserId: user.Sub,
             Email: user.Email,
             Username: username,
-            AvatarUrl: user.Picture);
+            AvatarUrl: user.Picture,
+            EmailVerified: user.EmailVerified ?? false);
+    }
+
+    private async Task<OAuthExchangeException> BuildExchangeExceptionAsync(
+        string stage,
+        HttpResponseMessage response,
+        CancellationToken ct)
+    {
+        var status = (int)response.StatusCode;
+        string? parsedError = null;
+        try
+        {
+            var err = await response.Content.ReadFromJsonAsync<OAuthErrorResponse>(cancellationToken: ct);
+            parsedError = err?.Error;
+        }
+        catch
+        {
+            // Unparseable body — intentionally not included in exception message.
+        }
+
+        if (_logger is not null && _logger.IsEnabled(LogLevel.Debug))
+        {
+            var body = await response.Content.ReadAsStringAsync(ct);
+            _logger.LogDebug("Google {Stage} failed ({Status}): {Body}", stage, status, body);
+        }
+
+        return parsedError is null
+            ? new OAuthExchangeException($"Google {stage} failed ({status}).")
+            : new OAuthExchangeException($"Google {stage} failed ({status}): {parsedError}.");
     }
 
     private static string? EmailLocalPart(string? email)
@@ -103,5 +136,6 @@ public sealed class GoogleOAuthProvider : IOAuthProvider
         [property: JsonPropertyName("sub")] string Sub,
         [property: JsonPropertyName("email")] string? Email,
         [property: JsonPropertyName("name")] string? Name,
-        [property: JsonPropertyName("picture")] string? Picture);
+        [property: JsonPropertyName("picture")] string? Picture,
+        [property: JsonPropertyName("email_verified")] bool? EmailVerified);
 }

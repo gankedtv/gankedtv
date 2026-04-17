@@ -29,23 +29,27 @@ public sealed class JwtService : IJwtService
 
         var key = new SymmetricSecurityKey(secretBytes);
         _credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-
-        _validationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidIssuer = _options.Issuer,
-            ValidateAudience = true,
-            ValidAudience = _options.Audience,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = key,
-            ClockSkew = TimeSpan.FromSeconds(30),
-            NameClaimType = "name",
-        };
+        _validationParameters = BuildValidationParameters(_options, key);
 
         _handler.InboundClaimTypeMap.Clear();
         _handler.OutboundClaimTypeMap.Clear();
     }
+
+    public TokenValidationParameters ValidationParameters => _validationParameters;
+
+    public static TokenValidationParameters BuildValidationParameters(JwtOptions options, SymmetricSecurityKey? key = null) =>
+        new()
+        {
+            ValidateIssuer = true,
+            ValidIssuer = options.Issuer,
+            ValidateAudience = true,
+            ValidAudience = options.Audience,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = key ?? new SymmetricSecurityKey(Encoding.UTF8.GetBytes(options.Secret)),
+            ClockSkew = TimeSpan.FromSeconds(30),
+            NameClaimType = "name",
+        };
 
     public string Issue(User user)
     {
@@ -74,13 +78,21 @@ public sealed class JwtService : IJwtService
 
     public ClaimsPrincipal? Validate(string token)
     {
+        if (string.IsNullOrEmpty(token))
+        {
+            return null;
+        }
         try
         {
-            var principal = _handler.ValidateToken(token, _validationParameters, out _);
-            return principal;
+            return _handler.ValidateToken(token, _validationParameters, out _);
         }
         catch (SecurityTokenException)
         {
+            return null;
+        }
+        catch (ArgumentException)
+        {
+            // Malformed token (wrong segment count, non-base64, etc.).
             return null;
         }
     }

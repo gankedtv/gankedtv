@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace GankedTV.Api.Auth.Providers;
 
 public sealed class OAuthProviderRegistry
@@ -9,6 +11,6 @@ public sealed class OAuthProviderRegistry
         _providers = providers.ToDictionary(p => p.Name, StringComparer.OrdinalIgnoreCase);
     }
 
-    public bool TryGet(string name, out IOAuthProvider provider) =>
-        _providers.TryGetValue(name, out provider!);
+    public bool TryGet(string name, [NotNullWhen(true)] out IOAuthProvider? provider) =>
+        _providers.TryGetValue(name, out provider);
 }

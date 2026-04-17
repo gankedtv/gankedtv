@@ -37,7 +37,7 @@ public class UserUpsertServiceTests
     }
 
     [Fact]
-    public async Task UpsertFromOAuthAsync_ExistingDiscordId_UpdatesEmailAndAvatar()
+    public async Task UpsertFromOAuthAsync_ExistingDiscordIdWithNoAvatar_UpdatesEmailAndAvatar()
     {
         await _fx.ResetAsync();
         var now = DateTimeOffset.UtcNow;
@@ -69,6 +69,78 @@ public class UserUpsertServiceTests
         var user = await verify.Users.SingleAsync(u => u.Id == id);
         user.Email.Should().Be("new@example.com");
         user.AvatarUrl.Should().Be("http://avatar.png");
+    }
+
+    [Fact]
+    public async Task UpsertFromOAuthAsync_ExistingDiscordIdWithCustomAvatar_KeepsUserAvatar()
+    {
+        await _fx.ResetAsync();
+        var now = DateTimeOffset.UtcNow;
+        Guid id;
+        await using (var db = _fx.CreateContext())
+        {
+            // User has set a custom avatar via PATCH /me previously.
+            var existing = new User
+            {
+                Username = "zoe",
+                Email = "zoe@example.com",
+                AvatarUrl = "https://custom.example/zoe.png",
+                DiscordId = "d-42",
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+            db.Users.Add(existing);
+            await db.SaveChangesAsync();
+            id = existing.Id;
+        }
+
+        await using (var db = _fx.CreateContext())
+        {
+            await new UserUpsertService(db).UpsertFromOAuthAsync(
+                DiscordOAuthProvider.ProviderName,
+                new OAuthUserInfo("d-42", "zoe@example.com", "Zoe", "https://cdn.discordapp.com/avatars/d-42/hash.png"));
+        }
+
+        await using var verify = _fx.CreateContext();
+        var user = await verify.Users.SingleAsync(u => u.Id == id);
+        user.AvatarUrl.Should().Be("https://custom.example/zoe.png");
+    }
+
+    [Fact]
+    public async Task UpsertFromOAuthAsync_UnverifiedEmail_DoesNotLinkToExistingUser()
+    {
+        await _fx.ResetAsync();
+        var now = DateTimeOffset.UtcNow;
+        await using (var db = _fx.CreateContext())
+        {
+            db.Users.Add(new User
+            {
+                Username = "legit",
+                Email = "claimed@example.com",
+                DiscordId = "d-legit",
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        User newUser;
+        await using (var db = _fx.CreateContext())
+        {
+            newUser = await new UserUpsertService(db).UpsertFromOAuthAsync(
+                GoogleOAuthProvider.ProviderName,
+                new OAuthUserInfo("g-attacker", "claimed@example.com", "Attacker", null, EmailVerified: false));
+        }
+
+        // Must NOT link — an unverified email on a new Google account would otherwise take
+        // over the original Discord user's account.
+        newUser.GoogleId.Should().Be("g-attacker");
+        newUser.Username.Should().NotBe("legit");
+        // Unverified emails are also not persisted on new users, to prevent future link-by-email.
+        newUser.Email.Should().BeNull();
+
+        await using var verify = _fx.CreateContext();
+        (await verify.Users.CountAsync()).Should().Be(2);
     }
 
     [Fact]

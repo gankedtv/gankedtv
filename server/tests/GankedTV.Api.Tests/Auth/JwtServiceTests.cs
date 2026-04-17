@@ -75,10 +75,23 @@ public class JwtServiceTests
         var service = BuildService();
         var token = service.Issue(BuildUser());
 
-        // Flip last character to invalidate the signature.
-        var tampered = token[..^1] + (token[^1] == 'A' ? 'B' : 'A');
+        // Replace the whole signature segment with a fixed bad value so corruption is
+        // unambiguous (flipping one char can land on a different valid base64 byte).
+        var parts = token.Split('.');
+        parts[2] = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        var tampered = string.Join('.', parts);
 
         service.Validate(tampered).Should().BeNull();
+    }
+
+    [Fact]
+    public void Validate_MalformedToken_ReturnsNull()
+    {
+        var service = BuildService();
+
+        service.Validate("not-even-a-jwt").Should().BeNull();
+        service.Validate("only.two").Should().BeNull();
+        service.Validate("").Should().BeNull();
     }
 
     [Fact]

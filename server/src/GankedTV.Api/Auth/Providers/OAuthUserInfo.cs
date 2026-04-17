@@ -4,4 +4,5 @@ public sealed record OAuthUserInfo(
     string ProviderUserId,
     string? Email,
     string? Username,
-    string? AvatarUrl);
+    string? AvatarUrl,
+    bool EmailVerified = true);

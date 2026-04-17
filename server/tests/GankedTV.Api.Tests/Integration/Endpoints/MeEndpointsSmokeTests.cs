@@ -184,4 +184,40 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
         var after = await db.Users.AsNoTracking().SingleAsync();
         after.Username.Should().Be(original);
     }
+
+    [Fact]
+    public async Task Patch_MixedCaseWithSpaces_PersistsSlugifiedForm()
+    {
+        await _fx.ResetAsync();
+        var (userId, token, _) = await SeedUserAndIssueTokenAsync("starter");
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PatchAsJsonAsync("/me", new { username = " My Mixed-Case Name " });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        await using var db = _fx.CreateContext();
+        var after = await db.Users.AsNoTracking().SingleAsync(u => u.Id == userId);
+        after.Username.Should().Be("my-mixed-case-name");
+    }
+
+    [Fact]
+    public async Task Get_TokenSubjectDoesNotExist_Returns401()
+    {
+        await _fx.ResetAsync();
+        var (userId, token, _) = await SeedUserAndIssueTokenAsync("ghost");
+
+        // Simulate the user being deleted after we issued the JWT.
+        await using (var db = _fx.CreateContext())
+        {
+            var user = await db.Users.SingleAsync(u => u.Id == userId);
+            db.Users.Remove(user);
+            await db.SaveChangesAsync();
+        }
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.GetAsync("/me");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
 }

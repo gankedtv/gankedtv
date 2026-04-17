@@ -100,8 +100,8 @@ public class RefreshTokenServiceTests
             await new RefreshTokenService(db, DefaultOpts()).RevokeAsync(raw);
         }
 
-        await using var svc = _fx.CreateContext();
-        var act = () => new RefreshTokenService(svc, DefaultOpts()).RotateAsync(raw);
+        await using var rotateDb = _fx.CreateContext();
+        var act = () => new RefreshTokenService(rotateDb, DefaultOpts()).RotateAsync(raw);
         await act.Should().ThrowAsync<InvalidRefreshTokenException>();
     }
 
@@ -124,8 +124,8 @@ public class RefreshTokenServiceTests
             await db.SaveChangesAsync();
         }
 
-        await using var svc = _fx.CreateContext();
-        var act = () => new RefreshTokenService(svc, DefaultOpts()).RotateAsync(raw);
+        await using var rotateDb = _fx.CreateContext();
+        var act = () => new RefreshTokenService(rotateDb, DefaultOpts()).RotateAsync(raw);
         await act.Should().ThrowAsync<InvalidRefreshTokenException>();
     }
 
@@ -134,8 +134,8 @@ public class RefreshTokenServiceTests
     {
         await _fx.ResetAsync();
 
-        await using var svc = _fx.CreateContext();
-        var act = () => new RefreshTokenService(svc, DefaultOpts()).RotateAsync("never-issued");
+        await using var db = _fx.CreateContext();
+        var act = () => new RefreshTokenService(db, DefaultOpts()).RotateAsync("never-issued");
         await act.Should().ThrowAsync<InvalidRefreshTokenException>();
     }
 

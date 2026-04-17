@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace GankedTV.Api.Endpoints;
 
@@ -29,7 +30,7 @@ public static class MeEndpoints
         return app;
     }
 
-    private static async Task<Results<Ok<MeResponse>, UnauthorizedHttpResult, NotFound>> GetMe(
+    private static async Task<Results<Ok<MeResponse>, UnauthorizedHttpResult>> GetMe(
         ClaimsPrincipal principal,
         GankedTvDbContext db,
         CancellationToken ct)
@@ -42,7 +43,9 @@ public static class MeEndpoints
         var user = await db.Users.FindAsync([userId], ct);
         if (user is null)
         {
-            return TypedResults.NotFound();
+            // JWT sub points at a user that no longer exists — treat as re-auth rather than
+            // 404 so the SPA can drop tokens and redirect to sign-in.
+            return TypedResults.Unauthorized();
         }
         return TypedResults.Ok(ToResponse(user));
     }
@@ -61,7 +64,7 @@ public static class MeEndpoints
         var user = await db.Users.FindAsync([userId], ct);
         if (user is null)
         {
-            return Results.NotFound();
+            return Results.Unauthorized();
         }
 
         if (req.Username is not null)
@@ -119,9 +122,22 @@ public static class MeEndpoints
         }
 
         user.UpdatedAt = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (IsUsernameUniqueViolation(ex))
+        {
+            // A concurrent writer took the username between our AnyAsync check and the save.
+            return Results.Conflict(new { error = "username_taken" });
+        }
         return Results.Ok(ToResponse(user));
     }
+
+    private static bool IsUsernameUniqueViolation(DbUpdateException ex) =>
+        ex.InnerException is PostgresException pg
+        && pg.SqlState == PostgresErrorCodes.UniqueViolation
+        && string.Equals(pg.ConstraintName, "idx_users_username", StringComparison.Ordinal);
 
     private static bool TryGetUserId(ClaimsPrincipal principal, out Guid userId)
     {

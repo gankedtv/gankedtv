@@ -12,9 +12,17 @@ public class UsernameGeneratorSlugifyTests
     }
 
     [Fact]
-    public void Slugify_NonAsciiChars_StripsThem()
+    public void Slugify_AccentedLatinChars_TransliteratesToAscii()
     {
-        UsernameGenerator.Slugify("Jürgen!@#$Köhler").Should().Be("jrgenkhler");
+        // NFD decomposes "ü" → "u" + combining diaeresis; we strip the combining mark.
+        UsernameGenerator.Slugify("Jürgen!@#$Köhler").Should().Be("jurgenkohler");
+    }
+
+    [Fact]
+    public void Slugify_NonLatinChars_StripsThem()
+    {
+        // Non-Latin scripts (e.g. Cyrillic, Han) don't decompose to ASCII; fall through to fallback.
+        UsernameGenerator.Slugify("абв").Should().Be(UsernameGenerator.Fallback);
     }
 
     [Fact]

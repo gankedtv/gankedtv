@@ -62,16 +62,47 @@ public class DiscordOAuthProviderTests
             .OnPost("https://discord.com/api/oauth2/token", HttpStatusCode.OK,
                 "{\"access_token\":\"token-abc\",\"token_type\":\"Bearer\"}")
             .OnGet("https://discord.com/api/users/@me", HttpStatusCode.OK,
-                "{\"id\":\"100\",\"username\":\"alice\",\"email\":\"alice@example.com\",\"avatar\":null}");
+                "{\"id\":\"100\",\"username\":\"alice\",\"email\":\"alice@example.com\",\"avatar\":null,\"verified\":true}");
 
         var info = await provider.ExchangeCodeAsync("auth-code", null, CancellationToken.None);
 
         info.ProviderUserId.Should().Be("100");
         info.Username.Should().Be("alice");
         info.Email.Should().Be("alice@example.com");
+        info.EmailVerified.Should().BeTrue();
         handler.Requests.Should().HaveCount(2);
         var userReq = handler.Requests[1];
+        userReq.Headers.Authorization!.Scheme.Should().Be("Bearer");
         userReq.Headers.Authorization!.Parameter.Should().Be("token-abc");
+    }
+
+    [Fact]
+    public async Task ExchangeCodeAsync_UnverifiedDiscordAccount_SurfacesEmailVerifiedFalse()
+    {
+        var (provider, handler) = BuildProvider();
+        handler
+            .OnPost("https://discord.com/api/oauth2/token", HttpStatusCode.OK,
+                "{\"access_token\":\"t\",\"token_type\":\"Bearer\"}")
+            .OnGet("https://discord.com/api/users/@me", HttpStatusCode.OK,
+                "{\"id\":\"1\",\"username\":\"u\",\"email\":\"u@example.com\",\"avatar\":null,\"verified\":false}");
+
+        var info = await provider.ExchangeCodeAsync("code", null, CancellationToken.None);
+
+        info.EmailVerified.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ExchangeCodeAsync_TokenError_DoesNotLeakRawBody()
+    {
+        var (provider, handler) = BuildProvider();
+        handler.OnPost("https://discord.com/api/oauth2/token", HttpStatusCode.BadRequest,
+            "{\"error\":\"invalid_grant\",\"secret_field\":\"SHOULD_NOT_LEAK\"}");
+
+        var act = () => provider.ExchangeCodeAsync("bad", null, CancellationToken.None);
+
+        var ex = (await act.Should().ThrowAsync<OAuthExchangeException>()).Which;
+        ex.Message.Should().Contain("invalid_grant");
+        ex.Message.Should().NotContain("SHOULD_NOT_LEAK");
     }
 
     [Fact]

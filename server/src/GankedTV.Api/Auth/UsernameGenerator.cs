@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using GankedTV.Api.Data.Entities;
@@ -18,9 +19,16 @@ public static class UsernameGenerator
             return Fallback;
         }
 
-        var sb = new StringBuilder(raw.Length);
-        foreach (var ch in raw.ToLowerInvariant())
+        // Normalise to NFD and drop combining marks so "Jürgen" → "Jurgen", "Köhler" → "Kohler".
+        var decomposed = raw.Normalize(NormalizationForm.FormD);
+
+        var sb = new StringBuilder(decomposed.Length);
+        foreach (var ch in decomposed.ToLowerInvariant())
         {
+            if (CharUnicodeInfo.GetUnicodeCategory(ch) == UnicodeCategory.NonSpacingMark)
+            {
+                continue;
+            }
             if (ch is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '_' or '-')
             {
                 sb.Append(ch);

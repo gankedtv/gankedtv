@@ -8,9 +8,9 @@ using GankedTV.Api.Data;
 using GankedTV.Api.Endpoints;
 using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using Microsoft.IdentityModel.Tokens;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -56,14 +56,20 @@ builder.Services.AddHostedService<BucketBootstrapHostedService>();
 
 // ---- Auth configuration ----
 
-builder.Services.Configure<JwtOptions>(opts =>
-{
-    opts.Secret   = Environment.GetEnvironmentVariable("JWT_SECRET")   ?? builder.Configuration["Jwt:Secret"]   ?? "";
-    opts.Issuer   = Environment.GetEnvironmentVariable("JWT_ISSUER")   ?? builder.Configuration["Jwt:Issuer"]   ?? "gankedtv";
-    opts.Audience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? builder.Configuration["Jwt:Audience"] ?? "gankedtv-web";
-    var expiry    = Environment.GetEnvironmentVariable("JWT_EXPIRY_MINUTES") ?? builder.Configuration["Jwt:ExpiryMinutes"];
-    if (int.TryParse(expiry, out var mins) && mins > 0) opts.ExpiryMinutes = mins;
-});
+builder.Services.AddOptions<JwtOptions>()
+    .Configure(opts =>
+    {
+        opts.Secret   = Environment.GetEnvironmentVariable("JWT_SECRET")   ?? builder.Configuration["Jwt:Secret"]   ?? "";
+        opts.Issuer   = Environment.GetEnvironmentVariable("JWT_ISSUER")   ?? builder.Configuration["Jwt:Issuer"]   ?? "gankedtv";
+        opts.Audience = Environment.GetEnvironmentVariable("JWT_AUDIENCE") ?? builder.Configuration["Jwt:Audience"] ?? "gankedtv-web";
+        var expiry    = Environment.GetEnvironmentVariable("JWT_EXPIRY_MINUTES") ?? builder.Configuration["Jwt:ExpiryMinutes"];
+        if (int.TryParse(expiry, out var mins) && mins > 0) opts.ExpiryMinutes = mins;
+    })
+    .Validate(o => Encoding.UTF8.GetByteCount(o.Secret) >= 32,
+        "JWT_SECRET must be at least 32 bytes.")
+    .Validate(o => !string.IsNullOrWhiteSpace(o.Issuer) && !string.IsNullOrWhiteSpace(o.Audience),
+        "JWT_ISSUER and JWT_AUDIENCE must be set.")
+    .ValidateOnStart();
 
 builder.Services.Configure<RefreshTokenOptions>(opts =>
 {
@@ -71,20 +77,30 @@ builder.Services.Configure<RefreshTokenOptions>(opts =>
     if (int.TryParse(days, out var d) && d > 0) opts.ExpiryDays = d;
 });
 
-builder.Services.Configure<OAuthOptions>(opts =>
-{
-    opts.StateSecret = Environment.GetEnvironmentVariable("OAUTH_STATE_SECRET") ?? builder.Configuration["OAuth:StateSecret"] ?? "";
-    opts.WebOrigin   = Environment.GetEnvironmentVariable("WEB_ORIGIN")         ?? builder.Configuration["OAuth:WebOrigin"]   ?? "http://localhost:5173";
-    opts.Discord.ClientId     = Environment.GetEnvironmentVariable("DISCORD_CLIENT_ID")     ?? builder.Configuration["OAuth:Discord:ClientId"]     ?? "";
-    opts.Discord.ClientSecret = Environment.GetEnvironmentVariable("DISCORD_CLIENT_SECRET") ?? builder.Configuration["OAuth:Discord:ClientSecret"] ?? "";
-    opts.Discord.RedirectUri  = Environment.GetEnvironmentVariable("DISCORD_REDIRECT_URI")  ?? builder.Configuration["OAuth:Discord:RedirectUri"]  ?? "";
-    opts.Google.ClientId      = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID")      ?? builder.Configuration["OAuth:Google:ClientId"]      ?? "";
-    opts.Google.ClientSecret  = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_SECRET")  ?? builder.Configuration["OAuth:Google:ClientSecret"]  ?? "";
-    opts.Google.RedirectUri   = Environment.GetEnvironmentVariable("GOOGLE_REDIRECT_URI")   ?? builder.Configuration["OAuth:Google:RedirectUri"]   ?? "";
-});
+builder.Services.AddOptions<OAuthOptions>()
+    .Configure(opts =>
+    {
+        opts.StateSecret = Environment.GetEnvironmentVariable("OAUTH_STATE_SECRET") ?? builder.Configuration["OAuth:StateSecret"] ?? "";
+        opts.WebOrigin   = Environment.GetEnvironmentVariable("WEB_ORIGIN")         ?? builder.Configuration["OAuth:WebOrigin"]   ?? "http://localhost:5173";
+        opts.Discord.ClientId     = Environment.GetEnvironmentVariable("DISCORD_CLIENT_ID")     ?? builder.Configuration["OAuth:Discord:ClientId"]     ?? "";
+        opts.Discord.ClientSecret = Environment.GetEnvironmentVariable("DISCORD_CLIENT_SECRET") ?? builder.Configuration["OAuth:Discord:ClientSecret"] ?? "";
+        opts.Discord.RedirectUri  = Environment.GetEnvironmentVariable("DISCORD_REDIRECT_URI")  ?? builder.Configuration["OAuth:Discord:RedirectUri"]  ?? "";
+        opts.Google.ClientId      = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID")      ?? builder.Configuration["OAuth:Google:ClientId"]      ?? "";
+        opts.Google.ClientSecret  = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_SECRET")  ?? builder.Configuration["OAuth:Google:ClientSecret"]  ?? "";
+        opts.Google.RedirectUri   = Environment.GetEnvironmentVariable("GOOGLE_REDIRECT_URI")   ?? builder.Configuration["OAuth:Google:RedirectUri"]   ?? "";
+    })
+    .Validate(o => Encoding.UTF8.GetByteCount(o.StateSecret) >= 32,
+        "OAUTH_STATE_SECRET must be at least 32 bytes.")
+    .Validate(o => !string.IsNullOrWhiteSpace(o.WebOrigin),
+        "WEB_ORIGIN must be set.")
+    .ValidateOnStart();
 
-builder.Services.AddHttpClient(DiscordOAuthProvider.ProviderName);
-builder.Services.AddHttpClient(GoogleOAuthProvider.ProviderName);
+// OAuth providers shouldn't hang the callback endpoint if upstream is slow.
+// We deliberately do NOT add retry — replaying a consumed authorization code fails anyway.
+builder.Services.AddHttpClient(DiscordOAuthProvider.ProviderName,
+    c => c.Timeout = TimeSpan.FromSeconds(15));
+builder.Services.AddHttpClient(GoogleOAuthProvider.ProviderName,
+    c => c.Timeout = TimeSpan.FromSeconds(15));
 
 builder.Services.AddSingleton<IJwtService, JwtService>();
 builder.Services.AddSingleton<IStateCookieService, StateCookieService>();
@@ -100,41 +116,29 @@ builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer();
 
+// Reuse the same TokenValidationParameters instance JwtService uses so the two sides
+// can't drift (NameClaimType, ClockSkew, issuer/audience, signing key).
 builder.Services
     .AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
     .Configure<IOptions<JwtOptions>>((bearer, jwtOptions) =>
     {
-        var jwt = jwtOptions.Value;
-        bearer.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidIssuer = jwt.Issuer,
-            ValidateAudience = true,
-            ValidAudience = jwt.Audience,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.Secret)),
-            ClockSkew = TimeSpan.FromSeconds(30),
-            NameClaimType = "name",
-        };
+        bearer.TokenValidationParameters = JwtService.BuildValidationParameters(jwtOptions.Value);
     });
 
 builder.Services.AddAuthorization();
 
-var corsPolicy = "WebOrigin";
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy(corsPolicy, policy =>
+const string corsPolicy = "WebOrigin";
+builder.Services
+    .AddOptions<CorsOptions>()
+    .Configure<IOptions<OAuthOptions>>((cors, oauth) =>
     {
-        var origin = Environment.GetEnvironmentVariable("WEB_ORIGIN")
-            ?? builder.Configuration["OAuth:WebOrigin"]
-            ?? "http://localhost:5173";
-        policy.WithOrigins(origin)
+        cors.AddPolicy(corsPolicy, policy => policy
+            .WithOrigins(oauth.Value.WebOrigin)
             .AllowAnyHeader()
             .AllowAnyMethod()
-            .AllowCredentials();
+            .AllowCredentials());
     });
-});
+builder.Services.AddCors();
 
 var app = builder.Build();
 
