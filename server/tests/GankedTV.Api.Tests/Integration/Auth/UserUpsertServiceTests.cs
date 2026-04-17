@@ -62,7 +62,7 @@ public class UserUpsertServiceTests
             var svc = new UserUpsertService(db);
             await svc.UpsertFromOAuthAsync(
                 DiscordOAuthProvider.ProviderName,
-                new OAuthUserInfo("d-42", "new@example.com", "Zoe", "http://avatar.png"));
+                new OAuthUserInfo("d-42", "new@example.com", "Zoe", "http://avatar.png", EmailVerified: true));
         }
 
         await using var verify = _fx.CreateContext();
@@ -176,6 +176,38 @@ public class UserUpsertServiceTests
         var user = await verify.Users.SingleAsync(u => u.Id == id);
         user.GoogleId.Should().Be("g-1");
         user.DiscordId.Should().Be("d-42");
+    }
+
+    [Fact]
+    public async Task UpsertFromOAuthAsync_ExistingUserUnverifiedEmail_DoesNotOverwriteEmail()
+    {
+        await _fx.ResetAsync();
+        var now = DateTimeOffset.UtcNow;
+        Guid id;
+        await using (var db = _fx.CreateContext())
+        {
+            db.Users.Add(new User
+            {
+                Username = "pat",
+                Email = "pat@example.com",
+                DiscordId = "d-99",
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            await db.SaveChangesAsync();
+            id = (await db.Users.SingleAsync()).Id;
+        }
+
+        await using (var db = _fx.CreateContext())
+        {
+            await new UserUpsertService(db).UpsertFromOAuthAsync(
+                DiscordOAuthProvider.ProviderName,
+                new OAuthUserInfo("d-99", "attacker@evil.com", "Pat", null, EmailVerified: false));
+        }
+
+        await using var verify = _fx.CreateContext();
+        var user = await verify.Users.SingleAsync(u => u.Id == id);
+        user.Email.Should().Be("pat@example.com");
     }
 
     [Fact]

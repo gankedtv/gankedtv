@@ -142,6 +142,69 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Patch_AvatarUrlWithCredentials_Returns400()
+    {
+        await _fx.ResetAsync();
+        var (_, token, _) = await SeedUserAndIssueTokenAsync();
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PatchAsJsonAsync("/me", new { avatarUrl = "https://user:pass@example.com/a.png" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Patch_AvatarUrlWithFragment_Returns400()
+    {
+        await _fx.ResetAsync();
+        var (_, token, _) = await SeedUserAndIssueTokenAsync();
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PatchAsJsonAsync("/me", new { avatarUrl = "https://example.com/a.png#payload" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Patch_AvatarUrlTooLong_Returns400()
+    {
+        await _fx.ResetAsync();
+        var (_, token, _) = await SeedUserAndIssueTokenAsync();
+
+        var longPath = new string('a', 2100);
+        using var client = ClientWithBearer(token);
+        var resp = await client.PatchAsJsonAsync("/me", new { avatarUrl = $"https://example.com/{longPath}.png" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Patch_NoChange_DoesNotBumpUpdatedAt()
+    {
+        await _fx.ResetAsync();
+        var (userId, token, _) = await SeedUserAndIssueTokenAsync("stable");
+
+        DateTimeOffset originalUpdatedAt;
+        await using (var db = _fx.CreateContext())
+        {
+            originalUpdatedAt = (await db.Users.AsNoTracking().SingleAsync(u => u.Id == userId)).UpdatedAt;
+        }
+
+        // Give the clock a moment to advance so we'd detect any spurious write.
+        await Task.Delay(20);
+
+        using var client = ClientWithBearer(token);
+        // Re-send the same bio — after my no-op short-circuit, no mutation should occur.
+        var resp = await client.PatchAsJsonAsync("/me", new { bio = (string?)null });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        await using var db2 = _fx.CreateContext();
+        var after = await db2.Users.AsNoTracking().SingleAsync(u => u.Id == userId);
+        after.UpdatedAt.Should().Be(originalUpdatedAt);
+    }
+
+    [Fact]
     public async Task Patch_BioTooLong_Returns400()
     {
         await _fx.ResetAsync();

@@ -12,6 +12,9 @@ namespace GankedTV.Api.Endpoints;
 
 public static class MeEndpoints
 {
+    private const int MaxAvatarUrlLength = 2048;
+    private const int MaxBioLength = 500;
+
     public sealed record MeResponse(
         Guid Id,
         string Username,
@@ -66,6 +69,8 @@ public static class MeEndpoints
             return Results.Unauthorized();
         }
 
+        var changed = false;
+
         if (req.Username is not null)
         {
             // Reject whitespace-only input explicitly — Slugify would otherwise return the
@@ -77,6 +82,7 @@ public static class MeEndpoints
             var slug = UsernameGenerator.Slugify(req.Username);
             // Slugify caps at MaxLength (≤ 24 chars, under the 30-char DB column), so the only
             // length invariant to check is the fallback escape hatch for unusable input.
+            // Accept literal "player" from the client; reject other input that decays to it.
             if (slug == UsernameGenerator.Fallback && !req.Username.Equals(UsernameGenerator.Fallback, StringComparison.OrdinalIgnoreCase))
             {
                 return Results.BadRequest(new { error = "invalid_username" });
@@ -89,33 +95,41 @@ public static class MeEndpoints
                     return Results.Conflict(new { error = "username_taken" });
                 }
                 user.Username = slug;
+                changed = true;
             }
         }
 
         if (req.Bio is not null)
         {
-            if (req.Bio.Length > 500)
+            if (req.Bio.Length > MaxBioLength)
             {
                 return Results.BadRequest(new { error = "bio_too_long" });
             }
-            user.Bio = req.Bio.Length == 0 ? null : req.Bio;
+            var newBio = req.Bio.Length == 0 ? null : req.Bio;
+            if (user.Bio != newBio)
+            {
+                user.Bio = newBio;
+                changed = true;
+            }
         }
 
         if (req.AvatarUrl is not null)
         {
-            if (req.AvatarUrl.Length == 0)
-            {
-                user.AvatarUrl = null;
-            }
-            else if (!Uri.TryCreate(req.AvatarUrl, UriKind.Absolute, out var uri) ||
-                     (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            var (ok, newAvatar) = ValidateAvatarUrl(req.AvatarUrl);
+            if (!ok)
             {
                 return Results.BadRequest(new { error = "invalid_avatar_url" });
             }
-            else
+            if (user.AvatarUrl != newAvatar)
             {
-                user.AvatarUrl = req.AvatarUrl;
+                user.AvatarUrl = newAvatar;
+                changed = true;
             }
+        }
+
+        if (!changed)
+        {
+            return Results.Ok(ToResponse(user));
         }
 
         user.UpdatedAt = DateTimeOffset.UtcNow;
@@ -129,6 +143,34 @@ public static class MeEndpoints
             return Results.Conflict(new { error = "username_taken" });
         }
         return Results.Ok(ToResponse(user));
+    }
+
+    private static (bool ok, string? value) ValidateAvatarUrl(string raw)
+    {
+        if (raw.Length == 0)
+        {
+            return (true, null);
+        }
+        if (raw.Length > MaxAvatarUrlLength)
+        {
+            return (false, null);
+        }
+        if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri))
+        {
+            return (false, null);
+        }
+        if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+        {
+            return (false, null);
+        }
+        // Credentials in a URL render as an Authorization header when the browser fetches the
+        // image; refuse to store them. Fragments are client-only and serve no purpose for an
+        // image src, so refuse those too rather than quietly storing dead bytes.
+        if (!string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Fragment))
+        {
+            return (false, null);
+        }
+        return (true, raw);
     }
 
     private static bool IsUsernameUniqueViolation(DbUpdateException ex) =>

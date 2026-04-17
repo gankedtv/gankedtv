@@ -93,15 +93,9 @@ public sealed class DiscordOAuthProvider : IOAuthProvider
         // so we materialise to a string and reuse it for both parsing and (optional) debug log.
         var body = await response.Content.ReadAsStringAsync(ct);
 
-        string? parsedError = null;
-        try
-        {
-            parsedError = JsonSerializer.Deserialize<OAuthErrorResponse>(body)?.Error;
-        }
-        catch (JsonException)
-        {
-            // Unparseable body — intentionally not included in the exception message.
-        }
+        // Discord's OAuth2 errors use {error, error_description}; its REST errors (e.g. the
+        // userinfo endpoint) use {message, code}. Try both shapes and surface the first hit.
+        var detail = TryParseErrorDetail(body);
 
         // Full body at Debug for operators; never in the exception message (would bleed into
         // API responses / logs of downstream callers).
@@ -110,10 +104,43 @@ public sealed class DiscordOAuthProvider : IOAuthProvider
             _logger.LogDebug("Discord {Stage} failed ({Status}): {Body}", stage, status, body);
         }
 
-        return parsedError is null
+        return detail is null
             ? new OAuthExchangeException($"Discord {stage} failed ({status}).")
-            : new OAuthExchangeException($"Discord {stage} failed ({status}): {parsedError}.");
+            : new OAuthExchangeException($"Discord {stage} failed ({status}): {detail}.");
     }
+
+    private static string? TryParseErrorDetail(string body)
+    {
+        try
+        {
+            var oauth = JsonSerializer.Deserialize<OAuthErrorResponse>(body);
+            if (!string.IsNullOrEmpty(oauth?.Error))
+            {
+                return string.IsNullOrEmpty(oauth.ErrorDescription)
+                    ? oauth.Error
+                    : $"{oauth.Error} ({oauth.ErrorDescription})";
+            }
+        }
+        catch (JsonException) { /* not the OAuth error shape */ }
+
+        try
+        {
+            var rest = JsonSerializer.Deserialize<DiscordRestError>(body);
+            if (!string.IsNullOrEmpty(rest?.Message))
+            {
+                return rest.Code is not null
+                    ? $"{rest.Message} (code {rest.Code})"
+                    : rest.Message;
+            }
+        }
+        catch (JsonException) { /* not the REST error shape either */ }
+
+        return null;
+    }
+
+    private sealed record DiscordRestError(
+        [property: JsonPropertyName("message")] string? Message,
+        [property: JsonPropertyName("code")] int? Code);
 
     private static string? BuildAvatarUrl(string id, string? hash)
     {

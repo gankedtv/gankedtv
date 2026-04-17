@@ -97,10 +97,16 @@ public sealed class GoogleOAuthProvider : IOAuthProvider
         var status = (int)response.StatusCode;
         var body = await response.Content.ReadAsStringAsync(ct);
 
-        string? parsedError = null;
+        string? detail = null;
         try
         {
-            parsedError = JsonSerializer.Deserialize<OAuthErrorResponse>(body)?.Error;
+            var err = JsonSerializer.Deserialize<OAuthErrorResponse>(body);
+            if (!string.IsNullOrEmpty(err?.Error))
+            {
+                detail = string.IsNullOrEmpty(err.ErrorDescription)
+                    ? err.Error
+                    : $"{err.Error} ({err.ErrorDescription})";
+            }
         }
         catch (JsonException)
         {
@@ -112,9 +118,9 @@ public sealed class GoogleOAuthProvider : IOAuthProvider
             _logger.LogDebug("Google {Stage} failed ({Status}): {Body}", stage, status, body);
         }
 
-        return parsedError is null
+        return detail is null
             ? new OAuthExchangeException($"Google {stage} failed ({status}).")
-            : new OAuthExchangeException($"Google {stage} failed ({status}): {parsedError}.");
+            : new OAuthExchangeException($"Google {stage} failed ({status}): {detail}.");
     }
 
     private static string? EmailLocalPart(string? email)

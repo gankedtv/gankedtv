@@ -106,6 +106,39 @@ public class DiscordOAuthProviderTests
     }
 
     [Fact]
+    public async Task ExchangeCodeAsync_TokenError_IncludesErrorDescription()
+    {
+        var (provider, handler) = BuildProvider();
+        handler.OnPost("https://discord.com/api/oauth2/token", HttpStatusCode.BadRequest,
+            "{\"error\":\"invalid_grant\",\"error_description\":\"Code has been consumed\"}");
+
+        var act = () => provider.ExchangeCodeAsync("bad", null, CancellationToken.None);
+
+        var ex = (await act.Should().ThrowAsync<OAuthExchangeException>()).Which;
+        ex.Message.Should().Contain("invalid_grant");
+        ex.Message.Should().Contain("Code has been consumed");
+    }
+
+    [Fact]
+    public async Task ExchangeCodeAsync_UserInfoError_ParsesDiscordRestShape()
+    {
+        var (provider, handler) = BuildProvider();
+        // Discord's REST errors (e.g. userinfo) use {message, code}, not the OAuth2
+        // {error, error_description} shape. Parser must recognise both.
+        handler
+            .OnPost("https://discord.com/api/oauth2/token", HttpStatusCode.OK,
+                "{\"access_token\":\"t\",\"token_type\":\"Bearer\"}")
+            .OnGet("https://discord.com/api/users/@me", HttpStatusCode.Unauthorized,
+                "{\"message\":\"401: Unauthorized\",\"code\":0}");
+
+        var act = () => provider.ExchangeCodeAsync("code", null, CancellationToken.None);
+
+        var ex = (await act.Should().ThrowAsync<OAuthExchangeException>()).Which;
+        ex.Message.Should().Contain("401: Unauthorized");
+        ex.Message.Should().Contain("userinfo failed");
+    }
+
+    [Fact]
     public async Task ExchangeCodeAsync_TokenEndpoint4xx_Throws()
     {
         var (provider, handler) = BuildProvider();

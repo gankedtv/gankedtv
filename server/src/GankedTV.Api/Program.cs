@@ -71,11 +71,15 @@ builder.Services.AddOptions<JwtOptions>()
         "JWT_ISSUER and JWT_AUDIENCE must be set.")
     .ValidateOnStart();
 
-builder.Services.Configure<RefreshTokenOptions>(opts =>
-{
-    var days = Environment.GetEnvironmentVariable("REFRESH_TOKEN_EXPIRY_DAYS") ?? builder.Configuration["Jwt:RefreshTokenExpiryDays"];
-    if (int.TryParse(days, out var d) && d > 0) opts.ExpiryDays = d;
-});
+builder.Services.AddOptions<RefreshTokenOptions>()
+    .Configure(opts =>
+    {
+        var days = Environment.GetEnvironmentVariable("REFRESH_TOKEN_EXPIRY_DAYS") ?? builder.Configuration["Jwt:RefreshTokenExpiryDays"];
+        if (int.TryParse(days, out var d) && d > 0) opts.ExpiryDays = d;
+    })
+    .Validate(o => o.ExpiryDays is > 0 and <= 365,
+        "REFRESH_TOKEN_EXPIRY_DAYS must be between 1 and 365.")
+    .ValidateOnStart();
 
 builder.Services.AddOptions<OAuthOptions>()
     .Configure(opts =>
@@ -97,10 +101,19 @@ builder.Services.AddOptions<OAuthOptions>()
 
 // OAuth providers shouldn't hang the callback endpoint if upstream is slow.
 // We deliberately do NOT add retry — replaying a consumed authorization code fails anyway.
-builder.Services.AddHttpClient(DiscordOAuthProvider.ProviderName,
-    c => c.Timeout = TimeSpan.FromSeconds(15));
-builder.Services.AddHttpClient(GoogleOAuthProvider.ProviderName,
-    c => c.Timeout = TimeSpan.FromSeconds(15));
+// MaxResponseContentBufferSize caps token/userinfo responses at 64 KB (real responses are <4 KB)
+// so a hostile or malfunctioning provider can't OOM us.
+const long OAuthMaxResponseBytes = 64 * 1024;
+builder.Services.AddHttpClient(DiscordOAuthProvider.ProviderName, c =>
+{
+    c.Timeout = TimeSpan.FromSeconds(15);
+    c.MaxResponseContentBufferSize = OAuthMaxResponseBytes;
+});
+builder.Services.AddHttpClient(GoogleOAuthProvider.ProviderName, c =>
+{
+    c.Timeout = TimeSpan.FromSeconds(15);
+    c.MaxResponseContentBufferSize = OAuthMaxResponseBytes;
+});
 
 builder.Services.AddSingleton<IJwtService, JwtService>();
 builder.Services.AddSingleton<IStateCookieService, StateCookieService>();
@@ -128,6 +141,10 @@ builder.Services
 builder.Services.AddAuthorization();
 
 const string corsPolicy = "WebOrigin";
+// We register the CORS policy via AddOptions<CorsOptions>().Configure<IOptions<OAuthOptions>>
+// instead of the idiomatic AddCors(o => o.AddPolicy(...)) because the policy's origin comes
+// from the already-bound OAuthOptions — the AddCors lambda overload can't inject IOptions<T>.
+// AddCors() below wires the middleware + ICorsService; our ConfigureOptions adds the policy.
 builder.Services
     .AddOptions<CorsOptions>()
     .Configure<IOptions<OAuthOptions>>((cors, oauth) =>

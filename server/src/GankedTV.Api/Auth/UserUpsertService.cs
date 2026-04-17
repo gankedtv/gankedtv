@@ -10,6 +10,7 @@ public sealed class UserUpsertService
 {
     private const int MaxInsertRetries = 3;
     private const string UsernameIndex = "idx_users_username";
+    private const string EmailIndex = "idx_users_email";
 
     private readonly GankedTvDbContext _db;
     private readonly TimeProvider _clock;
@@ -36,7 +37,9 @@ public sealed class UserUpsertService
 
         if (existing is not null)
         {
-            if (!string.IsNullOrWhiteSpace(info.Email) && existing.Email != info.Email)
+            // Only update the email when the incoming provider asserts verification, so a
+            // compromised account whose `verified` was flipped can't overwrite a good email.
+            if (info.EmailVerified && !string.IsNullOrWhiteSpace(info.Email) && existing.Email != info.Email)
             {
                 existing.Email = info.Email;
             }
@@ -54,23 +57,37 @@ public sealed class UserUpsertService
         // Link by email ONLY when the provider asserts the email is verified. Otherwise a
         // malicious user could sign up with a forged email address on one provider and
         // hijack the account of an existing user with the same email.
-        if (info.EmailVerified && !string.IsNullOrWhiteSpace(info.Email))
+        var linked = await TryLinkByEmailAsync(providerName, info, ct);
+        if (linked is not null)
         {
-            var byEmail = await _db.Users.FirstOrDefaultAsync(u => u.Email == info.Email, ct);
-            if (byEmail is not null)
-            {
-                SetProviderId(byEmail, providerName, info.ProviderUserId);
-                if (!string.IsNullOrWhiteSpace(info.AvatarUrl) && string.IsNullOrWhiteSpace(byEmail.AvatarUrl))
-                {
-                    byEmail.AvatarUrl = info.AvatarUrl;
-                }
-                byEmail.UpdatedAt = _clock.GetUtcNow();
-                await _db.SaveChangesAsync(ct);
-                return byEmail;
-            }
+            return linked;
         }
 
         return await CreateNewUserWithRetryAsync(providerName, info, ct);
+    }
+
+    private async Task<User?> TryLinkByEmailAsync(
+        string providerName,
+        OAuthUserInfo info,
+        CancellationToken ct)
+    {
+        if (!info.EmailVerified || string.IsNullOrWhiteSpace(info.Email))
+        {
+            return null;
+        }
+        var byEmail = await _db.Users.FirstOrDefaultAsync(u => u.Email == info.Email, ct);
+        if (byEmail is null)
+        {
+            return null;
+        }
+        SetProviderId(byEmail, providerName, info.ProviderUserId);
+        if (!string.IsNullOrWhiteSpace(info.AvatarUrl) && string.IsNullOrWhiteSpace(byEmail.AvatarUrl))
+        {
+            byEmail.AvatarUrl = info.AvatarUrl;
+        }
+        byEmail.UpdatedAt = _clock.GetUtcNow();
+        await _db.SaveChangesAsync(ct);
+        return byEmail;
     }
 
     private async Task<User> CreateNewUserWithRetryAsync(
@@ -103,16 +120,37 @@ public sealed class UserUpsertService
                 // detach and try again with a freshly generated candidate.
                 _db.Entry(user).State = EntityState.Detached;
             }
+            catch (DbUpdateException ex) when (IsEmailUniqueViolation(ex))
+            {
+                // A concurrent verified-email signup (different provider) committed between
+                // our byEmail check and this insert. Canonical resolution: link to THAT user
+                // instead of failing, mirroring the serial case.
+                _db.Entry(user).State = EntityState.Detached;
+                var linked = await TryLinkByEmailAsync(providerName, info, ct);
+                if (linked is not null)
+                {
+                    return linked;
+                }
+                // Race winner isn't reachable by email lookup — fall through and retry the
+                // insert; the next loop iteration will exit with the generic failure if we
+                // keep losing.
+            }
         }
 
         throw new InvalidOperationException(
-            $"Failed to insert user after {MaxInsertRetries} attempts due to username collisions.");
+            $"Failed to insert user after {MaxInsertRetries} attempts due to unique constraint violations.");
     }
 
     private static bool IsUsernameUniqueViolation(DbUpdateException ex) =>
+        IsUniqueViolationOn(ex, UsernameIndex);
+
+    private static bool IsEmailUniqueViolation(DbUpdateException ex) =>
+        IsUniqueViolationOn(ex, EmailIndex);
+
+    private static bool IsUniqueViolationOn(DbUpdateException ex, string indexName) =>
         ex.InnerException is PostgresException pg
         && pg.SqlState == PostgresErrorCodes.UniqueViolation
-        && string.Equals(pg.ConstraintName, UsernameIndex, StringComparison.Ordinal);
+        && string.Equals(pg.ConstraintName, indexName, StringComparison.Ordinal);
 
     private static void SetProviderId(User user, string providerName, string providerUserId)
     {
