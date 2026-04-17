@@ -33,4 +33,8 @@ Start work on issue `$ARGUMENTS`. Required arg: the issue number (accepts `42` o
    - This creates the branch on origin **and** registers it as a linked branch on the GitHub issue (shows up in the "Development" section), then checks it out locally.
    - If the command fails because a linked/branch already exists, stop and suggest `git switch <n>-<slug>` instead — do not overwrite.
 
-7. **Confirm** with one line: the new branch name and a pointer back to the issue URL (`gh issue view <n> --json url --jq .url`).
+7. **Verify the branch tracks itself, not `main`.** If upstream is wrong, `git push` will try to rewrite `main` and get rejected by branch protection. Run:
+   - `git rev-parse --abbrev-ref --symbolic-full-name @{u}` — expected output: `origin/<n>-<slug>`.
+   - If it prints `origin/main` (or errors), fix immediately: `git branch --set-upstream-to=origin/<n>-<slug>`.
+
+8. **Confirm** with one line: the new branch name and a pointer back to the issue URL (`gh issue view <n> --json url --jq .url`).
