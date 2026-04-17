@@ -72,4 +72,9 @@ if [ -n "$touched_web" ]; then
   )
 fi
 
+if command -v graphify >/dev/null 2>&1; then
+  echo "pre-push: refreshing graphify index…"
+  graphify update . || echo "pre-push: graphify update failed, continuing."
+fi
+
 echo "pre-push: all checks passed."
