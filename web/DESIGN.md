@@ -149,6 +149,7 @@ The `@theme` tokens in `base.css` map directly to Tailwind utilities:
 
 `::after`/`::before` pseudo-elements with dynamic class targeting are doable in Tailwind v4 via stacked arbitrary variants — e.g. `after:content-[''] after:opacity-0 [&.active]:after:opacity-100`.
 
+
 **Never** write `var(--color-*)` or `font-family: 'Rajdhani'` in a `<style>` block when a Tailwind class exists for it.
 
 ---
