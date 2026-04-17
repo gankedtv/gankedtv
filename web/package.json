@@ -11,9 +11,12 @@
     "test:unit": "vitest",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
-    "lint": "run-s lint:*",
+    "lint": "run-s lint:oxlint lint:eslint",
     "lint:oxlint": "oxlint . --fix",
     "lint:eslint": "eslint . --fix --cache",
+    "lint:check": "run-s lint:oxlint:check lint:eslint:check",
+    "lint:oxlint:check": "oxlint .",
+    "lint:eslint:check": "eslint . --cache",
     "format": "prettier --write --experimental-cli src/",
     "format:check": "prettier --check src/"
   },
