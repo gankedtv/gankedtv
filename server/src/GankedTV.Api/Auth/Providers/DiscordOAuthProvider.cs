@@ -34,9 +34,8 @@ public sealed class DiscordOAuthProvider : IOAuthProvider
             ["response_type"] = "code",
             ["scope"] = Scopes,
             ["state"] = state,
-            ["prompt"] = "none",
         };
-        return QueryString.Append(AuthorizeEndpoint, query);
+        return OAuthQueryString.Append(AuthorizeEndpoint, query);
     }
 
     public async Task<OAuthUserInfo> ExchangeCodeAsync(string code, string? overrideRedirectUri, CancellationToken ct)
@@ -81,10 +80,16 @@ public sealed class DiscordOAuthProvider : IOAuthProvider
             AvatarUrl: avatar);
     }
 
-    private static string? BuildAvatarUrl(string id, string? hash) =>
-        string.IsNullOrEmpty(hash)
-            ? null
-            : $"https://cdn.discordapp.com/avatars/{id}/{hash}.png";
+    private static string? BuildAvatarUrl(string id, string? hash)
+    {
+        if (string.IsNullOrEmpty(hash))
+        {
+            return null;
+        }
+        // Discord prefixes animated avatar hashes with "a_"; those must be served as .gif.
+        var ext = hash.StartsWith("a_", StringComparison.Ordinal) ? "gif" : "png";
+        return $"https://cdn.discordapp.com/avatars/{id}/{hash}.{ext}";
+    }
 
     private sealed record DiscordTokenResponse(
         [property: JsonPropertyName("access_token")] string AccessToken,
@@ -100,23 +105,4 @@ public sealed class DiscordOAuthProvider : IOAuthProvider
 public sealed class OAuthExchangeException : Exception
 {
     public OAuthExchangeException(string message) : base(message) { }
-}
-
-internal static class QueryString
-{
-    public static string Append(string baseUrl, IEnumerable<KeyValuePair<string, string?>> pairs)
-    {
-        var sb = new System.Text.StringBuilder(baseUrl);
-        var first = true;
-        foreach (var (k, v) in pairs)
-        {
-            if (v is null) continue;
-            sb.Append(first ? '?' : '&');
-            first = false;
-            sb.Append(Uri.EscapeDataString(k));
-            sb.Append('=');
-            sb.Append(Uri.EscapeDataString(v));
-        }
-        return sb.ToString();
-    }
 }

@@ -160,4 +160,36 @@ public class RefreshTokenServiceTests
         var row = await verify.RefreshTokens.AsNoTracking().SingleAsync();
         row.RevokedAt.Should().NotBeNull();
     }
+
+    [Fact]
+    public async Task RotateAsync_ConcurrentCallers_OnlyOneSucceeds()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("frank");
+
+        string raw;
+        await using (var db = _fx.CreateContext())
+        {
+            raw = await new RefreshTokenService(db, DefaultOpts()).IssueAsync(userId);
+        }
+
+        async Task<bool> TryRotate()
+        {
+            await using var db = _fx.CreateContext();
+            try
+            {
+                await new RefreshTokenService(db, DefaultOpts()).RotateAsync(raw);
+                return true;
+            }
+            catch (InvalidRefreshTokenException)
+            {
+                return false;
+            }
+        }
+
+        var outcomes = await Task.WhenAll(TryRotate(), TryRotate(), TryRotate());
+
+        outcomes.Count(ok => ok).Should().Be(1);
+        outcomes.Count(ok => !ok).Should().Be(2);
+    }
 }

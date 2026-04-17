@@ -41,18 +41,24 @@ public sealed class RefreshTokenService : IRefreshTokenService
     public async Task<RotateResult> RotateAsync(string rawToken, CancellationToken ct = default)
     {
         var hash = Hash(rawToken);
-        var row = await _db.RefreshTokens
-            .Include(t => t.User)
-            .SingleOrDefaultAsync(t => t.TokenHash == hash, ct);
-
         var now = _clock.GetUtcNow();
-        if (row is null || row.RevokedAt is not null || row.ExpiresAt <= now)
+
+        // Atomic CAS: only one concurrent caller wins the revocation. Others see 0 rows
+        // affected and throw, so a replayed / race-duplicated rotation cannot succeed twice.
+        // TODO: detect reuse + revoke the whole token family per PLAN.md follow-up (#5 scope).
+        var affected = await _db.RefreshTokens
+            .Where(t => t.TokenHash == hash && t.RevokedAt == null && t.ExpiresAt > now)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedAt, now), ct);
+
+        if (affected == 0)
         {
             throw new InvalidRefreshTokenException("Refresh token is invalid, revoked, or expired.");
         }
 
-        // TODO: detect reuse + revoke whole token family per PLAN.md follow-up (#5 scope).
-        row.RevokedAt = now;
+        var row = await _db.RefreshTokens
+            .AsNoTracking()
+            .Include(t => t.User)
+            .SingleAsync(t => t.TokenHash == hash, ct);
 
         var newRaw = GenerateRaw();
         _db.RefreshTokens.Add(new RefreshToken
@@ -61,8 +67,8 @@ public sealed class RefreshTokenService : IRefreshTokenService
             TokenHash = Hash(newRaw),
             ExpiresAt = now.Add(_ttl),
         });
-
         await _db.SaveChangesAsync(ct);
+
         return new RotateResult(row.User, newRaw);
     }
 

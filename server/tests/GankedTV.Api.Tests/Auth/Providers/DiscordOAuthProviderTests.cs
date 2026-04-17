@@ -43,6 +43,18 @@ public class DiscordOAuthProviderTests
     }
 
     [Fact]
+    public void BuildAuthorizeUrl_DoesNotForceSilentPrompt()
+    {
+        var (provider, _) = BuildProvider();
+
+        var url = provider.BuildAuthorizeUrl("s");
+
+        // prompt=none would break first-time sign-ins (Discord returns interaction_required
+        // for users who have never authorized the app).
+        url.Should().NotContain("prompt=none");
+    }
+
+    [Fact]
     public async Task ExchangeCodeAsync_TokenEndpointReturnsAccessToken_FetchesUserInfo()
     {
         var (provider, handler) = BuildProvider();
@@ -88,6 +100,21 @@ public class DiscordOAuthProviderTests
         var info = await provider.ExchangeCodeAsync("code", null, CancellationToken.None);
 
         info.AvatarUrl.Should().Be("https://cdn.discordapp.com/avatars/42/abc123.png");
+    }
+
+    [Fact]
+    public async Task ExchangeCodeAsync_AnimatedAvatarHash_BuildsGifUrl()
+    {
+        var (provider, handler) = BuildProvider();
+        handler
+            .OnPost("https://discord.com/api/oauth2/token", HttpStatusCode.OK,
+                "{\"access_token\":\"token\",\"token_type\":\"Bearer\"}")
+            .OnGet("https://discord.com/api/users/@me", HttpStatusCode.OK,
+                "{\"id\":\"42\",\"username\":\"bob\",\"email\":null,\"avatar\":\"a_deadbeef\"}");
+
+        var info = await provider.ExchangeCodeAsync("code", null, CancellationToken.None);
+
+        info.AvatarUrl.Should().Be("https://cdn.discordapp.com/avatars/42/a_deadbeef.gif");
     }
 
     [Fact]

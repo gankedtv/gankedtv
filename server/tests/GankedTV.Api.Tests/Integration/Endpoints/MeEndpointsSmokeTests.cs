@@ -5,6 +5,7 @@ using FluentAssertions;
 using GankedTV.Api.Auth.Jwt;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Tests.TestSupport;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace GankedTV.Api.Tests.Integration.Endpoints;
@@ -150,5 +151,37 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
         var resp = await client.PatchAsJsonAsync("/me", new { bio = new string('a', 501) });
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Patch_WhitespaceUsername_Returns400()
+    {
+        await _fx.ResetAsync();
+        var (_, token, original) = await SeedUserAndIssueTokenAsync("keeper");
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PatchAsJsonAsync("/me", new { username = "   " });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        await using var db = _fx.CreateContext();
+        var after = await db.Users.AsNoTracking().SingleAsync();
+        after.Username.Should().Be(original);
+    }
+
+    [Fact]
+    public async Task Patch_PunctuationOnlyUsername_Returns400()
+    {
+        await _fx.ResetAsync();
+        var (_, token, original) = await SeedUserAndIssueTokenAsync("holder");
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PatchAsJsonAsync("/me", new { username = "!!!" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        await using var db = _fx.CreateContext();
+        var after = await db.Users.AsNoTracking().SingleAsync();
+        after.Username.Should().Be(original);
     }
 }

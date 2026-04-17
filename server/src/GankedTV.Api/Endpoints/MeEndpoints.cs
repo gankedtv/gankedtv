@@ -66,8 +66,18 @@ public static class MeEndpoints
 
         if (req.Username is not null)
         {
+            // Reject whitespace-only input explicitly — Slugify would otherwise return the
+            // fallback ("player") and silently rename the user.
+            if (string.IsNullOrWhiteSpace(req.Username))
+            {
+                return Results.BadRequest(new { error = "invalid_username" });
+            }
             var slug = UsernameGenerator.Slugify(req.Username);
-            if (slug.Length == 0 || slug.Length > 30)
+            if (slug == UsernameGenerator.Fallback && !req.Username.Equals(UsernameGenerator.Fallback, StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.BadRequest(new { error = "invalid_username" });
+            }
+            if (slug.Length > 30)
             {
                 return Results.BadRequest(new { error = "invalid_username" });
             }
@@ -116,6 +126,10 @@ public static class MeEndpoints
     private static bool TryGetUserId(ClaimsPrincipal principal, out Guid userId)
     {
         userId = default;
+        // JwtBearer's default handler keeps the inbound claim-type map, which remaps
+        // "sub" → ClaimTypes.NameIdentifier during validation. We issue tokens with the
+        // map cleared (so "sub" stays "sub"), but reading from either side makes this
+        // resilient to future changes to the bearer setup.
         var sub = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
             ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         return Guid.TryParse(sub, out userId);

@@ -37,7 +37,7 @@ public sealed class GoogleOAuthProvider : IOAuthProvider
             ["access_type"] = "online",
             ["prompt"] = "select_account",
         };
-        return QueryString.Append(AuthorizeEndpoint, query);
+        return OAuthQueryString.Append(AuthorizeEndpoint, query);
     }
 
     public async Task<OAuthUserInfo> ExchangeCodeAsync(string code, string? overrideRedirectUri, CancellationToken ct)
