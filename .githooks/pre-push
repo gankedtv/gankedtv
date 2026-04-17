@@ -26,7 +26,7 @@ while read -r _ local_sha _ remote_sha; do
     # new branch — diff against the upstream default (origin/main)
     base=$(git merge-base "$local_sha" origin/main 2>/dev/null || echo "")
     if [ -z "$base" ]; then
-      range_files=$(git show --name-only --pretty=format: "$local_sha")
+      range_files=$(git log --name-only --pretty=format: "$local_sha")
     else
       range_files=$(git diff --name-only "$base" "$local_sha")
     fi

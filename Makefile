@@ -47,5 +47,5 @@ dev-all: up
 
 # Git hooks — point git at the tracked .githooks/ directory.
 hooks:
-	git config core.hooksPath .githooks
+	git config --local core.hooksPath .githooks
 	@echo "pre-push hook active. Bypass with PREPUSH_SKIP=1 or git push --no-verify."
