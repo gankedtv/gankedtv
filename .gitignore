@@ -51,3 +51,5 @@ server/**/TestResults/
 web/__screenshots__/
 web/cypress/videos/
 web/cypress/screenshots/
+
+server/postman
