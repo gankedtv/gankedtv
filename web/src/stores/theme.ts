@@ -7,9 +7,9 @@ export const useThemeStore = defineStore('theme', {
   actions: {
     toggle() {
       this.isDark = !this.isDark
-      this._apply()
+      this.applyToDOM()
     },
-    _apply() {
+    applyToDOM() {
       document.documentElement.classList.toggle('light', !this.isDark)
       localStorage.setItem('theme', this.isDark ? 'dark' : 'light')
     },

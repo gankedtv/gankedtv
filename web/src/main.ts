@@ -13,7 +13,7 @@ app.use(pinia)
 
 // Initialize theme before mounting to avoid flash of wrong theme
 const themeStore = useThemeStore(pinia)
-themeStore._apply()
+themeStore.applyToDOM()
 
 app.use(router)
 app.mount('#app')

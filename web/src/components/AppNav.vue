@@ -6,6 +6,9 @@ import ThemeToggle from './ThemeToggle.vue'
 const auth = useAuthStore()
 const scrolled = ref(false)
 
+const navLinkClass =
+  "relative rounded-md px-3 py-1.5 text-sm font-medium text-text-secondary no-underline transition-[color,background-color] duration-150 hover:bg-surface-overlay hover:text-text-primary after:absolute after:-bottom-0.5 after:left-3 after:right-3 after:h-0.5 after:rounded-[1px] after:bg-brand-light after:opacity-0 after:transition-opacity after:duration-150 after:content-[''] [&.nav-link--active]:text-brand-light [&.nav-link--active]:after:opacity-100"
+
 function onScroll() {
   scrolled.value = window.scrollY > 20
 }
@@ -30,16 +33,15 @@ onUnmounted(() => window.removeEventListener('scroll', onScroll))
       <nav class="flex flex-1 items-center justify-center gap-1 max-sm:hidden" aria-label="Main navigation">
         <RouterLink
           to="/"
-          class="relative rounded-md px-3 py-1.5 text-sm font-medium text-text-secondary no-underline transition-[color,background-color] duration-150 hover:bg-surface-overlay hover:text-text-primary after:absolute after:-bottom-0.5 after:left-3 after:right-3 after:h-0.5 after:rounded-[1px] after:bg-brand-light after:opacity-0 after:transition-opacity after:duration-150 after:content-[''] [&.nav-link--active]:text-brand-light [&.nav-link--active]:after:opacity-100"
-          active-class="nav-link--active"
-          :exact="true"
+          :class="navLinkClass"
+          exact-active-class="nav-link--active"
         >
           Home
         </RouterLink>
         <RouterLink
           v-if="auth.isAuthenticated"
           to="/upload"
-          class="relative rounded-md px-3 py-1.5 text-sm font-medium text-text-secondary no-underline transition-[color,background-color] duration-150 hover:bg-surface-overlay hover:text-text-primary after:absolute after:-bottom-0.5 after:left-3 after:right-3 after:h-0.5 after:rounded-[1px] after:bg-brand-light after:opacity-0 after:transition-opacity after:duration-150 after:content-[''] [&.nav-link--active]:text-brand-light [&.nav-link--active]:after:opacity-100"
+          :class="navLinkClass"
           active-class="nav-link--active"
         >
           Upload
