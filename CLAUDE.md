@@ -76,6 +76,13 @@ gankedtv/
 
 - Do not add yourself (Claude / any AI) as a co-author. Never append `Co-Authored-By: Claude ...` trailers to commit messages.
 
+
+## Frontend Design
+
+**Before writing any frontend (Vue components, CSS, Tailwind classes):** Read [web/DESIGN.md](web/DESIGN.md).
+
+It defines the "Underground Arena" design system: typography (Rajdhani, Barlow Condensed, DM Sans, DM Mono), color tokens (`--color-surface-base`, `--color-brand`, `--color-neon`, etc.), layout rules, motion principles, and anti-patterns to avoid. All tokens are CSS custom properties defined in `web/src/assets/base.css`.
+
 ## graphify
 
 This project has a graphify knowledge graph at graphify-out/.
