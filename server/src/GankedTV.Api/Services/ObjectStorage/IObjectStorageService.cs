@@ -4,18 +4,16 @@ public interface IObjectStorageService
 {
     Task EnsureBucketsAsync(CancellationToken ct = default);
 
-    Task<string> GetPresignedPutUrlAsync(
+    string GetPresignedPutUrl(
         string bucket,
         string key,
         string contentType,
-        TimeSpan? expiry = null,
-        CancellationToken ct = default);
+        TimeSpan? expiry = null);
 
-    Task<string> GetPresignedGetUrlAsync(
+    string GetPresignedGetUrl(
         string bucket,
         string key,
-        TimeSpan? expiry = null,
-        CancellationToken ct = default);
+        TimeSpan? expiry = null);
 
     Task DeleteObjectAsync(string bucket, string key, CancellationToken ct = default);
 }

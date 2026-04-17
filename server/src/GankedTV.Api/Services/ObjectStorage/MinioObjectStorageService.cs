@@ -43,12 +43,11 @@ public sealed class MinioObjectStorageService : IObjectStorageService
         }
     }
 
-    public Task<string> GetPresignedPutUrlAsync(
+    public string GetPresignedPutUrl(
         string bucket,
         string key,
         string contentType,
-        TimeSpan? expiry = null,
-        CancellationToken ct = default)
+        TimeSpan? expiry = null)
     {
         var request = new GetPreSignedUrlRequest
         {
@@ -59,14 +58,13 @@ public sealed class MinioObjectStorageService : IObjectStorageService
             Expires = DateTime.UtcNow.Add(expiry ?? DefaultExpiry),
         };
 
-        return Task.FromResult(_s3.GetPreSignedURL(request));
+        return _s3.GetPreSignedURL(request);
     }
 
-    public Task<string> GetPresignedGetUrlAsync(
+    public string GetPresignedGetUrl(
         string bucket,
         string key,
-        TimeSpan? expiry = null,
-        CancellationToken ct = default)
+        TimeSpan? expiry = null)
     {
         var request = new GetPreSignedUrlRequest
         {
@@ -76,8 +74,7 @@ public sealed class MinioObjectStorageService : IObjectStorageService
             Expires = DateTime.UtcNow.Add(expiry ?? DefaultExpiry),
         };
 
-        var url = _s3.GetPreSignedURL(request);
-        return Task.FromResult(RewriteHost(url, _options.PublicUrl));
+        return RewriteHost(_s3.GetPreSignedURL(request), _options.PublicUrl);
     }
 
     public async Task DeleteObjectAsync(string bucket, string key, CancellationToken ct = default)
@@ -91,6 +88,10 @@ public sealed class MinioObjectStorageService : IObjectStorageService
 
     // MinIO signs with the container-internal endpoint (http://minio:9000) but browsers
     // need to hit the host-visible URL. Preserve path, query, and signature verbatim.
+    // Caveat: SigV4 canonicalizes the Host header into the signature, so post-sign host
+    // rewriting is technically a mismatch. MinIO permits it in practice; if we ever
+    // switch to strict S3, sign with PublicUrl directly and keep a second internal-only
+    // IAmazonS3 for admin ops (ListBuckets / PutBucket / DeleteObject).
     internal static string RewriteHost(string signedUrl, string? publicUrl)
     {
         if (string.IsNullOrEmpty(publicUrl))

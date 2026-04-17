@@ -1,15 +1,20 @@
+using Microsoft.Extensions.Options;
+
 namespace GankedTV.Api.Services.ObjectStorage;
 
 public sealed class BucketBootstrapHostedService : IHostedService
 {
     private readonly IObjectStorageService _storage;
+    private readonly MinioOptions _options;
     private readonly ILogger<BucketBootstrapHostedService> _logger;
 
     public BucketBootstrapHostedService(
         IObjectStorageService storage,
+        IOptions<MinioOptions> options,
         ILogger<BucketBootstrapHostedService> logger)
     {
         _storage = storage;
+        _options = options.Value;
         _logger = logger;
     }
 
@@ -18,6 +23,9 @@ public sealed class BucketBootstrapHostedService : IHostedService
         try
         {
             await _storage.EnsureBucketsAsync(cancellationToken);
+            _logger.LogInformation(
+                "Object storage ready at {Endpoint} (buckets: {Clips}, {Thumbnails})",
+                _options.Endpoint, _options.ClipsBucket, _options.ThumbnailsBucket);
         }
         catch (Exception ex)
         {

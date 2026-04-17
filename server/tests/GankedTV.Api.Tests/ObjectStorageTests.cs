@@ -65,7 +65,30 @@ public class ObjectStorageTests
     }
 
     [Fact]
-    public async Task GetPresignedPutUrlAsync_UsesFifteenMinExpiryByDefault()
+    public async Task EnsureBucketsAsync_CreatesOnlyMissingBucket()
+    {
+        var s3 = Substitute.For<IAmazonS3>();
+        s3.ListBucketsAsync(Arg.Any<CancellationToken>())
+            .Returns(new ListBucketsResponse
+            {
+                Buckets = new List<S3Bucket>
+                {
+                    new() { BucketName = "clips" },
+                },
+            });
+
+        await BuildService(s3).EnsureBucketsAsync();
+
+        await s3.DidNotReceive().PutBucketAsync(
+            Arg.Is<PutBucketRequest>(r => r.BucketName == "clips"),
+            Arg.Any<CancellationToken>());
+        await s3.Received(1).PutBucketAsync(
+            Arg.Is<PutBucketRequest>(r => r.BucketName == "thumbnails"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void GetPresignedPutUrl_UsesFifteenMinExpiryByDefault()
     {
         var s3 = Substitute.For<IAmazonS3>();
         GetPreSignedUrlRequest? captured = null;
@@ -73,7 +96,7 @@ public class ObjectStorageTests
             .Returns("http://minio:9000/clips/key?sig=abc");
 
         var before = DateTime.UtcNow;
-        await BuildService(s3).GetPresignedPutUrlAsync("clips", "key", "video/mp4");
+        BuildService(s3).GetPresignedPutUrl("clips", "key", "video/mp4");
         var after = DateTime.UtcNow;
 
         captured.Should().NotBeNull();
@@ -86,7 +109,7 @@ public class ObjectStorageTests
     }
 
     [Fact]
-    public async Task GetPresignedPutUrlAsync_HonorsCustomExpiry()
+    public void GetPresignedPutUrl_HonorsCustomExpiry()
     {
         var s3 = Substitute.For<IAmazonS3>();
         GetPreSignedUrlRequest? captured = null;
@@ -94,7 +117,7 @@ public class ObjectStorageTests
             .Returns("http://minio:9000/clips/key?sig=abc");
 
         var before = DateTime.UtcNow;
-        await BuildService(s3).GetPresignedPutUrlAsync("clips", "key", "video/mp4", TimeSpan.FromHours(1));
+        BuildService(s3).GetPresignedPutUrl("clips", "key", "video/mp4", TimeSpan.FromHours(1));
         var after = DateTime.UtcNow;
 
         captured!.Expires.Should().BeOnOrAfter(before.AddHours(1));
@@ -102,40 +125,40 @@ public class ObjectStorageTests
     }
 
     [Fact]
-    public async Task GetPresignedGetUrlAsync_RewritesHostWhenPublicUrlSet()
+    public void GetPresignedGetUrl_RewritesHostWhenPublicUrlSet()
     {
         var s3 = Substitute.For<IAmazonS3>();
         s3.GetPreSignedURL(Arg.Any<GetPreSignedUrlRequest>())
             .Returns("http://minio:9000/clips/some/key?X-Amz-Signature=abc123");
 
-        var url = await BuildService(s3, publicUrl: "http://localhost:9000")
-            .GetPresignedGetUrlAsync("clips", "some/key");
+        var url = BuildService(s3, publicUrl: "http://localhost:9000")
+            .GetPresignedGetUrl("clips", "some/key");
 
         url.Should().StartWith("http://localhost:9000/clips/some/key");
         url.Should().Contain("X-Amz-Signature=abc123");
     }
 
     [Fact]
-    public async Task GetPresignedGetUrlAsync_ReturnsUnmodifiedUrlWhenPublicUrlNotSet()
+    public void GetPresignedGetUrl_ReturnsUnmodifiedUrlWhenPublicUrlNotSet()
     {
         var s3 = Substitute.For<IAmazonS3>();
         const string signed = "http://minio:9000/clips/key?X-Amz-Signature=abc123";
         s3.GetPreSignedURL(Arg.Any<GetPreSignedUrlRequest>()).Returns(signed);
 
-        var url = await BuildService(s3).GetPresignedGetUrlAsync("clips", "key");
+        var url = BuildService(s3).GetPresignedGetUrl("clips", "key");
 
         url.Should().Be(signed);
     }
 
     [Fact]
-    public async Task GetPresignedGetUrlAsync_UsesGetVerb()
+    public void GetPresignedGetUrl_UsesGetVerb()
     {
         var s3 = Substitute.For<IAmazonS3>();
         GetPreSignedUrlRequest? captured = null;
         s3.GetPreSignedURL(Arg.Do<GetPreSignedUrlRequest>(r => captured = r))
             .Returns("http://minio:9000/clips/key?sig=abc");
 
-        await BuildService(s3).GetPresignedGetUrlAsync("clips", "key");
+        BuildService(s3).GetPresignedGetUrl("clips", "key");
 
         captured!.Verb.Should().Be(HttpVerb.GET);
     }
