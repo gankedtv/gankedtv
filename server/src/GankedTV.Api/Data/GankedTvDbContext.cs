@@ -1,0 +1,92 @@
+using GankedTV.Api.Data.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace GankedTV.Api.Data;
+
+public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : DbContext(options)
+{
+    public DbSet<User> Users => Set<User>();
+    public DbSet<Game> Games => Set<Game>();
+    public DbSet<Clip> Clips => Set<Clip>();
+    public DbSet<Like> Likes => Set<Like>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<User>(e =>
+        {
+            e.HasKey(u => u.Id);
+            e.Property(u => u.Id).HasDefaultValueSql("gen_random_uuid()");
+            e.Property(u => u.Username).HasMaxLength(30);
+            e.Property(u => u.Email).HasMaxLength(255);
+            e.Property(u => u.DiscordId).HasMaxLength(50);
+            e.Property(u => u.GoogleId).HasMaxLength(50);
+            e.Property(u => u.Bio).HasMaxLength(500);
+            e.Property(u => u.CreatedAt).HasDefaultValueSql("now()");
+            e.Property(u => u.UpdatedAt).HasDefaultValueSql("now()");
+            e.HasIndex(u => u.Username).IsUnique().HasDatabaseName("idx_users_username");
+            e.HasIndex(u => u.Email).IsUnique().HasDatabaseName("idx_users_email");
+            e.HasIndex(u => u.DiscordId).IsUnique().HasDatabaseName("idx_users_discord_id");
+            e.HasIndex(u => u.GoogleId).IsUnique().HasDatabaseName("idx_users_google_id");
+        });
+
+        modelBuilder.Entity<Game>(e =>
+        {
+            e.HasKey(g => g.Id);
+            e.Property(g => g.Name).HasMaxLength(255);
+            e.Property(g => g.Slug).HasMaxLength(255);
+            e.HasIndex(g => g.Slug).IsUnique().HasDatabaseName("idx_games_slug");
+            e.HasData(
+                new Game { Id = 1, Name = "League of Legends", Slug = "league-of-legends" },
+                new Game { Id = 2, Name = "Valorant", Slug = "valorant" },
+                new Game { Id = 3, Name = "Counter-Strike 2", Slug = "cs2" },
+                new Game { Id = 4, Name = "Fortnite", Slug = "fortnite" },
+                new Game { Id = 5, Name = "Apex Legends", Slug = "apex-legends" });
+        });
+
+        modelBuilder.Entity<Clip>(e =>
+        {
+            e.HasKey(c => c.Id);
+            e.Property(c => c.Id).HasDefaultValueSql("gen_random_uuid()");
+            e.Property(c => c.Title).HasMaxLength(255);
+            e.Property(c => c.Status).HasMaxLength(20).HasDefaultValue("processing");
+            e.Property(c => c.Visibility).HasMaxLength(20).HasDefaultValue("public");
+            e.Property(c => c.ViewCount).HasDefaultValue(0);
+            e.Property(c => c.LikeCount).HasDefaultValue(0);
+            e.Property(c => c.CreatedAt).HasDefaultValueSql("now()");
+            e.Property(c => c.UpdatedAt).HasDefaultValueSql("now()");
+
+            e.HasOne(c => c.User)
+                .WithMany(u => u.Clips)
+                .HasForeignKey(c => c.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(c => c.Game)
+                .WithMany()
+                .HasForeignKey(c => c.GameId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasIndex(c => c.UserId).HasDatabaseName("idx_clips_user_id");
+            e.HasIndex(c => c.GameId).HasDatabaseName("idx_clips_game_id");
+            e.HasIndex(c => c.CreatedAt).IsDescending().HasDatabaseName("idx_clips_created_at");
+            e.HasIndex(c => c.Status).HasFilter("status = 'ready'").HasDatabaseName("idx_clips_status");
+        });
+
+        modelBuilder.Entity<Like>(e =>
+        {
+            e.HasKey(l => new { l.UserId, l.ClipId });
+            e.Property(l => l.CreatedAt).HasDefaultValueSql("now()");
+
+            e.HasOne(l => l.User)
+                .WithMany(u => u.Likes)
+                .HasForeignKey(l => l.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(l => l.Clip)
+                .WithMany(c => c.Likes)
+                .HasForeignKey(l => l.ClipId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+}

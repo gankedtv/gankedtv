@@ -30,6 +30,14 @@ dotnet test server --filter "FullyQualifiedName~TestClassName"  # Run specific t
 dotnet watch --project server/src/GankedTV.Api  # Run with hot reload
 ```
 
+### Database Migrations (run from `server/`)
+```bash
+dotnet tool restore                                          # first time: restore dotnet-ef local tool
+dotnet ef migrations add <Name> --project src/GankedTV.Api   # create a new migration
+dotnet ef database update --project src/GankedTV.Api         # apply migrations to the local DB
+```
+Connection string comes from `DATABASE_URL` env var, falling back to `ConnectionStrings:DefaultConnection` in `appsettings.Development.json`.
+
 ### Web (from repository root)
 ```bash
 cd web && bun install         # Install dependencies
