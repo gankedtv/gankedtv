@@ -72,6 +72,10 @@ gankedtv/
 | MinIO API  | http://localhost:9000  | minioadmin / minioadmin  |
 | MinIO UI   | http://localhost:9001  | minioadmin / minioadmin  |
 
+## Git workflow
+
+- Do not add yourself (Claude / any AI) as a co-author. Never append `Co-Authored-By: Claude ...` trailers to commit messages.
+
 ## graphify
 
 This project has a graphify knowledge graph at graphify-out/.
