@@ -10,7 +10,8 @@
       "Bash(gh api *)",
       "Bash(gh label *)",
       "Bash(bash -n /tmp/gankedtv_issues.sh)",
-      "Bash(echo \"---exit: $?---\")"
+      "Bash(echo \"---exit: $?---\")",
+      "Bash(gh issue *)"
     ]
   }
 }

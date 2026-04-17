@@ -57,6 +57,24 @@ dotnet test               # Run tests
 dotnet watch --project src/GankedTV.Api  # Run with hot reload
 ```
 
+### Database Migrations
+
+`dotnet-ef` is pinned as a local tool in [server/.config/dotnet-tools.json](server/.config/dotnet-tools.json). First-time setup:
+
+```bash
+cd server
+dotnet tool restore
+```
+
+Then, from `server/`:
+
+```bash
+dotnet ef migrations add <Name> --project src/GankedTV.Api   # create a new migration
+dotnet ef database update --project src/GankedTV.Api         # apply migrations to the local DB
+```
+
+The connection string is read from the `DATABASE_URL` env var, falling back to `ConnectionStrings:DefaultConnection` in `appsettings.Development.json` (preconfigured to hit the compose Postgres on port 5435).
+
 ### Web Commands
 
 ```bash
