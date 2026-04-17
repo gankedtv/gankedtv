@@ -101,7 +101,7 @@ Brand, neon, error, warning stay the same in both modes.
 ### Theme store (`web/src/stores/theme.ts`)
 - Dark is default; light activated by `.light` class on `<html>`
 - Persisted to `localStorage` key `"theme"`
-- Initialize with `themeStore._apply()` in `main.ts` before mount to prevent flash
+- Initialize with `themeStore.applyToDOM()` in `main.ts` before mount to prevent flash
 
 ---
 
