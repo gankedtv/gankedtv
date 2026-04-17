@@ -60,7 +60,7 @@ public sealed class UserUpsertService
             if (byEmail is not null)
             {
                 SetProviderId(byEmail, providerName, info.ProviderUserId);
-                if (!string.IsNullOrWhiteSpace(info.AvatarUrl) && byEmail.AvatarUrl is null)
+                if (!string.IsNullOrWhiteSpace(info.AvatarUrl) && string.IsNullOrWhiteSpace(byEmail.AvatarUrl))
                 {
                     byEmail.AvatarUrl = info.AvatarUrl;
                 }

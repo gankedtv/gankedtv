@@ -1,7 +1,6 @@
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace GankedTV.Api.Auth.Providers;
@@ -96,20 +95,20 @@ public sealed class GoogleOAuthProvider : IOAuthProvider
         CancellationToken ct)
     {
         var status = (int)response.StatusCode;
+        var body = await response.Content.ReadAsStringAsync(ct);
+
         string? parsedError = null;
         try
         {
-            var err = await response.Content.ReadFromJsonAsync<OAuthErrorResponse>(cancellationToken: ct);
-            parsedError = err?.Error;
+            parsedError = JsonSerializer.Deserialize<OAuthErrorResponse>(body)?.Error;
         }
-        catch
+        catch (JsonException)
         {
             // Unparseable body — intentionally not included in exception message.
         }
 
         if (_logger is not null && _logger.IsEnabled(LogLevel.Debug))
         {
-            var body = await response.Content.ReadAsStringAsync(ct);
             _logger.LogDebug("Google {Stage} failed ({Status}): {Body}", stage, status, body);
         }
 

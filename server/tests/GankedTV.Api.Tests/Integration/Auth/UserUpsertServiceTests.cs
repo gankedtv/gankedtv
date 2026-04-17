@@ -25,7 +25,7 @@ public class UserUpsertServiceTests
             var svc = new UserUpsertService(db);
             user = await svc.UpsertFromOAuthAsync(
                 DiscordOAuthProvider.ProviderName,
-                new OAuthUserInfo("d-42", "zoe@example.com", "Zoe", null));
+                new OAuthUserInfo("d-42", "zoe@example.com", "Zoe", null, EmailVerified: true));
         }
 
         user.DiscordId.Should().Be("d-42");
@@ -168,7 +168,7 @@ public class UserUpsertServiceTests
         {
             await new UserUpsertService(db).UpsertFromOAuthAsync(
                 GoogleOAuthProvider.ProviderName,
-                new OAuthUserInfo("g-1", "zoe@example.com", "Zoe Google", null));
+                new OAuthUserInfo("g-1", "zoe@example.com", "Zoe Google", null, EmailVerified: true));
         }
 
         await using var verify = _fx.CreateContext();

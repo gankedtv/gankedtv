@@ -35,8 +35,6 @@ public sealed class JwtService : IJwtService
         _handler.OutboundClaimTypeMap.Clear();
     }
 
-    public TokenValidationParameters ValidationParameters => _validationParameters;
-
     public static TokenValidationParameters BuildValidationParameters(JwtOptions options, SymmetricSecurityKey? key = null) =>
         new()
         {

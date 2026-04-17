@@ -3,7 +3,6 @@ using System.Security.Claims;
 using GankedTV.Api.Auth;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -76,11 +75,9 @@ public static class MeEndpoints
                 return Results.BadRequest(new { error = "invalid_username" });
             }
             var slug = UsernameGenerator.Slugify(req.Username);
+            // Slugify caps at MaxLength (≤ 24 chars, under the 30-char DB column), so the only
+            // length invariant to check is the fallback escape hatch for unusable input.
             if (slug == UsernameGenerator.Fallback && !req.Username.Equals(UsernameGenerator.Fallback, StringComparison.OrdinalIgnoreCase))
-            {
-                return Results.BadRequest(new { error = "invalid_username" });
-            }
-            if (slug.Length > 30)
             {
                 return Results.BadRequest(new { error = "invalid_username" });
             }
