@@ -58,7 +58,7 @@ public sealed class MinioObjectStorageService : IObjectStorageService
             Expires = DateTime.UtcNow.Add(expiry ?? DefaultExpiry),
         };
 
-        return _s3.GetPreSignedURL(request);
+        return RewriteHost(_s3.GetPreSignedURL(request), _options.PublicUrl);
     }
 
     public string GetPresignedGetUrl(
@@ -94,14 +94,18 @@ public sealed class MinioObjectStorageService : IObjectStorageService
     // IAmazonS3 for admin ops (ListBuckets / PutBucket / DeleteObject).
     internal static string RewriteHost(string signedUrl, string? publicUrl)
     {
-        if (string.IsNullOrEmpty(publicUrl))
+        if (string.IsNullOrWhiteSpace(publicUrl))
         {
             return signedUrl;
         }
 
-        var signed = new Uri(signedUrl);
-        var target = new Uri(publicUrl);
+        if (!Uri.TryCreate(publicUrl, UriKind.Absolute, out var target))
+        {
+            throw new InvalidOperationException(
+                $"S3_PUBLIC_URL / Minio:PublicUrl is not a valid absolute URL: '{publicUrl}'");
+        }
 
+        var signed = new Uri(signedUrl);
         var builder = new UriBuilder(signed)
         {
             Scheme = target.Scheme,

@@ -134,8 +134,34 @@ public class ObjectStorageTests
         var url = BuildService(s3, publicUrl: "http://localhost:9000")
             .GetPresignedGetUrl("clips", "some/key");
 
-        url.Should().StartWith("http://localhost:9000/clips/some/key");
-        url.Should().Contain("X-Amz-Signature=abc123");
+        url.Should().Be("http://localhost:9000/clips/some/key?X-Amz-Signature=abc123");
+    }
+
+    [Fact]
+    public void GetPresignedPutUrl_RewritesHostWhenPublicUrlSet()
+    {
+        var s3 = Substitute.For<IAmazonS3>();
+        s3.GetPreSignedURL(Arg.Any<GetPreSignedUrlRequest>())
+            .Returns("http://minio:9000/clips/some/key?X-Amz-Signature=def456");
+
+        var url = BuildService(s3, publicUrl: "http://localhost:9000")
+            .GetPresignedPutUrl("clips", "some/key", "video/mp4");
+
+        url.Should().Be("http://localhost:9000/clips/some/key?X-Amz-Signature=def456");
+    }
+
+    [Fact]
+    public void RewriteHost_ThrowsOnMalformedPublicUrl()
+    {
+        var s3 = Substitute.For<IAmazonS3>();
+        s3.GetPreSignedURL(Arg.Any<GetPreSignedUrlRequest>())
+            .Returns("http://minio:9000/clips/key?sig=abc");
+
+        var act = () => BuildService(s3, publicUrl: "not a url")
+            .GetPresignedGetUrl("clips", "key");
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*S3_PUBLIC_URL*");
     }
 
     [Fact]
