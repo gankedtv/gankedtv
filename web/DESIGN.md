@@ -144,9 +144,10 @@ The `@theme` tokens in `base.css` map directly to Tailwind utilities:
 
 **Only use `<style>` blocks for things Tailwind can't do:**
 - Keyframe animations (`@keyframes`)
-- Complex pseudo-selectors (`::before`/`::after` with `content`)
 - Third-party component overrides
 - Vue `<Transition>` class hooks (`.fade-enter-from` etc.)
+
+`::after`/`::before` pseudo-elements with dynamic class targeting are doable in Tailwind v4 via stacked arbitrary variants — e.g. `after:content-[''] after:opacity-0 [&.active]:after:opacity-100`.
 
 **Never** write `var(--color-*)` or `font-family: 'Rajdhani'` in a `<style>` block when a Tailwind class exists for it.
 

@@ -30,7 +30,7 @@ onUnmounted(() => window.removeEventListener('scroll', onScroll))
       <nav class="flex flex-1 items-center justify-center gap-1 max-sm:hidden" aria-label="Main navigation">
         <RouterLink
           to="/"
-          class="nav-link"
+          class="relative rounded-md px-3 py-1.5 text-sm font-medium text-text-secondary no-underline transition-[color,background-color] duration-150 hover:bg-surface-overlay hover:text-text-primary after:absolute after:-bottom-0.5 after:left-3 after:right-3 after:h-0.5 after:rounded-[1px] after:bg-brand-light after:opacity-0 after:transition-opacity after:duration-150 after:content-[''] [&.nav-link--active]:text-brand-light [&.nav-link--active]:after:opacity-100"
           active-class="nav-link--active"
           :exact="true"
         >
@@ -39,7 +39,7 @@ onUnmounted(() => window.removeEventListener('scroll', onScroll))
         <RouterLink
           v-if="auth.isAuthenticated"
           to="/upload"
-          class="nav-link"
+          class="relative rounded-md px-3 py-1.5 text-sm font-medium text-text-secondary no-underline transition-[color,background-color] duration-150 hover:bg-surface-overlay hover:text-text-primary after:absolute after:-bottom-0.5 after:left-3 after:right-3 after:h-0.5 after:rounded-[1px] after:bg-brand-light after:opacity-0 after:transition-opacity after:duration-150 after:content-[''] [&.nav-link--active]:text-brand-light [&.nav-link--active]:after:opacity-100"
           active-class="nav-link--active"
         >
           Upload
@@ -62,37 +62,3 @@ onUnmounted(() => window.removeEventListener('scroll', onScroll))
     </div>
   </header>
 </template>
-
-<style scoped>
-/* Nav links need a <style> block only for ::after pseudo-element on active state */
-.nav-link {
-  position: relative;
-  padding: 0.375rem 0.75rem;
-  border-radius: 0.375rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--color-text-secondary);
-  text-decoration: none;
-  transition: color 0.15s ease, background-color 0.15s ease;
-}
-
-.nav-link:hover {
-  color: var(--color-text-primary);
-  background-color: var(--color-surface-overlay);
-}
-
-.nav-link--active {
-  color: var(--color-brand-light);
-}
-
-.nav-link--active::after {
-  content: '';
-  position: absolute;
-  bottom: -2px;
-  left: 0.75rem;
-  right: 0.75rem;
-  height: 2px;
-  background: var(--color-brand-light);
-  border-radius: 1px;
-}
-</style>
