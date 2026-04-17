@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. Refer to the AGENTS.md file, This is a claude exclusive file so when making changes to this file make sure to do it for AGENTS.md too and vice versa (synced).
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
@@ -75,7 +75,6 @@ gankedtv/
 ## Git workflow
 
 - Do not add yourself (Claude / any AI) as a co-author. Never append `Co-Authored-By: Claude ...` trailers to commit messages.
-
 
 ## Frontend Design
 
