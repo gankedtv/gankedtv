@@ -27,7 +27,7 @@ web/.eslintcache
 *.swp
 *.swo
 
-.claude/settings.local.json
+/.claude/settings.local.json
 
 # OS
 .DS_Store
@@ -38,7 +38,7 @@ Thumbs.db
 logs/
 
 # MCP
-.playwright-mcp
+/.playwright-mcp/
 
 # Docker
 docker-compose.override.yml

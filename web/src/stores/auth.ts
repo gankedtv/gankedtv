@@ -8,6 +8,9 @@ interface User {
   bio: string | null
 }
 
+// TODO: Implement session persistence — user object should be persisted (e.g. via
+// pinia-plugin-persistedstate) while accessToken should use a secure cookie/refresh-token
+// flow rather than localStorage. To be addressed in the forthcoming auth PR.
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     user: null as User | null,
