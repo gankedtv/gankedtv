@@ -4,14 +4,14 @@
 
 ## Goal
 
-Remove the repetitive busywork contributors (human or AI) do around every PR — rebasing, writing PR descriptions, starting issue branches, keeping `CLAUDE.md` / `AGENTS.md` in sync, refreshing the knowledge graph — by codifying each workflow as a project-scoped Claude Code slash command.
+Remove the repetitive busywork contributors do around every PR — rebasing, writing PR descriptions, starting issue branches, refreshing the knowledge graph — by codifying each workflow as a project-scoped Claude Code slash command.
 
 ## Conventions
 
 - **Location:** `.claude/commands/<name>.md`. Project-scoped, auto-discovered by Claude Code, ships to every contributor that clones the repo.
-- **Naming:** kebab-case, matching the literal command name agreed in issue #20 (`pr-description`, `rebasemaster`, `issue`, `sync-agents`, `graph-refresh`).
+- **Naming:** kebab-case (`pr-description`, `rebasemaster`, `issue`, `graph-refresh`).
 - **File shape:** YAML frontmatter (`description`, `argument-hint`) + a markdown body with the instructions Claude should follow. Any shell work lives in fenced bash blocks inside the body — no external scripts. Each command file is self-contained.
-- **Mirroring:** Claude-only for now. A short paragraph in [AGENTS.md](../../AGENTS.md) will point contributors using other AI tooling to the bash-equivalent workflow embedded in each command file. Revisit if/when a non-Claude tool gets regular use in the project.
+- **AI tooling:** the team uses Claude Code exclusively, so no parallel Copilot / Gemini command files. Revisit if another tool gets adopted.
 
 ## v1 commands
 
@@ -29,7 +29,7 @@ Draft or update the PR body for the current branch.
   - `server/**` → `area:server`
   - `web/**` → `area:web`
   - `docker-compose*.yml`, `Makefile`, `.github/**` → `area:infra`
-  - `.claude/**`, `CLAUDE.md`, `AGENTS.md`, `README.md`, other root `*.md` → `documentation`
+  - `.claude/**`, `CLAUDE.md`, `README.md`, other root `*.md` → `documentation`
   - Conventional commit `feat:` → `enhancement`, `fix:` → `bug`, `docs:` → `documentation`
   - Fallback: if nothing mapped and a linked issue exists, inherit the linked issue's labels.
 - **Title hygiene:** flag generic titles (`wip`, `fix`, single-word) and suggest a replacement; never rewrite silently.
@@ -55,16 +55,6 @@ Start work on an issue.
 - **Steps:** `gh issue view <n>` → summarize → derive slug from the issue title (lowercase, hyphenated, non-alphanumerics stripped) → `git checkout -b <n>-<slug>` off latest `main`. Matches the existing `<num>-<slug>` branch convention visible across the repo's merged PRs.
 - **Preconditions:** clean working tree; branch name not already in use locally.
 - **Failure modes:** issue not found, branch already exists (suggest `git switch` instead), dirty tree.
-
-### `/sync-agents`
-
-Keep [CLAUDE.md](../../CLAUDE.md) and [AGENTS.md](../../AGENTS.md) in sync.
-
-- **Synced-pair invariant:** the two files are byte-identical from line 2 onward. Line 1 is the file's own H1 title (`# CLAUDE.md` / `# AGENTS.md`). This is the only intentional difference; the command reconciles any other drift.
-- **Args:** optional `--check` flag. With `--check`, exit non-zero on drift instead of editing (for future CI use).
-- **Steps:** diff the two files from line 2 onward. If identical, report a no-op. Otherwise pick the side modified most recently (`git log -1 --format=%ct -- <file>`, fall back to on-disk mtime) as source of truth, present a unified diff of the proposed update, and ask before writing. The write preserves the stale file's line 1 and mirrors lines 2..N from the source.
-- **Side effects:** at most one file is rewritten (the stale side). Never edits both at once.
-- **Failure modes:** timestamps tied in both git log and on-disk mtime with divergent content → refuse and print the diff for manual reconciliation.
 
 ### `/graph-refresh`
 

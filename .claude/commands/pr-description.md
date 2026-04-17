@@ -28,7 +28,7 @@ Generate or update the PR body for the current branch. Arg (optional): `$ARGUMEN
    - `server/**` → `area:server`
    - `web/**` → `area:web`
    - `docker-compose*.yml`, `Makefile`, `.github/**` → `area:infra`
-   - `.claude/**`, `README.md`, `CLAUDE.md`, `AGENTS.md`, `*.md` at repo root → `documentation`
+   - `.claude/**`, `README.md`, `CLAUDE.md`, `*.md` at repo root → `documentation`
    - Conventional commit subject prefixes across the commit range: `feat:` → `enhancement`, `fix:` → `bug`, `docs:` → `documentation`.
    - Fallback: if a linked issue exists and no labels were derived above, inherit the linked issue's labels that are also valid repo labels.
    Deduplicate.
