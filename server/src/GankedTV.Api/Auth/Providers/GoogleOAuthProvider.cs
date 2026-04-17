@@ -1,0 +1,107 @@
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json.Serialization;
+using Microsoft.Extensions.Options;
+
+namespace GankedTV.Api.Auth.Providers;
+
+public sealed class GoogleOAuthProvider : IOAuthProvider
+{
+    public const string ProviderName = "google";
+    private const string AuthorizeEndpoint = "https://accounts.google.com/o/oauth2/v2/auth";
+    private const string TokenEndpoint = "https://oauth2.googleapis.com/token";
+    private const string UserInfoEndpoint = "https://openidconnect.googleapis.com/v1/userinfo";
+    private const string Scopes = "openid email profile";
+
+    private readonly IHttpClientFactory _httpFactory;
+    private readonly OAuthProviderOptions _options;
+
+    public GoogleOAuthProvider(IHttpClientFactory httpFactory, IOptions<OAuthOptions> options)
+    {
+        _httpFactory = httpFactory;
+        _options = options.Value.Google;
+    }
+
+    public string Name => ProviderName;
+
+    public string BuildAuthorizeUrl(string state, string? overrideRedirectUri = null)
+    {
+        var redirect = overrideRedirectUri ?? _options.RedirectUri;
+        var query = new Dictionary<string, string?>
+        {
+            ["client_id"] = _options.ClientId,
+            ["redirect_uri"] = redirect,
+            ["response_type"] = "code",
+            ["scope"] = Scopes,
+            ["state"] = state,
+            ["access_type"] = "online",
+            ["prompt"] = "select_account",
+        };
+        return QueryString.Append(AuthorizeEndpoint, query);
+    }
+
+    public async Task<OAuthUserInfo> ExchangeCodeAsync(string code, string? overrideRedirectUri, CancellationToken ct)
+    {
+        var redirect = overrideRedirectUri ?? _options.RedirectUri;
+        var http = _httpFactory.CreateClient(ProviderName);
+
+        var tokenForm = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["client_id"] = _options.ClientId,
+            ["client_secret"] = _options.ClientSecret,
+            ["grant_type"] = "authorization_code",
+            ["code"] = code,
+            ["redirect_uri"] = redirect,
+        });
+
+        using var tokenResp = await http.PostAsync(TokenEndpoint, tokenForm, ct);
+        if (!tokenResp.IsSuccessStatusCode)
+        {
+            var body = await tokenResp.Content.ReadAsStringAsync(ct);
+            throw new OAuthExchangeException($"Google token exchange failed ({(int)tokenResp.StatusCode}): {body}");
+        }
+        var tokenBody = await tokenResp.Content.ReadFromJsonAsync<GoogleTokenResponse>(cancellationToken: ct)
+            ?? throw new OAuthExchangeException("Google token response was empty.");
+
+        using var userReq = new HttpRequestMessage(HttpMethod.Get, UserInfoEndpoint);
+        userReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", tokenBody.AccessToken);
+        using var userResp = await http.SendAsync(userReq, ct);
+        if (!userResp.IsSuccessStatusCode)
+        {
+            var body = await userResp.Content.ReadAsStringAsync(ct);
+            throw new OAuthExchangeException($"Google userinfo failed ({(int)userResp.StatusCode}): {body}");
+        }
+        var user = await userResp.Content.ReadFromJsonAsync<GoogleUser>(cancellationToken: ct)
+            ?? throw new OAuthExchangeException("Google userinfo was empty.");
+
+        var username = !string.IsNullOrWhiteSpace(user.Name)
+            ? user.Name
+            : EmailLocalPart(user.Email);
+
+        return new OAuthUserInfo(
+            ProviderUserId: user.Sub,
+            Email: user.Email,
+            Username: username,
+            AvatarUrl: user.Picture);
+    }
+
+    private static string? EmailLocalPart(string? email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return null;
+        }
+        var at = email.IndexOf('@');
+        return at <= 0 ? email : email[..at];
+    }
+
+    private sealed record GoogleTokenResponse(
+        [property: JsonPropertyName("access_token")] string AccessToken,
+        [property: JsonPropertyName("token_type")] string TokenType);
+
+    private sealed record GoogleUser(
+        [property: JsonPropertyName("sub")] string Sub,
+        [property: JsonPropertyName("email")] string? Email,
+        [property: JsonPropertyName("name")] string? Name,
+        [property: JsonPropertyName("picture")] string? Picture);
+}

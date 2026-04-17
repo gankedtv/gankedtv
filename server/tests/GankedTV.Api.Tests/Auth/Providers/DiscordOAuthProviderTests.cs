@@ -1,0 +1,112 @@
+using System.Net;
+using FluentAssertions;
+using GankedTV.Api.Auth;
+using GankedTV.Api.Auth.Providers;
+using GankedTV.Api.Tests.TestSupport;
+using Microsoft.Extensions.Options;
+
+namespace GankedTV.Api.Tests.Auth.Providers;
+
+public class DiscordOAuthProviderTests
+{
+    private static (DiscordOAuthProvider provider, TestHttpMessageHandler handler) BuildProvider()
+    {
+        var handler = new TestHttpMessageHandler();
+        var options = Options.Create(new OAuthOptions
+        {
+            StateSecret = "state-secret-32-bytes-minimum-xxxxxx",
+            WebOrigin = "http://localhost:5173",
+            Discord = new OAuthProviderOptions
+            {
+                ClientId = "discord-client-id",
+                ClientSecret = "discord-client-secret",
+                RedirectUri = "http://localhost:5000/auth/discord/callback",
+            },
+        });
+        var factory = FakeHttpClientFactory.Create(handler);
+        return (new DiscordOAuthProvider(factory, options), handler);
+    }
+
+    [Fact]
+    public void BuildAuthorizeUrl_GivenState_IncludesClientIdScopesStateAndRedirect()
+    {
+        var (provider, _) = BuildProvider();
+
+        var url = provider.BuildAuthorizeUrl("state-value");
+
+        url.Should().StartWith("https://discord.com/oauth2/authorize?");
+        url.Should().Contain("client_id=discord-client-id");
+        url.Should().Contain($"redirect_uri={Uri.EscapeDataString("http://localhost:5000/auth/discord/callback")}");
+        url.Should().Contain("response_type=code");
+        url.Should().Contain($"scope={Uri.EscapeDataString("identify email")}");
+        url.Should().Contain("state=state-value");
+    }
+
+    [Fact]
+    public async Task ExchangeCodeAsync_TokenEndpointReturnsAccessToken_FetchesUserInfo()
+    {
+        var (provider, handler) = BuildProvider();
+        handler
+            .OnPost("https://discord.com/api/oauth2/token", HttpStatusCode.OK,
+                "{\"access_token\":\"token-abc\",\"token_type\":\"Bearer\"}")
+            .OnGet("https://discord.com/api/users/@me", HttpStatusCode.OK,
+                "{\"id\":\"100\",\"username\":\"alice\",\"email\":\"alice@example.com\",\"avatar\":null}");
+
+        var info = await provider.ExchangeCodeAsync("auth-code", null, CancellationToken.None);
+
+        info.ProviderUserId.Should().Be("100");
+        info.Username.Should().Be("alice");
+        info.Email.Should().Be("alice@example.com");
+        handler.Requests.Should().HaveCount(2);
+        var userReq = handler.Requests[1];
+        userReq.Headers.Authorization!.Parameter.Should().Be("token-abc");
+    }
+
+    [Fact]
+    public async Task ExchangeCodeAsync_TokenEndpoint4xx_Throws()
+    {
+        var (provider, handler) = BuildProvider();
+        handler.OnPost("https://discord.com/api/oauth2/token", HttpStatusCode.BadRequest,
+            "{\"error\":\"invalid_grant\"}");
+
+        var act = () => provider.ExchangeCodeAsync("bad-code", null, CancellationToken.None);
+
+        await act.Should().ThrowAsync<OAuthExchangeException>()
+            .Where(e => e.Message.Contains("token exchange failed"));
+    }
+
+    [Fact]
+    public async Task ExchangeCodeAsync_UserHasAvatarHash_BuildsCdnUrl()
+    {
+        var (provider, handler) = BuildProvider();
+        handler
+            .OnPost("https://discord.com/api/oauth2/token", HttpStatusCode.OK,
+                "{\"access_token\":\"token\",\"token_type\":\"Bearer\"}")
+            .OnGet("https://discord.com/api/users/@me", HttpStatusCode.OK,
+                "{\"id\":\"42\",\"username\":\"bob\",\"email\":null,\"avatar\":\"abc123\"}");
+
+        var info = await provider.ExchangeCodeAsync("code", null, CancellationToken.None);
+
+        info.AvatarUrl.Should().Be("https://cdn.discordapp.com/avatars/42/abc123.png");
+    }
+
+    [Fact]
+    public async Task ExchangeCodeAsync_TokenPostSendsFormEncodedBody()
+    {
+        var (provider, handler) = BuildProvider();
+        handler
+            .OnPost("https://discord.com/api/oauth2/token", HttpStatusCode.OK,
+                "{\"access_token\":\"t\",\"token_type\":\"Bearer\"}")
+            .OnGet("https://discord.com/api/users/@me", HttpStatusCode.OK,
+                "{\"id\":\"1\",\"username\":\"u\",\"email\":null,\"avatar\":null}");
+
+        await provider.ExchangeCodeAsync("my-code", null, CancellationToken.None);
+
+        handler.CapturedBodies.Should().NotBeEmpty();
+        var (contentType, body) = handler.CapturedBodies[0];
+        contentType.Should().Be("application/x-www-form-urlencoded");
+        body.Should().Contain("code=my-code");
+        body.Should().Contain("grant_type=authorization_code");
+        body.Should().Contain("client_id=discord-client-id");
+    }
+}

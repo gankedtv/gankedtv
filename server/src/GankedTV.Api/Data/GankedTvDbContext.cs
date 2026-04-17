@@ -9,6 +9,7 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
     public DbSet<Game> Games => Set<Game>();
     public DbSet<Clip> Clips => Set<Clip>();
     public DbSet<Like> Likes => Set<Like>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -87,6 +88,22 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
                 .WithMany(c => c.Likes)
                 .HasForeignKey(l => l.ClipId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<RefreshToken>(e =>
+        {
+            e.HasKey(t => t.Id);
+            e.Property(t => t.Id).HasDefaultValueSql("gen_random_uuid()");
+            e.Property(t => t.TokenHash).IsRequired();
+            e.Property(t => t.CreatedAt).HasDefaultValueSql("now()");
+
+            e.HasOne(t => t.User)
+                .WithMany()
+                .HasForeignKey(t => t.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasIndex(t => t.UserId).HasDatabaseName("idx_refresh_tokens_user_id");
+            e.HasIndex(t => t.TokenHash).IsUnique().HasDatabaseName("idx_refresh_tokens_token_hash");
         });
     }
 }
