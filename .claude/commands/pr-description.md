@@ -24,16 +24,24 @@ Generate or update the PR body for the current branch. Arg (optional): `$ARGUMEN
    - `git diff --name-only origin/main...HEAD` — note the three-dot form: files changed on this branch since it diverged from `main`, ignoring any unrelated main-only commits.
    - `gh pr view --json number,title,body 2>/dev/null` — detects if a PR already exists.
 
-4. **Label suggestions** — map paths to existing repo labels only (never invent):
+4. **Labels** — map paths and commit prefixes to existing repo labels only (never invent). Pull the repo's current label set with `gh label list --json name --jq '.[].name'` and intersect — if a mapped label doesn't exist in the repo, drop it.
    - `server/**` → `area:server`
    - `web/**` → `area:web`
    - `docker-compose*.yml`, `Makefile`, `.github/**` → `area:infra`
+   - `.claude/**`, `README.md`, `CLAUDE.md`, `AGENTS.md`, `*.md` at repo root → `documentation`
    - Conventional commit subject prefixes across the commit range: `feat:` → `enhancement`, `fix:` → `bug`, `docs:` → `documentation`.
-   Deduplicate. Do not apply labels automatically.
+   - Fallback: if a linked issue exists and no labels were derived above, inherit the linked issue's labels that are also valid repo labels.
+   Deduplicate.
 
 5. **Title hygiene.** If the current PR title (or branch name if no PR) is `wip`, `fix`, a single word, or missing a type prefix, suggest a better one. Do not rewrite silently.
 
-6. **Build body** with these sections exactly (skip any that would be empty except the placeholders):
+6. **Scale the body to the PR.** Match the body's length to the change's actual complexity. A 50-line docs-only PR should not read like a feature launch.
+   - Small / simple PRs (single-area doc or config change, <~200 lines, no new behavior to exercise): 1–2 sentence Summary, 2–4 What's here bullets, 1–3 line test plan, drop Screenshots if nothing visual changed.
+   - Medium PRs: the full template, but keep each section tight.
+   - Large / cross-cutting PRs: full template; add extra subsections only if they earn their place.
+   - If you catch yourself explaining what a file does when its name already does, cut it. The reader can open the file.
+
+7. **Build body** from this template. Drop entire sections that don't apply — don't leave placeholders like `<!-- attach here -->` behind. The only always-required sections are Summary and (if an issue is linked) `Closes #<N>`.
 
    ```
    ## Summary
@@ -49,17 +57,17 @@ Generate or update the PR body for the current branch. Arg (optional): `$ARGUMEN
    <copy-pasteable steps>
 
    ## Screenshots / recordings
-   <!-- attach here -->
+   <attach if there's a visual change; otherwise omit this section entirely>
 
    ## Checklist
-   - [ ] Tests updated
-   - [ ] Docs updated (CLAUDE.md / AGENTS.md if relevant)
    - [ ] Verified manually
+   - [ ] <add item only if it's genuinely pending, not a reflex>
    ```
 
-7. **Apply:**
-   - If a PR exists: write the body to a temp file and run `gh pr edit <num> --body-file <tmpfile>`.
-   - If no PR: print the body in a fenced block and tell the user the body is ready for `gh pr create` — do **not** create the PR yourself.
+8. **Apply:**
+   - If a PR exists:
+     - Write the body to a temp file and run `gh pr edit <num> --body-file <tmpfile>`.
+     - Apply the derived labels in the same `gh pr edit` call with `--add-label "<label>"` for each (only labels not already on the PR — fetch current with `gh pr view <num> --json labels`). Never remove labels; only add.
+   - If no PR: print the body in a fenced block and print the labels plus the exact `gh pr create --label "<label>"` flags to pass. Do **not** create the PR yourself.
 
-8. **Report back:** suggested title (if any), suggested labels, and the exact command to apply them:
-   `gh pr edit <num> --add-label "<label>" --add-label "<label>"`.
+9. **Report back:** suggested title (if any) and the labels that were applied (or, if no PR, the flags the user should pass to `gh pr create`).

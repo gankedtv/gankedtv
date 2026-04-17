@@ -21,21 +21,19 @@ Draft or update the PR body for the current branch.
 
 - **Args:** optional `#<issue>` override; otherwise infer from branch prefix `<num>-<slug>` (e.g. `5-server-oauth-…` → #5) or commit trailers.
 - **Preconditions:** on a feature branch (not `main`), commits ahead of `origin/main`, `gh` authenticated.
-- **Template sections:**
-  - Summary (1–3 sentences)
-  - What's here (bullets)
-  - Linked issue (`Closes #N`)
-  - How to test manually (copy-pasteable steps)
-  - Screenshots/recordings placeholder
-  - Checklist
+- **Scale-to-complexity rule:** body length should match the change's actual complexity. Small docs/config PRs get 1–2 sentence Summary + 2–4 bullets + a one-line test note, and drop sections that don't apply (no Screenshots placeholder if nothing visual changed, no reflexive checklist items). Only the full template for genuinely medium/large PRs.
+- **Template sections** (drop any that don't apply):
+  - Summary · What's here · `Closes #N` · How to test manually · Screenshots / recordings · Checklist
   - Mirrors the format already established on [PR #18](https://github.com/Turbootzz/gankedtv/pull/18).
-- **Label suggestions** (from existing labels only, no invention):
+- **Labels** — map paths and commit prefixes to existing repo labels only (intersected with `gh label list` — never invent):
   - `server/**` → `area:server`
   - `web/**` → `area:web`
   - `docker-compose*.yml`, `Makefile`, `.github/**` → `area:infra`
-  - Conventional commit type `feat:` → `enhancement`, `fix:` → `bug`, `docs:` → `documentation`
+  - `.claude/**`, `CLAUDE.md`, `AGENTS.md`, `README.md`, other root `*.md` → `documentation`
+  - Conventional commit `feat:` → `enhancement`, `fix:` → `bug`, `docs:` → `documentation`
+  - Fallback: if nothing mapped and a linked issue exists, inherit the linked issue's labels.
 - **Title hygiene:** flag generic titles (`wip`, `fix`, single-word) and suggest a replacement; never rewrite silently.
-- **Side effects:** if a PR exists → `gh pr edit --body -`; otherwise print the body for a future `gh pr create`. Never auto-create a PR.
+- **Side effects:** if a PR exists → `gh pr edit --body-file …` plus `--add-label` for each derived label not already present (never removes labels). Otherwise print the body and the `--label` flags for a future `gh pr create`; never auto-create.
 - **Failure modes:** no upstream, no commits ahead, detached `HEAD`, `gh` unauthenticated — each exits with a clear message and no partial writes.
 
 ### `/rebasemaster`
