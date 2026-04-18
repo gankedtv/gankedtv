@@ -211,6 +211,60 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Feed_InvalidCursor_SilentlyFallsBackToFirstPage()
+    {
+        // Contract: a corrupted cursor query string shouldn't break pagination — the client
+        // should still get a first page rather than a 400. Guards against accidentally strict
+        // parsing if someone later swaps TryParse for Parse.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        await SeedClipAsync(userId, DateTimeOffset.UtcNow);
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/feed?cursor=not-a-date");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("items").GetArrayLength().Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Feed_NegativeLimit_ClampsToOne()
+    {
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        await SeedClipAsync(userId, now.AddSeconds(-1));
+        await SeedClipAsync(userId, now.AddSeconds(-2));
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/feed?limit=-5");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("items").GetArrayLength().Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Feed_ExcludesFailedStatusClips()
+    {
+        // Only "ready" should appear. If the filter ever drifted to `status != "draft"` or
+        // similar, "failed" clips would leak.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var ready = await SeedClipAsync(userId, DateTimeOffset.UtcNow.AddSeconds(-1), title: "ready");
+        await SeedClipAsync(userId, DateTimeOffset.UtcNow, status: "failed", title: "failed");
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/feed");
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+
+        var ids = body.GetProperty("items").EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid()).ToList();
+        ids.Should().Equal(ready);
+    }
+
+    [Fact]
     public async Task Feed_Anonymous_LikedByMeFalseForAllItems()
     {
         await _fx.ResetAsync();
@@ -225,6 +279,31 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         using var client = _factory!.CreateClient();
         var resp = await client.GetAsync("/clips/feed");
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var liked = body.GetProperty("items").EnumerateArray()
+            .Select(e => e.GetProperty("likedByMe").GetBoolean());
+        liked.Should().OnlyContain(l => l == false);
+    }
+
+    [Fact]
+    public async Task Feed_WithJwt_LikedByMeIgnoresOtherUsersLikes()
+    {
+        // Cross-user isolation: viewer should see likedByMe=false on a clip liked by someone else.
+        await _fx.ResetAsync();
+        var (_, viewerToken) = await SeedUserAndIssueTokenAsync("viewer");
+        var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
+        var (strangerId, _) = await SeedUserAndIssueTokenAsync("stranger");
+        var clipId = await SeedClipAsync(authorId, DateTimeOffset.UtcNow);
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.Likes.Add(new Like { UserId = strangerId, ClipId = clipId, CreatedAt = DateTimeOffset.UtcNow });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = ClientWithBearer(viewerToken);
+        var resp = await client.GetAsync("/clips/feed");
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+
         var liked = body.GetProperty("items").EnumerateArray()
             .Select(e => e.GetProperty("likedByMe").GetBoolean());
         liked.Should().OnlyContain(l => l == false);
@@ -346,6 +425,25 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
             Arg.Any<string>(),
             $"clips/{clipId}.mp4",
             Arg.Is<TimeSpan?>(ts => ts.HasValue && ts.Value == TimeSpan.FromHours(1)));
+    }
+
+    [Fact]
+    public async Task Detail_WithJwt_LikedByMeFalseWhenNoLike()
+    {
+        // Exercises the authed code path specifically — anonymous false is covered above, but
+        // JWT-present-without-like is a distinct branch (TryGetUserId returns true, AnyAsync false).
+        await _fx.ResetAsync();
+        var (_, viewerToken) = await SeedUserAndIssueTokenAsync("viewer");
+        var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
+        var clipId = await SeedClipAsync(authorId, DateTimeOffset.UtcNow);
+
+        _storage.GetPresignedGetUrl(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan?>())
+            .Returns("https://example/url");
+
+        using var client = ClientWithBearer(viewerToken);
+        var resp = await client.GetAsync($"/clips/{clipId}");
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("likedByMe").GetBoolean().Should().BeFalse();
     }
 
     [Fact]

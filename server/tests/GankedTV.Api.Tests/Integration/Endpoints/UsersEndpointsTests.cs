@@ -171,6 +171,63 @@ public class UsersEndpointsTests : IAsyncLifetime
         states[notLiked].Should().BeFalse();
     }
 
+    [Fact]
+    public async Task GetUser_CapsClipsAt20()
+    {
+        // UsersEndpoints.UserClipsPageSize = 20. Seed 21 ready clips and assert the cap holds —
+        // guards against accidental removal of the .Take(20) when someone adds cursor pagination.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync("prolific");
+        var now = DateTimeOffset.UtcNow;
+        for (var i = 0; i < 21; i++)
+        {
+            await SeedClipAsync(userId, now.AddSeconds(-i), title: $"clip-{i}");
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/users/prolific");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("clips").GetArrayLength().Should().Be(20);
+    }
+
+    [Fact]
+    public async Task GetUser_DoesNotLeakClipsFromOtherUsers()
+    {
+        await _fx.ResetAsync();
+        var (aliceId, _) = await SeedUserAndIssueTokenAsync("alice");
+        var (bobId, _) = await SeedUserAndIssueTokenAsync("bob");
+        var now = DateTimeOffset.UtcNow;
+        var aliceClip = await SeedClipAsync(aliceId, now.AddSeconds(-1), title: "alice-clip");
+        await SeedClipAsync(bobId, now.AddSeconds(-2), title: "bob-clip");
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/users/alice");
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+
+        var clipIds = body.GetProperty("clips").EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid()).ToList();
+        clipIds.Should().Equal(aliceClip);
+    }
+
+    [Fact]
+    public async Task GetUser_ExcludesFailedStatusClips()
+    {
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync("author");
+        var ready = await SeedClipAsync(userId, DateTimeOffset.UtcNow.AddSeconds(-1), title: "ready");
+        await SeedClipAsync(userId, DateTimeOffset.UtcNow, status: "failed", title: "failed");
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/users/author");
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+
+        var clipIds = body.GetProperty("clips").EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid()).ToList();
+        clipIds.Should().Equal(ready);
+    }
+
     [Theory]
     [InlineData("a%")]
     [InlineData("a_____")]
