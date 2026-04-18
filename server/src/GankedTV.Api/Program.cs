@@ -46,15 +46,10 @@ builder.Services.Configure<MinioOptions>(opts =>
 builder.Services.AddSingleton<IAmazonS3>(sp =>
 {
     var o = sp.GetRequiredService<IOptions<MinioOptions>>().Value;
-    // GetPreSignedURL in the AWS SDK defaults to https:// regardless of ServiceURL scheme
-    // unless UseHttp is set. MinIO in dev runs plain HTTP, so presigned PUTs fail TLS
-    // negotiation without this flag.
-    var useHttp = o.Endpoint.StartsWith("http://", StringComparison.OrdinalIgnoreCase);
     return new AmazonS3Client(o.AccessKey, o.SecretKey, new AmazonS3Config
     {
         ServiceURL = o.Endpoint,
         ForcePathStyle = true,
-        UseHttp = useHttp,
     });
 });
 
@@ -202,6 +197,9 @@ app.MapClipsUploadEndpoints();
 if (app.Environment.IsDevelopment())
 {
     app.MapDevAuthEndpoints();
+    app.Logger.LogWarning(
+        "Development mode: POST /dev/token is mapped and will mint JWTs without authentication. "
+        + "Ensure ASPNETCORE_ENVIRONMENT is NOT 'Development' in any internet-exposed deployment.");
 }
 
 app.Run();

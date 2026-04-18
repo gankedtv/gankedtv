@@ -185,6 +185,41 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Create_MixedCaseVisibility_IsNormalized()
+    {
+        await _fx.ResetAsync();
+        var (_, token) = await SeedUserAndIssueTokenAsync();
+        using var client = ClientWithBearer(token);
+
+        var resp = await client.PostAsJsonAsync("/clips", new
+        {
+            title = "vis test",
+            visibility = "Unlisted",
+        });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var id = (await resp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+
+        await using var db = _fx.CreateContext();
+        var clip = await db.Clips.AsNoTracking().SingleAsync(c => c.Id == id);
+        clip.Visibility.Should().Be("unlisted");
+    }
+
+    [Fact]
+    public async Task Create_NullBody_Returns400()
+    {
+        await _fx.ResetAsync();
+        var (_, token) = await SeedUserAndIssueTokenAsync();
+        using var client = ClientWithBearer(token);
+
+        using var content = new StringContent("null", System.Text.Encoding.UTF8, "application/json");
+        var resp = await client.PostAsync("/clips", content);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("invalid_body");
+    }
+
+    [Fact]
     public async Task Create_DescriptionTooLong_Returns400()
     {
         await _fx.ResetAsync();

@@ -27,7 +27,7 @@ public static class ClipsUploadEndpoints
     }
 
     private static async Task<IResult> CreateClip(
-        [FromBody] CreateClipRequest req,
+        [FromBody] CreateClipRequest? req,
         ClaimsPrincipal principal,
         IClipUploadService clips,
         CancellationToken ct)
@@ -35,6 +35,13 @@ public static class ClipsUploadEndpoints
         if (!TryGetUserId(principal, out var userId))
         {
             return Results.Unauthorized();
+        }
+
+        // A literal JSON `null` body deserializes to a null reference even though the
+        // parameter type is non-nullable, so guard explicitly before dereferencing.
+        if (req is null)
+        {
+            return Results.BadRequest(new { error = "invalid_body" });
         }
 
         var result = await clips.CreateAsync(

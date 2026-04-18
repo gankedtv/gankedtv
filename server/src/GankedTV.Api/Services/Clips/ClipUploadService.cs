@@ -47,11 +47,12 @@ public sealed class ClipUploadService : IClipUploadService
             return ClipResult<CreateClipResult>.Fail(ClipUploadError.InvalidDescription);
         }
 
-        var visibility = input.Visibility ?? ClipVisibilities.Public;
-        if (!ClipVisibilities.IsValid(visibility))
+        var rawVisibility = input.Visibility ?? ClipVisibilities.Public;
+        if (!ClipVisibilities.IsValid(rawVisibility))
         {
             return ClipResult<CreateClipResult>.Fail(ClipUploadError.InvalidVisibility);
         }
+        var visibility = ClipVisibilities.Normalize(rawVisibility);
 
         var id = Guid.NewGuid();
         var now = _clock.GetUtcNow();
@@ -109,7 +110,10 @@ public sealed class ClipUploadService : IClipUploadService
         Guid clipId,
         CancellationToken ct)
     {
+        // AsNoTracking: the final mutation goes through ExecuteUpdateAsync, which bypasses
+        // the change tracker. Keeping the entity untracked avoids a wasted tracker entry.
         var clip = await _db.Clips
+            .AsNoTracking()
             .FirstOrDefaultAsync(c => c.Id == clipId && c.UserId == userId, ct);
 
         if (clip is null)

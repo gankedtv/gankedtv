@@ -14,5 +14,10 @@ public static class ClipVisibilities
     public const string Unlisted = "unlisted";
 
     public static bool IsValid(string value) =>
-        value == Public || value == Unlisted;
+        string.Equals(value, Public, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(value, Unlisted, StringComparison.OrdinalIgnoreCase);
+
+    // Callers receive the canonical lowercase form so the DB column stays consistent
+    // regardless of how the client cased the input.
+    public static string Normalize(string value) => value.ToLowerInvariant();
 }
