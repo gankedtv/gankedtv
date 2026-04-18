@@ -34,24 +34,24 @@ public static class ClipsReadEndpoints
 
         // Invalid cursor values silently fall back to "no cursor" rather than 400-ing; the
         // client's next-page fetch shouldn't be broken by a corrupted query string.
-        DateTimeOffset? cursorValue = null;
-        if (!string.IsNullOrWhiteSpace(cursor)
-            && DateTimeOffset.TryParse(cursor, CultureInfo.InvariantCulture,
-                DateTimeStyles.RoundtripKind, out var parsed))
-        {
-            cursorValue = parsed;
-        }
+        var hasCursor = TryParseCursor(cursor, out var cursorCreatedAt, out var cursorId);
 
         var query = db.Clips.AsNoTracking()
             .Where(c => c.Visibility == "public" && c.Status == "ready");
-        if (cursorValue is DateTimeOffset cv)
+        if (hasCursor)
         {
-            query = query.Where(c => c.CreatedAt < cv);
+            // Composite (CreatedAt, Id) keyset: two clips sharing the same created_at (bulk imports,
+            // seed scripts, same-microsecond uploads) would otherwise cause the second one to be
+            // skipped with a strict `CreatedAt < @cursor` filter.
+            query = query.Where(c =>
+                c.CreatedAt < cursorCreatedAt
+                || (c.CreatedAt == cursorCreatedAt && c.Id.CompareTo(cursorId) < 0));
         }
 
         // Fetch limit+1 so we can detect whether another page exists without a second round trip.
         var rows = await query
             .OrderByDescending(c => c.CreatedAt)
+            .ThenByDescending(c => c.Id)
             .Include(c => c.User)
             .Take(clampedLimit + 1)
             .ToListAsync(ct);
@@ -62,9 +62,28 @@ public static class ClipsReadEndpoints
         var likedIds = await LoadLikedClipIdsAsync(db, principal, page.Select(c => c.Id), ct);
 
         var items = page.Select(c => c.ToFeedItem(likedIds.Contains(c.Id))).ToList();
-        var nextCursor = hasMore ? page[^1].CreatedAt.ToString("O", CultureInfo.InvariantCulture) : null;
+        var nextCursor = hasMore ? BuildCursor(page[^1].CreatedAt, page[^1].Id) : null;
 
         return Results.Ok(new ClipFeedResponse(items, nextCursor));
+    }
+
+    private const char CursorSeparator = '_';
+
+    private static string BuildCursor(DateTimeOffset createdAt, Guid id) =>
+        $"{createdAt.ToString("O", CultureInfo.InvariantCulture)}{CursorSeparator}{id:D}";
+
+    private static bool TryParseCursor(string? raw, out DateTimeOffset createdAt, out Guid id)
+    {
+        createdAt = default;
+        id = default;
+        if (string.IsNullOrWhiteSpace(raw)) return false;
+
+        var sep = raw.IndexOf(CursorSeparator);
+        if (sep <= 0 || sep == raw.Length - 1) return false;
+
+        return DateTimeOffset.TryParse(
+                raw[..sep], CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out createdAt)
+            && Guid.TryParse(raw[(sep + 1)..], out id);
     }
 
     private static async Task<IResult> GetDetail(

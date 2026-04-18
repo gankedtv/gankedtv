@@ -211,6 +211,40 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Feed_IdenticalCreatedAt_PaginatesDeterministicallyWithoutSkips()
+    {
+        // Composite (CreatedAt, Id) cursor: two clips sharing a microsecond timestamp must not
+        // cause one of them to be skipped across page boundaries. The previous CreatedAt-only
+        // cursor would drop the second row at each collision point.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var shared = DateTimeOffset.UtcNow;
+        var seeded = new[]
+        {
+            await SeedClipAsync(userId, shared, title: "tie-1"),
+            await SeedClipAsync(userId, shared, title: "tie-2"),
+            await SeedClipAsync(userId, shared, title: "tie-3"),
+        };
+
+        using var client = _factory!.CreateClient();
+        var first = await client.GetAsync("/clips/feed?limit=2");
+        var firstBody = await first.Content.ReadFromJsonAsync<JsonElement>();
+        var nextCursor = firstBody.GetProperty("nextCursor").GetString();
+        nextCursor.Should().NotBeNullOrEmpty();
+
+        var second = await client.GetAsync($"/clips/feed?limit=2&cursor={Uri.EscapeDataString(nextCursor!)}");
+        var secondBody = await second.Content.ReadFromJsonAsync<JsonElement>();
+        secondBody.GetProperty("items").GetArrayLength().Should().Be(1);
+        secondBody.GetProperty("nextCursor").ValueKind.Should().Be(JsonValueKind.Null);
+
+        var returned = firstBody.GetProperty("items").EnumerateArray()
+            .Concat(secondBody.GetProperty("items").EnumerateArray())
+            .Select(e => e.GetProperty("id").GetGuid())
+            .ToList();
+        returned.Should().BeEquivalentTo(seeded);
+    }
+
+    [Fact]
     public async Task Feed_InvalidCursor_SilentlyFallsBackToFirstPage()
     {
         // Contract: a corrupted cursor query string shouldn't break pagination — the client
