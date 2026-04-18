@@ -55,6 +55,31 @@ public class OAuthProviderRegistryTests
     }
 
     [Fact]
+    public void UnknownProviderName_IsFilteredOut()
+    {
+        // Even if a third-party IOAuthProvider is registered in DI, the registry only
+        // surfaces the names it explicitly whitelists in IsConfigured.
+        var opts = new OAuthOptions
+        {
+            WebOrigin = "http://localhost:5173",
+            Discord = new OAuthProviderOptions
+            {
+                ClientId = "id",
+                ClientSecret = "secret",
+                RedirectUri = "http://localhost/cb",
+            },
+        };
+
+        var registry = Build(opts,
+            FakeProvider(DiscordOAuthProvider.ProviderName),
+            FakeProvider("twitter"));
+
+        registry.ConfiguredProviderNames.Should().ContainSingle()
+            .Which.Should().Be(DiscordOAuthProvider.ProviderName);
+        registry.TryGet("twitter", out _).Should().BeFalse();
+    }
+
+    [Fact]
     public void BothConfigured_BothReturned()
     {
         var configured = new OAuthProviderOptions

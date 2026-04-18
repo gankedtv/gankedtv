@@ -31,6 +31,11 @@ public sealed class ClipUploadService : IClipUploadService
         _clock = clock;
     }
 
+    // Shared content-type used both for signing the presigned PUT and for validating
+    // the uploaded object — keeps the two sides from drifting.
+    private string PrimaryContentType =>
+        _validation.AllowedContentTypes.FirstOrDefault() ?? "video/mp4";
+
     public async Task<ClipResult<CreateClipResult>> CreateAsync(
         Guid userId,
         CreateClipInput input,
@@ -98,7 +103,7 @@ public sealed class ClipUploadService : IClipUploadService
         var url = _storage.GetPresignedPutUrl(
             _minio.ClipsBucket,
             clip.VideoKey,
-            "video/mp4",
+            PrimaryContentType,
             UploadUrlExpiry);
         var expiresAt = _clock.GetUtcNow().Add(UploadUrlExpiry);
 
@@ -127,8 +132,10 @@ public sealed class ClipUploadService : IClipUploadService
         }
 
         var meta = await _storage.GetObjectMetadataAsync(_minio.ClipsBucket, clip.VideoKey, ct);
-        if (meta is null)
+        if (meta is null || meta.SizeBytes <= 0)
         {
+            // Treat a zero-byte object the same as missing — MinIO can accept an empty PUT,
+            // and a zero-length clip has no meaningful content to serve later.
             return ClipResult<CompleteClipResult>.Fail(ClipUploadError.ObjectNotUploaded);
         }
 

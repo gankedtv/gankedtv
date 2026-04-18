@@ -81,6 +81,17 @@ public class DevAuthEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task DevToken_NotMappedInProduction()
+    {
+        await using var prodFactory = new AuthApiFactory(_fx.ConnectionString, environment: "Production");
+        using var client = prodFactory.CreateClient();
+
+        var resp = await client.PostAsJsonAsync("/dev/token", new { username = "prod" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
     public async Task DevToken_IssuesJwtAcceptedByMeEndpoint()
     {
         await _fx.ResetAsync();

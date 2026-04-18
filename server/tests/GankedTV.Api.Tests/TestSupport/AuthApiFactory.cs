@@ -13,11 +13,16 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
 {
     private readonly string _connectionString;
     private readonly IObjectStorageService? _storageOverride;
+    private readonly string _environment;
 
-    public AuthApiFactory(string connectionString, IObjectStorageService? storageOverride = null)
+    public AuthApiFactory(
+        string connectionString,
+        IObjectStorageService? storageOverride = null,
+        string environment = "Development")
     {
         _connectionString = connectionString;
         _storageOverride = storageOverride;
+        _environment = environment;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -33,7 +38,7 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("GOOGLE_CLIENT_SECRET", "test-google-secret");
         Environment.SetEnvironmentVariable("GOOGLE_REDIRECT_URI", "http://localhost:5000/auth/google/callback");
 
-        builder.UseEnvironment("Development");
+        builder.UseEnvironment(_environment);
         builder.ConfigureServices(services =>
         {
             // Replace the hosted bucket-bootstrap service so we don't need MinIO running.

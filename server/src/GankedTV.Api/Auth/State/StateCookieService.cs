@@ -9,20 +9,31 @@ public sealed class StateCookieService : IStateCookieService
     public const string CookieName = "gtv_oauth_state";
     public static readonly TimeSpan CookieTtl = TimeSpan.FromMinutes(5);
 
-    private readonly byte[] _secret;
+    private readonly IOptions<OAuthOptions> _options;
 
+    // Validation moved out of the ctor so DI resolution succeeds when OAuth is fully
+    // optional (no providers configured, no state secret). The `/auth/{provider}/start`
+    // handler takes a hard dependency on this service; throwing here would 500 every
+    // request to an unknown/unconfigured provider before the registry's 404 could fire.
+    // IssueState / ValidateState guard at use-time instead.
     public StateCookieService(IOptions<OAuthOptions> options)
     {
-        var secret = options.Value.StateSecret;
+        _options = options;
+    }
+
+    private byte[] RequireSecret()
+    {
+        var secret = _options.Value.StateSecret;
         if (string.IsNullOrWhiteSpace(secret))
         {
-            throw new InvalidOperationException("OAUTH_STATE_SECRET must be configured.");
+            throw new InvalidOperationException("OAUTH_STATE_SECRET must be configured to use OAuth state cookies.");
         }
-        _secret = Encoding.UTF8.GetBytes(secret);
+        return Encoding.UTF8.GetBytes(secret);
     }
 
     public string IssueState(string? returnTo)
     {
+        var secret = RequireSecret();
         Span<byte> nonceBytes = stackalloc byte[16];
         RandomNumberGenerator.Fill(nonceBytes);
         var nonce = Base64UrlEncode(nonceBytes);
@@ -30,12 +41,13 @@ public sealed class StateCookieService : IStateCookieService
         var returnToBytes = Encoding.UTF8.GetBytes(returnTo ?? "");
         var returnToPart = Base64UrlEncode(returnToBytes);
 
-        var hmac = ComputeHmac(nonce, returnToPart);
+        var hmac = ComputeHmac(secret, nonce, returnToPart);
         return $"{nonce}.{returnToPart}.{hmac}";
     }
 
     public StateValidationResult ValidateState(string stateParam, string? cookieValue)
     {
+        var secret = RequireSecret();
         if (string.IsNullOrEmpty(stateParam) || string.IsNullOrEmpty(cookieValue))
         {
             return StateValidationResult.Invalid;
@@ -52,7 +64,7 @@ public sealed class StateCookieService : IStateCookieService
             return StateValidationResult.Invalid;
         }
 
-        var expected = ComputeHmac(segments[0], segments[1]);
+        var expected = ComputeHmac(secret, segments[0], segments[1]);
         if (!FixedTimeEquals(expected, segments[2]))
         {
             return StateValidationResult.Invalid;
@@ -72,9 +84,9 @@ public sealed class StateCookieService : IStateCookieService
         return StateValidationResult.Valid(returnTo);
     }
 
-    private string ComputeHmac(string nonce, string returnToPart)
+    private static string ComputeHmac(byte[] secret, string nonce, string returnToPart)
     {
-        using var hmac = new HMACSHA256(_secret);
+        using var hmac = new HMACSHA256(secret);
         var payload = Encoding.UTF8.GetBytes($"{nonce}|{returnToPart}");
         var sig = hmac.ComputeHash(payload);
         return Base64UrlEncode(sig);

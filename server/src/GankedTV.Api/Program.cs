@@ -59,11 +59,13 @@ builder.Services.AddHostedService<BucketBootstrapHostedService>();
 builder.Services.AddOptions<ClipValidationOptions>()
     .Configure(opts =>
     {
-        var size = Environment.GetEnvironmentVariable("MAX_UPLOAD_SIZE_MB")
-            ?? builder.Configuration["Clips:MaxUploadSizeMb"];
+        // Bind the full Clips section first so appsettings can configure
+        // AllowedContentTypes / MaxTitleLength / MaxDescriptionLength alongside the two
+        // env-var-only settings below.
+        builder.Configuration.GetSection("Clips").Bind(opts);
+        var size = Environment.GetEnvironmentVariable("MAX_UPLOAD_SIZE_MB");
         if (int.TryParse(size, out var mb) && mb > 0) opts.MaxUploadSizeMb = mb;
-        var dur = Environment.GetEnvironmentVariable("MAX_CLIP_DURATION_SECS")
-            ?? builder.Configuration["Clips:MaxClipDurationSecs"];
+        var dur = Environment.GetEnvironmentVariable("MAX_CLIP_DURATION_SECS");
         if (int.TryParse(dur, out var secs) && secs > 0) opts.MaxClipDurationSecs = secs;
     })
     .Validate(o => o.MaxUploadSizeMb is > 0 and <= 5000,
