@@ -417,6 +417,12 @@ ffmpeg -i input.mp4 -ss 00:00:01 -frames:v 1 -q:v 2 thumbnail.jpg
 - Use `WHERE created_at < @cursor ORDER BY created_at DESC LIMIT 20`
 - Return the last item's `created_at` as the next cursor
 
+**DTO layout & mappers (.NET convention):**
+- DTOs live in `server/src/GankedTV.Api/Contracts/<Area>/` — one `public sealed record` per file. Namespace: `GankedTV.Api.Contracts.<Area>`.
+- Entity → DTO projection happens via **hand-written static extension methods** in a `*Mappings.cs` file next to the DTOs (e.g. `Contracts/Clips/ClipMappings.cs` with `ToFeedItem(this Clip, ...)`). Avoid reflection-based libraries like AutoMapper — modern .NET convention is explicit mappers (compile-time checked, no runtime surprises).
+- Endpoint handlers should not construct DTOs inline; call the mapper.
+- Caller-scoped values (e.g. `likedByMe`, presigned URLs) are passed into the mapper as parameters — the entity stays ignorant of the caller.
+
 **Discord Embeds (OG Tags):**
 ```html
 <meta property="og:title" content="Insane Valorant Ace — by username" />
