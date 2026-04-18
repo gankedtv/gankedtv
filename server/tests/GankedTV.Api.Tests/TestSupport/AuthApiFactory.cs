@@ -1,4 +1,5 @@
 using GankedTV.Api.Data;
+using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -11,10 +12,17 @@ namespace GankedTV.Api.Tests.TestSupport;
 public sealed class AuthApiFactory : WebApplicationFactory<Program>
 {
     private readonly string _connectionString;
+    private readonly IObjectStorageService? _storageOverride;
+    private readonly string _environment;
 
-    public AuthApiFactory(string connectionString)
+    public AuthApiFactory(
+        string connectionString,
+        IObjectStorageService? storageOverride = null,
+        string environment = "Development")
     {
         _connectionString = connectionString;
+        _storageOverride = storageOverride;
+        _environment = environment;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -30,7 +38,7 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("GOOGLE_CLIENT_SECRET", "test-google-secret");
         Environment.SetEnvironmentVariable("GOOGLE_REDIRECT_URI", "http://localhost:5000/auth/google/callback");
 
-        builder.UseEnvironment("Development");
+        builder.UseEnvironment(_environment);
         builder.ConfigureServices(services =>
         {
             // Replace the hosted bucket-bootstrap service so we don't need MinIO running.
@@ -41,6 +49,12 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<DbContextOptions<GankedTvDbContext>>();
             services.AddDbContext<GankedTvDbContext>(opts =>
                 opts.UseNpgsql(_connectionString).UseSnakeCaseNamingConvention());
+
+            if (_storageOverride is not null)
+            {
+                services.RemoveAll<IObjectStorageService>();
+                services.AddSingleton(_storageOverride);
+            }
         });
     }
 }

@@ -42,6 +42,21 @@ public class AuthEndpointsSmokeTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ListProviders_ReturnsConfiguredProviders()
+    {
+        using var client = _factory!.CreateClient();
+
+        var resp = await client.GetAsync("/auth/providers");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var providers = body.GetProperty("providers").EnumerateArray()
+            .Select(e => e.GetString())
+            .ToArray();
+        providers.Should().BeEquivalentTo(new[] { "discord", "google" });
+    }
+
+    [Fact]
     public async Task Refresh_UnknownToken_Returns401()
     {
         using var client = _factory!.CreateClient();

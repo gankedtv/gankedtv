@@ -56,6 +56,7 @@ public sealed class MinioObjectStorageService : IObjectStorageService
             Verb = HttpVerb.PUT,
             ContentType = contentType,
             Expires = DateTime.UtcNow.Add(expiry ?? DefaultExpiry),
+            Protocol = ResolveProtocol(_options.Endpoint),
         };
 
         return RewriteHost(_s3.GetPreSignedURL(request), _options.PublicUrl);
@@ -72,10 +73,19 @@ public sealed class MinioObjectStorageService : IObjectStorageService
             Key = key,
             Verb = HttpVerb.GET,
             Expires = DateTime.UtcNow.Add(expiry ?? DefaultExpiry),
+            Protocol = ResolveProtocol(_options.Endpoint),
         };
 
         return RewriteHost(_s3.GetPreSignedURL(request), _options.PublicUrl);
     }
+
+    // GetPreSignedURL defaults to https:// regardless of the ServiceURL scheme. For MinIO dev
+    // on plain HTTP we have to set Protocol.HTTP explicitly or the presigned URL won't match
+    // MinIO's listener.
+    private static Protocol ResolveProtocol(string endpoint) =>
+        endpoint.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            ? Protocol.HTTP
+            : Protocol.HTTPS;
 
     public async Task DeleteObjectAsync(string bucket, string key, CancellationToken ct = default)
     {
@@ -84,6 +94,26 @@ public sealed class MinioObjectStorageService : IObjectStorageService
             BucketName = bucket,
             Key = key,
         }, ct);
+    }
+
+    public async Task<ObjectMetadata?> GetObjectMetadataAsync(
+        string bucket,
+        string key,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _s3.GetObjectMetadataAsync(new GetObjectMetadataRequest
+            {
+                BucketName = bucket,
+                Key = key,
+            }, ct);
+            return new ObjectMetadata(response.ContentLength, response.Headers?.ContentType);
+        }
+        catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
     }
 
     // MinIO signs with the container-internal endpoint (http://minio:9000) but browsers

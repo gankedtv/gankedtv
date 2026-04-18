@@ -1,5 +1,7 @@
 namespace GankedTV.Api.Services.ObjectStorage;
 
+public sealed record ObjectMetadata(long SizeBytes, string? ContentType);
+
 public interface IObjectStorageService
 {
     Task EnsureBucketsAsync(CancellationToken ct = default);
@@ -16,4 +18,9 @@ public interface IObjectStorageService
         TimeSpan? expiry = null);
 
     Task DeleteObjectAsync(string bucket, string key, CancellationToken ct = default);
+
+    Task<ObjectMetadata?> GetObjectMetadataAsync(
+        string bucket,
+        string key,
+        CancellationToken ct = default);
 }
