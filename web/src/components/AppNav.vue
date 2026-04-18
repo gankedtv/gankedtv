@@ -82,9 +82,17 @@ onUnmounted(() => window.removeEventListener('scroll', onScroll))
         >
           Sign In
         </RouterLink>
-        <span v-else class="font-mono text-[0.8125rem] text-text-secondary">
-          {{ auth.user?.username }}
-        </span>
+        <template v-else>
+          <span class="font-mono text-[0.8125rem] text-text-secondary">
+            {{ auth.user?.username }}
+          </span>
+          <button
+            class="font-mono text-xs text-text-muted transition-colors duration-150 hover:text-brand-light"
+            @click="auth.logout()"
+          >
+            Sign out
+          </button>
+        </template>
       </div>
     </div>
 

@@ -4,6 +4,8 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 import { useThemeStore } from './stores/theme'
+import { useAuthStore } from './stores/auth'
+import { configureAuth } from './api/client'
 import './assets/main.css'
 
 const app = createApp(App)
@@ -15,5 +17,17 @@ app.use(pinia)
 const themeStore = useThemeStore(pinia)
 themeStore.applyToDOM()
 
+// Wire auth store callbacks into the api client before any requests are made
+const auth = useAuthStore(pinia)
+configureAuth({
+  getAccessToken: () => auth.accessToken,
+  getRefreshToken: () => auth.refreshToken,
+  onTokenRefreshed: (token, refresh) => auth.setSession(token, refresh),
+  onRefreshFailed: () => auth.logout(),
+})
+
 app.use(router)
 app.mount('#app')
+
+// Bootstrap auth after mount — fire-and-forget, UI updates reactively
+auth.bootstrap()

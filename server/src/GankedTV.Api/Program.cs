@@ -17,6 +17,13 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Load repo-root .env file for local development
+var envPath = Path.Combine(builder.Environment.ContentRootPath, "..", "..", "..", ".env");
+if (File.Exists(envPath))
+{
+    DotNetEnv.Env.Load(envPath);
+}
+
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
