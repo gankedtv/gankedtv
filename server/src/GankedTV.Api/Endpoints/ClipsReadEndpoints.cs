@@ -83,7 +83,7 @@ public static class ClipsReadEndpoints
 
         if (clip is null)
         {
-            return Results.NotFound();
+            return Results.NotFound(new { error = "not_found" });
         }
 
         var expiresAt = DateTimeOffset.UtcNow.Add(VideoUrlLifetime);

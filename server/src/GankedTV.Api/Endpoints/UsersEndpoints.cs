@@ -25,17 +25,19 @@ public static class UsersEndpoints
     {
         if (string.IsNullOrWhiteSpace(username))
         {
-            return Results.NotFound();
+            return Results.NotFound(new { error = "not_found" });
         }
 
-        // Username index is unique but case-sensitive; match case-insensitively so `/users/AliCe`
-        // works whether the OAuth-assigned slug is "alice" or "Alice".
+        // Case-insensitive equality via LOWER(...). Avoid EF.Functions.ILike here — `%` and `_`
+        // would be interpreted as PG wildcards, letting `/users/a%` match any name starting with a
+        // and legitimate `_` in a username become a wildcard.
+        var usernameLower = username.ToLowerInvariant();
         var user = await db.Users.AsNoTracking()
-            .FirstOrDefaultAsync(u => EF.Functions.ILike(u.Username, username), ct);
+            .FirstOrDefaultAsync(u => u.Username.ToLower() == usernameLower, ct);
 
         if (user is null)
         {
-            return Results.NotFound();
+            return Results.NotFound(new { error = "not_found" });
         }
 
         var clips = await db.Clips.AsNoTracking()

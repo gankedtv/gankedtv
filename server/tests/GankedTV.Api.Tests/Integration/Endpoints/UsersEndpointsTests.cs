@@ -171,6 +171,25 @@ public class UsersEndpointsTests : IAsyncLifetime
         states[notLiked].Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData("a%")]
+    [InlineData("a_____")]
+    [InlineData("%")]
+    public async Task GetUser_UsernameWithSqlWildcard_Returns404(string wildcardUsername)
+    {
+        // Regression: an earlier implementation used EF.Functions.ILike which interpreted `%` and `_`
+        // as wildcards, letting /users/a% match any username starting with "a" and legitimate `_` in
+        // usernames become match-any. Fix uses case-insensitive equality instead.
+        await _fx.ResetAsync();
+        await SeedUserAndIssueTokenAsync("alice");
+        await SeedUserAndIssueTokenAsync("alpha_one");
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync($"/users/{Uri.EscapeDataString(wildcardUsername)}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
     [Fact]
     public async Task GetUser_EmptyClips_StillReturnsProfile()
     {

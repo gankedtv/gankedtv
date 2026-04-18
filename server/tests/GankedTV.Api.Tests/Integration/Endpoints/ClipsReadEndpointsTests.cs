@@ -166,6 +166,26 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Feed_ExactlyAtLimit_ReturnsNullCursor()
+    {
+        // Boundary between "full page" and "has more". With limit=2 and exactly 2 ready clips,
+        // the limit+1 fetch returns 2 rows, hasMore is false, and nextCursor must be null.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        await SeedClipAsync(userId, now.AddSeconds(-1), title: "clip-1");
+        await SeedClipAsync(userId, now.AddSeconds(-2), title: "clip-2");
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/feed?limit=2");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("items").GetArrayLength().Should().Be(2);
+        body.GetProperty("nextCursor").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
     public async Task Feed_LimitClampedToBounds()
     {
         await _fx.ResetAsync();
