@@ -1,4 +1,4 @@
-.PHONY: up down clean logs server server-build server-test web web-install web-build web-test web-lint dev-all
+.PHONY: up down clean logs server server-build server-test web web-install web-build web-test web-lint dev-all hooks
 
 # Infrastructure
 up:
@@ -44,3 +44,8 @@ dev-all: up
 	@trap 'kill 0' EXIT; \
 	dotnet watch --project server/src/GankedTV.Api & \
 	cd web && bun dev
+
+# Git hooks — point git at the tracked .githooks/ directory.
+hooks:
+	git config --local core.hooksPath .githooks
+	@echo "pre-push hook active. Bypass with PREPUSH_SKIP=1 or git push --no-verify."

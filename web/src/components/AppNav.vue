@@ -34,12 +34,11 @@ onUnmounted(() => window.removeEventListener('scroll', onScroll))
         GANKED<span class="text-brand-light">.TV</span>
       </RouterLink>
 
-      <nav class="hidden flex-1 items-center justify-center gap-1 sm:flex" aria-label="Main navigation">
-        <RouterLink
-          to="/"
-          :class="navLinkClass"
-          exact-active-class="nav-link--active"
-        >
+      <nav
+        class="hidden flex-1 items-center justify-center gap-1 sm:flex"
+        aria-label="Main navigation"
+      >
+        <RouterLink to="/" :class="navLinkClass" exact-active-class="nav-link--active">
           Home
         </RouterLink>
         <RouterLink
@@ -60,8 +59,19 @@ onUnmounted(() => window.removeEventListener('scroll', onScroll))
           aria-label="Toggle navigation"
           @click="menuOpen = !menuOpen"
         >
-          <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path v-if="!menuOpen" stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+          <svg
+            class="h-5 w-5"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            viewBox="0 0 24 24"
+          >
+            <path
+              v-if="!menuOpen"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M4 6h16M4 12h16M4 18h16"
+            />
             <path v-else stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>

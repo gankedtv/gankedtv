@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# Mirrors CI: runs the checks CI runs, locally, scoped to what changed.
+# Bypass: `PREPUSH_SKIP=1 git push` or `git push --no-verify`.
+
+set -eu
+
+if [ "${PREPUSH_SKIP:-0}" = "1" ]; then
+  echo "pre-push: PREPUSH_SKIP=1 — skipping checks."
+  exit 0
+fi
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+zero='0000000000000000000000000000000000000000'
+changed_files=''
+
+# stdin: <local_ref> <local_sha> <remote_ref> <remote_sha>
+while read -r _ local_sha _ remote_sha; do
+  [ -z "$local_sha" ] && continue
+  if [ "$local_sha" = "$zero" ]; then
+    # branch deletion — nothing to check
+    continue
+  fi
+  if [ "$remote_sha" = "$zero" ]; then
+    # new branch — diff against the upstream default (origin/main)
+    base=$(git merge-base "$local_sha" origin/main 2>/dev/null || echo "")
+    if [ -z "$base" ]; then
+      range_files=$(git log --name-only --pretty=format: "$local_sha")
+    else
+      range_files=$(git diff --name-only "$base" "$local_sha")
+    fi
+  else
+    range_files=$(git diff --name-only "$remote_sha" "$local_sha")
+  fi
+  changed_files="$changed_files
+$range_files"
+done
+
+if [ -z "$(echo "$changed_files" | tr -d '[:space:]')" ]; then
+  echo "pre-push: no commits to check."
+  exit 0
+fi
+
+touched_server=$(echo "$changed_files" | grep -E '^server/' || true)
+touched_web=$(echo "$changed_files" | grep -E '^web/' || true)
+
+if [ -z "$touched_server" ] && [ -z "$touched_web" ]; then
+  echo "pre-push: no changes under server/ or web/ — skipping."
+  exit 0
+fi
+
+if [ -n "$touched_server" ]; then
+  echo "pre-push: running server checks…"
+  (
+    cd server
+    dotnet build --configuration Release
+    dotnet format --verify-no-changes --no-restore
+    dotnet test --no-build --configuration Release
+  )
+fi
+
+if [ -n "$touched_web" ]; then
+  echo "pre-push: running web checks…"
+  (
+    cd web
+    bun install --frozen-lockfile
+    bun run format:check
+    bun run lint:check
+    bun run build
+    bun run test:unit
+  )
+fi
+
+if command -v graphify >/dev/null 2>&1; then
+  echo "pre-push: refreshing graphify index…"
+  graphify update . || echo "pre-push: graphify update failed, continuing."
+fi
+
+echo "pre-push: all checks passed."

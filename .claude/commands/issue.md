@@ -28,9 +28,9 @@ Start work on issue `$ARGUMENTS`. Required arg: the issue number (accepts `42` o
    - Cap at 60 characters (cut on a `-` boundary if possible).
    - Branch name is `<n>-<slug>`. Example: issue 5 titled "Server OAuth: Discord + Google, JWT, refresh tokens, /me" → `5-server-oauth-discord-google-jwt-refresh-tokens-me`.
 
-6. **Create the branch off latest `main`:**
-   - `git fetch origin main`
-   - `git switch -c <n>-<slug> origin/main`
-   - If `git switch -c` fails because the branch already exists, stop and suggest `git switch <n>-<slug>` instead — do not overwrite.
+6. **Create the branch, linked to the issue:**
+   - `gh issue develop <n> --name <n>-<slug> --base main --checkout`
+   - One command: creates the branch on origin, links it to the issue (shows in the issue's "Development" section), and checks it out locally with correct upstream tracking.
+   - If it fails because the branch already exists, stop and suggest `git switch <n>-<slug>` — do not overwrite.
 
 7. **Confirm** with one line: the new branch name and a pointer back to the issue URL (`gh issue view <n> --json url --jq .url`).
