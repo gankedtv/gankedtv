@@ -53,3 +53,6 @@ web/cypress/videos/
 web/cypress/screenshots/
 
 server/postman
+
+# Graphify knowledge graph (regenerated locally via `graphify update .`)
+graphify-out/
