@@ -1,4 +1,5 @@
 using GankedTV.Api.Data;
+using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -11,10 +12,12 @@ namespace GankedTV.Api.Tests.TestSupport;
 public sealed class AuthApiFactory : WebApplicationFactory<Program>
 {
     private readonly string _connectionString;
+    private readonly IObjectStorageService? _storageOverride;
 
-    public AuthApiFactory(string connectionString)
+    public AuthApiFactory(string connectionString, IObjectStorageService? storageOverride = null)
     {
         _connectionString = connectionString;
+        _storageOverride = storageOverride;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -41,6 +44,12 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<DbContextOptions<GankedTvDbContext>>();
             services.AddDbContext<GankedTvDbContext>(opts =>
                 opts.UseNpgsql(_connectionString).UseSnakeCaseNamingConvention());
+
+            if (_storageOverride is not null)
+            {
+                services.RemoveAll<IObjectStorageService>();
+                services.AddSingleton(_storageOverride);
+            }
         });
     }
 }

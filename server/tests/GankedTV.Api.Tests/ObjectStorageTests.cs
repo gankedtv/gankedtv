@@ -200,4 +200,55 @@ public class ObjectStorageTests
             Arg.Is<DeleteObjectRequest>(r => r.BucketName == "clips" && r.Key == "some/key"),
             Arg.Any<CancellationToken>());
     }
+
+    [Fact]
+    public async Task GetObjectMetadataAsync_ReturnsSizeAndContentType()
+    {
+        var s3 = Substitute.For<IAmazonS3>();
+        var response = new GetObjectMetadataResponse
+        {
+            ContentLength = 12345L,
+        };
+        response.Headers.ContentType = "video/mp4";
+        s3.GetObjectMetadataAsync(
+                Arg.Is<GetObjectMetadataRequest>(r => r.BucketName == "clips" && r.Key == "clips/abc.mp4"),
+                Arg.Any<CancellationToken>())
+            .Returns(response);
+
+        var meta = await BuildService(s3).GetObjectMetadataAsync("clips", "clips/abc.mp4");
+
+        meta.Should().NotBeNull();
+        meta!.SizeBytes.Should().Be(12345L);
+        meta.ContentType.Should().Be("video/mp4");
+    }
+
+    [Fact]
+    public async Task GetObjectMetadataAsync_ReturnsNullWhenObjectMissing()
+    {
+        var s3 = Substitute.For<IAmazonS3>();
+        s3.GetObjectMetadataAsync(Arg.Any<GetObjectMetadataRequest>(), Arg.Any<CancellationToken>())
+            .Returns<GetObjectMetadataResponse>(_ => throw new AmazonS3Exception("not found")
+            {
+                StatusCode = System.Net.HttpStatusCode.NotFound,
+            });
+
+        var meta = await BuildService(s3).GetObjectMetadataAsync("clips", "missing.mp4");
+
+        meta.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetObjectMetadataAsync_PropagatesNonNotFoundErrors()
+    {
+        var s3 = Substitute.For<IAmazonS3>();
+        s3.GetObjectMetadataAsync(Arg.Any<GetObjectMetadataRequest>(), Arg.Any<CancellationToken>())
+            .Returns<GetObjectMetadataResponse>(_ => throw new AmazonS3Exception("boom")
+            {
+                StatusCode = System.Net.HttpStatusCode.InternalServerError,
+            });
+
+        var act = async () => await BuildService(s3).GetObjectMetadataAsync("clips", "x.mp4");
+
+        await act.Should().ThrowAsync<AmazonS3Exception>();
+    }
 }

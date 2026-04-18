@@ -6,7 +6,9 @@ using GankedTV.Api.Auth.State;
 using GankedTV.Api.Auth.Tokens;
 using GankedTV.Api.Data;
 using GankedTV.Api.Endpoints;
+using GankedTV.Api.Services.Clips;
 using GankedTV.Api.Services.ObjectStorage;
+using GankedTV.Api.Validation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.EntityFrameworkCore;
@@ -44,15 +46,38 @@ builder.Services.Configure<MinioOptions>(opts =>
 builder.Services.AddSingleton<IAmazonS3>(sp =>
 {
     var o = sp.GetRequiredService<IOptions<MinioOptions>>().Value;
+    // GetPreSignedURL in the AWS SDK defaults to https:// regardless of ServiceURL scheme
+    // unless UseHttp is set. MinIO in dev runs plain HTTP, so presigned PUTs fail TLS
+    // negotiation without this flag.
+    var useHttp = o.Endpoint.StartsWith("http://", StringComparison.OrdinalIgnoreCase);
     return new AmazonS3Client(o.AccessKey, o.SecretKey, new AmazonS3Config
     {
         ServiceURL = o.Endpoint,
         ForcePathStyle = true,
+        UseHttp = useHttp,
     });
 });
 
 builder.Services.AddSingleton<IObjectStorageService, MinioObjectStorageService>();
 builder.Services.AddHostedService<BucketBootstrapHostedService>();
+
+builder.Services.AddOptions<ClipValidationOptions>()
+    .Configure(opts =>
+    {
+        var size = Environment.GetEnvironmentVariable("MAX_UPLOAD_SIZE_MB")
+            ?? builder.Configuration["Clips:MaxUploadSizeMb"];
+        if (int.TryParse(size, out var mb) && mb > 0) opts.MaxUploadSizeMb = mb;
+        var dur = Environment.GetEnvironmentVariable("MAX_CLIP_DURATION_SECS")
+            ?? builder.Configuration["Clips:MaxClipDurationSecs"];
+        if (int.TryParse(dur, out var secs) && secs > 0) opts.MaxClipDurationSecs = secs;
+    })
+    .Validate(o => o.MaxUploadSizeMb is > 0 and <= 5000,
+        "MAX_UPLOAD_SIZE_MB must be in [1, 5000].")
+    .Validate(o => o.MaxClipDurationSecs is > 0 and <= 3600,
+        "MAX_CLIP_DURATION_SECS must be in [1, 3600].")
+    .ValidateOnStart();
+
+builder.Services.AddScoped<IClipUploadService, ClipUploadService>();
 
 // ---- Auth configuration ----
 
@@ -93,8 +118,8 @@ builder.Services.AddOptions<OAuthOptions>()
         opts.Google.ClientSecret = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_SECRET") ?? builder.Configuration["OAuth:Google:ClientSecret"] ?? "";
         opts.Google.RedirectUri = Environment.GetEnvironmentVariable("GOOGLE_REDIRECT_URI") ?? builder.Configuration["OAuth:Google:RedirectUri"] ?? "";
     })
-    .Validate(o => Encoding.UTF8.GetByteCount(o.StateSecret) >= 32,
-        "OAUTH_STATE_SECRET must be at least 32 bytes.")
+    .Validate(o => !o.AnyProviderConfigured || Encoding.UTF8.GetByteCount(o.StateSecret) >= 32,
+        "OAUTH_STATE_SECRET must be at least 32 bytes when any OAuth provider is configured.")
     .Validate(o => !string.IsNullOrWhiteSpace(o.WebOrigin),
         "WEB_ORIGIN must be set.")
     .ValidateOnStart();
@@ -172,6 +197,12 @@ app.UseAuthorization();
 
 app.MapAuthEndpoints();
 app.MapMeEndpoints();
+app.MapClipsUploadEndpoints();
+
+if (app.Environment.IsDevelopment())
+{
+    app.MapDevAuthEndpoints();
+}
 
 app.Run();
 

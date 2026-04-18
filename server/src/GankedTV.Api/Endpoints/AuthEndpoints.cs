@@ -16,11 +16,15 @@ public static class AuthEndpoints
 
     public static IEndpointRouteBuilder MapAuthEndpoints(this IEndpointRouteBuilder app)
     {
+        app.MapGet("/auth/providers", ListProviders);
         app.MapGet("/auth/{provider}/start", Start);
         app.MapGet("/auth/{provider}/callback", Callback);
         app.MapPost("/auth/refresh", Refresh);
         return app;
     }
+
+    private static IResult ListProviders(OAuthProviderRegistry registry) =>
+        Results.Ok(new { providers = registry.ConfiguredProviderNames });
 
     private static IResult Start(
         string provider,
