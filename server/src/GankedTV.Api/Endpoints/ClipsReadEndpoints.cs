@@ -1,6 +1,8 @@
+using System.Buffers.Text;
 using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Text;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Data;
 using GankedTV.Api.Services.ObjectStorage;
@@ -69,8 +71,14 @@ public static class ClipsReadEndpoints
 
     private const char CursorSeparator = '_';
 
-    private static string BuildCursor(DateTimeOffset createdAt, Guid id) =>
-        $"{createdAt.ToString("O", CultureInfo.InvariantCulture)}{CursorSeparator}{id:D}";
+    // Cursor is Base64Url-encoded so the raw token is safe to drop into a query string without
+    // client-side escaping. DateTimeOffset.ToString("O") includes `+` (which URL decoders turn
+    // into space) and `:` — encoding keeps the token opaque and URL-transport-safe.
+    private static string BuildCursor(DateTimeOffset createdAt, Guid id)
+    {
+        var payload = $"{createdAt.ToString("O", CultureInfo.InvariantCulture)}{CursorSeparator}{id:D}";
+        return Base64Url.EncodeToString(Encoding.UTF8.GetBytes(payload));
+    }
 
     private static bool TryParseCursor(string? raw, out DateTimeOffset createdAt, out Guid id)
     {
@@ -78,12 +86,23 @@ public static class ClipsReadEndpoints
         id = default;
         if (string.IsNullOrWhiteSpace(raw)) return false;
 
-        var sep = raw.IndexOf(CursorSeparator);
-        if (sep <= 0 || sep == raw.Length - 1) return false;
+        byte[] bytes;
+        try
+        {
+            bytes = Base64Url.DecodeFromChars(raw);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+
+        var decoded = Encoding.UTF8.GetString(bytes);
+        var sep = decoded.IndexOf(CursorSeparator);
+        if (sep <= 0 || sep == decoded.Length - 1) return false;
 
         return DateTimeOffset.TryParse(
-                raw[..sep], CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out createdAt)
-            && Guid.TryParse(raw[(sep + 1)..], out id);
+                decoded[..sep], CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out createdAt)
+            && Guid.TryParse(decoded[(sep + 1)..], out id);
     }
 
     private static async Task<IResult> GetDetail(

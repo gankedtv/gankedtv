@@ -211,6 +211,35 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Feed_Cursor_IsUrlSafeRawWithoutEscaping()
+    {
+        // The cursor must survive being dropped into a query string without Uri.EscapeDataString.
+        // DateTimeOffset.ToString("O") contains `+` and `:` which URL decoders mishandle; the cursor
+        // is Base64Url-encoded to stay opaque and transport-safe.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        for (var i = 0; i < 3; i++)
+        {
+            await SeedClipAsync(userId, now.AddSeconds(-i), title: $"clip-{i}");
+        }
+
+        using var client = _factory!.CreateClient();
+        var first = await client.GetAsync("/clips/feed?limit=2");
+        var firstBody = await first.Content.ReadFromJsonAsync<JsonElement>();
+        var cursor = firstBody.GetProperty("nextCursor").GetString();
+        cursor.Should().NotBeNullOrEmpty();
+        cursor!.Should().NotContainAny("+", "/", "=", ":");
+
+        // Deliberately pass the cursor raw — no Uri.EscapeDataString. If the token contained `+`
+        // the server would see it as a space and drop the filter, returning all 3 items instead of 1.
+        var second = await client.GetAsync($"/clips/feed?limit=2&cursor={cursor}");
+        second.StatusCode.Should().Be(HttpStatusCode.OK);
+        var secondBody = await second.Content.ReadFromJsonAsync<JsonElement>();
+        secondBody.GetProperty("items").GetArrayLength().Should().Be(1);
+    }
+
+    [Fact]
     public async Task Feed_IdenticalCreatedAt_PaginatesDeterministicallyWithoutSkips()
     {
         // Composite (CreatedAt, Id) cursor: two clips sharing a microsecond timestamp must not
