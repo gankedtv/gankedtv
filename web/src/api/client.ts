@@ -85,13 +85,19 @@ export async function api<T = undefined>(
     !(fetchInit.body instanceof FormData) &&
     !(fetchInit.body instanceof URLSearchParams)
   ) {
-    headers.set('Content-Type', 'application/json')
+    if (!headers.has('Content-Type')) {
+      headers.set('Content-Type', 'application/json')
+    }
     fetchInit.body = JSON.stringify(fetchInit.body)
   }
 
   const response = await fetch(`${BASE_URL}${path}`, { ...fetchInit, headers })
 
   if (response.status === 401 && !_isRetry && _auth.getRefreshToken()) {
+    // Streaming request bodies cannot be replayed on retry.
+    if (init.body instanceof ReadableStream) {
+      throw new ApiError(401, null)
+    }
     try {
       await refreshTokensOnce()
       return api<T>(path, { ...init, _isRetry: true })
@@ -99,10 +105,6 @@ export async function api<T = undefined>(
       // runRefresh already called onRefreshFailed — just re-throw
       throw err instanceof ApiError ? err : new ApiError(401, null)
     }
-  }
-
-  if (!response.ok) {
-    throw new ApiError(response.status, undefined)
   }
 
   if (response.status === 204 || response.headers.get('content-length') === '0') {
@@ -115,6 +117,10 @@ export async function api<T = undefined>(
     body = await response.json()
   } else {
     body = await response.text()
+  }
+
+  if (!response.ok) {
+    throw new ApiError(response.status, body)
   }
 
   return body as T

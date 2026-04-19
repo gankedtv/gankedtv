@@ -4,6 +4,9 @@ import type { MeResponse } from '@/api/auth'
 const REFRESH_KEY = 'refresh_token'
 
 function loadRefreshFromLocalStorage(): string | null {
+  if (import.meta.env.VITE_USE_SECURE_COOKIES === 'true') {
+    return null
+  }
   try {
     return localStorage.getItem(REFRESH_KEY)
   } catch {
@@ -82,10 +85,13 @@ export const useAuthStore = defineStore('auth', {
       this.refreshToken = null
       this.bootstrapped = false
       persistRefresh(null)
-      // Lazy import to avoid circular dependency (router → store → router)
-      import('@/router').then(({ default: router }) => {
-        router.push({ name: 'login' })
-      })
+      // Lazy import to avoid circular dependency (router → store → router).
+      // isReady() defers navigation until the router is installed (logout can fire during bootstrap).
+      import('@/router')
+        .then(({ default: router }) => router.isReady().then(() => router.push({ name: 'login' })))
+        .catch((err) => {
+          console.error('logout navigation failed', err)
+        })
     },
   },
 })
