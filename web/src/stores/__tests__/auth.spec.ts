@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
+import { ApiError } from '@/api/client'
 import { useAuthStore } from '../auth'
 
 const mockMe = vi.fn()
@@ -9,7 +10,7 @@ vi.mock('@/api/auth', () => ({
 }))
 
 vi.mock('@/router', () => ({
-  default: { push: vi.fn() },
+  default: { push: vi.fn(), isReady: vi.fn(() => Promise.resolve()) },
 }))
 
 const localStorageMock = (() => {
@@ -72,7 +73,7 @@ describe('useAuthStore', () => {
 
   it('bootstrap clears state silently when fetchMe fails', async () => {
     localStorageMock.setItem('refresh_token', 'bad-ref')
-    mockMe.mockRejectedValueOnce(new Error('401'))
+    mockMe.mockRejectedValueOnce(new ApiError(401, null))
 
     const auth = useAuthStore()
     await auth.bootstrap()
