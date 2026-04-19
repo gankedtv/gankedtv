@@ -2,9 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Data;
-using GankedTV.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 
 namespace GankedTV.Api.Endpoints;
 
@@ -37,38 +35,20 @@ public static class LikesEndpoints
             return Results.NotFound(new { error = "not_found" });
         }
 
-        var already = await db.Likes.AnyAsync(l => l.UserId == userId && l.ClipId == id, ct);
-        if (!already)
+        // Atomic idempotent insert: ON CONFLICT DO NOTHING collapses a duplicate like (sequential
+        // double-click OR two concurrent requests from the same user) into a 0-row insert, so we
+        // only bump the counter when the row was actually new. `created_at` falls back to the
+        // column's DEFAULT now() from the migration.
+        var inserted = await db.Database.ExecuteSqlInterpolatedAsync(
+            $"INSERT INTO likes (user_id, clip_id) VALUES ({userId}, {id}) ON CONFLICT DO NOTHING",
+            ct);
+
+        if (inserted == 1)
         {
-            db.Likes.Add(new Like
-            {
-                UserId = userId,
-                ClipId = id,
-                CreatedAt = DateTimeOffset.UtcNow,
-            });
-            try
-            {
-                await db.SaveChangesAsync(ct);
-                // Raw-SQL increment keeps the counter race-free against concurrent likers on
-                // a different row (we already hold the (user,clip) row uniquely via the PK).
-                await db.Clips.Where(c => c.Id == id)
-                    .ExecuteUpdateAsync(
-                        s => s.SetProperty(c => c.LikeCount, c => c.LikeCount + 1),
-                        ct);
-            }
-            catch (DbUpdateException ex) when (IsLikePrimaryKeyViolation(ex))
-            {
-                // Race: a concurrent request from the same user passed the `already` check and
-                // inserted+incremented before us. Postgres aborts our transaction on the unique
-                // violation, so we must roll back explicitly; then re-read the counter outside
-                // the dead transaction and return success idempotently.
-                await tx.RollbackAsync(ct);
-                var raceCount = await db.Clips.AsNoTracking()
-                    .Where(c => c.Id == id)
-                    .Select(c => c.LikeCount)
-                    .FirstAsync(ct);
-                return Results.Ok(new LikeResponse(raceCount, true));
-            }
+            await db.Clips.Where(c => c.Id == id)
+                .ExecuteUpdateAsync(
+                    s => s.SetProperty(c => c.LikeCount, c => c.LikeCount + 1),
+                    ct);
         }
 
         var count = await db.Clips.AsNoTracking()
@@ -100,13 +80,15 @@ public static class LikesEndpoints
             return Results.NotFound(new { error = "not_found" });
         }
 
-        var like = await db.Likes.FirstOrDefaultAsync(
-            l => l.UserId == userId && l.ClipId == id, ct);
+        // Set-based delete: a single SQL DELETE that returns the row count. Under concurrent
+        // unlikes from the same user, only one request sees deleted==1, the other sees 0 —
+        // neither throws DbUpdateConcurrencyException the way FirstOrDefaultAsync+Remove would.
+        var deleted = await db.Likes
+            .Where(l => l.UserId == userId && l.ClipId == id)
+            .ExecuteDeleteAsync(ct);
 
-        if (like is not null)
+        if (deleted > 0)
         {
-            db.Likes.Remove(like);
-            await db.SaveChangesAsync(ct);
             // `LikeCount > 0` guard provides the ≥ 0 clamp required by the acceptance
             // criteria: if the counter is already 0 (data drift, manual row insert, etc.)
             // the decrement is a no-op rather than introducing a negative count.
@@ -133,10 +115,4 @@ public static class LikesEndpoints
             ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         return Guid.TryParse(sub, out userId);
     }
-
-    // `likes` has a single unique constraint (the composite PK on user_id + clip_id), so any
-    // unique violation coming out of a likes INSERT is unambiguously the idempotency race.
-    private static bool IsLikePrimaryKeyViolation(DbUpdateException ex) =>
-        ex.InnerException is PostgresException pg
-        && pg.SqlState == PostgresErrorCodes.UniqueViolation;
 }
