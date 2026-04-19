@@ -101,4 +101,9 @@ jobs:
         run: dotnet restore
 
       - name: Test
-        run: dotnet test --configuration Release --verbosity normal
+        run: >-
+          dotnet test
+          --configuration Release
+          --verbosity normal
+          /p:CollectCoverage=true
+          /p:Threshold=79

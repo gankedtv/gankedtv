@@ -34,7 +34,10 @@ dotnet build server           # Build
 dotnet test server            # Run all tests
 dotnet test server --filter "FullyQualifiedName~TestClassName"  # Run specific tests
 dotnet watch --project server/src/GankedTV.Api  # Run with hot reload
+dotnet test server /p:CollectCoverage=true /p:Threshold=79  # Run with coverage + threshold gate
 ```
+
+Server coverage gate: **79% line coverage** (total), enforced by CI and the pre-push hook. Ratchet toward 85% tracked in [issue #47](https://github.com/gankedtv/gankedtv/issues/47). EF migrations (`server/src/GankedTV.Api/Data/Migrations/**`) are excluded from the denominator; Program.cs is not. Coverlet config lives in [server/tests/GankedTV.Api.Tests/GankedTV.Api.Tests.csproj](server/tests/GankedTV.Api.Tests/GankedTV.Api.Tests.csproj).
 
 ### Database Migrations (run from `server/`)
 ```bash
