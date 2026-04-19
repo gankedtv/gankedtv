@@ -195,6 +195,8 @@ app.UseAuthorization();
 app.MapAuthEndpoints();
 app.MapMeEndpoints();
 app.MapClipsUploadEndpoints();
+app.MapClipsReadEndpoints();
+app.MapUsersEndpoints();
 
 if (app.Environment.IsDevelopment())
 {
