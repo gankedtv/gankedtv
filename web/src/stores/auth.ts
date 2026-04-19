@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { ApiError } from '@/api/client'
 import type { MeResponse } from '@/api/auth'
 
 const REFRESH_KEY = 'refresh_token'
@@ -21,6 +22,11 @@ function persistRefresh(token: string | null): void {
   if (import.meta.env.VITE_USE_SECURE_COOKIES === 'true') {
     // TODO: POST the token to an endpoint that sets the HttpOnly cookie.
     // e.g., fetch('/api/auth/refresh-cookie', { method: 'POST', body: JSON.stringify({ token }) })
+    if (token === null) {
+      try {
+        localStorage.removeItem(REFRESH_KEY)
+      } catch {}
+    }
     return
   }
 
@@ -71,11 +77,15 @@ export const useAuthStore = defineStore('auth', {
       if (!this.refreshToken) return
       try {
         await this.fetchMe()
-      } catch {
-        this.user = null
-        this.accessToken = null
-        this.refreshToken = null
-        persistRefresh(null)
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) {
+          this.user = null
+          this.accessToken = null
+          this.refreshToken = null
+          persistRefresh(null)
+        } else {
+          throw err
+        }
       }
     },
 

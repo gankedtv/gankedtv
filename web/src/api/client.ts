@@ -33,21 +33,27 @@ export function configureAuth(callbacks: AuthCallbacks): void {
 let refreshing: Promise<void> | null = null
 
 async function runRefresh(): Promise<void> {
-  const refreshToken = _auth.getRefreshToken()
-  if (!refreshToken) {
+  const capturedRefreshToken = _auth.getRefreshToken()
+  if (!capturedRefreshToken) {
     _auth.onRefreshFailed()
     throw new ApiError(401, null)
   }
   const res = await fetch(`${BASE_URL}/auth/refresh`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ refresh: refreshToken }),
+    body: JSON.stringify({ refresh: capturedRefreshToken }),
   })
   if (!res.ok) {
     _auth.onRefreshFailed()
     throw new ApiError(res.status, null)
   }
   const data = (await res.json()) as { token: string; refresh: string }
+  // Guard against session changes that occurred while the network request was in flight.
+  const currentRefreshToken = _auth.getRefreshToken()
+  if (!currentRefreshToken || currentRefreshToken !== capturedRefreshToken) {
+    _auth.onRefreshFailed()
+    throw new ApiError(401, null)
+  }
   _auth.onTokenRefreshed(data.token, data.refresh)
 }
 
@@ -107,20 +113,24 @@ export async function api<T = undefined>(
     }
   }
 
-  if (response.status === 204 || response.headers.get('content-length') === '0') {
-    return undefined as T
-  }
+  const hasBody = response.status !== 204 && response.headers.get('content-length') !== '0'
 
   let body: unknown
-  const contentType = response.headers.get('content-type') ?? ''
-  if (contentType.includes('application/json')) {
-    body = await response.json()
-  } else {
-    body = await response.text()
+  if (hasBody) {
+    const contentType = response.headers.get('content-type') ?? ''
+    if (contentType.includes('application/json')) {
+      body = await response.json()
+    } else {
+      body = await response.text()
+    }
   }
 
   if (!response.ok) {
-    throw new ApiError(response.status, body)
+    throw new ApiError(response.status, body ?? null)
+  }
+
+  if (!hasBody) {
+    return undefined as T
   }
 
   return body as T
