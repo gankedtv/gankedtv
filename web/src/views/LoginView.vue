@@ -8,13 +8,6 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 
-// Redirect away if the user is already authenticated.
-watchEffect(() => {
-  if (auth.isAuthenticated) {
-    router.replace('/')
-  }
-})
-
 const rawRedirect = route.query.redirect
 let returnTo: string | undefined
 if (
@@ -24,6 +17,13 @@ if (
 ) {
   returnTo = rawRedirect
 }
+
+// Redirect away if the user is already authenticated.
+watchEffect(() => {
+  if (auth.isAuthenticated) {
+    router.replace(returnTo || '/')
+  }
+})
 </script>
 
 <template>
