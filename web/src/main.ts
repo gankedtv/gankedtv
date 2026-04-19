@@ -26,8 +26,7 @@ configureAuth({
   onRefreshFailed: () => auth.logout(),
 })
 
+await auth.bootstrap()
+
 app.use(router)
 app.mount('#app')
-
-// Bootstrap auth after mount — fire-and-forget, UI updates reactively
-auth.bootstrap()

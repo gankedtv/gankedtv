@@ -12,6 +12,15 @@ function loadRefreshFromLocalStorage(): string | null {
 }
 
 function persistRefresh(token: string | null): void {
+  // WARNING: Storing refresh tokens in localStorage is susceptible to XSS attacks.
+  // We intentionally accept this risk for now. Setting VITE_USE_SECURE_COOKIES=true
+  // will stop writing to localStorage (this requires backend modifications to send the Secure, HttpOnly cookie).
+  if (import.meta.env.VITE_USE_SECURE_COOKIES === 'true') {
+    // TODO: POST the token to an endpoint that sets the HttpOnly cookie.
+    // e.g., fetch('/api/auth/refresh-cookie', { method: 'POST', body: JSON.stringify({ token }) })
+    return
+  }
+
   try {
     if (token) {
       localStorage.setItem(REFRESH_KEY, token)

@@ -20,9 +20,9 @@ export async function me(): Promise<MeResponse> {
 }
 
 export function oauthStartUrl(provider: 'discord' | 'google', returnTo?: string): string {
-  const url = new URL(`/auth/${provider}/start`, BASE_URL)
+  let url = `${BASE_URL}/auth/${provider}/start`
   if (returnTo) {
-    url.searchParams.set('returnTo', returnTo)
+    url += `?returnTo=${encodeURIComponent(returnTo)}`
   }
-  return url.toString()
+  return url
 }

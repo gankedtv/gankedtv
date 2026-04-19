@@ -80,7 +80,7 @@ export async function api<T = undefined>(
   if (
     fetchInit.body !== null &&
     fetchInit.body !== undefined &&
-    typeof fetchInit.body === 'object' &&
+    (Object.prototype.toString.call(fetchInit.body) === '[object Object]' || Array.isArray(fetchInit.body)) &&
     !(fetchInit.body instanceof FormData) &&
     !(fetchInit.body instanceof URLSearchParams)
   ) {
@@ -100,6 +100,10 @@ export async function api<T = undefined>(
     }
   }
 
+  if (!response.ok) {
+    throw new ApiError(response.status, undefined)
+  }
+
   if (response.status === 204 || response.headers.get('content-length') === '0') {
     return undefined as T
   }
@@ -110,10 +114,6 @@ export async function api<T = undefined>(
     body = await response.json()
   } else {
     body = await response.text()
-  }
-
-  if (!response.ok) {
-    throw new ApiError(response.status, body)
   }
 
   return body as T
