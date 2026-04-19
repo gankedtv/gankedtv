@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Services.Clips;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -11,16 +12,6 @@ public static class ClipsUploadEndpoints
     // Category used when logging unmapped enum values so the failure is traceable
     // if a new ClipUploadError case is added without updating MapError.
     private static readonly string LogCategory = typeof(ClipsUploadEndpoints).FullName!;
-
-    public sealed record CreateClipRequest(
-        string? Title,
-        string? Description,
-        int? GameId,
-        string? Visibility);
-
-    public sealed record CreateClipResponse(Guid Id);
-    public sealed record UploadUrlResponse(string Url, DateTimeOffset ExpiresAt);
-    public sealed record CompleteClipResponse(Guid Id, long FileSizeBytes);
 
     public static IEndpointRouteBuilder MapClipsUploadEndpoints(this IEndpointRouteBuilder app)
     {
@@ -56,7 +47,7 @@ public static class ClipsUploadEndpoints
             ct);
 
         return result.IsSuccess
-            ? Results.Ok(new CreateClipResponse(result.Value!.ClipId))
+            ? Results.Ok(result.Value!.ToCreateClipResponse())
             : MapError(result.Error!.Value, loggerFactory);
     }
 
@@ -74,7 +65,7 @@ public static class ClipsUploadEndpoints
 
         var result = await clips.GetUploadUrlAsync(userId, id, ct);
         return result.IsSuccess
-            ? Results.Ok(new UploadUrlResponse(result.Value!.Url, result.Value.ExpiresAt))
+            ? Results.Ok(result.Value!.ToUploadUrlResponse())
             : MapError(result.Error!.Value, loggerFactory);
     }
 
@@ -92,7 +83,7 @@ public static class ClipsUploadEndpoints
 
         var result = await clips.CompleteAsync(userId, id, ct);
         return result.IsSuccess
-            ? Results.Ok(new CompleteClipResponse(result.Value!.ClipId, result.Value.FileSizeBytes))
+            ? Results.Ok(result.Value!.ToCompleteClipResponse())
             : MapError(result.Error!.Value, loggerFactory);
     }
 
