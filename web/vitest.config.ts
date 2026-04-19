@@ -15,7 +15,7 @@ export default mergeConfig(
         provider: 'v8',
         include: ['src/api/**', 'src/router/**', 'src/stores/**'],
         exclude: ['**/__tests__/**', '**/*.spec.ts', '**/*.d.ts'],
-        reporter: ['text', 'text-summary'],
+        reporter: ['text', 'text-summary', 'json-summary'],
         thresholds: {
           lines: 60,
           branches: 57,
