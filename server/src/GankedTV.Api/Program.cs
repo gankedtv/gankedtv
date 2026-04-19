@@ -18,10 +18,13 @@ using System.Text;
 var builder = WebApplication.CreateBuilder(args);
 
 // Load repo-root .env file for local development
-var envPath = Path.Combine(builder.Environment.ContentRootPath, "..", "..", "..", ".env");
-if (File.Exists(envPath))
+if (builder.Environment.IsDevelopment())
 {
-    DotNetEnv.Env.NoClobber().Load(envPath);
+    var envPath = Path.Combine(builder.Environment.ContentRootPath, "..", "..", "..", ".env");
+    if (File.Exists(envPath))
+    {
+        DotNetEnv.Env.NoClobber().Load(envPath);
+    }
 }
 
 // Add services to the container.
