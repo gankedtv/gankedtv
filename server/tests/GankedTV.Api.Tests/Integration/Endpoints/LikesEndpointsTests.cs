@@ -1,0 +1,270 @@
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json;
+using FluentAssertions;
+using GankedTV.Api.Auth.Jwt;
+using GankedTV.Api.Data.Entities;
+using GankedTV.Api.Services.ObjectStorage;
+using GankedTV.Api.Tests.TestSupport;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using NSubstitute;
+
+namespace GankedTV.Api.Tests.Integration.Endpoints;
+
+[Collection("Postgres")]
+public class LikesEndpointsTests : IAsyncLifetime
+{
+    private readonly PostgresFixture _fx;
+    private AuthApiFactory? _factory;
+    private IObjectStorageService _storage = null!;
+
+    public LikesEndpointsTests(PostgresFixture fx) => _fx = fx;
+
+    public Task InitializeAsync()
+    {
+        _storage = Substitute.For<IObjectStorageService>();
+        _factory = new AuthApiFactory(_fx.ConnectionString, _storage);
+        return Task.CompletedTask;
+    }
+
+    public async Task DisposeAsync()
+    {
+        if (_factory is not null) await _factory.DisposeAsync();
+    }
+
+    private async Task<(Guid userId, string token)> SeedUserAndIssueTokenAsync(string username = "liker")
+    {
+        var now = DateTimeOffset.UtcNow;
+        Guid id;
+        await using (var db = _fx.CreateContext())
+        {
+            var user = new User
+            {
+                Username = username,
+                Email = $"{username}@example.com",
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+            db.Users.Add(user);
+            await db.SaveChangesAsync();
+            id = user.Id;
+        }
+
+        using var scope = _factory!.Services.CreateScope();
+        var jwt = scope.ServiceProvider.GetRequiredService<IJwtService>();
+        var token = jwt.Issue(new User { Id = id, Username = username, Email = $"{username}@example.com" });
+        return (id, token);
+    }
+
+    private HttpClient ClientWithBearer(string token)
+    {
+        var client = _factory!.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return client;
+    }
+
+    private async Task<Guid> SeedClipAsync(Guid userId, int initialLikeCount = 0)
+    {
+        var id = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        await using var db = _fx.CreateContext();
+        db.Clips.Add(new Clip
+        {
+            Id = id,
+            UserId = userId,
+            Title = "likable",
+            VideoKey = $"clips/{id}.mp4",
+            Status = "ready",
+            Visibility = "public",
+            LikeCount = initialLikeCount,
+            CreatedAt = now,
+            UpdatedAt = now,
+        });
+        await db.SaveChangesAsync();
+        return id;
+    }
+
+    // ---- POST /clips/{id}/like ----
+
+    [Fact]
+    public async Task Like_NoBearer_Returns401()
+    {
+        await _fx.ResetAsync();
+        using var client = _factory!.CreateClient();
+
+        var resp = await client.PostAsync($"/clips/{Guid.NewGuid()}/like", content: null);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Like_ClipMissing_Returns404()
+    {
+        await _fx.ResetAsync();
+        var (_, token) = await SeedUserAndIssueTokenAsync();
+        using var client = ClientWithBearer(token);
+
+        var resp = await client.PostAsync($"/clips/{Guid.NewGuid()}/like", content: null);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Like_FirstTime_InsertsRowAndIncrementsCounter()
+    {
+        await _fx.ResetAsync();
+        var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
+        var (userId, token) = await SeedUserAndIssueTokenAsync("fan");
+        var clipId = await SeedClipAsync(authorId);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsync($"/clips/{clipId}/like", content: null);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("likeCount").GetInt32().Should().Be(1);
+        body.GetProperty("liked").GetBoolean().Should().BeTrue();
+
+        await using var db = _fx.CreateContext();
+        (await db.Likes.AnyAsync(l => l.UserId == userId && l.ClipId == clipId)).Should().BeTrue();
+        (await db.Clips.Where(c => c.Id == clipId).Select(c => c.LikeCount).FirstAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Like_DoubleLike_IsIdempotent()
+    {
+        // Acceptance criterion: POST /like must be idempotent. Two sequential calls from the same
+        // user leave exactly one row and like_count == 1.
+        await _fx.ResetAsync();
+        var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
+        var (userId, token) = await SeedUserAndIssueTokenAsync("fan");
+        var clipId = await SeedClipAsync(authorId);
+
+        using var client = ClientWithBearer(token);
+        var first = await client.PostAsync($"/clips/{clipId}/like", content: null);
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var second = await client.PostAsync($"/clips/{clipId}/like", content: null);
+        second.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await second.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("likeCount").GetInt32().Should().Be(1);
+        body.GetProperty("liked").GetBoolean().Should().BeTrue();
+
+        await using var db = _fx.CreateContext();
+        (await db.Likes.CountAsync(l => l.UserId == userId && l.ClipId == clipId)).Should().Be(1);
+        (await db.Clips.Where(c => c.Id == clipId).Select(c => c.LikeCount).FirstAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Like_MultipleUsers_SumCorrectly()
+    {
+        await _fx.ResetAsync();
+        var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
+        var (_, token1) = await SeedUserAndIssueTokenAsync("fan1");
+        var (_, token2) = await SeedUserAndIssueTokenAsync("fan2");
+        var clipId = await SeedClipAsync(authorId);
+
+        using (var c1 = ClientWithBearer(token1))
+        {
+            (await c1.PostAsync($"/clips/{clipId}/like", content: null)).EnsureSuccessStatusCode();
+        }
+        using (var c2 = ClientWithBearer(token2))
+        {
+            var resp = await c2.PostAsync($"/clips/{clipId}/like", content: null);
+            resp.StatusCode.Should().Be(HttpStatusCode.OK);
+            var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+            body.GetProperty("likeCount").GetInt32().Should().Be(2);
+        }
+
+        await using var db = _fx.CreateContext();
+        (await db.Likes.CountAsync(l => l.ClipId == clipId)).Should().Be(2);
+        (await db.Clips.Where(c => c.Id == clipId).Select(c => c.LikeCount).FirstAsync()).Should().Be(2);
+    }
+
+    // ---- DELETE /clips/{id}/like ----
+
+    [Fact]
+    public async Task Unlike_NoBearer_Returns401()
+    {
+        await _fx.ResetAsync();
+        using var client = _factory!.CreateClient();
+
+        var resp = await client.DeleteAsync($"/clips/{Guid.NewGuid()}/like");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Unlike_ClipMissing_Returns404()
+    {
+        await _fx.ResetAsync();
+        var (_, token) = await SeedUserAndIssueTokenAsync();
+        using var client = ClientWithBearer(token);
+
+        var resp = await client.DeleteAsync($"/clips/{Guid.NewGuid()}/like");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Unlike_WhenNeverLiked_IsIdempotent_Returns200()
+    {
+        await _fx.ResetAsync();
+        var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
+        var (_, token) = await SeedUserAndIssueTokenAsync("stranger");
+        var clipId = await SeedClipAsync(authorId);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.DeleteAsync($"/clips/{clipId}/like");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("likeCount").GetInt32().Should().Be(0);
+        body.GetProperty("liked").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Unlike_AfterLike_RemovesRow_DecrementsCounter()
+    {
+        await _fx.ResetAsync();
+        var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
+        var (userId, token) = await SeedUserAndIssueTokenAsync("fan");
+        var clipId = await SeedClipAsync(authorId);
+
+        using var client = ClientWithBearer(token);
+        (await client.PostAsync($"/clips/{clipId}/like", content: null)).EnsureSuccessStatusCode();
+
+        var resp = await client.DeleteAsync($"/clips/{clipId}/like");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("likeCount").GetInt32().Should().Be(0);
+        body.GetProperty("liked").GetBoolean().Should().BeFalse();
+
+        await using var db = _fx.CreateContext();
+        (await db.Likes.AnyAsync(l => l.UserId == userId && l.ClipId == clipId)).Should().BeFalse();
+        (await db.Clips.Where(c => c.Id == clipId).Select(c => c.LikeCount).FirstAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Unlike_DoesNotDecrementBelowZero()
+    {
+        // Acceptance criterion: like_count must clamp at ≥ 0. If the counter drifts (row-less like
+        // state, manual fixture, data repair), redundant unlikes must not produce a negative count.
+        await _fx.ResetAsync();
+        var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
+        var (_, token) = await SeedUserAndIssueTokenAsync("fan");
+        var clipId = await SeedClipAsync(authorId, initialLikeCount: 0);
+
+        using var client = ClientWithBearer(token);
+        var resp1 = await client.DeleteAsync($"/clips/{clipId}/like");
+        var resp2 = await client.DeleteAsync($"/clips/{clipId}/like");
+
+        resp1.StatusCode.Should().Be(HttpStatusCode.OK);
+        resp2.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        await using var db = _fx.CreateContext();
+        (await db.Clips.Where(c => c.Id == clipId).Select(c => c.LikeCount).FirstAsync()).Should().Be(0);
+    }
+}

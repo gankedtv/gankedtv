@@ -196,6 +196,8 @@ app.MapAuthEndpoints();
 app.MapMeEndpoints();
 app.MapClipsUploadEndpoints();
 app.MapClipsReadEndpoints();
+app.MapClipsMutateEndpoints();
+app.MapLikesEndpoints();
 app.MapUsersEndpoints();
 
 if (app.Environment.IsDevelopment())
@@ -207,5 +209,3 @@ if (app.Environment.IsDevelopment())
 }
 
 app.Run();
-
-public partial class Program;
