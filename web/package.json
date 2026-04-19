@@ -17,8 +17,8 @@
     "lint:check": "run-s lint:oxlint:check lint:eslint:check",
     "lint:oxlint:check": "oxlint .",
     "lint:eslint:check": "eslint . --cache",
-    "format": "prettier --write --experimental-cli src/",
-    "format:check": "prettier --check src/"
+    "format": "prettier --write --experimental-cli --cache --cache-location ./node_modules/.cache/prettier/.prettier-cache src/",
+    "format:check": "prettier --check --experimental-cli --cache --cache-location ./node_modules/.cache/prettier/.prettier-cache src/"
   },
   "dependencies": {
     "pinia": "^3.0.4",

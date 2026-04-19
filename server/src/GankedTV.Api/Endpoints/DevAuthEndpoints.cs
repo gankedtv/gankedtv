@@ -1,5 +1,6 @@
 using GankedTV.Api.Auth;
 using GankedTV.Api.Auth.Jwt;
+using GankedTV.Api.Auth.Tokens;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
 using Microsoft.AspNetCore.Mvc;
@@ -15,7 +16,7 @@ namespace GankedTV.Api.Endpoints;
 public static class DevAuthEndpoints
 {
     public sealed record DevTokenRequest(string? Username);
-    public sealed record DevTokenResponse(string Token, Guid UserId, string Username);
+    public sealed record DevTokenResponse(string Token, string Refresh, Guid UserId, string Username);
 
     public static IEndpointRouteBuilder MapDevAuthEndpoints(this IEndpointRouteBuilder app)
     {
@@ -27,6 +28,7 @@ public static class DevAuthEndpoints
         [FromBody] DevTokenRequest? req,
         GankedTvDbContext db,
         IJwtService jwt,
+        IRefreshTokenService refreshTokens,
         CancellationToken ct)
     {
         var raw = req?.Username ?? "dev-user";
@@ -48,6 +50,7 @@ public static class DevAuthEndpoints
         }
 
         var token = jwt.Issue(user);
-        return Results.Ok(new DevTokenResponse(token, user.Id, user.Username));
+        var refresh = await refreshTokens.IssueAsync(user.Id, ct);
+        return Results.Ok(new DevTokenResponse(token, refresh, user.Id, user.Username));
     }
 }
