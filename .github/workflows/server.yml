@@ -106,4 +106,4 @@ jobs:
           --configuration Release
           --verbosity normal
           /p:CollectCoverage=true
-          /p:Threshold=79
+          /p:Threshold=79%2C57

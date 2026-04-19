@@ -11,6 +11,16 @@ export default mergeConfig(
       exclude: [...configDefaults.exclude, 'e2e/**'],
       root: fileURLToPath(new URL('./', import.meta.url)),
       passWithNoTests: true,
+      coverage: {
+        provider: 'v8',
+        include: ['src/api/**', 'src/router/**', 'src/stores/**'],
+        exclude: ['**/__tests__/**', '**/*.spec.ts', '**/*.d.ts'],
+        reporter: ['text', 'text-summary'],
+        thresholds: {
+          lines: 60,
+          branches: 57,
+        },
+      },
     },
   }),
 )

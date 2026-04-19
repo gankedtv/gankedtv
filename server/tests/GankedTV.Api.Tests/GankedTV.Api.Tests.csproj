@@ -11,7 +11,7 @@
     <CoverletOutputFormat>cobertura</CoverletOutputFormat>
     <CoverletOutput>./TestResults/coverage/</CoverletOutput>
     <ExcludeByFile>**/Migrations/*.cs</ExcludeByFile>
-    <ThresholdType>line</ThresholdType>
+    <ThresholdType>line,branch</ThresholdType>
     <ThresholdStat>total</ThresholdStat>
   </PropertyGroup>
 
