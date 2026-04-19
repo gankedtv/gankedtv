@@ -5,7 +5,11 @@ import { oauthStartUrl } from '@/api/auth'
 const route = useRoute()
 const rawRedirect = route.query.redirect
 let returnTo: string | undefined
-if (typeof rawRedirect === 'string' && rawRedirect.startsWith('/') && !rawRedirect.startsWith('//')) {
+if (
+  typeof rawRedirect === 'string' &&
+  rawRedirect.startsWith('/') &&
+  !rawRedirect.startsWith('//')
+) {
   returnTo = rawRedirect
 }
 </script>

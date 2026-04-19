@@ -80,7 +80,8 @@ export async function api<T = undefined>(
   if (
     fetchInit.body !== null &&
     fetchInit.body !== undefined &&
-    (Object.prototype.toString.call(fetchInit.body) === '[object Object]' || Array.isArray(fetchInit.body)) &&
+    (Object.prototype.toString.call(fetchInit.body) === '[object Object]' ||
+      Array.isArray(fetchInit.body)) &&
     !(fetchInit.body instanceof FormData) &&
     !(fetchInit.body instanceof URLSearchParams)
   ) {

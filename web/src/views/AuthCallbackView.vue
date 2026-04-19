@@ -11,10 +11,14 @@ const status = ref<'loading' | 'error'>('loading')
 onMounted(async () => {
   const token = route.query.token as string | undefined
   const refresh = route.query.refresh as string | undefined
-  
+
   let returnTo = '/'
   const rawReturnTo = route.query.returnTo
-  if (typeof rawReturnTo === 'string' && rawReturnTo.startsWith('/') && !rawReturnTo.startsWith('//')) {
+  if (
+    typeof rawReturnTo === 'string' &&
+    rawReturnTo.startsWith('/') &&
+    !rawReturnTo.startsWith('//')
+  ) {
     returnTo = rawReturnTo
   }
 
