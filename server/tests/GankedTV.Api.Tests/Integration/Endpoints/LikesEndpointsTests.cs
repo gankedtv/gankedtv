@@ -250,21 +250,73 @@ public class LikesEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task Unlike_DoesNotDecrementBelowZero()
     {
-        // Acceptance criterion: like_count must clamp at ≥ 0. If the counter drifts (row-less like
-        // state, manual fixture, data repair), redundant unlikes must not produce a negative count.
+        // Acceptance criterion: like_count must clamp at ≥ 0. Exercises the `WHERE like_count > 0`
+        // predicate on the decrement by setting up the data-drift scenario it exists for: a Like
+        // row present but LikeCount already 0 (e.g. manual DB repair, counter-drift bug). Without
+        // the predicate the decrement would take the counter to -1.
         await _fx.ResetAsync();
         var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
-        var (_, token) = await SeedUserAndIssueTokenAsync("fan");
+        var (fanId, token) = await SeedUserAndIssueTokenAsync("fan");
+        var clipId = await SeedClipAsync(authorId, initialLikeCount: 0);
+        await using (var seed = _fx.CreateContext())
+        {
+            seed.Likes.Add(new Like { UserId = fanId, ClipId = clipId, CreatedAt = DateTimeOffset.UtcNow });
+            await seed.SaveChangesAsync();
+        }
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.DeleteAsync($"/clips/{clipId}/like");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("likeCount").GetInt32().Should().Be(0);
+
+        await using var db = _fx.CreateContext();
+        (await db.Likes.AnyAsync(l => l.UserId == fanId && l.ClipId == clipId)).Should().BeFalse();
+        (await db.Clips.Where(c => c.Id == clipId).Select(c => c.LikeCount).FirstAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Unlike_NeverLiked_CounterAtZero_StaysZero()
+    {
+        // Complements the clamp test above for the no-like-row path: idempotent unlike against
+        // a clip at zero should not touch the counter.
+        await _fx.ResetAsync();
+        var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
+        var (_, token) = await SeedUserAndIssueTokenAsync("stranger");
         var clipId = await SeedClipAsync(authorId, initialLikeCount: 0);
 
         using var client = ClientWithBearer(token);
-        var resp1 = await client.DeleteAsync($"/clips/{clipId}/like");
-        var resp2 = await client.DeleteAsync($"/clips/{clipId}/like");
+        var resp = await client.DeleteAsync($"/clips/{clipId}/like");
 
-        resp1.StatusCode.Should().Be(HttpStatusCode.OK);
-        resp2.StatusCode.Should().Be(HttpStatusCode.OK);
-
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
         await using var db = _fx.CreateContext();
         (await db.Clips.Where(c => c.Id == clipId).Select(c => c.LikeCount).FirstAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Like_ConcurrentSameUser_FinalStateIsConsistent()
+    {
+        // Parallel POSTs from the same user: the `already` check races, so between 1..N requests
+        // may reach the INSERT path and collide on the composite PK. The endpoint must coalesce
+        // them into a single logical like — one row, counter == 1, all responses 2xx.
+        await _fx.ResetAsync();
+        var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
+        var (userId, token) = await SeedUserAndIssueTokenAsync("fan");
+        var clipId = await SeedClipAsync(authorId);
+
+        const int parallelism = 8;
+        var tasks = Enumerable.Range(0, parallelism).Select(async _ =>
+        {
+            using var client = ClientWithBearer(token);
+            return await client.PostAsync($"/clips/{clipId}/like", content: null);
+        }).ToArray();
+        var responses = await Task.WhenAll(tasks);
+
+        responses.Should().OnlyContain(r => r.IsSuccessStatusCode);
+
+        await using var db = _fx.CreateContext();
+        (await db.Likes.CountAsync(l => l.UserId == userId && l.ClipId == clipId)).Should().Be(1);
+        (await db.Clips.Where(c => c.Id == clipId).Select(c => c.LikeCount).FirstAsync()).Should().Be(1);
     }
 }

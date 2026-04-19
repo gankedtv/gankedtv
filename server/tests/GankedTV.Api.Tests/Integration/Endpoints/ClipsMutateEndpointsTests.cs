@@ -138,6 +138,58 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Patch_NonOwner_InvalidField_Returns403NotBadRequest()
+    {
+        // Locks in ownership-before-validation ordering. If the checks were reordered, a
+        // non-owner sending an invalid body would get 400 instead of 403 — which would tell
+        // them the clip exists and their payload was parsed. Non-owners shouldn't learn either.
+        await _fx.ResetAsync();
+        var (ownerId, _) = await SeedUserAndIssueTokenAsync("owner");
+        var (_, otherToken) = await SeedUserAndIssueTokenAsync("other");
+        var clipId = await SeedClipAsync(ownerId);
+
+        using var client = ClientWithBearer(otherToken);
+        var resp = await client.PatchAsJsonAsync($"/clips/{clipId}", new { visibility = "bogus" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Patch_NullBody_Returns400()
+    {
+        // Literal JSON `null` deserializes to a null UpdateClipRequest reference; the endpoint
+        // must reject it explicitly rather than NRE on the first property read.
+        await _fx.ResetAsync();
+        var (ownerId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(ownerId);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PatchAsJsonAsync<object?>($"/clips/{clipId}", null);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Patch_EmptyObject_ReturnsOk_BumpsUpdatedAt()
+    {
+        // `{}` is a valid PATCH with no field updates — the contract is that it still bumps
+        // UpdatedAt and returns 200. If that ever flips to 400 or a no-op response, clients
+        // depending on "touch to refresh" would silently break.
+        await _fx.ResetAsync();
+        var (ownerId, token) = await SeedUserAndIssueTokenAsync();
+        var seededAt = DateTimeOffset.UtcNow.AddHours(-1);
+        var clipId = await SeedClipAsync(ownerId, createdAt: seededAt);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PatchAsJsonAsync($"/clips/{clipId}", new { });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var db = _fx.CreateContext();
+        var persisted = await db.Clips.AsNoTracking().FirstAsync(c => c.Id == clipId);
+        persisted.UpdatedAt.Should().BeAfter(seededAt);
+    }
+
+    [Fact]
     public async Task Patch_Owner_UpdatesTitle_ReturnsUpdatedDetail()
     {
         await _fx.ResetAsync();
@@ -210,6 +262,21 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
 
         using var client = ClientWithBearer(token);
         var resp = await client.PatchAsJsonAsync($"/clips/{clipId}", new { title = "   " });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Patch_DescriptionTooLong_Returns400()
+    {
+        // MaxDescriptionLength defaults to 5000 in ClipValidationOptions; 5001 trips the cap
+        // and keeps PATCH aligned with the upload-side validation (ClipUploadService).
+        await _fx.ResetAsync();
+        var (ownerId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(ownerId);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PatchAsJsonAsync($"/clips/{clipId}", new { description = new string('a', 5001) });
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }

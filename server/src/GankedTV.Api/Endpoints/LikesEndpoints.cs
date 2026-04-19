@@ -4,6 +4,7 @@ using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace GankedTV.Api.Endpoints;
 
@@ -45,13 +46,29 @@ public static class LikesEndpoints
                 ClipId = id,
                 CreatedAt = DateTimeOffset.UtcNow,
             });
-            await db.SaveChangesAsync(ct);
-            // Raw-SQL increment keeps the counter race-free against concurrent likers on
-            // a different row (we already hold the (user,clip) row uniquely via the PK).
-            await db.Clips.Where(c => c.Id == id)
-                .ExecuteUpdateAsync(
-                    s => s.SetProperty(c => c.LikeCount, c => c.LikeCount + 1),
-                    ct);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                // Raw-SQL increment keeps the counter race-free against concurrent likers on
+                // a different row (we already hold the (user,clip) row uniquely via the PK).
+                await db.Clips.Where(c => c.Id == id)
+                    .ExecuteUpdateAsync(
+                        s => s.SetProperty(c => c.LikeCount, c => c.LikeCount + 1),
+                        ct);
+            }
+            catch (DbUpdateException ex) when (IsLikePrimaryKeyViolation(ex))
+            {
+                // Race: a concurrent request from the same user passed the `already` check and
+                // inserted+incremented before us. Postgres aborts our transaction on the unique
+                // violation, so we must roll back explicitly; then re-read the counter outside
+                // the dead transaction and return success idempotently.
+                await tx.RollbackAsync(ct);
+                var raceCount = await db.Clips.AsNoTracking()
+                    .Where(c => c.Id == id)
+                    .Select(c => c.LikeCount)
+                    .FirstAsync(ct);
+                return Results.Ok(new LikeResponse(raceCount, true));
+            }
         }
 
         var count = await db.Clips.AsNoTracking()
@@ -116,4 +133,10 @@ public static class LikesEndpoints
             ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         return Guid.TryParse(sub, out userId);
     }
+
+    // `likes` has a single unique constraint (the composite PK on user_id + clip_id), so any
+    // unique violation coming out of a likes INSERT is unambiguously the idempotency race.
+    private static bool IsLikePrimaryKeyViolation(DbUpdateException ex) =>
+        ex.InnerException is PostgresException pg
+        && pg.SqlState == PostgresErrorCodes.UniqueViolation;
 }

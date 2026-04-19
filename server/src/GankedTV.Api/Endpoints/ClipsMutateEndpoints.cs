@@ -3,6 +3,7 @@ using System.Security.Claims;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Data;
 using GankedTV.Api.Services.ObjectStorage;
+using GankedTV.Api.Validation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -12,7 +13,6 @@ namespace GankedTV.Api.Endpoints;
 
 public static class ClipsMutateEndpoints
 {
-    private const int MaxTitleLength = 255;
     private static readonly string[] AllowedVisibilities = ["public", "unlisted"];
     private static readonly TimeSpan VideoUrlLifetime = TimeSpan.FromHours(1);
     private static readonly string LogCategory = typeof(ClipsMutateEndpoints).FullName!;
@@ -32,6 +32,7 @@ public static class ClipsMutateEndpoints
         GankedTvDbContext db,
         IObjectStorageService storage,
         IOptions<MinioOptions> minio,
+        IOptions<ClipValidationOptions> validation,
         CancellationToken ct)
     {
         if (!TryGetUserId(principal, out var userId))
@@ -58,10 +59,12 @@ public static class ClipsMutateEndpoints
             return Results.Forbid();
         }
 
+        var limits = validation.Value;
+
         if (req.Title is not null)
         {
             var trimmed = req.Title.Trim();
-            if (trimmed.Length == 0 || trimmed.Length > MaxTitleLength)
+            if (trimmed.Length == 0 || trimmed.Length > limits.MaxTitleLength)
             {
                 return Results.BadRequest(new { error = "invalid_title" });
             }
@@ -70,6 +73,13 @@ public static class ClipsMutateEndpoints
 
         if (req.Description is not null)
         {
+            // Mirrors the upload-side cap in ClipUploadService; keeping them aligned through the
+            // shared ClipValidationOptions prevents PATCH from becoming a backdoor around the
+            // storage/readability limits CREATE enforces.
+            if (req.Description.Length > limits.MaxDescriptionLength)
+            {
+                return Results.BadRequest(new { error = "invalid_description" });
+            }
             clip.Description = req.Description;
         }
 
