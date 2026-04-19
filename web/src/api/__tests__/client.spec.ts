@@ -116,7 +116,10 @@ describe('api client', () => {
         }
         const path = new URL(url).pathname
         if (retried.has(path)) {
-          return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+          return new Response('{}', {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          })
         }
         retried.add(path)
         return new Response('{}', { status: 401, headers: { 'content-type': 'application/json' } })
