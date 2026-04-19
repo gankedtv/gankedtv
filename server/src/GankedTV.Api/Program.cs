@@ -21,7 +21,7 @@ var builder = WebApplication.CreateBuilder(args);
 var envPath = Path.Combine(builder.Environment.ContentRootPath, "..", "..", "..", ".env");
 if (File.Exists(envPath))
 {
-    DotNetEnv.Env.Load(envPath);
+    DotNetEnv.Env.NoClobber().Load(envPath);
 }
 
 // Add services to the container.
