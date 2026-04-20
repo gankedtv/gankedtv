@@ -56,7 +56,7 @@ if [ -n "$touched_server" ]; then
     cd server
     dotnet build --configuration Release
     dotnet format --verify-no-changes --no-restore
-    dotnet test --no-build --configuration Release
+    dotnet test --configuration Release /p:CollectCoverage=true /p:Threshold=79%2C57
   )
 fi
 
@@ -68,7 +68,7 @@ if [ -n "$touched_web" ]; then
     bun run format:check
     bun run lint:check
     bun run build
-    bun run test:unit
+    bun run test:coverage
   )
 fi
 

@@ -101,4 +101,22 @@ jobs:
         run: dotnet restore
 
       - name: Test
-        run: dotnet test --configuration Release --verbosity normal
+        run: |
+          set -o pipefail
+          dotnet test \
+            --configuration Release \
+            --verbosity normal \
+            /p:CollectCoverage=true \
+            /p:Threshold=79%2C57 \
+            | tee "$RUNNER_TEMP/server-cov.txt"
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          {
+            echo "## Server coverage (line + branch)"
+            echo
+            echo '```'
+            grep -E '^[+|]' "$RUNNER_TEMP/server-cov.txt" || echo '(no coverage table captured)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
