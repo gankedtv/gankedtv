@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using FluentAssertions;
 using GankedTV.Api.Auth.Jwt;
 using GankedTV.Api.Data.Entities;
@@ -81,6 +82,73 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         (await resp.Content.ReadAsStringAsync()).Should().Contain(username);
+    }
+
+    [Fact]
+    public async Task Get_WithPopulatedUser_ReturnsAllMeResponseFields()
+    {
+        await _fx.ResetAsync();
+
+        const string username = "fulluser";
+        const string email = "fulluser@example.com";
+        const string bio = "Built different. Dies first.";
+        const string avatarUrl = "https://example.com/avatars/fulluser.png";
+        var createdAt = DateTimeOffset.UtcNow.AddDays(-3);
+
+        Guid userId;
+        await using (var db = _fx.CreateContext())
+        {
+            var user = new User
+            {
+                Username = username,
+                Email = email,
+                Bio = bio,
+                AvatarUrl = avatarUrl,
+                CreatedAt = createdAt,
+                UpdatedAt = createdAt,
+            };
+            db.Users.Add(user);
+            await db.SaveChangesAsync();
+            userId = user.Id;
+        }
+
+        using var scope = _factory!.Services.CreateScope();
+        var jwt = scope.ServiceProvider.GetRequiredService<IJwtService>();
+        var token = jwt.Issue(new User { Id = userId, Username = username, Email = email });
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.GetAsync("/me");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("id").GetGuid().Should().Be(userId);
+        body.GetProperty("username").GetString().Should().Be(username);
+        body.GetProperty("email").GetString().Should().Be(email);
+        body.GetProperty("bio").GetString().Should().Be(bio);
+        body.GetProperty("avatarUrl").GetString().Should().Be(avatarUrl);
+        // Postgres timestamptz stores microsecond precision; .NET DateTimeOffset has 100ns ticks,
+        // so a round-trip rounds by up to 1 microsecond. 1ms tolerance comfortably absorbs that.
+        body.GetProperty("createdAt").GetDateTimeOffset()
+            .Should().BeCloseTo(createdAt, TimeSpan.FromMilliseconds(1));
+    }
+
+    [Fact]
+    public async Task Get_WithSparseUser_ReturnsNullsForBioAndAvatar()
+    {
+        await _fx.ResetAsync();
+        var (userId, token, username) = await SeedUserAndIssueTokenAsync("sparse");
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.GetAsync("/me");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("id").GetGuid().Should().Be(userId);
+        body.GetProperty("username").GetString().Should().Be(username);
+        body.GetProperty("email").GetString().Should().Be($"{username}@example.com");
+        body.GetProperty("bio").ValueKind.Should().Be(JsonValueKind.Null);
+        body.GetProperty("avatarUrl").ValueKind.Should().Be(JsonValueKind.Null);
+        body.GetProperty("createdAt").ValueKind.Should().Be(JsonValueKind.String);
     }
 
     [Fact]

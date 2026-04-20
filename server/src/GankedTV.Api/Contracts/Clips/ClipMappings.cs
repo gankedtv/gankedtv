@@ -1,4 +1,5 @@
 using GankedTV.Api.Data.Entities;
+using GankedTV.Api.Services.Clips;
 
 namespace GankedTV.Api.Contracts.Clips;
 
@@ -6,6 +7,15 @@ public static class ClipMappings
 {
     public static AuthorSummary ToAuthorSummary(this User user) =>
         new(user.Id, user.Username, user.AvatarUrl);
+
+    public static CreateClipResponse ToCreateClipResponse(this CreateClipResult result) =>
+        new(result.ClipId);
+
+    public static UploadUrlResponse ToUploadUrlResponse(this UploadUrlResult result) =>
+        new(result.Url, result.ExpiresAt);
+
+    public static CompleteClipResponse ToCompleteClipResponse(this CompleteClipResult result) =>
+        new(result.ClipId, result.FileSizeBytes);
 
     public static ClipFeedItem ToFeedItem(this Clip clip, bool likedByMe) =>
         new(

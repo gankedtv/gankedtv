@@ -1,8 +1,8 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using GankedTV.Api.Auth;
+using GankedTV.Api.Contracts.Users;
 using GankedTV.Api.Data;
-using GankedTV.Api.Data.Entities;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -14,16 +14,6 @@ public static class MeEndpoints
 {
     private const int MaxAvatarUrlLength = 2048;
     private const int MaxBioLength = 500;
-
-    public sealed record MeResponse(
-        Guid Id,
-        string Username,
-        string? Email,
-        string? Bio,
-        string? AvatarUrl,
-        DateTimeOffset CreatedAt);
-
-    public sealed record UpdateMeRequest(string? Username, string? Bio, string? AvatarUrl);
 
     public static IEndpointRouteBuilder MapMeEndpoints(this IEndpointRouteBuilder app)
     {
@@ -49,7 +39,7 @@ public static class MeEndpoints
             // 404 so the SPA can drop tokens and redirect to sign-in.
             return TypedResults.Unauthorized();
         }
-        return TypedResults.Ok(ToResponse(user));
+        return TypedResults.Ok(user.ToMe());
     }
 
     private static async Task<IResult> PatchMe(
@@ -129,7 +119,7 @@ public static class MeEndpoints
 
         if (!changed)
         {
-            return Results.Ok(ToResponse(user));
+            return Results.Ok(user.ToMe());
         }
 
         user.UpdatedAt = DateTimeOffset.UtcNow;
@@ -142,7 +132,7 @@ public static class MeEndpoints
             // A concurrent writer took the username between our AnyAsync check and the save.
             return Results.Conflict(new { error = "username_taken" });
         }
-        return Results.Ok(ToResponse(user));
+        return Results.Ok(user.ToMe());
     }
 
     private static (bool ok, string? value) ValidateAvatarUrl(string raw)
@@ -189,12 +179,4 @@ public static class MeEndpoints
             ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         return Guid.TryParse(sub, out userId);
     }
-
-    private static MeResponse ToResponse(User user) => new(
-        user.Id,
-        user.Username,
-        user.Email,
-        user.Bio,
-        user.AvatarUrl,
-        user.CreatedAt);
 }

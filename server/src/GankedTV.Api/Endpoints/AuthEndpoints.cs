@@ -3,6 +3,7 @@ using GankedTV.Api.Auth.Jwt;
 using GankedTV.Api.Auth.Providers;
 using GankedTV.Api.Auth.State;
 using GankedTV.Api.Auth.Tokens;
+using GankedTV.Api.Contracts.Auth;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -11,9 +12,6 @@ namespace GankedTV.Api.Endpoints;
 
 public static class AuthEndpoints
 {
-    public sealed record RefreshRequest(string Refresh);
-    public sealed record TokenResponse(string Token, string Refresh, int ExpiresIn);
-
     public static IEndpointRouteBuilder MapAuthEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/auth/providers", ListProviders);
@@ -125,9 +123,8 @@ public static class AuthEndpoints
         {
             var result = await refreshTokens.RotateAsync(req.Refresh, ct);
             var token = jwt.Issue(result.User);
-            return TypedResults.Ok(new TokenResponse(
+            return TypedResults.Ok(result.ToTokenResponse(
                 token,
-                result.NewRawToken,
                 jwtOptions.Value.ExpiryMinutes * 60));
         }
         catch (InvalidRefreshTokenException)
