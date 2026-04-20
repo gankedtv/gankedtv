@@ -1,3 +1,4 @@
+using GankedTV.Api.Auth.Providers;
 using GankedTV.Api.Data;
 using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.AspNetCore.Hosting;
@@ -14,15 +15,22 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
     private readonly string _connectionString;
     private readonly IObjectStorageService? _storageOverride;
     private readonly string _environment;
+    private readonly IReadOnlyList<IOAuthProvider>? _oauthProviders;
 
+    // `oauthProviders`, when non-null, REPLACES the real Discord/Google registrations
+    // wholesale (they are not merged). Passing an empty list therefore leaves the registry
+    // with zero providers and every `/auth/{provider}/start` returns 404. Pass null to keep
+    // the real providers untouched.
     public AuthApiFactory(
         string connectionString,
         IObjectStorageService? storageOverride = null,
-        string environment = "Development")
+        string environment = "Development",
+        IReadOnlyList<IOAuthProvider>? oauthProviders = null)
     {
         _connectionString = connectionString;
         _storageOverride = storageOverride;
         _environment = environment;
+        _oauthProviders = oauthProviders;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -54,6 +62,15 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
             {
                 services.RemoveAll<IObjectStorageService>();
                 services.AddSingleton(_storageOverride);
+            }
+
+            if (_oauthProviders is not null)
+            {
+                services.RemoveAll<IOAuthProvider>();
+                foreach (var provider in _oauthProviders)
+                {
+                    services.AddSingleton(provider);
+                }
             }
         });
     }

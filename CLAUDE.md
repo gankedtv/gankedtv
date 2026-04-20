@@ -34,10 +34,10 @@ dotnet build server           # Build
 dotnet test server            # Run all tests
 dotnet test server --filter "FullyQualifiedName~TestClassName"  # Run specific tests
 dotnet watch --project server/src/GankedTV.Api  # Run with hot reload
-dotnet test server /p:CollectCoverage=true /p:Threshold=79%2C57  # Run with coverage + threshold gate (%2C is an escaped comma)
+dotnet test server /p:CollectCoverage=true /p:Threshold=85%2C85  # Run with coverage + threshold gate (%2C is an escaped comma)
 ```
 
-Server coverage gate: **79% line / 57% branch** (total), enforced by CI and the pre-push hook. Ratchet toward 85% for both metrics tracked in [issue #47](https://github.com/gankedtv/gankedtv/issues/47). EF migrations (`server/src/GankedTV.Api/Data/Migrations/**`) are excluded from the denominator; Program.cs is not. Coverlet config lives in [server/tests/GankedTV.Api.Tests/GankedTV.Api.Tests.csproj](server/tests/GankedTV.Api.Tests/GankedTV.Api.Tests.csproj).
+Server coverage gate: **85% line / 85% branch** (total), enforced by CI and the pre-push hook. Excluded from the denominator: EF migrations (`server/src/GankedTV.Api/Data/Migrations/**`), `*.generated.cs` (OpenAPI source-generator artifacts), and `Program.cs` (DI/bootstrap wiring, covered indirectly via `WebApplicationFactory` integration tests — see [server/src/GankedTV.Api/Program.Coverage.cs](server/src/GankedTV.Api/Program.Coverage.cs)). **Keep `Program.cs` to pure DI wiring + config binding;** any real logic (validators, feature checks, computation) belongs in a service so it stays inside the coverage denominator. Coverlet config lives in [server/tests/GankedTV.Api.Tests/GankedTV.Api.Tests.csproj](server/tests/GankedTV.Api.Tests/GankedTV.Api.Tests.csproj).
 
 ### Database Migrations (run from `server/`)
 ```bash
@@ -59,7 +59,7 @@ cd web && bun run test:unit -- --filter="test name"  # Run specific test
 cd web && bun run test:coverage  # Run with coverage + threshold gate (scoped)
 ```
 
-Web coverage gate: **60% line / 57% branch**, scoped to `src/api/**`, `src/router/**`, `src/stores/**` (HTTP client, auth, routing). Components, views, `App.vue`, `main.ts`, and `assets/` are deliberately excluded — the goal is protecting auth/network/routing logic, not display code. Thresholds include a 2-point buffer below measured floor to absorb v8 coverage noise. Ratchet toward 85% tracked in [issue #47](https://github.com/gankedtv/gankedtv/issues/47). Coverage config lives in [web/vitest.config.ts](web/vitest.config.ts).
+Web coverage gate: **85% line / 85% branch**, scoped to `src/api/**`, `src/router/**`, `src/stores/**` (HTTP client, auth, routing). Components, views, `App.vue`, `main.ts`, and `assets/` are deliberately excluded — the goal is protecting auth/network/routing logic, not display code. Coverage config lives in [web/vitest.config.ts](web/vitest.config.ts).
 
 ## Architecture
 

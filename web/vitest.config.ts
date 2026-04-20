@@ -17,8 +17,8 @@ export default mergeConfig(
         exclude: ['**/__tests__/**', '**/*.spec.ts', '**/*.test.ts', '**/*.d.ts'],
         reporter: ['text', 'text-summary', 'json-summary'],
         thresholds: {
-          lines: 60,
-          branches: 57,
+          lines: 85,
+          branches: 85,
         },
       },
     },

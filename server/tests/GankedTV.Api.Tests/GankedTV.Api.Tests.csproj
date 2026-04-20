@@ -10,7 +10,7 @@
   <PropertyGroup Label="Coverage">
     <CoverletOutputFormat>cobertura</CoverletOutputFormat>
     <CoverletOutput>./TestResults/coverage/</CoverletOutput>
-    <ExcludeByFile>**/Migrations/*.cs</ExcludeByFile>
+    <ExcludeByFile>**/Migrations/*.cs,**/*.generated.cs</ExcludeByFile>
     <ThresholdType>line,branch</ThresholdType>
     <ThresholdStat>total</ThresholdStat>
   </PropertyGroup>

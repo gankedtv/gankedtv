@@ -162,6 +162,54 @@ public class RefreshTokenServiceTests
     }
 
     [Fact]
+    public async Task RevokeAsync_UnknownToken_NoOp()
+    {
+        // RevokeAsync is called eagerly (e.g. sign-out with stored raw token that might not
+        // exist any more). It must not throw when the token was never issued.
+        await _fx.ResetAsync();
+
+        await using var db = _fx.CreateContext();
+        var act = () => new RefreshTokenService(db, DefaultOpts()).RevokeAsync("never-issued");
+
+        await act.Should().NotThrowAsync();
+        (await db.RefreshTokens.AnyAsync()).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task RevokeAsync_AlreadyRevoked_KeepsOriginalTimestamp()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("greta");
+
+        string raw;
+        await using (var db = _fx.CreateContext())
+        {
+            raw = await new RefreshTokenService(db, DefaultOpts()).IssueAsync(userId);
+        }
+        await using (var db = _fx.CreateContext())
+        {
+            await new RefreshTokenService(db, DefaultOpts()).RevokeAsync(raw);
+        }
+
+        DateTimeOffset? firstRevokedAt;
+        await using (var db = _fx.CreateContext())
+        {
+            firstRevokedAt = (await db.RefreshTokens.AsNoTracking().SingleAsync()).RevokedAt;
+        }
+
+        await Task.Delay(20);
+
+        await using (var db = _fx.CreateContext())
+        {
+            await new RefreshTokenService(db, DefaultOpts()).RevokeAsync(raw);
+        }
+
+        await using var verify = _fx.CreateContext();
+        var row = await verify.RefreshTokens.AsNoTracking().SingleAsync();
+        row.RevokedAt.Should().Be(firstRevokedAt);
+    }
+
+    [Fact]
     public async Task RotateAsync_ConcurrentCallers_OnlyOneSucceeds()
     {
         await _fx.ResetAsync();
