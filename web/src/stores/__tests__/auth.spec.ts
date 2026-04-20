@@ -207,6 +207,14 @@ describe('useAuthStore', () => {
     const auth = useAuthStore()
     auth.setSession('tok', 'ref')
 
+    // Earlier tests (`logout clears state…`, `logout with VITE_USE_SECURE_COOKIES=true…`)
+    // fire `auth.logout()` without awaiting — the dynamic `import('@/router').then(isReady)`
+    // chain is still pending when this test starts. If we swap isReady BEFORE those
+    // microtasks drain, the stale logout(s) hit the rejecting mock and pollute errSpy.
+    // Flush pending microtasks + a macrotask tick so any in-flight chain settles against
+    // the original (resolving) isReady first.
+    await new Promise((r) => setTimeout(r, 0))
+
     // Reconfigure the hoisted router mock for this test only: isReady() rejects so the
     // dynamic import chain inside logout() hits the .catch. `vi.doMock` would be ignored
     // here because the hoisted `vi.mock('@/router', ...)` at module top has already been
