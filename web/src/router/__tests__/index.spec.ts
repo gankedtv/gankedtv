@@ -53,8 +53,10 @@ describe('router beforeEach guard', () => {
   })
 
   it('preserves query and hash in the redirect target (fullPath)', async () => {
-    await router.push('/upload?ref=abc')
-    expect(router.currentRoute.value.query.redirect).toBe('/upload?ref=abc')
+    // `to.fullPath` — not `to.path` — is what the guard passes through. Push both a query
+    // string AND a hash so a regression that dropped either would surface here.
+    await router.push('/upload?ref=abc#section')
+    expect(router.currentRoute.value.query.redirect).toBe('/upload?ref=abc#section')
   })
 
   it('allows requiresAuth routes once the user is authenticated', async () => {

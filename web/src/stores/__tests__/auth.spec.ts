@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { ApiError } from '@/api/client'
+import { createLocalStorageMock, type MockLocalStorage } from '@/test/helpers'
 import { useAuthStore } from '../auth'
 
 const mockMe = vi.fn()
@@ -13,32 +14,18 @@ vi.mock('@/router', () => ({
   default: { push: vi.fn(), isReady: vi.fn(() => Promise.resolve()) },
 }))
 
-// Mock shape reused across tests. Recreated in beforeEach so per-test overrides (throw-mode,
-// mid-flight method swaps) don't bleed into the next test.
-function freshLocalStorage() {
-  let store: Record<string, string> = {}
-  return {
-    getItem: (k: string) => store[k] ?? null,
-    setItem: (k: string, v: string) => {
-      store[k] = v
-    },
-    removeItem: (k: string) => {
-      delete store[k]
-    },
-    clear: () => {
-      store = {}
-    },
-  }
-}
-
-let localStorageMock = freshLocalStorage()
+// Recreated in beforeEach so per-test overrides (throw-mode, method swaps) don't bleed
+// into the next test. Defined via a getter on window.localStorage so reassigning the outer
+// `localStorageMock` transparently rotates the backing store — no second Object.defineProperty
+// call needed per test.
+let localStorageMock: MockLocalStorage = createLocalStorageMock()
 Object.defineProperty(window, 'localStorage', {
   configurable: true,
   get: () => localStorageMock,
 })
 
 beforeEach(() => {
-  localStorageMock = freshLocalStorage()
+  localStorageMock = createLocalStorageMock()
   setActivePinia(createPinia())
   mockMe.mockClear()
 })
@@ -123,6 +110,9 @@ describe('useAuthStore', () => {
     expect(auth.user?.username).toBe('zoe')
     expect(auth.accessToken).toBe('tok')
     expect(auth.refreshToken).toBe('ref')
+    // setUser must not re-persist: the session key already lives in localStorage via setSession.
+    // A regression where setUser wrote to localStorage could mask a missing setSession call.
+    expect(localStorageMock.getItem('refresh_token')).toBe('ref')
   })
 
   it('bootstrap rethrows non-401 ApiErrors', async () => {
@@ -175,36 +165,42 @@ describe('useAuthStore', () => {
 
   it('setSession with VITE_USE_SECURE_COOKIES=true skips localStorage persistence', async () => {
     vi.stubEnv('VITE_USE_SECURE_COOKIES', 'true')
-    vi.resetModules()
-    const { useAuthStore: useFresh } = await import('../auth')
-    setActivePinia(createPinia())
-    const auth = useFresh()
+    try {
+      vi.resetModules()
+      const { useAuthStore: useFresh } = await import('../auth')
+      setActivePinia(createPinia())
+      const auth = useFresh()
 
-    localStorageMock.clear()
-    auth.setSession('tok', 'ref')
+      localStorageMock.clear()
+      auth.setSession('tok', 'ref')
 
-    expect(auth.refreshToken).toBe('ref')
-    // Persistence path is expected to be a no-op — the backend issues the refresh cookie.
-    expect(localStorageMock.getItem('refresh_token')).toBeNull()
-
-    vi.unstubAllEnvs()
+      expect(auth.refreshToken).toBe('ref')
+      // Persistence path is expected to be a no-op — the backend issues the refresh cookie.
+      expect(localStorageMock.getItem('refresh_token')).toBeNull()
+    } finally {
+      // Always unstub, even if an assertion threw — otherwise subsequent tests inherit the
+      // VITE_USE_SECURE_COOKIES=true env and start misbehaving mysteriously.
+      vi.unstubAllEnvs()
+    }
   })
 
   it('logout with VITE_USE_SECURE_COOKIES=true still clears any stale localStorage entry', async () => {
     vi.stubEnv('VITE_USE_SECURE_COOKIES', 'true')
-    vi.resetModules()
-    const { useAuthStore: useFresh } = await import('../auth')
-    setActivePinia(createPinia())
-    const auth = useFresh()
+    try {
+      vi.resetModules()
+      const { useAuthStore: useFresh } = await import('../auth')
+      setActivePinia(createPinia())
+      const auth = useFresh()
 
-    // Simulate a migration from pre-secure-cookie mode that left a token behind; the secure
-    // cookie persist path still needs to evict stale entries on logout (token === null).
-    localStorageMock.setItem('refresh_token', 'stale')
-    auth.logout()
+      // Simulate a migration from pre-secure-cookie mode that left a token behind; the secure
+      // cookie persist path still needs to evict stale entries on logout (token === null).
+      localStorageMock.setItem('refresh_token', 'stale')
+      auth.logout()
 
-    expect(localStorageMock.getItem('refresh_token')).toBeNull()
-
-    vi.unstubAllEnvs()
+      expect(localStorageMock.getItem('refresh_token')).toBeNull()
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 
   it('logout swallows router navigation failures', async () => {

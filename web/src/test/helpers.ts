@@ -30,6 +30,7 @@ export function createLocalStorageMock(): MockLocalStorage {
       delete store[key]
     },
     clear() {
+      if (mock.__throwMode) throw new Error('localStorage denied')
       store = {}
     },
   }

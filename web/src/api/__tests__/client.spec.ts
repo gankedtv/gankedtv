@@ -183,10 +183,16 @@ describe('api client', () => {
   it('parses error responses with no content-type as text inside ApiError.body', async () => {
     // Reverse-proxy error pages (nginx/cloud WAF) often lack a content-type; swallowing them
     // as JSON would throw and hide the real failure. Text fallback keeps the body accessible.
+    // Note: passing a string body to `new Response(...)` would auto-set Content-Type:
+    // text/plain, which would hit the non-JSON branch but not the `?? ''` null-coalesce in
+    // client.ts. A Uint8Array body has no implicit Content-Type, so this actually exercises
+    // the "header is absent" path.
+    const bytes = new TextEncoder().encode('gateway down')
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response('gateway down', { status: 502 })),
+      vi.fn(async () => new Response(bytes, { status: 502 })),
     )
+
     const err = await api('/thing').catch((e: ApiError) => e)
     expect(err).toBeInstanceOf(ApiError)
     expect((err as ApiError).status).toBe(502)

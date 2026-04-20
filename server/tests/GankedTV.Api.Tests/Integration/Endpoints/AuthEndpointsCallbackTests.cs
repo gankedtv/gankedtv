@@ -21,7 +21,11 @@ public class AuthEndpointsCallbackTests : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
-        if (_factory is not null) await _factory.DisposeAsync();
+        if (_factory is not null)
+        {
+            await _factory.DisposeAsync();
+            _factory = null;
+        }
     }
 
     private static readonly OAuthUserInfo HappyInfo = new(
@@ -31,8 +35,13 @@ public class AuthEndpointsCallbackTests : IAsyncLifetime
         AvatarUrl: null,
         EmailVerified: true);
 
-    private HttpClient BuildClientWithFake(IOAuthProvider fake)
+    // Caller invokes this exactly once per test (xUnit creates a new instance per [Fact]),
+    // so guarding against a second assignment keeps the "one factory per test" contract
+    // visible: if a future test accidentally calls it twice, the assert fires instead of
+    // silently leaking the first WebApplicationFactory.
+    private HttpClient BuildClientWithFake(IOAuthProvider fake, bool handleCookies = true)
     {
+        Assert.Null(_factory);
         _factory = new AuthApiFactory(
             _fx.ConnectionString,
             oauthProviders: new[] { fake });
@@ -40,7 +49,7 @@ public class AuthEndpointsCallbackTests : IAsyncLifetime
         return _factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
         {
             AllowAutoRedirect = false,
-            HandleCookies = true,
+            HandleCookies = handleCookies,
         });
     }
 
@@ -93,15 +102,11 @@ public class AuthEndpointsCallbackTests : IAsyncLifetime
     public async Task Callback_NoCookie_Returns400InvalidState()
     {
         await _fx.ResetAsync();
-        // Build a client that doesn't go through /start first, so no state cookie is set.
-        _factory = new AuthApiFactory(
-            _fx.ConnectionString,
-            oauthProviders: new[] { (IOAuthProvider)FakeOAuthProvider.Returning("discord", HappyInfo) });
-        using var client = _factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
-        {
-            AllowAutoRedirect = false,
-            HandleCookies = false,
-        });
+        // handleCookies: false → no cookie jar, so even if a previous request set
+        // the state cookie it wouldn't round-trip to the callback.
+        using var client = BuildClientWithFake(
+            FakeOAuthProvider.Returning("discord", HappyInfo),
+            handleCookies: false);
 
         var resp = await client.GetAsync("/auth/discord/callback?code=c&state=unpaired");
 
@@ -185,15 +190,20 @@ public class AuthEndpointsCallbackTests : IAsyncLifetime
         var resp = await client.GetAsync($"/auth/discord/callback?code=c&state={Uri.EscapeDataString(state)}");
 
         resp.Headers.TryGetValues("Set-Cookie", out var cookies).Should().BeTrue();
-        // The handler always deletes the cookie (expires in the past) so a replayed callback
-        // can't reuse the same state value.
-        string.Join(';', cookies!).Should().Contain("gtv_oauth_state=");
+        // Response.Cookies.Delete emits an expired cookie — asserting just "gtv_oauth_state="
+        // would also match a newly-issued one. Pin on the expiry signal so a regression where
+        // the handler re-issues the cookie (instead of deleting it) actually fails this test.
+        var stateCookie = cookies!.SingleOrDefault(c => c.StartsWith("gtv_oauth_state=", StringComparison.Ordinal));
+        stateCookie.Should().NotBeNull();
+        stateCookie!.Should().MatchRegex("expires=|max-age=0");
     }
 
     [Fact]
     public async Task Refresh_NullBody_Returns400()
     {
         await _fx.ResetAsync();
+        // Uses the real providers (no override) since /auth/refresh doesn't touch OAuth state.
+        Assert.Null(_factory);
         _factory = new AuthApiFactory(_fx.ConnectionString);
         using var client = _factory.CreateClient();
 
