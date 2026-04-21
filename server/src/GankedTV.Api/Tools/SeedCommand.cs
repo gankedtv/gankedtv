@@ -9,7 +9,11 @@ namespace GankedTV.Api.Tools;
 /// ids, so repeated runs leave the DB in the same state. Invoked via
 /// <c>dotnet run --project server/src/GankedTV.Api -- --seed</c>.
 /// </summary>
-public sealed class SeedCommand
+public sealed class SeedCommand(
+    GankedTvDbContext db,
+    ILogger<SeedCommand> logger,
+    TimeProvider clock,
+    IHostEnvironment env)
 {
     public const string FlagName = "--seed";
 
@@ -17,24 +21,24 @@ public sealed class SeedCommand
     public const string SeedUsername = "seeduser";
     public const int SeedClipCount = 10;
 
-    private readonly GankedTvDbContext _db;
-    private readonly ILogger<SeedCommand> _logger;
-    private readonly TimeProvider _clock;
-
-    public SeedCommand(GankedTvDbContext db, ILogger<SeedCommand> logger, TimeProvider clock)
-    {
-        _db = db;
-        _logger = logger;
-        _clock = clock;
-    }
-
     public static bool ShouldRun(string[] args) => args.Contains(FlagName);
 
     public async Task RunAsync(CancellationToken ct)
     {
-        var now = _clock.GetUtcNow();
+        // Hard guard: seed is a dev-only tool. Running it against a production DB would
+        // create a predictable test user with a predictable id, which is both a data-quality
+        // and a security problem. Fail closed — ASPNETCORE_ENVIRONMENT must be Development.
+        if (!env.IsDevelopment())
+        {
+            logger.LogError(
+                "Seed refused: environment is {Env}, not Development. Set ASPNETCORE_ENVIRONMENT=Development to proceed.",
+                env.EnvironmentName);
+            return;
+        }
 
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == SeedUserId, ct);
+        var now = clock.GetUtcNow();
+
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == SeedUserId, ct);
         if (user is null)
         {
             user = new User
@@ -46,18 +50,18 @@ public sealed class SeedCommand
                 CreatedAt = now,
                 UpdatedAt = now,
             };
-            _db.Users.Add(user);
-            await _db.SaveChangesAsync(ct);
-            _logger.LogInformation("Seed: created user {Username}", user.Username);
+            db.Users.Add(user);
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Seed: created user {Username}", user.Username);
         }
 
         for (var i = 1; i <= SeedClipCount; i++)
         {
             var clipId = SeedClipId(i);
-            var exists = await _db.Clips.AnyAsync(c => c.Id == clipId, ct);
+            var exists = await db.Clips.AnyAsync(c => c.Id == clipId, ct);
             if (exists) continue;
 
-            _db.Clips.Add(new Clip
+            db.Clips.Add(new Clip
             {
                 Id = clipId,
                 UserId = user.Id,
@@ -74,14 +78,14 @@ public sealed class SeedCommand
             });
         }
 
-        var inserted = await _db.SaveChangesAsync(ct);
+        var inserted = await db.SaveChangesAsync(ct);
         if (inserted > 0)
         {
-            _logger.LogInformation("Seed: inserted {Count} row(s).", inserted);
+            logger.LogInformation("Seed: inserted {Count} row(s).", inserted);
         }
         else
         {
-            _logger.LogInformation("Seed: already present, no changes.");
+            logger.LogInformation("Seed: already present, no changes.");
         }
     }
 

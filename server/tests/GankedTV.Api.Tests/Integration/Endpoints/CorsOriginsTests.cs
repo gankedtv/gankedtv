@@ -106,6 +106,9 @@ public class CorsOriginsTests
         req.Headers.Add("Access-Control-Request-Method", "GET");
 
         var resp = await client.SendAsync(req);
+        // A 5xx here would also produce no ACAO header; asserting 2xx first prevents the
+        // test from silently passing "origin denied" when the real fault was a server error.
+        resp.IsSuccessStatusCode.Should().BeTrue($"preflight should not 500 for origin {origin}; got {resp.StatusCode}");
         return resp.Headers.TryGetValues("Access-Control-Allow-Origin", out var values)
             ? values.FirstOrDefault()
             : null;

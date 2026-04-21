@@ -195,8 +195,12 @@ builder.Services
     .Configure<IOptions<OAuthOptions>>((cors, oauth) =>
     {
         var origins = CorsOriginsParser.Parse(corsOriginsRaw, oauth.Value.WebOrigin);
+        // SetIsOriginAllowed with an explicit predicate (not WithOrigins) so a literal "*"
+        // in CORS_ORIGINS is matched as a string, not interpreted by CorsService as the
+        // CORS-spec wildcard (which silently disables AllowCredentials). Host comparison
+        // is case-insensitive per RFC 6454; scheme/port exact-match.
         cors.AddPolicy(corsPolicy, policy => policy
-            .WithOrigins(origins)
+            .SetIsOriginAllowed(origin => origins.Contains(origin, StringComparer.OrdinalIgnoreCase))
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials());

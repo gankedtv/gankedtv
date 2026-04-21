@@ -1,7 +1,10 @@
 using FluentAssertions;
+using GankedTV.Api.Data;
 using GankedTV.Api.Tests.TestSupport;
 using GankedTV.Api.Tools;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace GankedTV.Api.Tests.Tools;
@@ -30,7 +33,7 @@ public class SeedCommandTests : IAsyncLifetime
     public async Task FreshDb_CreatesOneUserAndTenClips()
     {
         await using var db = _fx.CreateContext();
-        var seed = new SeedCommand(db, NullLogger<SeedCommand>.Instance, TimeProvider.System);
+        var seed = NewSeed(db);
 
         await seed.RunAsync(CancellationToken.None);
 
@@ -45,14 +48,12 @@ public class SeedCommandTests : IAsyncLifetime
     {
         await using (var db = _fx.CreateContext())
         {
-            var seed = new SeedCommand(db, NullLogger<SeedCommand>.Instance, TimeProvider.System);
-            await seed.RunAsync(CancellationToken.None);
+            await NewSeed(db).RunAsync(CancellationToken.None);
         }
 
         await using (var db = _fx.CreateContext())
         {
-            var seed = new SeedCommand(db, NullLogger<SeedCommand>.Instance, TimeProvider.System);
-            await seed.RunAsync(CancellationToken.None);
+            await NewSeed(db).RunAsync(CancellationToken.None);
         }
 
         await using var verify = _fx.CreateContext();
@@ -64,8 +65,7 @@ public class SeedCommandTests : IAsyncLifetime
     public async Task ClipIds_AreDeterministic()
     {
         await using var db = _fx.CreateContext();
-        var seed = new SeedCommand(db, NullLogger<SeedCommand>.Instance, TimeProvider.System);
-        await seed.RunAsync(CancellationToken.None);
+        await NewSeed(db).RunAsync(CancellationToken.None);
 
         await using var verify = _fx.CreateContext();
         var ids = await verify.Clips.Select(c => c.Id).OrderBy(id => id).ToListAsync();
@@ -73,5 +73,36 @@ public class SeedCommandTests : IAsyncLifetime
             Enumerable.Range(1, SeedCommand.SeedClipCount)
                 .Select(SeedCommand.SeedClipId)
                 .OrderBy(id => id));
+    }
+
+    [Fact]
+    public async Task NonDevelopmentEnvironment_RefusesToSeed_AndLogsError()
+    {
+        // Production/Staging DBs must not get predictable seeded test data. The guard
+        // lives in SeedCommand itself (not just Program.cs) so any caller — CLI, hosted
+        // service, admin endpoint — gets the same fail-closed behavior.
+        await using var db = _fx.CreateContext();
+        var seed = new SeedCommand(
+            db,
+            NullLogger<SeedCommand>.Instance,
+            TimeProvider.System,
+            new FakeHostEnvironment("Production"));
+
+        await seed.RunAsync(CancellationToken.None);
+
+        await using var verify = _fx.CreateContext();
+        (await verify.Users.CountAsync()).Should().Be(0);
+        (await verify.Clips.CountAsync()).Should().Be(0);
+    }
+
+    private SeedCommand NewSeed(GankedTvDbContext db) =>
+        new(db, NullLogger<SeedCommand>.Instance, TimeProvider.System, new FakeHostEnvironment("Development"));
+
+    private sealed class FakeHostEnvironment(string name) : IHostEnvironment
+    {
+        public string EnvironmentName { get; set; } = name;
+        public string ApplicationName { get; set; } = "GankedTV.Api.Tests";
+        public string ContentRootPath { get; set; } = AppContext.BaseDirectory;
+        public IFileProvider ContentRootFileProvider { get; set; } = null!;
     }
 }
