@@ -238,6 +238,43 @@ public class ObjectStorageTests
     }
 
     [Fact]
+    public void GetPresignedPutUrl_HttpsEndpoint_UsesHttpsProtocol()
+    {
+        var s3 = Substitute.For<IAmazonS3>();
+        GetPreSignedUrlRequest? captured = null;
+        s3.GetPreSignedURL(Arg.Do<GetPreSignedUrlRequest>(r => captured = r))
+            .Returns("https://prod.example/clips/key?sig=abc");
+
+        var opts = Options.Create(new MinioOptions
+        {
+            Endpoint = "https://prod.example",
+            AccessKey = "k",
+            SecretKey = "s",
+            ClipsBucket = "clips",
+            ThumbnailsBucket = "thumbnails",
+        });
+        new MinioObjectStorageService(s3, opts, NullLogger<MinioObjectStorageService>.Instance)
+            .GetPresignedPutUrl("clips", "key", "video/mp4");
+
+        captured!.Protocol.Should().Be(Protocol.HTTPS);
+    }
+
+    [Fact]
+    public void GetPresignedGetUrl_NonDefaultPortInPublicUrl_PreservesPort()
+    {
+        var s3 = Substitute.For<IAmazonS3>();
+        s3.GetPreSignedURL(Arg.Any<GetPreSignedUrlRequest>())
+            .Returns("http://minio:9000/clips/key?sig=abc");
+
+        // Exercises the non-default-port branch of UriBuilder rewriting — a public URL on
+        // a non-standard port must survive the rewrite instead of being normalised to `-1`.
+        var url = BuildService(s3, publicUrl: "https://public.example:8443")
+            .GetPresignedGetUrl("clips", "key");
+
+        url.Should().StartWith("https://public.example:8443/clips/key");
+    }
+
+    [Fact]
     public async Task GetObjectMetadataAsync_PropagatesNonNotFoundErrors()
     {
         var s3 = Substitute.For<IAmazonS3>();

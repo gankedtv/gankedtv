@@ -107,7 +107,7 @@ jobs:
             --configuration Release \
             --verbosity normal \
             /p:CollectCoverage=true \
-            /p:Threshold=79%2C57 \
+            /p:Threshold=85%2C85 \
             | tee "$RUNNER_TEMP/server-cov.txt"
 
       - name: Coverage summary

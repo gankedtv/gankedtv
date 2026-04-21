@@ -211,6 +211,95 @@ public class UserUpsertServiceTests
     }
 
     [Fact]
+    public async Task UpsertFromOAuthAsync_UnknownProvider_Throws()
+    {
+        await _fx.ResetAsync();
+        await using var db = _fx.CreateContext();
+        var svc = new UserUpsertService(db);
+
+        var act = async () => await svc.UpsertFromOAuthAsync(
+            "unknown-provider",
+            new OAuthUserInfo("x", "x@example.com", "x", null, true));
+
+        // The switch default in UpsertFromOAuthAsync is a guard for a caller that adds a new
+        // provider name without wiring it into the lookup — surface it as a programmer error
+        // rather than silently creating an orphaned row.
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*unknown-provider*");
+    }
+
+    [Fact]
+    public async Task UpsertFromOAuthAsync_ExistingDiscordUserWithAvatar_KeepsEmailUpdatesOnly()
+    {
+        // Existing user already has a custom avatar; provider re-asserts an avatar hash. The
+        // avatar branch must NOT be taken (user's explicit PATCH /me choice wins), but the
+        // verified-email update branch should still fire when the provider email changes.
+        await _fx.ResetAsync();
+        var now = DateTimeOffset.UtcNow;
+        Guid id;
+        await using (var db = _fx.CreateContext())
+        {
+            db.Users.Add(new User
+            {
+                Username = "alex",
+                Email = "old@example.com",
+                AvatarUrl = "https://custom.example/alex.png",
+                DiscordId = "d-alex",
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            await db.SaveChangesAsync();
+            id = (await db.Users.SingleAsync()).Id;
+        }
+
+        await using (var db = _fx.CreateContext())
+        {
+            await new UserUpsertService(db).UpsertFromOAuthAsync(
+                DiscordOAuthProvider.ProviderName,
+                new OAuthUserInfo("d-alex", "new@example.com", "Alex", "https://cdn.discord.com/new.png", EmailVerified: true));
+        }
+
+        await using var verify = _fx.CreateContext();
+        var user = await verify.Users.SingleAsync(u => u.Id == id);
+        user.Email.Should().Be("new@example.com");
+        user.AvatarUrl.Should().Be("https://custom.example/alex.png");
+    }
+
+    [Fact]
+    public async Task UpsertFromOAuthAsync_LinkByEmail_FillsInMissingAvatarOnExisting()
+    {
+        // Existing user has no avatar; link-by-email path should set it from the provider.
+        await _fx.ResetAsync();
+        var now = DateTimeOffset.UtcNow;
+        Guid id;
+        await using (var db = _fx.CreateContext())
+        {
+            db.Users.Add(new User
+            {
+                Username = "emily",
+                Email = "emily@example.com",
+                DiscordId = "d-emily",
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            await db.SaveChangesAsync();
+            id = (await db.Users.SingleAsync()).Id;
+        }
+
+        await using (var db = _fx.CreateContext())
+        {
+            await new UserUpsertService(db).UpsertFromOAuthAsync(
+                GoogleOAuthProvider.ProviderName,
+                new OAuthUserInfo("g-emily", "emily@example.com", "Emily", "https://cdn.google/emily.png", EmailVerified: true));
+        }
+
+        await using var verify = _fx.CreateContext();
+        var user = await verify.Users.SingleAsync(u => u.Id == id);
+        user.GoogleId.Should().Be("g-emily");
+        user.AvatarUrl.Should().Be("https://cdn.google/emily.png");
+    }
+
+    [Fact]
     public async Task UpsertFromOAuthAsync_UsernameCollision_AppendsSuffix()
     {
         await _fx.ResetAsync();

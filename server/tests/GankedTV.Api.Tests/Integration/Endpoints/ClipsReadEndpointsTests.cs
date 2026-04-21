@@ -510,6 +510,63 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Feed_Authed_EmptyFeed_ShortCircuitsLikeLookup()
+    {
+        // Covers the `ids.Count == 0` early-return in LoadLikedClipIdsAsync: authed viewer
+        // calls the feed with no visible clips, so the likedIds lookup must skip the DB
+        // round-trip rather than issuing a WHERE IN () query.
+        await _fx.ResetAsync();
+        var (_, token) = await SeedUserAndIssueTokenAsync("empty-viewer");
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.GetAsync("/clips/feed");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("items").GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Feed_Base64ValidCursorWithMalformedPayload_FallsBackToFirstPage()
+    {
+        // Base64url-valid payload but no "_" separator — exercises TryParseCursor's structural
+        // guard (sep <= 0) distinct from the base64 decode catch already covered.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        await SeedClipAsync(userId, DateTimeOffset.UtcNow);
+
+        var malformed = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("no-separator"))
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync($"/clips/feed?cursor={malformed}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("items").GetArrayLength().Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Feed_CursorWithTrailingSeparator_FallsBackToFirstPage()
+    {
+        // sep == decoded.Length - 1: payload ends in `_` with an empty GUID part. Distinct
+        // branch from sep <= 0.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        await SeedClipAsync(userId, DateTimeOffset.UtcNow);
+
+        var trailing = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("2026-04-20T00:00:00.0000000+00:00_"))
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync($"/clips/feed?cursor={trailing}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("items").GetArrayLength().Should().Be(1);
+    }
+
+    [Fact]
     public async Task Detail_WithJwt_LikedByMeTrueWhenLikeExists()
     {
         await _fx.ResetAsync();

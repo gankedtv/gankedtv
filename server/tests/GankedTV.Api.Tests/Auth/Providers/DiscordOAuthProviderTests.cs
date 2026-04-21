@@ -3,13 +3,15 @@ using FluentAssertions;
 using GankedTV.Api.Auth;
 using GankedTV.Api.Auth.Providers;
 using GankedTV.Api.Tests.TestSupport;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace GankedTV.Api.Tests.Auth.Providers;
 
 public class DiscordOAuthProviderTests
 {
-    private static (DiscordOAuthProvider provider, TestHttpMessageHandler handler) BuildProvider()
+    private static (DiscordOAuthProvider provider, TestHttpMessageHandler handler) BuildProvider(
+        ILogger<DiscordOAuthProvider>? logger = null)
     {
         var handler = new TestHttpMessageHandler();
         var options = Options.Create(new OAuthOptions
@@ -24,7 +26,7 @@ public class DiscordOAuthProviderTests
             },
         });
         var factory = FakeHttpClientFactory.Create(handler);
-        return (new DiscordOAuthProvider(factory, options), handler);
+        return (new DiscordOAuthProvider(factory, options, logger), handler);
     }
 
     [Fact]
@@ -179,6 +181,56 @@ public class DiscordOAuthProviderTests
         var info = await provider.ExchangeCodeAsync("code", null, CancellationToken.None);
 
         info.AvatarUrl.Should().Be("https://cdn.discordapp.com/avatars/42/a_deadbeef.gif");
+    }
+
+    [Fact]
+    public async Task ExchangeCodeAsync_UnparseableErrorBody_OmitsDetail()
+    {
+        var (provider, handler) = BuildProvider();
+        // Plain text — neither the OAuth2 {error, error_description} shape nor the REST
+        // {message, code} shape, so TryParseErrorDetail returns null and the exception message
+        // carries only status + stage.
+        handler.OnPost("https://discord.com/api/oauth2/token", HttpStatusCode.InternalServerError,
+            "upstream had a bad day");
+
+        var act = () => provider.ExchangeCodeAsync("c", null, CancellationToken.None);
+
+        var ex = (await act.Should().ThrowAsync<OAuthExchangeException>()).Which;
+        ex.Message.Should().Be("Discord token exchange failed (500).");
+    }
+
+    [Fact]
+    public async Task ExchangeCodeAsync_RestErrorMessageOnly_OmitsCode()
+    {
+        var (provider, handler) = BuildProvider();
+        // REST shape without a code field — exercise the TryParseErrorDetail branch that
+        // returns the bare message.
+        handler
+            .OnPost("https://discord.com/api/oauth2/token", HttpStatusCode.OK,
+                "{\"access_token\":\"t\",\"token_type\":\"Bearer\"}")
+            .OnGet("https://discord.com/api/users/@me", HttpStatusCode.Forbidden,
+                "{\"message\":\"You lack permissions\"}");
+
+        var act = () => provider.ExchangeCodeAsync("c", null, CancellationToken.None);
+
+        var ex = (await act.Should().ThrowAsync<OAuthExchangeException>()).Which;
+        ex.Message.Should().Contain("You lack permissions");
+        ex.Message.Should().NotContain("code");
+    }
+
+    [Fact]
+    public async Task ExchangeCodeAsync_WithDebugLogger_EmitsDebugOnFailure()
+    {
+        var capturing = new CapturingLoggerProvider();
+        using var factory = LoggerFactory.Create(b => b.AddProvider(capturing).SetMinimumLevel(LogLevel.Debug));
+        var (provider, handler) = BuildProvider(factory.CreateLogger<DiscordOAuthProvider>());
+        handler.OnPost("https://discord.com/api/oauth2/token", HttpStatusCode.BadGateway,
+            "raw upstream body");
+
+        var act = () => provider.ExchangeCodeAsync("c", null, CancellationToken.None);
+
+        await act.Should().ThrowAsync<OAuthExchangeException>();
+        capturing.Messages.Should().Contain(m => m.Contains("raw upstream body"));
     }
 
     [Fact]

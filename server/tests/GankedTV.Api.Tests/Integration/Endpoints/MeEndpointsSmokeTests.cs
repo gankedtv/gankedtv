@@ -333,6 +333,113 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Patch_TokenSubjectDoesNotExist_Returns401()
+    {
+        await _fx.ResetAsync();
+        var (userId, token, _) = await SeedUserAndIssueTokenAsync("willvanish");
+
+        await using (var db = _fx.CreateContext())
+        {
+            var user = await db.Users.SingleAsync(u => u.Id == userId);
+            db.Users.Remove(user);
+            await db.SaveChangesAsync();
+        }
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PatchAsJsonAsync("/me", new { bio = "anything" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Patch_EmptyBio_ClearsBio()
+    {
+        await _fx.ResetAsync();
+        var (userId, token, _) = await SeedUserAndIssueTokenAsync("bioed");
+        await using (var db = _fx.CreateContext())
+        {
+            var u = await db.Users.SingleAsync(x => x.Id == userId);
+            u.Bio = "prior text";
+            await db.SaveChangesAsync();
+        }
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PatchAsJsonAsync("/me", new { bio = "" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var db2 = _fx.CreateContext();
+        var after = await db2.Users.AsNoTracking().SingleAsync(u => u.Id == userId);
+        after.Bio.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Patch_SetAndClearAvatarUrl()
+    {
+        await _fx.ResetAsync();
+        var (userId, token, _) = await SeedUserAndIssueTokenAsync("avataruser");
+
+        using var client = ClientWithBearer(token);
+        var set = await client.PatchAsJsonAsync("/me", new { avatarUrl = "https://cdn.example.com/a.png" });
+        set.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        await using (var db = _fx.CreateContext())
+        {
+            var u = await db.Users.AsNoTracking().SingleAsync(x => x.Id == userId);
+            u.AvatarUrl.Should().Be("https://cdn.example.com/a.png");
+        }
+
+        // An empty string is the canonical "remove avatar" signal — ValidateAvatarUrl maps "" to (ok, null).
+        var cleared = await client.PatchAsJsonAsync("/me", new { avatarUrl = "" });
+        cleared.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        await using var verify = _fx.CreateContext();
+        var final = await verify.Users.AsNoTracking().SingleAsync(x => x.Id == userId);
+        final.AvatarUrl.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Patch_AvatarUrlUnchanged_DoesNotBumpUpdatedAt()
+    {
+        await _fx.ResetAsync();
+        var (userId, token, _) = await SeedUserAndIssueTokenAsync("stableavatar");
+        const string avatar = "https://cdn.example.com/x.png";
+
+        DateTimeOffset before;
+        await using (var db = _fx.CreateContext())
+        {
+            var u = await db.Users.SingleAsync(x => x.Id == userId);
+            u.AvatarUrl = avatar;
+            await db.SaveChangesAsync();
+            before = u.UpdatedAt;
+        }
+
+        await Task.Delay(20);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PatchAsJsonAsync("/me", new { avatarUrl = avatar });
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        await using var verify = _fx.CreateContext();
+        var final = await verify.Users.AsNoTracking().SingleAsync(x => x.Id == userId);
+        final.UpdatedAt.Should().Be(before);
+    }
+
+    [Fact]
+    public async Task Patch_FallbackToPlayerUsername_Allowed()
+    {
+        await _fx.ResetAsync();
+        var (_, token, _) = await SeedUserAndIssueTokenAsync("claimer");
+
+        using var client = ClientWithBearer(token);
+        // Literal "player" is explicitly allowed even though it's the generator's fallback
+        // value — otherwise nobody could ever take the obvious name.
+        var resp = await client.PatchAsJsonAsync("/me", new { username = "player" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("player");
+    }
+
+    [Fact]
     public async Task Get_TokenSubjectDoesNotExist_Returns401()
     {
         await _fx.ResetAsync();
