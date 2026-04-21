@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Data;
+using GankedTV.Api.Problems;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Validation;
 using Microsoft.AspNetCore.Mvc;
@@ -20,13 +21,16 @@ public static class ClipsMutateEndpoints
     public static IEndpointRouteBuilder MapClipsMutateEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/clips").RequireAuthorization();
-        group.MapPatch("/{id:guid}", PatchClip);
+        group.MapPatch("/{id:guid}", PatchClip).WithValidation<UpdateClipRequest>();
         group.MapDelete("/{id:guid}", DeleteClip);
         return app;
     }
 
     private static async Task<IResult> PatchClip(
         Guid id,
+        // Nullable so a literal JSON `null` body reaches the ValidationEndpointFilter, which
+        // shapes it into the same ValidationProblemDetails response as a missing field rather
+        // than surfacing as a framework-generated 400 that bypasses our filter.
         [FromBody] UpdateClipRequest? req,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
@@ -37,12 +41,15 @@ public static class ClipsMutateEndpoints
     {
         if (!TryGetUserId(principal, out var userId))
         {
-            return Results.Unauthorized();
+            return ProblemResults.Unauthorized("unauthorized");
         }
 
+        // Defensive: the WithValidation<T> filter already returns 400 for null bodies, so this
+        // path is unreachable at runtime. Kept so future removals of the filter (or test
+        // harnesses that bypass it) fail closed rather than NRE — same envelope as the filter.
         if (req is null)
         {
-            return Results.BadRequest(new { error = "invalid_body" });
+            return ProblemResults.InvalidBody();
         }
 
         var clip = await db.Clips
@@ -51,12 +58,12 @@ public static class ClipsMutateEndpoints
 
         if (clip is null)
         {
-            return Results.NotFound(new { error = "not_found" });
+            return ProblemResults.NotFound("not_found");
         }
 
         if (clip.UserId != userId)
         {
-            return Results.Forbid();
+            return ProblemResults.Forbidden("forbidden");
         }
 
         var limits = validation.Value;
@@ -66,7 +73,7 @@ public static class ClipsMutateEndpoints
             var trimmed = req.Title.Trim();
             if (trimmed.Length == 0 || trimmed.Length > limits.MaxTitleLength)
             {
-                return Results.BadRequest(new { error = "invalid_title" });
+                return ProblemResults.BadRequest("invalid_title");
             }
             clip.Title = trimmed;
         }
@@ -78,7 +85,7 @@ public static class ClipsMutateEndpoints
             // storage/readability limits CREATE enforces.
             if (req.Description.Length > limits.MaxDescriptionLength)
             {
-                return Results.BadRequest(new { error = "invalid_description" });
+                return ProblemResults.BadRequest("invalid_description");
             }
             clip.Description = req.Description;
         }
@@ -87,7 +94,7 @@ public static class ClipsMutateEndpoints
         {
             if (!AllowedVisibilities.Contains(req.Visibility))
             {
-                return Results.BadRequest(new { error = "invalid_visibility" });
+                return ProblemResults.BadRequest("invalid_visibility");
             }
             clip.Visibility = req.Visibility;
         }
@@ -97,7 +104,7 @@ public static class ClipsMutateEndpoints
             var gameExists = await db.Games.AnyAsync(g => g.Id == req.GameId.Value, ct);
             if (!gameExists)
             {
-                return Results.BadRequest(new { error = "invalid_game" });
+                return ProblemResults.BadRequest("invalid_game");
             }
             clip.GameId = req.GameId;
         }
@@ -124,18 +131,18 @@ public static class ClipsMutateEndpoints
     {
         if (!TryGetUserId(principal, out var userId))
         {
-            return Results.Unauthorized();
+            return ProblemResults.Unauthorized("unauthorized");
         }
 
         var clip = await db.Clips.FirstOrDefaultAsync(c => c.Id == id, ct);
         if (clip is null)
         {
-            return Results.NotFound(new { error = "not_found" });
+            return ProblemResults.NotFound("not_found");
         }
 
         if (clip.UserId != userId)
         {
-            return Results.Forbid();
+            return ProblemResults.Forbidden("forbidden");
         }
 
         var videoKey = clip.VideoKey;

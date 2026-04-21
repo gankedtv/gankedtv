@@ -148,6 +148,8 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task Create_WhitespaceTitle_Returns400()
     {
+        // [Required] (default AllowEmptyStrings=false) rejects whitespace-only before it
+        // reaches the service layer → ValidationProblemDetails keyed by "Title".
         await _fx.ResetAsync();
         var (_, token) = await SeedUserAndIssueTokenAsync();
         using var client = ClientWithBearer(token);
@@ -155,12 +157,14 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
         var resp = await client.PostAsJsonAsync("/clips", new { title = "   " });
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await resp.Content.ReadAsStringAsync()).Should().Contain("invalid_title");
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("errors").GetProperty("Title").GetArrayLength().Should().BeGreaterThan(0);
     }
 
     [Fact]
     public async Task Create_TitleTooLong_Returns400()
     {
+        // Caught by the [StringLength] attribute in CreateClipRequest → ValidationProblemDetails.
         await _fx.ResetAsync();
         var (_, token) = await SeedUserAndIssueTokenAsync();
         using var client = ClientWithBearer(token);
@@ -168,12 +172,15 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
         var resp = await client.PostAsJsonAsync("/clips", new { title = new string('x', 256) });
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await resp.Content.ReadAsStringAsync()).Should().Contain("invalid_title");
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("errors").GetProperty("Title").GetArrayLength().Should().BeGreaterThan(0);
     }
 
     [Fact]
     public async Task Create_InvalidVisibility_Returns400()
     {
+        // Visibility validation lives in ClipUploadService (case-insensitive allowed-values)
+        // rather than a DataAnnotation, so this surfaces via ProblemResults with code=invalid_visibility.
         await _fx.ResetAsync();
         var (_, token) = await SeedUserAndIssueTokenAsync();
         using var client = ClientWithBearer(token);
@@ -181,7 +188,8 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
         var resp = await client.PostAsJsonAsync("/clips", new { title = "x", visibility = "private" });
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await resp.Content.ReadAsStringAsync()).Should().Contain("invalid_visibility");
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("code").GetString().Should().Be("invalid_visibility");
     }
 
     [Fact]
@@ -208,6 +216,8 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task Create_NullBody_Returns400()
     {
+        // ValidationEndpointFilter<CreateClipRequest> catches a null-deserialized body and
+        // short-circuits with a ValidationProblemDetails keyed by "body".
         await _fx.ResetAsync();
         var (_, token) = await SeedUserAndIssueTokenAsync();
         using var client = ClientWithBearer(token);
@@ -216,12 +226,14 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
         var resp = await client.PostAsync("/clips", content);
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await resp.Content.ReadAsStringAsync()).Should().Contain("invalid_body");
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("errors").GetProperty("body").GetArrayLength().Should().BeGreaterThan(0);
     }
 
     [Fact]
     public async Task Create_DescriptionTooLong_Returns400()
     {
+        // Caught by the [StringLength] attribute on CreateClipRequest.Description.
         await _fx.ResetAsync();
         var (_, token) = await SeedUserAndIssueTokenAsync();
         using var client = ClientWithBearer(token);
@@ -233,7 +245,8 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
         });
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await resp.Content.ReadAsStringAsync()).Should().Contain("invalid_description");
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("errors").GetProperty("Description").GetArrayLength().Should().BeGreaterThan(0);
     }
 
     // ---- POST /clips/{id}/upload-url ----

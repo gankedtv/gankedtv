@@ -4,10 +4,13 @@ using GankedTV.Api.Auth.Jwt;
 using GankedTV.Api.Auth.Providers;
 using GankedTV.Api.Auth.State;
 using GankedTV.Api.Auth.Tokens;
+using GankedTV.Api.Configuration;
 using GankedTV.Api.Data;
 using GankedTV.Api.Endpoints;
+using GankedTV.Api.Middleware;
 using GankedTV.Api.Services.Clips;
 using GankedTV.Api.Services.ObjectStorage;
+using GankedTV.Api.Tools;
 using GankedTV.Api.Validation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Cors.Infrastructure;
@@ -30,6 +33,13 @@ if (builder.Environment.IsDevelopment())
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+
+// RFC 7807 ProblemDetails for all framework-generated 4xx/5xx bodies (empty responses
+// from UseAuthorization/UseAuthentication get shaped automatically). Endpoint-authored
+// errors go through ProblemResults.*.
+builder.Services.AddProblemDetails();
+builder.Services.AddTransient<ErrorHandlingMiddleware>();
+builder.Services.AddScoped<SeedCommand>();
 
 var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL")
     ?? builder.Configuration.GetConnectionString("DefaultConnection")
@@ -173,16 +183,20 @@ builder.Services
 builder.Services.AddAuthorization();
 
 const string corsPolicy = "WebOrigin";
-// We register the CORS policy via AddOptions<CorsOptions>().Configure<IOptions<OAuthOptions>>
-// instead of the idiomatic AddCors(o => o.AddPolicy(...)) because the policy's origin comes
-// from the already-bound OAuthOptions — the AddCors lambda overload can't inject IOptions<T>.
-// AddCors() below wires the middleware + ICorsService; our ConfigureOptions adds the policy.
+// Allowed origins = CORS_ORIGINS (comma-separated) ∪ WebOrigin. WebOrigin is always included
+// because OAuth redirects land on it and the browser's follow-up XHR must pass CORS — an
+// operator who forgets to list it in CORS_ORIGINS would otherwise break the sign-in flow.
+// We register the policy via AddOptions<CorsOptions>().Configure<IOptions<OAuthOptions>>
+// instead of AddCors(o => o.AddPolicy(...)) because the origin list depends on the already-
+// bound OAuthOptions and the AddCors lambda overload can't inject IOptions<T>.
+var corsOriginsRaw = Environment.GetEnvironmentVariable("CORS_ORIGINS");
 builder.Services
     .AddOptions<CorsOptions>()
     .Configure<IOptions<OAuthOptions>>((cors, oauth) =>
     {
+        var origins = CorsOriginsParser.Parse(corsOriginsRaw, oauth.Value.WebOrigin);
         cors.AddPolicy(corsPolicy, policy => policy
-            .WithOrigins(oauth.Value.WebOrigin)
+            .WithOrigins(origins)
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials());
@@ -191,12 +205,27 @@ builder.Services.AddCors();
 
 var app = builder.Build();
 
+// --seed short-circuit: runs the dev seed against the configured DB and exits. We still build
+// the full app so DbContext/options are wired identically to the runtime path.
+if (SeedCommand.ShouldRun(args))
+{
+    using var scope = app.Services.CreateScope();
+    var seed = scope.ServiceProvider.GetRequiredService<SeedCommand>();
+    await seed.RunAsync(CancellationToken.None);
+    return;
+}
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
 
+app.UseMiddleware<ErrorHandlingMiddleware>();
+// Shape framework-generated empty-body 4xx/5xx responses (JwtBearer 401 challenges,
+// 404 for unmatched routes, 415 for unsupported media types) into ProblemDetails so every
+// error response from the API has the same JSON envelope regardless of origin.
+app.UseStatusCodePages();
 app.UseHttpsRedirection();
 app.UseCors(corsPolicy);
 app.UseAuthentication();

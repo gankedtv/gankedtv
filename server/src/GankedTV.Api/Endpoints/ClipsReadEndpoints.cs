@@ -5,6 +5,7 @@ using System.Security.Claims;
 using System.Text;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Data;
+using GankedTV.Api.Problems;
 using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -121,7 +122,7 @@ public static class ClipsReadEndpoints
 
         if (clip is null)
         {
-            return Results.NotFound(new { error = "not_found" });
+            return ProblemResults.NotFound("not_found");
         }
 
         var expiresAt = DateTimeOffset.UtcNow.Add(VideoUrlLifetime);
