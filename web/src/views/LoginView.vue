@@ -1,8 +1,13 @@
 <script setup lang="ts">
-import { useRoute } from 'vue-router'
+import { watchEffect } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import { oauthStartUrl } from '@/api/auth'
 
 const route = useRoute()
+const router = useRouter()
+const auth = useAuthStore()
+
 const rawRedirect = route.query.redirect
 let returnTo: string | undefined
 if (
@@ -12,6 +17,13 @@ if (
 ) {
   returnTo = rawRedirect
 }
+
+// Redirect away if the user is already authenticated.
+watchEffect(() => {
+  if (auth.isAuthenticated) {
+    router.replace(returnTo || '/')
+  }
+})
 </script>
 
 <template>
@@ -29,7 +41,7 @@ if (
       <!-- Discord -->
       <a
         :href="oauthStartUrl('discord', returnTo)"
-        class="flex items-center justify-center gap-3 rounded-md bg-brand px-5 py-3 font-heading text-sm font-bold uppercase tracking-wider text-text-primary transition-colors duration-150 hover:bg-brand-light"
+        class="flex items-center justify-center gap-3 rounded-md bg-[#5865F2] px-5 py-3 font-heading text-sm font-bold uppercase tracking-wider text-white transition-colors duration-150 hover:bg-[#4752C4]"
       >
         <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path
