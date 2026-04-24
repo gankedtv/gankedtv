@@ -2,6 +2,7 @@ using System.Security.Claims;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Contracts.Users;
 using GankedTV.Api.Data;
+using GankedTV.Api.Problems;
 using Microsoft.EntityFrameworkCore;
 
 namespace GankedTV.Api.Endpoints;
@@ -25,7 +26,7 @@ public static class UsersEndpoints
     {
         if (string.IsNullOrWhiteSpace(username))
         {
-            return Results.NotFound(new { error = "not_found" });
+            return ProblemResults.NotFound("not_found");
         }
 
         // Case-insensitive equality via LOWER(...). Avoid EF.Functions.ILike here — `%` and `_`
@@ -37,7 +38,7 @@ public static class UsersEndpoints
 
         if (user is null)
         {
-            return Results.NotFound(new { error = "not_found" });
+            return ProblemResults.NotFound("not_found");
         }
 
         var clips = await db.Clips.AsNoTracking()

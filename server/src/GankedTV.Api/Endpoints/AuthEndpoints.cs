@@ -4,7 +4,8 @@ using GankedTV.Api.Auth.Providers;
 using GankedTV.Api.Auth.State;
 using GankedTV.Api.Auth.Tokens;
 using GankedTV.Api.Contracts.Auth;
-using Microsoft.AspNetCore.Http.HttpResults;
+using GankedTV.Api.Problems;
+using GankedTV.Api.Validation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
@@ -17,7 +18,14 @@ public static class AuthEndpoints
         app.MapGet("/auth/providers", ListProviders);
         app.MapGet("/auth/{provider}/start", Start);
         app.MapGet("/auth/{provider}/callback", Callback);
-        app.MapPost("/auth/refresh", Refresh);
+        app.MapPost("/auth/refresh", Refresh)
+            .WithValidation<RefreshRequest>()
+            // Keep OpenAPI in sync with the three shapes Refresh can return. Moved onto the
+            // route-group call because the handler now returns IResult (needed to return a
+            // ProblemDetails body on 401 via ProblemResults.Unauthorized).
+            .Produces<TokenResponse>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status401Unauthorized);
         return app;
     }
 
@@ -34,7 +42,7 @@ public static class AuthEndpoints
     {
         if (!registry.TryGet(provider, out var oauth))
         {
-            return Results.NotFound(new { error = "unknown_provider" });
+            return ProblemResults.NotFound("unknown_provider");
         }
 
         var state = stateCookies.IssueState(returnTo);
@@ -66,12 +74,12 @@ public static class AuthEndpoints
     {
         if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(state))
         {
-            return Results.BadRequest(new { error = "missing_code_or_state" });
+            return ProblemResults.BadRequest("missing_code_or_state");
         }
 
         if (!registry.TryGet(provider, out var oauth))
         {
-            return Results.NotFound(new { error = "unknown_provider" });
+            return ProblemResults.NotFound("unknown_provider");
         }
 
         var cookie = http.Request.Cookies[StateCookieService.CookieName];
@@ -80,7 +88,7 @@ public static class AuthEndpoints
         var stateResult = stateCookies.ValidateState(state, cookie);
         if (!stateResult.Ok)
         {
-            return Results.BadRequest(new { error = "invalid_state" });
+            return ProblemResults.BadRequest("invalid_state");
         }
 
         OAuthUserInfo info;
@@ -90,7 +98,7 @@ public static class AuthEndpoints
         }
         catch (OAuthExchangeException ex)
         {
-            return Results.BadRequest(new { error = "oauth_exchange_failed", message = ex.Message });
+            return ProblemResults.BadRequest("oauth_exchange_failed", ex.Message);
         }
 
         var user = await users.UpsertFromOAuthAsync(oauth.Name, info, ct);
@@ -107,29 +115,31 @@ public static class AuthEndpoints
         return Results.Redirect(location);
     }
 
-    private static async Task<Results<Ok<TokenResponse>, UnauthorizedHttpResult, BadRequest>> Refresh(
-        [FromBody] RefreshRequest req,
+    private static async Task<IResult> Refresh(
+        // Nullable so a literal JSON `null` body reaches the ValidationEndpointFilter.
+        [FromBody] RefreshRequest? req,
         IJwtService jwt,
         IRefreshTokenService refreshTokens,
         IOptions<JwtOptions> jwtOptions,
         CancellationToken ct)
     {
-        if (req is null || string.IsNullOrEmpty(req.Refresh))
+        // Defensive: the WithValidation<RefreshRequest> filter returns 400 for null bodies.
+        if (req is null)
         {
-            return TypedResults.BadRequest();
+            return ProblemResults.InvalidBody();
         }
 
         try
         {
             var result = await refreshTokens.RotateAsync(req.Refresh, ct);
             var token = jwt.Issue(result.User);
-            return TypedResults.Ok(result.ToTokenResponse(
+            return Results.Ok(result.ToTokenResponse(
                 token,
                 jwtOptions.Value.ExpiryMinutes * 60));
         }
         catch (InvalidRefreshTokenException)
         {
-            return TypedResults.Unauthorized();
+            return ProblemResults.Unauthorized("invalid_refresh");
         }
     }
 }

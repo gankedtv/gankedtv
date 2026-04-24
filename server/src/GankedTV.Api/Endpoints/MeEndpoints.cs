@@ -3,8 +3,10 @@ using System.Security.Claims;
 using GankedTV.Api.Auth;
 using GankedTV.Api.Contracts.Users;
 using GankedTV.Api.Data;
+using GankedTV.Api.Problems;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using GankedTV.Api.Validation;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -18,7 +20,7 @@ public static class MeEndpoints
     public static IEndpointRouteBuilder MapMeEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/me", GetMe).RequireAuthorization();
-        app.MapPatch("/me", PatchMe).RequireAuthorization();
+        app.MapPatch("/me", PatchMe).RequireAuthorization().WithValidation<UpdateMeRequest>();
         return app;
     }
 
@@ -43,20 +45,30 @@ public static class MeEndpoints
     }
 
     private static async Task<IResult> PatchMe(
-        [FromBody] UpdateMeRequest req,
+        // Nullable so a literal JSON `null` body reaches the ValidationEndpointFilter (which
+        // shapes it into the same ValidationProblemDetails response as a missing field)
+        // rather than surfacing as a framework-generated 400 that bypasses our filter.
+        [FromBody] UpdateMeRequest? req,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
         CancellationToken ct)
     {
         if (!TryGetUserId(principal, out var userId))
         {
-            return Results.Unauthorized();
+            return ProblemResults.Unauthorized("unauthorized");
         }
 
         var user = await db.Users.FindAsync([userId], ct);
         if (user is null)
         {
-            return Results.Unauthorized();
+            return ProblemResults.Unauthorized("unauthorized");
+        }
+
+        // Defensive: the WithValidation<T> filter guards null bodies before this handler runs
+        // — same envelope so a filter removal doesn't change the shape clients see.
+        if (req is null)
+        {
+            return ProblemResults.InvalidBody();
         }
 
         var changed = false;
@@ -67,7 +79,7 @@ public static class MeEndpoints
             // fallback ("player") and silently rename the user.
             if (string.IsNullOrWhiteSpace(req.Username))
             {
-                return Results.BadRequest(new { error = "invalid_username" });
+                return ProblemResults.BadRequest("invalid_username");
             }
             var slug = UsernameGenerator.Slugify(req.Username);
             // Slugify caps at MaxLength (≤ 24 chars, under the 30-char DB column), so the only
@@ -75,14 +87,14 @@ public static class MeEndpoints
             // Accept literal "player" from the client; reject other input that decays to it.
             if (slug == UsernameGenerator.Fallback && !req.Username.Equals(UsernameGenerator.Fallback, StringComparison.OrdinalIgnoreCase))
             {
-                return Results.BadRequest(new { error = "invalid_username" });
+                return ProblemResults.BadRequest("invalid_username");
             }
             if (slug != user.Username)
             {
                 var taken = await db.Users.AnyAsync(u => u.Id != userId && u.Username == slug, ct);
                 if (taken)
                 {
-                    return Results.Conflict(new { error = "username_taken" });
+                    return ProblemResults.Conflict("username_taken");
                 }
                 user.Username = slug;
                 changed = true;
@@ -93,7 +105,7 @@ public static class MeEndpoints
         {
             if (req.Bio.Length > MaxBioLength)
             {
-                return Results.BadRequest(new { error = "bio_too_long" });
+                return ProblemResults.BadRequest("bio_too_long");
             }
             var newBio = req.Bio.Length == 0 ? null : req.Bio;
             if (user.Bio != newBio)
@@ -108,7 +120,7 @@ public static class MeEndpoints
             var (ok, newAvatar) = ValidateAvatarUrl(req.AvatarUrl);
             if (!ok)
             {
-                return Results.BadRequest(new { error = "invalid_avatar_url" });
+                return ProblemResults.BadRequest("invalid_avatar_url");
             }
             if (user.AvatarUrl != newAvatar)
             {
@@ -130,7 +142,7 @@ public static class MeEndpoints
         catch (DbUpdateException ex) when (IsUsernameUniqueViolation(ex))
         {
             // A concurrent writer took the username between our AnyAsync check and the save.
-            return Results.Conflict(new { error = "username_taken" });
+            return ProblemResults.Conflict("username_taken");
         }
         return Results.Ok(user.ToMe());
     }

@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Data;
+using GankedTV.Api.Problems;
 using Microsoft.EntityFrameworkCore;
 
 namespace GankedTV.Api.Endpoints;
@@ -24,7 +25,7 @@ public static class LikesEndpoints
     {
         if (!TryGetUserId(principal, out var userId))
         {
-            return Results.Unauthorized();
+            return ProblemResults.Unauthorized("unauthorized");
         }
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
@@ -32,7 +33,7 @@ public static class LikesEndpoints
         var clipExists = await db.Clips.AnyAsync(c => c.Id == id, ct);
         if (!clipExists)
         {
-            return Results.NotFound(new { error = "not_found" });
+            return ProblemResults.NotFound("not_found");
         }
 
         // Atomic idempotent insert: ON CONFLICT DO NOTHING collapses a duplicate like (sequential
@@ -69,7 +70,7 @@ public static class LikesEndpoints
     {
         if (!TryGetUserId(principal, out var userId))
         {
-            return Results.Unauthorized();
+            return ProblemResults.Unauthorized("unauthorized");
         }
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
@@ -77,7 +78,7 @@ public static class LikesEndpoints
         var clipExists = await db.Clips.AnyAsync(c => c.Id == id, ct);
         if (!clipExists)
         {
-            return Results.NotFound(new { error = "not_found" });
+            return ProblemResults.NotFound("not_found");
         }
 
         // Set-based delete: a single SQL DELETE that returns the row count. Under concurrent

@@ -1,7 +1,9 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using GankedTV.Api.Contracts.Clips;
+using GankedTV.Api.Problems;
 using GankedTV.Api.Services.Clips;
+using GankedTV.Api.Validation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 
@@ -16,13 +18,15 @@ public static class ClipsUploadEndpoints
     public static IEndpointRouteBuilder MapClipsUploadEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/clips").RequireAuthorization();
-        group.MapPost("/", CreateClip);
+        group.MapPost("/", CreateClip).WithValidation<CreateClipRequest>();
         group.MapPost("/{id:guid}/upload-url", GetUploadUrl);
         group.MapPost("/{id:guid}/complete", CompleteClip);
         return app;
     }
 
     private static async Task<IResult> CreateClip(
+        // Nullable so a literal JSON `null` body hits the ValidationEndpointFilter (which
+        // returns 400 ValidationProblemDetails) rather than a framework-generated 400.
         [FromBody] CreateClipRequest? req,
         ClaimsPrincipal principal,
         IClipUploadService clips,
@@ -31,14 +35,14 @@ public static class ClipsUploadEndpoints
     {
         if (!TryGetUserId(principal, out var userId))
         {
-            return Results.Unauthorized();
+            return ProblemResults.Unauthorized("unauthorized");
         }
 
-        // A literal JSON `null` body deserializes to a null reference even though the
-        // parameter type is non-nullable, so guard explicitly before dereferencing.
+        // Defensive: the WithValidation<T> filter guards null bodies; this is unreachable at
+        // runtime but keeps the handler safe if the filter is ever removed — same envelope.
         if (req is null)
         {
-            return Results.BadRequest(new { error = "invalid_body" });
+            return ProblemResults.InvalidBody();
         }
 
         var result = await clips.CreateAsync(
@@ -60,7 +64,7 @@ public static class ClipsUploadEndpoints
     {
         if (!TryGetUserId(principal, out var userId))
         {
-            return Results.Unauthorized();
+            return ProblemResults.Unauthorized("unauthorized");
         }
 
         var result = await clips.GetUploadUrlAsync(userId, id, ct);
@@ -78,7 +82,7 @@ public static class ClipsUploadEndpoints
     {
         if (!TryGetUserId(principal, out var userId))
         {
-            return Results.Unauthorized();
+            return ProblemResults.Unauthorized("unauthorized");
         }
 
         var result = await clips.CompleteAsync(userId, id, ct);
@@ -89,14 +93,14 @@ public static class ClipsUploadEndpoints
 
     private static IResult MapError(ClipUploadError error, ILoggerFactory loggerFactory) => error switch
     {
-        ClipUploadError.InvalidTitle => Results.BadRequest(new { error = "invalid_title" }),
-        ClipUploadError.InvalidDescription => Results.BadRequest(new { error = "invalid_description" }),
-        ClipUploadError.InvalidVisibility => Results.BadRequest(new { error = "invalid_visibility" }),
-        ClipUploadError.NotFound => Results.NotFound(new { error = "not_found" }),
-        ClipUploadError.InvalidState => Results.BadRequest(new { error = "invalid_state" }),
-        ClipUploadError.ObjectNotUploaded => Results.BadRequest(new { error = "object_not_uploaded" }),
-        ClipUploadError.FileTooLarge => Results.BadRequest(new { error = "file_too_large" }),
-        ClipUploadError.UnsupportedContentType => Results.BadRequest(new { error = "unsupported_content_type" }),
+        ClipUploadError.InvalidTitle => ProblemResults.BadRequest("invalid_title"),
+        ClipUploadError.InvalidDescription => ProblemResults.BadRequest("invalid_description"),
+        ClipUploadError.InvalidVisibility => ProblemResults.BadRequest("invalid_visibility"),
+        ClipUploadError.NotFound => ProblemResults.NotFound("not_found"),
+        ClipUploadError.InvalidState => ProblemResults.BadRequest("invalid_state"),
+        ClipUploadError.ObjectNotUploaded => ProblemResults.BadRequest("object_not_uploaded"),
+        ClipUploadError.FileTooLarge => ProblemResults.BadRequest("file_too_large"),
+        ClipUploadError.UnsupportedContentType => ProblemResults.BadRequest("unsupported_content_type"),
         _ => UnmappedError(error, loggerFactory),
     };
 
@@ -104,10 +108,7 @@ public static class ClipsUploadEndpoints
     {
         loggerFactory.CreateLogger(LogCategory)
             .LogError("Unmapped ClipUploadError value {Error}; add a case to MapError.", error);
-        return Results.Problem(
-            title: "unmapped_error",
-            detail: $"Unhandled error: {error}",
-            statusCode: StatusCodes.Status500InternalServerError);
+        return ProblemResults.Internal("unmapped_error", $"Unhandled error: {error}");
     }
 
     private static bool TryGetUserId(ClaimsPrincipal principal, out Guid userId)
