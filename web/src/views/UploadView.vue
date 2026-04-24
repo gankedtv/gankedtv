@@ -75,22 +75,38 @@ function checklistDone(index: number): boolean {
   return progress.value >= 100
 }
 
-const inputStyle = 'width: 100%; padding: 12px 14px; background: var(--color-surface-raised); border: 1px solid var(--color-border); border-radius: var(--radius-md); color: var(--color-text-primary); font-family: var(--font-body); font-size: 14px; outline: none;'
-const labelStyle = 'font-family: var(--font-mono); font-size: 10px; color: var(--color-text-muted); letter-spacing: 0.1em; text-transform: uppercase; display: block; margin-bottom: 6px;'
+const inputStyle =
+  'width: 100%; padding: 12px 14px; background: var(--color-surface-raised); border: 1px solid var(--color-border); border-radius: var(--radius-md); color: var(--color-text-primary); font-family: var(--font-body); font-size: 14px; outline: none;'
+const labelStyle =
+  'font-family: var(--font-mono); font-size: 10px; color: var(--color-text-muted); letter-spacing: 0.1em; text-transform: uppercase; display: block; margin-bottom: 6px;'
 </script>
 
 <template>
-  <main style="max-width: 900px; margin: 0 auto; padding: 32px 24px 120px;">
-
+  <main style="max-width: 900px; margin: 0 auto; padding: 32px 24px 120px">
     <!-- Page header -->
-    <div style="margin-bottom: 28px;">
+    <div style="margin-bottom: 28px">
       <div
-        style="font-family: var(--font-mono); font-size: 11px; color: var(--color-text-muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 10px;"
+        style="
+          font-family: var(--font-mono);
+          font-size: 11px;
+          color: var(--color-text-muted);
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          margin-bottom: 10px;
+        "
       >
         Any source welcome · OBS, ShadowPlay, Medal, Xbox, consoles — just drop the file
       </div>
       <h1
-        style="font-family: var(--font-heading); font-weight: 700; font-size: clamp(32px, 4vw, 52px); text-transform: uppercase; margin: 0; line-height: 1; color: var(--color-text-primary);"
+        style="
+          font-family: var(--font-heading);
+          font-weight: 700;
+          font-size: clamp(32px, 4vw, 52px);
+          text-transform: uppercase;
+          margin: 0;
+          line-height: 1;
+          color: var(--color-text-primary);
+        "
       >
         Upload a clip
       </h1>
@@ -98,7 +114,14 @@ const labelStyle = 'font-family: var(--font-mono); font-size: 10px; color: var(-
 
     <!-- Stepper -->
     <div
-      style="background: var(--color-surface-raised); border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; display: flex; margin-bottom: 32px;"
+      style="
+        background: var(--color-surface-raised);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        overflow: hidden;
+        display: flex;
+        margin-bottom: 32px;
+      "
     >
       <div
         v-for="(s, i) in STEPS"
@@ -108,7 +131,8 @@ const labelStyle = 'font-family: var(--font-mono); font-size: 10px; color: var(-
           padding: '16px 20px',
           borderRight: i < STEPS.length - 1 ? '1px solid var(--color-border)' : 'none',
           background: step >= Number(s.num) ? 'var(--color-surface-overlay)' : 'transparent',
-          borderBottom: step === Number(s.num) ? '2px solid var(--color-brand-light)' : '2px solid transparent',
+          borderBottom:
+            step === Number(s.num) ? '2px solid var(--color-brand-light)' : '2px solid transparent',
           position: 'relative',
         }"
       >
@@ -125,7 +149,13 @@ const labelStyle = 'font-family: var(--font-mono); font-size: 10px; color: var(-
           Step {{ s.num }}
         </div>
         <div
-          style="font-family: var(--font-heading); font-weight: 700; font-size: 16px; text-transform: uppercase; color: var(--color-text-primary);"
+          style="
+            font-family: var(--font-heading);
+            font-weight: 700;
+            font-size: 16px;
+            text-transform: uppercase;
+            color: var(--color-text-primary);
+          "
         >
           {{ s.label }}
         </div>
@@ -140,7 +170,9 @@ const labelStyle = 'font-family: var(--font-mono); font-size: 10px; color: var(-
         @dragleave.prevent="dragging = false"
         @drop.prevent="handleDrop"
         :style="{
-          border: dragging ? '2px dashed var(--color-brand-light)' : '2px dashed var(--color-border-strong)',
+          border: dragging
+            ? '2px dashed var(--color-brand-light)'
+            : '2px dashed var(--color-border-strong)',
           borderRadius: 'var(--radius-lg)',
           padding: '64px 24px',
           display: 'flex',
@@ -154,42 +186,111 @@ const labelStyle = 'font-family: var(--font-mono); font-size: 10px; color: var(-
       >
         <!-- Upload icon circle -->
         <div
-          style="width: 64px; height: 64px; border-radius: 50%; background: var(--color-surface-overlay); border: 1px solid var(--color-border-strong); display: flex; align-items: center; justify-content: center;"
+          style="
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            background: var(--color-surface-overlay);
+            border: 1px solid var(--color-border-strong);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          "
         >
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-brand-light)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="17 8 12 3 7 8"/>
-            <line x1="12" y1="3" x2="12" y2="15"/>
+          <svg
+            width="28"
+            height="28"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="var(--color-brand-light)"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
           </svg>
         </div>
 
         <div>
-          <div style="font-family: var(--font-heading); font-weight: 700; font-size: 22px; text-transform: uppercase; color: var(--color-text-primary); margin-bottom: 6px;">
+          <div
+            style="
+              font-family: var(--font-heading);
+              font-weight: 700;
+              font-size: 22px;
+              text-transform: uppercase;
+              color: var(--color-text-primary);
+              margin-bottom: 6px;
+            "
+          >
             Drop your clip here
           </div>
-          <div style="font-family: var(--font-body); font-size: 14px; color: var(--color-text-secondary);">
+          <div
+            style="
+              font-family: var(--font-body);
+              font-size: 14px;
+              color: var(--color-text-secondary);
+            "
+          >
             MP4, MOV, WebM — up to 4 GB
           </div>
         </div>
 
         <!-- Choose file button -->
         <label
-          style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 22px; background: var(--color-brand); border-radius: var(--radius-md); font-family: var(--font-heading); font-weight: 700; font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; color: #fff; cursor: pointer; transition: background 0.15s;"
+          style="
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 22px;
+            background: var(--color-brand);
+            border-radius: var(--radius-md);
+            font-family: var(--font-heading);
+            font-weight: 700;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #fff;
+            cursor: pointer;
+            transition: background 0.15s;
+          "
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
           </svg>
           Choose file
           <input type="file" accept="video/*" class="sr-only" @change="handleFileSelect" />
         </label>
 
         <!-- Source badges -->
-        <div style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 8px;">
+        <div
+          style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 8px"
+        >
           <span
             v-for="src in SOURCES"
             :key="src"
-            style="font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; padding: 4px 10px; background: var(--color-surface-overlay); border: 1px solid var(--color-border); border-radius: var(--radius-sm); color: var(--color-text-muted);"
+            style="
+              font-family: var(--font-mono);
+              font-size: 10px;
+              letter-spacing: 0.08em;
+              text-transform: uppercase;
+              padding: 4px 10px;
+              background: var(--color-surface-overlay);
+              border: 1px solid var(--color-border);
+              border-radius: var(--radius-sm);
+              color: var(--color-text-muted);
+            "
           >
             {{ src }}
           </span>
@@ -199,30 +300,90 @@ const labelStyle = 'font-family: var(--font-mono); font-size: 10px; color: var(-
       <!-- File confirmation row -->
       <div
         v-if="file"
-        style="margin-top: 20px; padding: 16px 20px; background: var(--color-neon-dim); border: 1px solid var(--color-neon); border-radius: var(--radius-md); display: flex; align-items: center; gap: 16px;"
+        style="
+          margin-top: 20px;
+          padding: 16px 20px;
+          background: var(--color-neon-dim);
+          border: 1px solid var(--color-neon);
+          border-radius: var(--radius-md);
+          display: flex;
+          align-items: center;
+          gap: 16px;
+        "
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-neon)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-          <polyline points="14 2 14 8 20 8"/>
-          <line x1="16" y1="13" x2="8" y2="13"/>
-          <line x1="16" y1="17" x2="8" y2="17"/>
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="var(--color-neon)"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          style="flex-shrink: 0"
+        >
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="16" y1="13" x2="8" y2="13" />
+          <line x1="16" y1="17" x2="8" y2="17" />
         </svg>
-        <div style="flex: 1; min-width: 0;">
-          <div style="font-family: var(--font-body); font-size: 14px; color: var(--color-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+        <div style="flex: 1; min-width: 0">
+          <div
+            style="
+              font-family: var(--font-body);
+              font-size: 14px;
+              color: var(--color-text-primary);
+              white-space: nowrap;
+              overflow: hidden;
+              text-overflow: ellipsis;
+            "
+          >
             {{ file.name }}
           </div>
-          <div style="font-family: var(--font-mono); font-size: 11px; color: var(--color-text-muted); margin-top: 2px;">
+          <div
+            style="
+              font-family: var(--font-mono);
+              font-size: 11px;
+              color: var(--color-text-muted);
+              margin-top: 2px;
+            "
+          >
             {{ formatSize(file.size) }}
           </div>
         </div>
         <button
           @click="step = 2"
-          style="display: inline-flex; align-items: center; gap: 6px; padding: 10px 20px; background: var(--color-brand-light); border-radius: var(--radius-md); font-family: var(--font-heading); font-weight: 700; font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; color: #fff; cursor: pointer; white-space: nowrap; flex-shrink: 0;"
+          style="
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 20px;
+            background: var(--color-brand-light);
+            border-radius: var(--radius-md);
+            font-family: var(--font-heading);
+            font-weight: 700;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #fff;
+            cursor: pointer;
+            white-space: nowrap;
+            flex-shrink: 0;
+          "
         >
           Continue
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="5" y1="12" x2="19" y2="12"/>
-            <polyline points="12 5 19 12 12 19"/>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <line x1="5" y1="12" x2="19" y2="12" />
+            <polyline points="12 5 19 12 12 19" />
           </svg>
         </button>
       </div>
@@ -231,17 +392,29 @@ const labelStyle = 'font-family: var(--font-mono); font-size: 10px; color: var(-
     <!-- Step 2: Metadata -->
     <div v-else-if="step === 2">
       <div
-        style="display: grid; grid-template-columns: 1fr 320px; gap: 32px;"
+        style="display: grid; grid-template-columns: 1fr 320px; gap: 32px"
         class="upload-meta-grid"
       >
         <!-- Left: form -->
-        <div style="display: flex; flex-direction: column; gap: 24px;">
-
+        <div style="display: flex; flex-direction: column; gap: 24px">
           <!-- Title -->
           <div>
-            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+            <div
+              style="
+                display: flex;
+                justify-content: space-between;
+                align-items: baseline;
+                margin-bottom: 6px;
+              "
+            >
               <label :style="labelStyle">Title</label>
-              <span style="font-family: var(--font-mono); font-size: 10px; color: var(--color-text-muted);">
+              <span
+                style="
+                  font-family: var(--font-mono);
+                  font-size: 10px;
+                  color: var(--color-text-muted);
+                "
+              >
                 {{ title.length }}/100
               </span>
             </div>
@@ -256,7 +429,7 @@ const labelStyle = 'font-family: var(--font-mono); font-size: 10px; color: var(-
           <!-- Game picker -->
           <div>
             <label :style="labelStyle">Game</label>
-            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; flex-wrap: wrap; gap: 8px">
               <button
                 v-for="key in GAME_KEYS"
                 :key="key"
@@ -264,7 +437,10 @@ const labelStyle = 'font-family: var(--font-mono); font-size: 10px; color: var(-
                 :style="{
                   padding: '8px 14px',
                   borderRadius: 'var(--radius-md)',
-                  border: game === key ? '1px solid var(--color-brand-light)' : '1px solid var(--color-border)',
+                  border:
+                    game === key
+                      ? '1px solid var(--color-brand-light)'
+                      : '1px solid var(--color-border)',
                   background: game === key ? 'var(--color-brand)' : 'var(--color-surface-raised)',
                   color: game === key ? '#fff' : 'var(--color-text-secondary)',
                   fontFamily: 'var(--font-heading)',
@@ -283,9 +459,27 @@ const labelStyle = 'font-family: var(--font-mono); font-size: 10px; color: var(-
 
           <!-- Description -->
           <div>
-            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
-              <label :style="labelStyle">Description <span style="color: var(--color-text-muted); font-size: 9px;">(optional)</span></label>
-              <span style="font-family: var(--font-mono); font-size: 10px; color: var(--color-text-muted);">
+            <div
+              style="
+                display: flex;
+                justify-content: space-between;
+                align-items: baseline;
+                margin-bottom: 6px;
+              "
+            >
+              <label :style="labelStyle"
+                >Description
+                <span style="color: var(--color-text-muted); font-size: 9px"
+                  >(optional)</span
+                ></label
+              >
+              <span
+                style="
+                  font-family: var(--font-mono);
+                  font-size: 10px;
+                  color: var(--color-text-muted);
+                "
+              >
                 {{ desc.length }}/500
               </span>
             </div>
@@ -301,7 +495,7 @@ const labelStyle = 'font-family: var(--font-mono); font-size: 10px; color: var(-
           <!-- Visibility -->
           <div>
             <label :style="labelStyle">Visibility</label>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px">
               <button
                 v-for="opt in ['public', 'unlisted'] as const"
                 :key="opt"
@@ -309,29 +503,71 @@ const labelStyle = 'font-family: var(--font-mono); font-size: 10px; color: var(-
                 :style="{
                   padding: '14px 16px',
                   borderRadius: 'var(--radius-md)',
-                  border: visibility === opt ? '1px solid var(--color-brand-light)' : '1px solid var(--color-border)',
-                  background: visibility === opt ? 'var(--color-brand-glow)' : 'var(--color-surface-raised)',
-                  color: visibility === opt ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                  border:
+                    visibility === opt
+                      ? '1px solid var(--color-brand-light)'
+                      : '1px solid var(--color-border)',
+                  background:
+                    visibility === opt ? 'var(--color-brand-glow)' : 'var(--color-surface-raised)',
+                  color:
+                    visibility === opt
+                      ? 'var(--color-text-primary)'
+                      : 'var(--color-text-secondary)',
                   cursor: 'pointer',
                   textAlign: 'left',
                   transition: 'all 0.15s',
                 }"
               >
-                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-                  <svg v-if="opt === 'public'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10"/>
-                    <line x1="2" y1="12" x2="22" y2="12"/>
-                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px">
+                  <svg
+                    v-if="opt === 'public'"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="2" y1="12" x2="22" y2="12" />
+                    <path
+                      d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
+                    />
                   </svg>
-                  <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                  <svg
+                    v-else
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
                   </svg>
-                  <span style="font-family: var(--font-heading); font-weight: 700; font-size: 14px; text-transform: uppercase;">
+                  <span
+                    style="
+                      font-family: var(--font-heading);
+                      font-weight: 700;
+                      font-size: 14px;
+                      text-transform: uppercase;
+                    "
+                  >
                     {{ opt === 'public' ? 'Public' : 'Unlisted' }}
                   </span>
                 </div>
-                <div style="font-family: var(--font-body); font-size: 12px; color: var(--color-text-muted);">
+                <div
+                  style="
+                    font-family: var(--font-body);
+                    font-size: 12px;
+                    color: var(--color-text-muted);
+                  "
+                >
                   {{ opt === 'public' ? 'Visible on feed + search' : 'Only accessible via link' }}
                 </div>
               </button>
@@ -339,14 +575,37 @@ const labelStyle = 'font-family: var(--font-mono); font-size: 10px; color: var(-
           </div>
 
           <!-- Action buttons -->
-          <div style="display: flex; gap: 12px; padding-top: 8px;">
+          <div style="display: flex; gap: 12px; padding-top: 8px">
             <button
               @click="step = 1"
-              style="display: inline-flex; align-items: center; gap: 6px; padding: 12px 20px; background: var(--color-surface-overlay); border: 1px solid var(--color-border); border-radius: var(--radius-md); font-family: var(--font-heading); font-weight: 700; font-size: 14px; text-transform: uppercase; color: var(--color-text-secondary); cursor: pointer;"
+              style="
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 12px 20px;
+                background: var(--color-surface-overlay);
+                border: 1px solid var(--color-border);
+                border-radius: var(--radius-md);
+                font-family: var(--font-heading);
+                font-weight: 700;
+                font-size: 14px;
+                text-transform: uppercase;
+                color: var(--color-text-secondary);
+                cursor: pointer;
+              "
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="19" y1="12" x2="5" y2="12"/>
-                <polyline points="12 19 5 12 12 5"/>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <line x1="19" y1="12" x2="5" y2="12" />
+                <polyline points="12 19 5 12 12 5" />
               </svg>
               Back
             </button>
@@ -360,7 +619,9 @@ const labelStyle = 'font-family: var(--font-mono); font-size: 10px; color: var(-
                 justifyContent: 'center',
                 gap: '8px',
                 padding: '12px 20px',
-                background: title.trim() ? 'var(--color-brand-light)' : 'var(--color-surface-overlay)',
+                background: title.trim()
+                  ? 'var(--color-brand-light)'
+                  : 'var(--color-surface-overlay)',
                 border: title.trim() ? 'none' : '1px solid var(--color-border)',
                 borderRadius: 'var(--radius-md)',
                 fontFamily: 'var(--font-heading)',
@@ -374,9 +635,18 @@ const labelStyle = 'font-family: var(--font-mono); font-size: 10px; color: var(-
               }"
             >
               Start upload
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="5" y1="12" x2="19" y2="12"/>
-                <polyline points="12 5 19 12 12 19"/>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <line x1="5" y1="12" x2="19" y2="12" />
+                <polyline points="12 5 19 12 12 19" />
               </svg>
             </button>
           </div>
@@ -386,31 +656,66 @@ const labelStyle = 'font-family: var(--font-mono); font-size: 10px; color: var(-
         <div>
           <label :style="labelStyle + ' margin-bottom: 12px;'">Preview</label>
           <div
-            style="background: var(--color-surface-raised); border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden;"
+            style="
+              background: var(--color-surface-raised);
+              border: 1px solid var(--color-border);
+              border-radius: var(--radius-md);
+              overflow: hidden;
+            "
           >
             <!-- Thumbnail -->
-            <div style="aspect-ratio: 16/9; position: relative; background: var(--color-surface-sunken);">
+            <div
+              style="
+                aspect-ratio: 16/9;
+                position: relative;
+                background: var(--color-surface-sunken);
+              "
+            >
               <img
                 v-if="GAMES[game]?.art"
                 :src="GAMES[game].art"
                 :alt="GAMES[game].name"
-                style="width: 100%; height: 100%; object-fit: cover;"
+                style="width: 100%; height: 100%; object-fit: cover"
               />
               <!-- Game tag -->
               <div
-                style="position: absolute; top: 8px; left: 8px; padding: 3px 8px; background: var(--color-brand); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: #fff;"
+                style="
+                  position: absolute;
+                  top: 8px;
+                  left: 8px;
+                  padding: 3px 8px;
+                  background: var(--color-brand);
+                  border-radius: var(--radius-sm);
+                  font-family: var(--font-mono);
+                  font-size: 10px;
+                  letter-spacing: 0.08em;
+                  text-transform: uppercase;
+                  color: #fff;
+                "
               >
                 {{ GAMES[game]?.tag }}
               </div>
               <!-- Visibility badge -->
               <div
-                style="position: absolute; top: 8px; right: 8px; padding: 3px 8px; background: rgba(0,0,0,0.6); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted);"
+                style="
+                  position: absolute;
+                  top: 8px;
+                  right: 8px;
+                  padding: 3px 8px;
+                  background: rgba(0, 0, 0, 0.6);
+                  border-radius: var(--radius-sm);
+                  font-family: var(--font-mono);
+                  font-size: 10px;
+                  letter-spacing: 0.08em;
+                  text-transform: uppercase;
+                  color: var(--color-text-muted);
+                "
               >
                 {{ visibility }}
               </div>
             </div>
 
-            <div style="padding: 14px;">
+            <div style="padding: 14px">
               <!-- Title -->
               <div
                 :style="{
@@ -427,13 +732,31 @@ const labelStyle = 'font-family: var(--font-mono); font-size: 10px; color: var(-
               </div>
 
               <!-- User row -->
-              <div style="display: flex; align-items: center; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px">
                 <div
-                  style="width: 24px; height: 24px; border-radius: 50%; background: #6d28d9; display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 9px; color: #fff; flex-shrink: 0;"
+                  style="
+                    width: 24px;
+                    height: 24px;
+                    border-radius: 50%;
+                    background: #6d28d9;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-family: var(--font-mono);
+                    font-size: 9px;
+                    color: #fff;
+                    flex-shrink: 0;
+                  "
                 >
                   P
                 </div>
-                <span style="font-family: var(--font-mono); font-size: 11px; color: var(--color-text-secondary);">
+                <span
+                  style="
+                    font-family: var(--font-mono);
+                    font-size: 11px;
+                    color: var(--color-text-secondary);
+                  "
+                >
                   @phantomveil
                 </span>
               </div>
@@ -441,12 +764,35 @@ const labelStyle = 'font-family: var(--font-mono); font-size: 10px; color: var(-
 
             <!-- Share URL preview -->
             <div
-              style="margin: 0 14px 14px; padding: 10px 12px; border: 1px dashed var(--color-border-strong); border-radius: var(--radius-sm);"
+              style="
+                margin: 0 14px 14px;
+                padding: 10px 12px;
+                border: 1px dashed var(--color-border-strong);
+                border-radius: var(--radius-sm);
+              "
             >
-              <div style="font-family: var(--font-mono); font-size: 9px; color: var(--color-text-muted); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 4px;">
+              <div
+                style="
+                  font-family: var(--font-mono);
+                  font-size: 9px;
+                  color: var(--color-text-muted);
+                  letter-spacing: 0.08em;
+                  text-transform: uppercase;
+                  margin-bottom: 4px;
+                "
+              >
                 Share URL preview
               </div>
-              <div style="font-family: var(--font-mono); font-size: 11px; color: var(--color-brand-light); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+              <div
+                style="
+                  font-family: var(--font-mono);
+                  font-size: 11px;
+                  color: var(--color-brand-light);
+                  white-space: nowrap;
+                  overflow: hidden;
+                  text-overflow: ellipsis;
+                "
+              >
                 ganked.tv/clip/clp_new
               </div>
             </div>
@@ -457,46 +803,99 @@ const labelStyle = 'font-family: var(--font-mono); font-size: 10px; color: var(-
 
     <!-- Step 3: Upload progress -->
     <div v-else-if="step === 3">
-      <div style="max-width: 560px; margin: 0 auto;">
-
+      <div style="max-width: 560px; margin: 0 auto">
         <!-- Clip summary -->
         <div
-          style="background: var(--color-surface-raised); border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; margin-bottom: 32px; display: flex; gap: 0;"
+          style="
+            background: var(--color-surface-raised);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            margin-bottom: 32px;
+            display: flex;
+            gap: 0;
+          "
         >
           <!-- Thumbnail -->
-          <div style="width: 140px; flex-shrink: 0; position: relative;">
+          <div style="width: 140px; flex-shrink: 0; position: relative">
             <img
               :src="GAMES[game]?.art"
               :alt="GAMES[game]?.name"
-              style="width: 100%; height: 100%; object-fit: cover; display: block;"
+              style="width: 100%; height: 100%; object-fit: cover; display: block"
             />
           </div>
-          <div style="padding: 16px; flex: 1; min-width: 0;">
+          <div style="padding: 16px; flex: 1; min-width: 0">
             <div
-              style="font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-neon); margin-bottom: 6px;"
+              style="
+                font-family: var(--font-mono);
+                font-size: 10px;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                color: var(--color-neon);
+                margin-bottom: 6px;
+              "
             >
               {{ GAMES[game]?.tag }}
             </div>
-            <div style="font-family: var(--font-heading); font-weight: 700; font-size: 16px; color: var(--color-text-primary); line-height: 1.3; margin-bottom: 8px;">
+            <div
+              style="
+                font-family: var(--font-heading);
+                font-weight: 700;
+                font-size: 16px;
+                color: var(--color-text-primary);
+                line-height: 1.3;
+                margin-bottom: 8px;
+              "
+            >
               {{ title }}
             </div>
-            <div style="font-family: var(--font-mono); font-size: 10px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.08em;">
+            <div
+              style="
+                font-family: var(--font-mono);
+                font-size: 10px;
+                color: var(--color-text-muted);
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+              "
+            >
               {{ visibility }}
             </div>
           </div>
         </div>
 
         <!-- Progress bar -->
-        <div style="margin-bottom: 8px; display: flex; justify-content: space-between; align-items: baseline;">
-          <span style="font-family: var(--font-mono); font-size: 11px; color: var(--color-text-muted); letter-spacing: 0.08em; text-transform: uppercase;">
+        <div
+          style="
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+          "
+        >
+          <span
+            style="
+              font-family: var(--font-mono);
+              font-size: 11px;
+              color: var(--color-text-muted);
+              letter-spacing: 0.08em;
+              text-transform: uppercase;
+            "
+          >
             Uploading
           </span>
-          <span style="font-family: var(--font-mono); font-size: 11px; color: var(--color-neon);">
+          <span style="font-family: var(--font-mono); font-size: 11px; color: var(--color-neon)">
             {{ Math.round(progress) }}%
           </span>
         </div>
         <div
-          style="width: 100%; height: 6px; background: var(--color-surface-overlay); border-radius: 999px; overflow: hidden; margin-bottom: 28px;"
+          style="
+            width: 100%;
+            height: 6px;
+            background: var(--color-surface-overlay);
+            border-radius: 999px;
+            overflow: hidden;
+            margin-bottom: 28px;
+          "
         >
           <div
             :style="{
@@ -510,11 +909,11 @@ const labelStyle = 'font-family: var(--font-mono); font-size: 10px; color: var(-
         </div>
 
         <!-- Checklist -->
-        <div style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 36px;">
+        <div style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 36px">
           <div
             v-for="(item, i) in ['Create record', 'Upload video', 'Generate thumbnail']"
             :key="item"
-            style="display: flex; align-items: center; gap: 12px;"
+            style="display: flex; align-items: center; gap: 12px"
           >
             <div
               :style="{
@@ -543,27 +942,67 @@ const labelStyle = 'font-family: var(--font-mono); font-size: 10px; color: var(-
         </div>
 
         <!-- Done actions -->
-        <div v-if="progress >= 100" style="display: flex; flex-direction: column; gap: 10px;">
+        <div v-if="progress >= 100" style="display: flex; flex-direction: column; gap: 10px">
           <button
             @click="router.push('/clip/clp_04')"
-            style="display: flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 24px; background: var(--color-brand-light); border-radius: var(--radius-md); font-family: var(--font-heading); font-weight: 700; font-size: 16px; text-transform: uppercase; letter-spacing: 0.05em; color: #fff; cursor: pointer; width: 100%;"
+            style="
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: 8px;
+              padding: 14px 24px;
+              background: var(--color-brand-light);
+              border-radius: var(--radius-md);
+              font-family: var(--font-heading);
+              font-weight: 700;
+              font-size: 16px;
+              text-transform: uppercase;
+              letter-spacing: 0.05em;
+              color: #fff;
+              cursor: pointer;
+              width: 100%;
+            "
           >
             View your clip
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="5" y1="12" x2="19" y2="12"/>
-              <polyline points="12 5 19 12 12 19"/>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <line x1="5" y1="12" x2="19" y2="12" />
+              <polyline points="12 5 19 12 12 19" />
             </svg>
           </button>
           <button
             @click="router.push('/')"
-            style="display: flex; align-items: center; justify-content: center; padding: 12px 24px; background: transparent; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-family: var(--font-heading); font-weight: 700; font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-secondary); cursor: pointer; width: 100%;"
+            style="
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              padding: 12px 24px;
+              background: transparent;
+              border: 1px solid var(--color-border);
+              border-radius: var(--radius-md);
+              font-family: var(--font-heading);
+              font-weight: 700;
+              font-size: 14px;
+              text-transform: uppercase;
+              letter-spacing: 0.05em;
+              color: var(--color-text-secondary);
+              cursor: pointer;
+              width: 100%;
+            "
           >
             Back to feed
           </button>
         </div>
       </div>
     </div>
-
   </main>
 </template>
 

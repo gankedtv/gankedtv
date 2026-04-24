@@ -13,10 +13,12 @@ const props = withDefaults(
 const userData = computed(() => USERS[props.user] ?? { display: props.user, avatar: '#6d28d9' })
 
 const initials = computed(() => {
-  return userData.value.display
-    .replace(/[^a-zA-Z]/g, '')
-    .slice(0, 2)
-    .toUpperCase() || '??'
+  return (
+    userData.value.display
+      .replace(/[^a-zA-Z]/g, '')
+      .slice(0, 2)
+      .toUpperCase() || '??'
+  )
 })
 
 const fontSize = computed(() => Math.floor(props.size * 0.35))

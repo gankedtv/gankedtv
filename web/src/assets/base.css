@@ -45,7 +45,11 @@
 /* Theme-specific CSS vars (not Tailwind utilities) */
 :root {
   --corner-cut: 10px;
-  --grid-bg: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(109, 40, 217, 0.18), transparent 60%);
+  --grid-bg: radial-gradient(
+    ellipse 80% 60% at 50% -10%,
+    rgba(109, 40, 217, 0.18),
+    transparent 60%
+  );
   --noise-opacity: 0.035;
   --scanline-opacity: 0;
   --feed-gap: 16px;
@@ -63,7 +67,11 @@
   --color-border: #e0dff2;
   --color-border-hover: #c5c3e5;
   --color-border-strong: #a8a5d4;
-  --grid-bg: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(109, 40, 217, 0.12), transparent 60%);
+  --grid-bg: radial-gradient(
+    ellipse 80% 60% at 50% -10%,
+    rgba(109, 40, 217, 0.12),
+    transparent 60%
+  );
   --noise-opacity: 0.02;
 }
 
@@ -186,18 +194,32 @@ button {
 
 /* Page eyebrow pulse dot */
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
 
 /* Kill-feed toast animation */
 @keyframes slideUp {
-  from { transform: translate(-50%, 60px); opacity: 0; }
-  to { transform: translate(-50%, 0); opacity: 1; }
+  from {
+    transform: translate(-50%, 60px);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
 }
 
 @keyframes slideDown {
-  to { transform: translate(-50%, 60px); opacity: 0; }
+  to {
+    transform: translate(-50%, 60px);
+    opacity: 0;
+  }
 }
 
 /* Placeholder art (SVG gradient for missing images) */

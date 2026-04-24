@@ -18,14 +18,33 @@ const theme = useThemeStore()
 
       <!-- Nav links -->
       <nav class="nav__links" aria-label="Main navigation">
-        <RouterLink to="/" class="nav__link" exact-active-class="nav__link--active">Feed</RouterLink>
-        <RouterLink to="/games" class="nav__link nav__link--hide-mobile" active-class="nav__link--active">Games</RouterLink>
-        <RouterLink to="/trending" class="nav__link nav__link--hide-mobile" active-class="nav__link--active">Trending</RouterLink>
+        <RouterLink to="/" class="nav__link" exact-active-class="nav__link--active"
+          >Feed</RouterLink
+        >
+        <RouterLink
+          to="/games"
+          class="nav__link nav__link--hide-mobile"
+          active-class="nav__link--active"
+          >Games</RouterLink
+        >
+        <RouterLink
+          to="/trending"
+          class="nav__link nav__link--hide-mobile"
+          active-class="nav__link--active"
+          >Trending</RouterLink
+        >
       </nav>
 
       <!-- Search (desktop only, decorative) -->
       <div class="nav__search" aria-hidden="true">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.2"
+        >
           <circle cx="11" cy="11" r="7" />
           <path d="M21 21l-4.35-4.35" />
         </svg>
@@ -36,24 +55,49 @@ const theme = useThemeStore()
       <!-- Actions -->
       <div class="nav__actions">
         <!-- Theme toggle -->
-        <button class="icon-btn" :title="theme.isDark ? 'Switch to light' : 'Switch to dark'" @click="theme.toggle()">
-          <svg v-if="theme.isDark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button
+          class="icon-btn"
+          :title="theme.isDark ? 'Switch to light' : 'Switch to dark'"
+          @click="theme.toggle()"
+        >
+          <svg
+            v-if="theme.isDark"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
             <circle cx="12" cy="12" r="4" />
-            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+            <path
+              d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
+            />
           </svg>
-          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg
+            v-else
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
             <path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" />
           </svg>
         </button>
 
         <!-- Upload button -->
-        <RouterLink
-          v-if="auth.isAuthenticated"
-          to="/upload"
-          class="btn-primary"
-        >
+        <RouterLink v-if="auth.isAuthenticated" to="/upload" class="btn-primary">
           <span class="inline-flex items-center gap-1.5">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+            >
               <path d="M12 5v14M5 12h14" />
             </svg>
             <span class="upload-label">Upload</span>
@@ -130,7 +174,9 @@ const theme = useThemeStore()
   font-weight: 500;
   color: var(--color-text-secondary);
   border-radius: var(--radius-sm);
-  transition: color 150ms, background-color 150ms;
+  transition:
+    color 150ms,
+    background-color 150ms;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   text-decoration: none;

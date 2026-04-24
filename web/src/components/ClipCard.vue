@@ -40,7 +40,10 @@ const game = computed(() => GAMES[props.clip.game])
         {{ clip.title }}
       </h3>
 
-      <div class="flex items-center gap-2 overflow-hidden" style="font-family: var(--font-mono); font-size: 11px; color: var(--color-text-secondary);">
+      <div
+        class="flex items-center gap-2 overflow-hidden"
+        style="font-family: var(--font-mono); font-size: 11px; color: var(--color-text-secondary)"
+      >
         <UserAvatar :user="clip.user" :size="20" />
         <span class="truncate min-w-0 shrink text-neon">@{{ user.username }}</span>
         <span class="shrink-0 text-text-muted">·</span>
@@ -49,17 +52,21 @@ const game = computed(() => GAMES[props.clip.game])
 
       <div
         class="flex gap-2.5 pt-1.5 border-t border-dashed border-border"
-        style="font-family: var(--font-mono); font-size: 11px; color: var(--color-text-muted);"
+        style="font-family: var(--font-mono); font-size: 11px; color: var(--color-text-muted)"
       >
         <span class="inline-flex items-center gap-1">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+            <path
+              d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
+            />
           </svg>
           {{ formatNum(clip.likes) }}
         </span>
         <span class="inline-flex items-center gap-1">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17a5 5 0 110-10 5 5 0 010 10zm0-8a3 3 0 100 6 3 3 0 000-6z" />
+            <path
+              d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17a5 5 0 110-10 5 5 0 010 10zm0-8a3 3 0 100 6 3 3 0 000-6z"
+            />
           </svg>
           {{ formatNum(clip.views) }}
         </span>

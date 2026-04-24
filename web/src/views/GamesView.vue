@@ -38,24 +38,60 @@ const sectionTitle = computed(() =>
 </script>
 
 <template>
-  <main style="max-width: 1440px; margin: 0 auto; padding: 32px 24px 120px;">
+  <main style="max-width: 1440px; margin: 0 auto; padding: 32px 24px 120px">
     <!-- Page header -->
     <div>
       <div
-        style="font-family: var(--font-mono); font-size: 11px; color: var(--color-text-muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;"
+        style="
+          font-family: var(--font-mono);
+          font-size: 11px;
+          color: var(--color-text-muted);
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          margin-bottom: 8px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        "
       >
         <span
-          style="width: 6px; height: 6px; background: var(--color-neon); border-radius: 50%; box-shadow: 0 0 8px var(--color-neon); animation: pulse 2s infinite; flex-shrink: 0;"
+          style="
+            width: 6px;
+            height: 6px;
+            background: var(--color-neon);
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--color-neon);
+            animation: pulse 2s infinite;
+            flex-shrink: 0;
+          "
         ></span>
         Library · {{ gameCount }} games · {{ clipCount * 200 }}+ clips indexed
       </div>
       <h1
-        style="font-family: var(--font-heading); font-weight: 700; font-size: clamp(32px, 4vw, 52px); letter-spacing: 0.02em; text-transform: uppercase; margin: 0 0 8px; line-height: 1; color: var(--color-text-primary);"
+        style="
+          font-family: var(--font-heading);
+          font-weight: 700;
+          font-size: clamp(32px, 4vw, 52px);
+          letter-spacing: 0.02em;
+          text-transform: uppercase;
+          margin: 0 0 8px;
+          line-height: 1;
+          color: var(--color-text-primary);
+        "
       >
         Games
       </h1>
-      <p style="color: var(--color-text-secondary); font-size: 15px; margin: 0; max-width: 56ch; line-height: 1.5;">
-        Every clip is tagged with its game. Pick a game to see its feed, top creators, and today's highlights.
+      <p
+        style="
+          color: var(--color-text-secondary);
+          font-size: 15px;
+          margin: 0;
+          max-width: 56ch;
+          line-height: 1.5;
+        "
+      >
+        Every clip is tagged with its game. Pick a game to see its feed, top creators, and today's
+        highlights.
       </p>
     </div>
 
@@ -71,15 +107,45 @@ const sectionTitle = computed(() =>
         "
         @click="active = 'all'"
       >
-        <div style="display: flex; flex-direction: column; justify-content: space-between; height: 100%; gap: 8px;">
+        <div
+          style="
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 100%;
+            gap: 8px;
+          "
+        >
           <span
-            style="font-family: var(--font-heading); font-weight: 700; font-size: 20px; text-transform: uppercase; color: #fff; line-height: 1;"
-          >All Games</span>
-          <div style="display: flex; flex-direction: column; gap: 3px;">
-            <span style="font-family: var(--font-mono); font-size: 10px; color: var(--color-neon); letter-spacing: 0.08em;">
+            style="
+              font-family: var(--font-heading);
+              font-weight: 700;
+              font-size: 20px;
+              text-transform: uppercase;
+              color: #fff;
+              line-height: 1;
+            "
+            >All Games</span
+          >
+          <div style="display: flex; flex-direction: column; gap: 3px">
+            <span
+              style="
+                font-family: var(--font-mono);
+                font-size: 10px;
+                color: var(--color-neon);
+                letter-spacing: 0.08em;
+              "
+            >
               {{ clipCount * 200 }}+ clips
             </span>
-            <span style="font-family: var(--font-mono); font-size: 10px; color: rgba(255,255,255,0.7); letter-spacing: 0.08em;">
+            <span
+              style="
+                font-family: var(--font-mono);
+                font-size: 10px;
+                color: rgba(255, 255, 255, 0.7);
+                letter-spacing: 0.08em;
+              "
+            >
               {{ creatorCount }} creators
             </span>
           </div>
@@ -91,7 +157,7 @@ const sectionTitle = computed(() =>
         v-for="(game, key) in GAMES"
         :key="key"
         class="game-tile"
-        style="position: relative; overflow: hidden;"
+        style="position: relative; overflow: hidden"
         :style="
           active === key
             ? 'border-color: var(--color-brand); box-shadow: 0 14px 40px -14px var(--color-brand-glow);'
@@ -103,22 +169,64 @@ const sectionTitle = computed(() =>
         <img
           :src="game.art"
           alt=""
-          style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.4;"
+          style="
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.4;
+          "
         />
         <!-- Gradient overlay -->
         <div
-          style="position: absolute; inset: 0; background: linear-gradient(160deg, rgba(8,8,16,0.4) 0%, rgba(8,8,16,0.85) 100%);"
+          style="
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(160deg, rgba(8, 8, 16, 0.4) 0%, rgba(8, 8, 16, 0.85) 100%);
+          "
         ></div>
         <!-- Content -->
-        <div style="position: relative; display: flex; flex-direction: column; justify-content: space-between; height: 100%; gap: 8px;">
+        <div
+          style="
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 100%;
+            gap: 8px;
+          "
+        >
           <span
-            style="font-family: var(--font-heading); font-weight: 700; font-size: 20px; text-transform: uppercase; color: #fff; line-height: 1;"
-          >{{ game.name }}</span>
-          <div style="display: flex; flex-direction: column; gap: 3px;">
-            <span style="font-family: var(--font-mono); font-size: 10px; color: var(--color-neon); letter-spacing: 0.08em;">
+            style="
+              font-family: var(--font-heading);
+              font-weight: 700;
+              font-size: 20px;
+              text-transform: uppercase;
+              color: #fff;
+              line-height: 1;
+            "
+            >{{ game.name }}</span
+          >
+          <div style="display: flex; flex-direction: column; gap: 3px">
+            <span
+              style="
+                font-family: var(--font-mono);
+                font-size: 10px;
+                color: var(--color-neon);
+                letter-spacing: 0.08em;
+              "
+            >
               {{ gameClipCount(key) * 200 }}+ clips
             </span>
-            <span style="font-family: var(--font-mono); font-size: 10px; color: rgba(255,255,255,0.7); letter-spacing: 0.08em;">
+            <span
+              style="
+                font-family: var(--font-mono);
+                font-size: 10px;
+                color: rgba(255, 255, 255, 0.7);
+                letter-spacing: 0.08em;
+              "
+            >
               {{ gameCreatorCount(key) }} creators
             </span>
           </div>
@@ -127,21 +235,45 @@ const sectionTitle = computed(() =>
     </div>
 
     <!-- Clip section -->
-    <div style="margin-top: 48px;">
+    <div style="margin-top: 48px">
       <!-- Section header -->
       <div
-        style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 20px; gap: 16px;"
+        style="
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          margin-bottom: 20px;
+          gap: 16px;
+        "
       >
         <h2
           class="section-title-bar"
-          style="font-family: var(--font-heading); font-weight: 700; font-size: 24px; text-transform: uppercase; margin: 0; display: flex; align-items: center; gap: 14px; color: var(--color-text-primary);"
+          style="
+            font-family: var(--font-heading);
+            font-weight: 700;
+            font-size: 24px;
+            text-transform: uppercase;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            color: var(--color-text-primary);
+          "
         >
           {{ sectionTitle }}
         </h2>
         <a
           href="#"
-          style="font-family: var(--font-mono); font-size: 11px; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap;"
-        >See all ·→</a>
+          style="
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--color-text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            white-space: nowrap;
+          "
+          >See all ·→</a
+        >
       </div>
 
       <!-- Clip grid -->
@@ -172,7 +304,9 @@ const sectionTitle = computed(() =>
   border-radius: var(--radius-md);
   cursor: pointer;
   text-align: left;
-  transition: border-color 150ms, box-shadow 150ms;
+  transition:
+    border-color 150ms,
+    box-shadow 150ms;
   background: var(--color-surface-raised);
 }
 
