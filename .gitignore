@@ -57,3 +57,6 @@ server/postman
 # Obsidian
 graphify-out/
 .obsidian/
+
+# Misc
+tmp/*
