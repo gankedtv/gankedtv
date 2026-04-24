@@ -1,121 +1,255 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import ThemeToggle from './ThemeToggle.vue'
+import { useThemeStore } from '@/stores/theme'
+import UserAvatar from './UserAvatar.vue'
 
 const auth = useAuthStore()
-const scrolled = ref(false)
-const menuOpen = ref(false)
-
-const navLinkClass =
-  "relative rounded-md px-3 py-1.5 text-sm font-medium text-text-secondary no-underline transition-[color,background-color] duration-150 hover:bg-surface-overlay hover:text-text-primary after:absolute after:-bottom-0.5 after:left-3 after:right-3 after:h-0.5 after:rounded-[1px] after:bg-brand-light after:opacity-0 after:transition-opacity after:duration-150 after:content-[''] [&.nav-link--active]:text-brand-light [&.nav-link--active]:after:opacity-100"
-
-function onScroll() {
-  scrolled.value = window.scrollY > 20
-}
-
-onMounted(() => {
-  window.addEventListener('scroll', onScroll, { passive: true })
-  onScroll()
-})
-onUnmounted(() => window.removeEventListener('scroll', onScroll))
+const theme = useThemeStore()
 </script>
 
 <template>
-  <header
-    class="fixed top-0 right-0 left-0 z-50 border-b bg-surface-base/90 backdrop-blur-md transition-colors duration-200"
-    :class="scrolled ? 'border-border' : 'border-transparent'"
-  >
-    <div class="mx-auto flex h-16 max-w-7xl items-center gap-8 px-6">
-      <RouterLink
-        to="/"
-        class="shrink-0 font-display text-[1.375rem] font-bold uppercase tracking-[0.05em] text-text-primary no-underline"
-      >
-        GANKED<span class="text-brand-light">.TV</span>
+  <header class="nav">
+    <div class="nav__inner">
+      <!-- Logo -->
+      <RouterLink to="/" class="logo">
+        <span class="logo__mark"></span>
+        GANKED<span class="logo__tv">.TV</span>
       </RouterLink>
 
-      <nav
-        class="hidden flex-1 items-center justify-center gap-1 sm:flex"
-        aria-label="Main navigation"
-      >
-        <RouterLink to="/" :class="navLinkClass" exact-active-class="nav-link--active">
-          Home
-        </RouterLink>
-        <RouterLink
-          v-if="auth.isAuthenticated"
-          to="/upload"
-          :class="navLinkClass"
-          active-class="nav-link--active"
-        >
-          Upload
-        </RouterLink>
+      <!-- Nav links -->
+      <nav class="nav__links" aria-label="Main navigation">
+        <RouterLink to="/" class="nav__link" exact-active-class="nav__link--active">Feed</RouterLink>
+        <RouterLink to="/games" class="nav__link nav__link--hide-mobile" active-class="nav__link--active">Games</RouterLink>
+        <RouterLink to="/trending" class="nav__link nav__link--hide-mobile" active-class="nav__link--active">Trending</RouterLink>
       </nav>
 
-      <div class="ml-auto flex shrink-0 items-center gap-3">
-        <ThemeToggle />
-        <button
-          class="rounded-md p-1.5 text-text-secondary transition-colors duration-150 hover:bg-surface-overlay hover:text-text-primary sm:hidden"
-          :aria-expanded="menuOpen"
-          aria-label="Toggle navigation"
-          @click="menuOpen = !menuOpen"
-        >
-          <svg
-            class="h-5 w-5"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            viewBox="0 0 24 24"
-          >
-            <path
-              v-if="!menuOpen"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M4 6h16M4 12h16M4 18h16"
-            />
-            <path v-else stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+      <!-- Search (desktop only, decorative) -->
+      <div class="nav__search" aria-hidden="true">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <circle cx="11" cy="11" r="7" />
+          <path d="M21 21l-4.35-4.35" />
+        </svg>
+        <span>search clips, players, games</span>
+        <kbd>⌘K</kbd>
+      </div>
+
+      <!-- Actions -->
+      <div class="nav__actions">
+        <!-- Theme toggle -->
+        <button class="icon-btn" :title="theme.isDark ? 'Switch to light' : 'Switch to dark'" @click="theme.toggle()">
+          <svg v-if="theme.isDark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+          </svg>
+          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" />
           </svg>
         </button>
-        <RouterLink
-          v-if="!auth.isAuthenticated"
-          to="/login"
-          class="rounded-md bg-brand px-4 py-1.5 text-sm font-medium text-text-primary no-underline transition-colors duration-150 hover:bg-brand-light"
-        >
-          Sign In
-        </RouterLink>
-        <template v-else>
-          <span class="font-mono text-[0.8125rem] text-text-secondary">
-            {{ auth.user?.username }}
-          </span>
-          <button
-            class="font-mono text-xs text-text-muted transition-colors duration-150 hover:text-brand-light"
-            @click="auth.logout()"
-          >
-            Sign out
-          </button>
-        </template>
-      </div>
-    </div>
 
-    <div v-if="menuOpen" class="border-t border-border px-6 py-3 sm:hidden">
-      <nav class="flex flex-col gap-1" aria-label="Mobile navigation">
-        <RouterLink
-          to="/"
-          :class="navLinkClass"
-          exact-active-class="nav-link--active"
-          @click="menuOpen = false"
-        >
-          Home
-        </RouterLink>
+        <!-- Upload button -->
         <RouterLink
           v-if="auth.isAuthenticated"
           to="/upload"
-          :class="navLinkClass"
-          active-class="nav-link--active"
-          @click="menuOpen = false"
+          class="btn-primary"
         >
-          Upload
+          <span class="inline-flex items-center gap-1.5">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            <span class="upload-label">Upload</span>
+          </span>
         </RouterLink>
-      </nav>
+
+        <!-- Sign in -->
+        <RouterLink v-else to="/login" class="btn-primary">Sign In</RouterLink>
+
+        <!-- Avatar -->
+        <RouterLink v-if="auth.isAuthenticated" to="/user/phantomveil" class="inline-flex">
+          <UserAvatar user="phantomveil" :size="36" />
+        </RouterLink>
+      </div>
     </div>
   </header>
 </template>
+
+<style scoped>
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  height: 64px;
+  background: color-mix(in oklab, var(--color-surface-base) 85%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.nav__inner {
+  max-width: 1440px;
+  height: 100%;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  min-width: 0;
+}
+
+.nav__inner > * {
+  flex-shrink: 0;
+}
+
+.logo {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text-primary);
+  text-decoration: none;
+}
+
+.logo__tv {
+  color: var(--color-brand-light);
+}
+
+.nav__links {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+
+.nav__link {
+  position: relative;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  border-radius: var(--radius-sm);
+  transition: color 150ms, background-color 150ms;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+}
+
+.nav__link:hover {
+  color: var(--color-text-primary);
+  background: var(--color-surface-overlay);
+}
+
+.nav__link--active {
+  color: var(--color-text-primary);
+}
+
+.nav__link--active::after {
+  content: '';
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 2px;
+  height: 2px;
+  background: var(--color-brand-light);
+}
+
+.nav__search {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  background: var(--color-surface-overlay);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  width: 240px;
+  max-width: 240px;
+  flex-shrink: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.nav__search > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+}
+
+.nav__search svg,
+.nav__search kbd {
+  flex-shrink: 0;
+}
+
+@media (min-width: 1281px) {
+  .nav__search {
+    display: flex;
+  }
+}
+
+.nav__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.icon-btn {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  background: transparent;
+  transition: all 150ms;
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  border-color: var(--color-border-hover);
+  color: var(--color-text-primary);
+}
+
+.btn-primary {
+  height: 36px;
+  padding: 0 16px;
+  background: var(--color-brand);
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  border-radius: var(--radius-md);
+  transition: background 150ms;
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  background: var(--color-brand-light);
+}
+
+@media (max-width: 1040px) {
+  .upload-label {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .nav__link--hide-mobile {
+    display: none;
+  }
+}
+</style>

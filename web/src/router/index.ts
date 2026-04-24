@@ -21,6 +21,16 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/games',
+      name: 'games',
+      component: () => import('@/views/GamesView.vue'),
+    },
+    {
+      path: '/trending',
+      name: 'trending',
+      component: () => import('@/views/TrendingView.vue'),
+    },
+    {
       path: '/clip/:id',
       name: 'clip',
       component: () => import('@/views/ClipView.vue'),
