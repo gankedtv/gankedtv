@@ -59,58 +59,45 @@ function sparklinePoints(index: number): string {
     })
     .join(' ')
 }
+
+const timeBtnBase =
+  'px-3.5 py-1.5 rounded-sm font-mono text-[11px] uppercase tracking-[0.06em] border-none cursor-pointer'
+const timeBtnActive = `${timeBtnBase} bg-brand text-white transition-[background] duration-150`
+const timeBtnInactive = `${timeBtnBase} bg-transparent text-text-secondary transition-[color] duration-150`
+
+const rankBase = 'font-heading font-bold text-[28px] leading-none'
+const rankTop = `${rankBase} text-brand-light`
+const rankRest = `${rankBase} text-text-muted`
+
+const trendBase = 'font-mono text-[11px] leading-none'
+const trendUp = `${trendBase} text-neon`
+const trendDown = `${trendBase} text-error`
+const trendHold = `${trendBase} text-text-muted`
 </script>
 
 <template>
-  <main style="max-width: 1440px; margin: 0 auto; padding: 32px 24px 120px">
+  <main class="mx-auto max-w-360 px-6 pt-8 pb-30">
     <!-- Page header -->
     <div>
       <div
-        style="
-          font-family: var(--font-mono);
-          font-size: 11px;
-          color: var(--color-text-muted);
-          letter-spacing: 0.1em;
-          text-transform: uppercase;
-          margin-bottom: 8px;
-        "
+        class="mb-2 font-mono text-[11px] uppercase tracking-widest text-text-muted"
       >
         Updated every 5 min · Ranked by likes + plays
       </div>
       <h1
-        style="
-          font-family: var(--font-heading);
-          font-weight: 700;
-          font-size: clamp(32px, 4vw, 52px);
-          letter-spacing: 0.02em;
-          text-transform: uppercase;
-          margin: 0 0 20px;
-          line-height: 1;
-          color: var(--color-text-primary);
-        "
+        class="m-0 mb-5 font-heading text-[clamp(32px,4vw,52px)] font-bold uppercase leading-none tracking-[0.02em] text-text-primary"
       >
         Trending
       </h1>
 
       <!-- Time window toggle -->
       <div
-        style="
-          display: inline-flex;
-          gap: 2px;
-          padding: 4px;
-          background: var(--color-surface-raised);
-          border: 1px solid var(--color-border);
-          border-radius: var(--radius-sm);
-        "
+        class="inline-flex gap-0.5 p-1 bg-surface-raised border border-border rounded-sm"
       >
         <button
           v-for="tw in TIME_WINDOWS"
           :key="tw.key"
-          :style="
-            window === tw.key
-              ? 'padding: 6px 14px; border-radius: var(--radius-sm); background: var(--color-brand); color: #fff; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; border: none; cursor: pointer; transition: background 150ms;'
-              : 'padding: 6px 14px; border-radius: var(--radius-sm); background: transparent; color: var(--color-text-secondary); font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; border: none; cursor: pointer; transition: color 150ms;'
-          "
+          :class="window === tw.key ? timeBtnActive : timeBtnInactive"
           @click="window = tw.key"
         >
           {{ tw.label }}
@@ -119,27 +106,16 @@ function sparklinePoints(index: number): string {
     </div>
 
     <!-- Two-column layout -->
-    <div class="trending-grid">
+    <div
+      class="grid grid-cols-[minmax(0,1fr)_340px] gap-7 items-start max-[960px]:grid-cols-1"
+    >
       <!-- LEFT: Top 10 leaderboard -->
       <div
-        style="
-          background: var(--color-surface-raised);
-          border: 1px solid var(--color-border);
-          border-radius: var(--radius-md);
-          overflow: hidden;
-          margin-top: 28px;
-        "
+        class="bg-surface-raised border border-border rounded-md overflow-hidden mt-7"
       >
-        <div style="padding: 14px 16px; border-bottom: 1px solid var(--color-border)">
+        <div class="px-4 py-3.5 border-b border-border">
           <span
-            style="
-              font-family: var(--font-heading);
-              font-weight: 700;
-              font-size: 14px;
-              text-transform: uppercase;
-              color: var(--color-text-secondary);
-              letter-spacing: 0.05em;
-            "
+            class="font-heading font-bold text-sm uppercase text-text-secondary tracking-wider"
             >Top 10 this period</span
           >
         </div>
@@ -147,126 +123,62 @@ function sparklinePoints(index: number): string {
         <div
           v-for="(clip, i) in topClips"
           :key="clip.id"
-          class="leaderboard-row"
-          style="
-            display: grid;
-            grid-template-columns: 60px 120px 1fr auto auto;
-            gap: 16px;
-            align-items: center;
-            padding: 12px 16px;
-            cursor: pointer;
-            transition: background 150ms;
-            border-bottom: 1px solid var(--color-border);
-          "
+          class="grid grid-cols-[60px_120px_1fr_auto_auto] gap-4 items-center px-4 py-3 cursor-pointer transition-[background] duration-150 border-b border-border last:border-b-0 hover:bg-surface-overlay"
           @click="router.push({ name: 'clip', params: { id: clip.id } })"
         >
           <!-- Rank + trend -->
-          <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px">
+          <div class="flex flex-col items-start gap-0.5">
+            <span :class="i < 3 ? rankTop : rankRest">#{{ i + 1 }}</span>
             <span
-              :style="
-                i < 3
-                  ? 'font-family: var(--font-heading); font-weight: 700; font-size: 28px; line-height: 1; color: var(--color-brand-light);'
-                  : 'font-family: var(--font-heading); font-weight: 700; font-size: 28px; line-height: 1; color: var(--color-text-muted);'
-              "
-              >#{{ i + 1 }}</span
-            >
-            <span
-              style="font-family: var(--font-mono); font-size: 11px; line-height: 1"
-              :style="
+              :class="
                 trendFor(i) === 'up'
-                  ? 'color: var(--color-neon);'
+                  ? trendUp
                   : trendFor(i) === 'down'
-                    ? 'color: var(--color-error);'
-                    : 'color: var(--color-text-muted);'
+                    ? trendDown
+                    : trendHold
               "
               >{{ trendFor(i) === 'up' ? '▲' : trendFor(i) === 'down' ? '▼' : '—' }}</span
             >
           </div>
 
           <!-- Thumbnail -->
-          <div style="position: relative; border-radius: 4px; overflow: hidden; aspect-ratio: 16/9">
+          <div class="relative rounded-[4px] overflow-hidden aspect-video">
             <img
               :src="clip.art"
               alt=""
-              style="width: 100%; height: 100%; object-fit: cover; display: block"
+              class="w-full h-full object-cover block"
             />
             <span
-              style="
-                position: absolute;
-                bottom: 4px;
-                right: 4px;
-                font-family: var(--font-mono);
-                font-size: 10px;
-                color: #fff;
-                background: rgba(0, 0, 0, 0.75);
-                padding: 2px 5px;
-                border-radius: 3px;
-                line-height: 1;
-              "
+              class="absolute bottom-1 right-1 font-mono text-[10px] text-white bg-black/75 px-1.25 py-0.5 rounded-[3px] leading-none"
               >{{ formatDuration(clip.duration) }}</span
             >
           </div>
 
           <!-- Title + meta -->
-          <div style="min-width: 0; display: flex; flex-direction: column; gap: 4px">
+          <div class="min-w-0 flex flex-col gap-1">
             <span
-              style="
-                font-family: var(--font-body);
-                font-size: 13px;
-                font-weight: 500;
-                color: var(--color-text-primary);
-                line-height: 1.35;
-                display: -webkit-box;
-                -webkit-line-clamp: 2;
-                -webkit-box-orient: vertical;
-                overflow: hidden;
-              "
+              class="font-body text-[13px] font-medium text-text-primary leading-[1.35] line-clamp-2"
               >{{ clip.title }}</span
             >
-            <div
-              style="
-                display: flex;
-                align-items: center;
-                gap: 6px;
-                font-family: var(--font-mono);
-                font-size: 10px;
-              "
-            >
+            <div class="flex items-center gap-1.5 font-mono text-[10px]">
               <span
-                style="
-                  background: var(--color-surface-base);
-                  border: 1px solid var(--color-border-strong);
-                  border-radius: 3px;
-                  padding: 2px 6px;
-                  color: var(--color-text-secondary);
-                  text-transform: uppercase;
-                  letter-spacing: 0.06em;
-                "
+                class="bg-surface-base border border-border-strong rounded-[3px] px-1.5 py-0.5 text-text-secondary uppercase tracking-[0.06em]"
                 >{{ GAMES[clip.game]?.tag }}</span
               >
-              <span style="color: var(--color-neon)">@{{ USERS[clip.user]?.username }}</span>
+              <span class="text-neon">@{{ USERS[clip.user]?.username }}</span>
             </div>
           </div>
 
           <!-- Stats -->
           <div
-            style="
-              display: flex;
-              flex-direction: column;
-              gap: 4px;
-              text-align: right;
-              font-family: var(--font-mono);
-              font-size: 11px;
-              color: var(--color-text-secondary);
-              white-space: nowrap;
-            "
+            class="flex flex-col gap-1 text-right font-mono text-[11px] text-text-secondary whitespace-nowrap"
           >
             <span>♥ {{ formatNum(clip.likes) }}</span>
-            <span style="color: var(--color-text-muted)">{{ formatNum(clip.views) }} plays</span>
+            <span class="text-text-muted">{{ formatNum(clip.views) }} plays</span>
           </div>
 
           <!-- Chevron -->
-          <div style="color: var(--color-text-muted)">
+          <div class="text-text-muted">
             <svg
               width="16"
               height="16"
@@ -284,30 +196,14 @@ function sparklinePoints(index: number): string {
       </div>
 
       <!-- RIGHT sidebar -->
-      <div style="display: flex; flex-direction: column; gap: 16px; margin-top: 28px">
+      <div class="flex flex-col gap-4 mt-7">
         <!-- Top creators -->
         <div
-          style="
-            background: var(--color-surface-raised);
-            border: 1px solid var(--color-border);
-            border-radius: var(--radius-md);
-            overflow: hidden;
-          "
+          class="bg-surface-raised border border-border rounded-md overflow-hidden"
         >
-          <div style="padding: 14px 16px; border-bottom: 1px solid var(--color-border)">
+          <div class="px-4 py-3.5 border-b border-border">
             <span
-              class="section-title-bar"
-              style="
-                font-family: var(--font-heading);
-                font-weight: 700;
-                font-size: 14px;
-                text-transform: uppercase;
-                color: var(--color-text-secondary);
-                letter-spacing: 0.05em;
-                display: flex;
-                align-items: center;
-                gap: 10px;
-              "
+              class="section-title-bar flex items-center gap-2.5 font-heading font-bold text-sm uppercase text-text-secondary tracking-wider"
               >Top Creators</span
             >
           </div>
@@ -315,63 +211,26 @@ function sparklinePoints(index: number): string {
           <div
             v-for="(username, i) in TOP_CREATOR_KEYS"
             :key="username"
-            style="
-              display: flex;
-              align-items: center;
-              gap: 12px;
-              padding: 10px 16px;
-              border-bottom: 1px solid var(--color-border);
-              cursor: pointer;
-              transition: background 150ms;
-            "
-            class="sidebar-row"
+            class="flex items-center gap-3 px-4 py-2.5 border-b border-border last:border-b-0 cursor-pointer transition-[background] duration-150 hover:bg-surface-overlay"
             @click="router.push({ name: 'user', params: { username } })"
           >
             <span
-              style="
-                font-family: var(--font-heading);
-                font-weight: 700;
-                font-size: 18px;
-                color: var(--color-text-muted);
-                width: 24px;
-                flex-shrink: 0;
-                line-height: 1;
-              "
+              class="font-heading font-bold text-lg text-text-muted w-6 shrink-0 leading-none"
               >#{{ i + 1 }}</span
             >
             <UserAvatar :user="userKeyByUsername(username)" :size="36" />
-            <div style="min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px">
+            <div class="min-w-0 flex-1 flex flex-col gap-px">
               <span
-                style="
-                  font-family: var(--font-body);
-                  font-size: 13px;
-                  font-weight: 500;
-                  color: var(--color-text-primary);
-                  white-space: nowrap;
-                  overflow: hidden;
-                  text-overflow: ellipsis;
-                "
+                class="font-body text-[13px] font-medium text-text-primary whitespace-nowrap overflow-hidden text-ellipsis"
               >
                 {{ USERS[userKeyByUsername(username)]?.display }}
               </span>
-              <span
-                style="
-                  font-family: var(--font-mono);
-                  font-size: 10px;
-                  color: var(--color-text-muted);
-                "
-              >
+              <span class="font-mono text-[10px] text-text-muted">
                 @{{ username }}
               </span>
             </div>
             <span
-              style="
-                font-family: var(--font-mono);
-                font-size: 10px;
-                color: var(--color-neon);
-                white-space: nowrap;
-                flex-shrink: 0;
-              "
+              class="font-mono text-[10px] text-neon whitespace-nowrap shrink-0"
             >
               +{{ formatNum(CREATOR_GAINED[i]) }}
             </span>
@@ -380,27 +239,11 @@ function sparklinePoints(index: number): string {
 
         <!-- Hot games -->
         <div
-          style="
-            background: var(--color-surface-raised);
-            border: 1px solid var(--color-border);
-            border-radius: var(--radius-md);
-            overflow: hidden;
-          "
+          class="bg-surface-raised border border-border rounded-md overflow-hidden"
         >
-          <div style="padding: 14px 16px; border-bottom: 1px solid var(--color-border)">
+          <div class="px-4 py-3.5 border-b border-border">
             <span
-              class="section-title-bar"
-              style="
-                font-family: var(--font-heading);
-                font-weight: 700;
-                font-size: 14px;
-                text-transform: uppercase;
-                color: var(--color-text-secondary);
-                letter-spacing: 0.05em;
-                display: flex;
-                align-items: center;
-                gap: 10px;
-              "
+              class="section-title-bar flex items-center gap-2.5 font-heading font-bold text-sm uppercase text-text-secondary tracking-wider"
               >Hot Games</span
             >
           </div>
@@ -408,52 +251,24 @@ function sparklinePoints(index: number): string {
           <div
             v-for="([key, game], i) in gameEntries"
             :key="key"
-            style="
-              display: flex;
-              align-items: center;
-              gap: 12px;
-              padding: 10px 16px;
-              border-bottom: 1px solid var(--color-border);
-              cursor: pointer;
-              transition: background 150ms;
-            "
-            class="sidebar-row"
+            class="flex items-center gap-3 px-4 py-2.5 border-b border-border last:border-b-0 cursor-pointer transition-[background] duration-150 hover:bg-surface-overlay"
             @click="router.push({ name: 'games', query: { game: key } })"
           >
             <!-- Game art thumbnail -->
-            <div
-              style="
-                width: 40px;
-                height: 40px;
-                border-radius: 4px;
-                overflow: hidden;
-                flex-shrink: 0;
-                position: relative;
-              "
-            >
+            <div class="w-10 h-10 rounded-[4px] overflow-hidden shrink-0 relative">
               <img
                 :src="game.art"
                 alt=""
-                style="width: 100%; height: 100%; object-fit: cover; display: block"
+                class="w-full h-full object-cover block"
               />
             </div>
-            <div style="min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px">
+            <div class="min-w-0 flex-1 flex flex-col gap-px">
               <span
-                style="
-                  font-family: var(--font-body);
-                  font-size: 13px;
-                  font-weight: 500;
-                  color: var(--color-text-primary);
-                  white-space: nowrap;
-                  overflow: hidden;
-                  text-overflow: ellipsis;
-                "
+                class="font-body text-[13px] font-medium text-text-primary whitespace-nowrap overflow-hidden text-ellipsis"
               >
                 {{ game.name }}
               </span>
-              <span
-                style="font-family: var(--font-mono); font-size: 10px; color: var(--color-neon)"
-              >
+              <span class="font-mono text-[10px] text-neon">
                 +{{ HOT_GAMES_CLIPS_TODAY[i] }} clips today
               </span>
             </div>
@@ -462,7 +277,7 @@ function sparklinePoints(index: number): string {
               width="56"
               height="14"
               viewBox="0 0 56 14"
-              style="flex-shrink: 0; overflow: visible"
+              class="shrink-0 overflow-visible"
             >
               <polyline
                 :points="sparklinePoints(i)"
@@ -480,31 +295,3 @@ function sparklinePoints(index: number): string {
     </div>
   </main>
 </template>
-
-<style scoped>
-.trending-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  gap: 28px;
-  align-items: start;
-}
-
-.leaderboard-row:last-child,
-.sidebar-row:last-child {
-  border-bottom: none;
-}
-
-.leaderboard-row:hover {
-  background: var(--color-surface-overlay);
-}
-
-.sidebar-row:hover {
-  background: var(--color-surface-overlay);
-}
-
-@media (max-width: 960px) {
-  .trending-grid {
-    grid-template-columns: 1fr;
-  }
-}
-</style>

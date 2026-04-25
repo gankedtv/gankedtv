@@ -75,38 +75,23 @@ function checklistDone(index: number): boolean {
   return progress.value >= 100
 }
 
-const inputStyle =
-  'width: 100%; padding: 12px 14px; background: var(--color-surface-raised); border: 1px solid var(--color-border); border-radius: var(--radius-md); color: var(--color-text-primary); font-family: var(--font-body); font-size: 14px; outline: none;'
-const labelStyle =
-  'font-family: var(--font-mono); font-size: 10px; color: var(--color-text-muted); letter-spacing: 0.1em; text-transform: uppercase; display: block; margin-bottom: 6px;'
+const inputClass =
+  'w-full rounded-md border border-border bg-surface-raised px-3.5 py-3 font-body text-sm text-text-primary outline-none'
+const labelClass =
+  'mb-1.5 block font-mono text-[10px] uppercase tracking-widest text-text-muted'
 </script>
 
 <template>
-  <main style="max-width: 900px; margin: 0 auto; padding: 32px 24px 120px">
+  <main class="mx-auto max-w-225 px-6 pt-8 pb-30">
     <!-- Page header -->
-    <div style="margin-bottom: 28px">
+    <div class="mb-7">
       <div
-        style="
-          font-family: var(--font-mono);
-          font-size: 11px;
-          color: var(--color-text-muted);
-          letter-spacing: 0.1em;
-          text-transform: uppercase;
-          margin-bottom: 10px;
-        "
+        class="mb-2.5 font-mono text-[11px] uppercase tracking-widest text-text-muted"
       >
         Any source welcome · OBS, ShadowPlay, Medal, Xbox, consoles — just drop the file
       </div>
       <h1
-        style="
-          font-family: var(--font-heading);
-          font-weight: 700;
-          font-size: clamp(32px, 4vw, 52px);
-          text-transform: uppercase;
-          margin: 0;
-          line-height: 1;
-          color: var(--color-text-primary);
-        "
+        class="m-0 font-heading text-[clamp(32px,4vw,52px)] font-bold leading-none uppercase text-text-primary"
       >
         Upload a clip
       </h1>
@@ -114,48 +99,28 @@ const labelStyle =
 
     <!-- Stepper -->
     <div
-      style="
-        background: var(--color-surface-raised);
-        border: 1px solid var(--color-border);
-        border-radius: var(--radius-md);
-        overflow: hidden;
-        display: flex;
-        margin-bottom: 32px;
-      "
+      class="mb-8 flex overflow-hidden rounded-md border border-border bg-surface-raised"
     >
       <div
         v-for="(s, i) in STEPS"
         :key="s.num"
-        :style="{
-          flex: 1,
-          padding: '16px 20px',
-          borderRight: i < STEPS.length - 1 ? '1px solid var(--color-border)' : 'none',
-          background: step >= Number(s.num) ? 'var(--color-surface-overlay)' : 'transparent',
-          borderBottom:
-            step === Number(s.num) ? '2px solid var(--color-brand-light)' : '2px solid transparent',
-          position: 'relative',
-        }"
+        :class="[
+          'relative flex-1 px-5 py-4 border-b-2',
+          i < STEPS.length - 1 ? 'border-r border-r-border' : '',
+          step >= Number(s.num) ? 'bg-surface-overlay' : 'bg-transparent',
+          step === Number(s.num) ? 'border-b-brand-light' : 'border-b-transparent',
+        ]"
       >
         <div
-          :style="{
-            fontFamily: 'var(--font-mono)',
-            fontSize: '10px',
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
-            marginBottom: '4px',
-            color: step >= Number(s.num) ? 'var(--color-neon)' : 'var(--color-text-muted)',
-          }"
+          :class="[
+            'mb-1 font-mono text-[10px] uppercase tracking-widest',
+            step >= Number(s.num) ? 'text-neon' : 'text-text-muted',
+          ]"
         >
           Step {{ s.num }}
         </div>
         <div
-          style="
-            font-family: var(--font-heading);
-            font-weight: 700;
-            font-size: 16px;
-            text-transform: uppercase;
-            color: var(--color-text-primary);
-          "
+          class="font-heading text-base font-bold uppercase text-text-primary"
         >
           {{ s.label }}
         </div>
@@ -169,33 +134,16 @@ const labelStyle =
         @dragover.prevent="dragging = true"
         @dragleave.prevent="dragging = false"
         @drop.prevent="handleDrop"
-        :style="{
-          border: dragging
-            ? '2px dashed var(--color-brand-light)'
-            : '2px dashed var(--color-border-strong)',
-          borderRadius: 'var(--radius-lg)',
-          padding: '64px 24px',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '16px',
-          textAlign: 'center',
-          transition: 'border-color 0.2s',
-          background: dragging ? 'var(--color-brand-glow)' : 'transparent',
-        }"
+        :class="[
+          'flex flex-col items-center gap-4 rounded-lg border-2 border-dashed px-6 py-16 text-center transition-[border-color] duration-200',
+          dragging
+            ? 'border-brand-light bg-brand-glow'
+            : 'border-border-strong bg-transparent',
+        ]"
       >
         <!-- Upload icon circle -->
         <div
-          style="
-            width: 64px;
-            height: 64px;
-            border-radius: 50%;
-            background: var(--color-surface-overlay);
-            border: 1px solid var(--color-border-strong);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-          "
+          class="flex h-16 w-16 items-center justify-center rounded-full border border-border-strong bg-surface-overlay"
         >
           <svg
             width="28"
@@ -215,46 +163,18 @@ const labelStyle =
 
         <div>
           <div
-            style="
-              font-family: var(--font-heading);
-              font-weight: 700;
-              font-size: 22px;
-              text-transform: uppercase;
-              color: var(--color-text-primary);
-              margin-bottom: 6px;
-            "
+            class="mb-1.5 font-heading text-[22px] font-bold uppercase text-text-primary"
           >
             Drop your clip here
           </div>
-          <div
-            style="
-              font-family: var(--font-body);
-              font-size: 14px;
-              color: var(--color-text-secondary);
-            "
-          >
+          <div class="font-body text-sm text-text-secondary">
             MP4, MOV, WebM — up to 4 GB
           </div>
         </div>
 
         <!-- Choose file button -->
         <label
-          style="
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 10px 22px;
-            background: var(--color-brand);
-            border-radius: var(--radius-md);
-            font-family: var(--font-heading);
-            font-weight: 700;
-            font-size: 14px;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: #fff;
-            cursor: pointer;
-            transition: background 0.15s;
-          "
+          class="inline-flex cursor-pointer items-center gap-2 rounded-md bg-brand px-5.5 py-2.5 font-heading text-sm font-bold uppercase tracking-wider text-white transition-[background] duration-150"
         >
           <svg
             width="16"
@@ -274,23 +194,11 @@ const labelStyle =
         </label>
 
         <!-- Source badges -->
-        <div
-          style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 8px"
-        >
+        <div class="mt-2 flex flex-wrap justify-center gap-2">
           <span
             v-for="src in SOURCES"
             :key="src"
-            style="
-              font-family: var(--font-mono);
-              font-size: 10px;
-              letter-spacing: 0.08em;
-              text-transform: uppercase;
-              padding: 4px 10px;
-              background: var(--color-surface-overlay);
-              border: 1px solid var(--color-border);
-              border-radius: var(--radius-sm);
-              color: var(--color-text-muted);
-            "
+            class="rounded-sm border border-border bg-surface-overlay px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
           >
             {{ src }}
           </span>
@@ -300,16 +208,7 @@ const labelStyle =
       <!-- File confirmation row -->
       <div
         v-if="file"
-        style="
-          margin-top: 20px;
-          padding: 16px 20px;
-          background: var(--color-neon-dim);
-          border: 1px solid var(--color-neon);
-          border-radius: var(--radius-md);
-          display: flex;
-          align-items: center;
-          gap: 16px;
-        "
+        class="mt-5 flex items-center gap-4 rounded-md border border-neon bg-neon-dim px-5 py-4"
       >
         <svg
           width="20"
@@ -320,56 +219,26 @@ const labelStyle =
           stroke-width="2"
           stroke-linecap="round"
           stroke-linejoin="round"
-          style="flex-shrink: 0"
+          class="shrink-0"
         >
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
           <polyline points="14 2 14 8 20 8" />
           <line x1="16" y1="13" x2="8" y2="13" />
           <line x1="16" y1="17" x2="8" y2="17" />
         </svg>
-        <div style="flex: 1; min-width: 0">
+        <div class="min-w-0 flex-1">
           <div
-            style="
-              font-family: var(--font-body);
-              font-size: 14px;
-              color: var(--color-text-primary);
-              white-space: nowrap;
-              overflow: hidden;
-              text-overflow: ellipsis;
-            "
+            class="overflow-hidden font-body text-sm whitespace-nowrap text-ellipsis text-text-primary"
           >
             {{ file.name }}
           </div>
-          <div
-            style="
-              font-family: var(--font-mono);
-              font-size: 11px;
-              color: var(--color-text-muted);
-              margin-top: 2px;
-            "
-          >
+          <div class="mt-0.5 font-mono text-[11px] text-text-muted">
             {{ formatSize(file.size) }}
           </div>
         </div>
         <button
           @click="step = 2"
-          style="
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 10px 20px;
-            background: var(--color-brand-light);
-            border-radius: var(--radius-md);
-            font-family: var(--font-heading);
-            font-weight: 700;
-            font-size: 14px;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: #fff;
-            cursor: pointer;
-            white-space: nowrap;
-            flex-shrink: 0;
-          "
+          class="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md bg-brand-light px-5 py-2.5 font-heading text-sm font-bold whitespace-nowrap uppercase tracking-wider text-white"
         >
           Continue
           <svg
@@ -392,29 +261,15 @@ const labelStyle =
     <!-- Step 2: Metadata -->
     <div v-else-if="step === 2">
       <div
-        style="display: grid; grid-template-columns: 1fr 320px; gap: 32px"
-        class="upload-meta-grid"
+        class="grid gap-8 grid-cols-1 min-[761px]:grid-cols-[1fr_320px]"
       >
         <!-- Left: form -->
-        <div style="display: flex; flex-direction: column; gap: 24px">
+        <div class="flex flex-col gap-6">
           <!-- Title -->
           <div>
-            <div
-              style="
-                display: flex;
-                justify-content: space-between;
-                align-items: baseline;
-                margin-bottom: 6px;
-              "
-            >
-              <label :style="labelStyle">Title</label>
-              <span
-                style="
-                  font-family: var(--font-mono);
-                  font-size: 10px;
-                  color: var(--color-text-muted);
-                "
-              >
+            <div class="mb-1.5 flex items-baseline justify-between">
+              <label :class="labelClass + ' mb-0'">Title</label>
+              <span class="font-mono text-[10px] text-text-muted">
                 {{ title.length }}/100
               </span>
             </div>
@@ -422,35 +277,24 @@ const labelStyle =
               v-model="title"
               maxlength="100"
               placeholder="What happened in this clip?"
-              :style="inputStyle"
+              :class="inputClass"
             />
           </div>
 
           <!-- Game picker -->
           <div>
-            <label :style="labelStyle">Game</label>
-            <div style="display: flex; flex-wrap: wrap; gap: 8px">
+            <label :class="labelClass">Game</label>
+            <div class="flex flex-wrap gap-2">
               <button
                 v-for="key in GAME_KEYS"
                 :key="key"
                 @click="game = key"
-                :style="{
-                  padding: '8px 14px',
-                  borderRadius: 'var(--radius-md)',
-                  border:
-                    game === key
-                      ? '1px solid var(--color-brand-light)'
-                      : '1px solid var(--color-border)',
-                  background: game === key ? 'var(--color-brand)' : 'var(--color-surface-raised)',
-                  color: game === key ? '#fff' : 'var(--color-text-secondary)',
-                  fontFamily: 'var(--font-heading)',
-                  fontWeight: '700',
-                  fontSize: '13px',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s',
-                }"
+                :class="[
+                  'cursor-pointer rounded-md border px-3.5 py-2 font-heading text-[13px] font-bold uppercase tracking-[0.04em] transition-all duration-150',
+                  game === key
+                    ? 'border-brand-light bg-brand text-white'
+                    : 'border-border bg-surface-raised text-text-secondary',
+                ]"
               >
                 {{ GAMES[key].tag }}
               </button>
@@ -459,27 +303,12 @@ const labelStyle =
 
           <!-- Description -->
           <div>
-            <div
-              style="
-                display: flex;
-                justify-content: space-between;
-                align-items: baseline;
-                margin-bottom: 6px;
-              "
-            >
-              <label :style="labelStyle"
+            <div class="mb-1.5 flex items-baseline justify-between">
+              <label :class="labelClass + ' mb-0'"
                 >Description
-                <span style="color: var(--color-text-muted); font-size: 9px"
-                  >(optional)</span
-                ></label
+                <span class="text-[9px] text-text-muted">(optional)</span></label
               >
-              <span
-                style="
-                  font-family: var(--font-mono);
-                  font-size: 10px;
-                  color: var(--color-text-muted);
-                "
-              >
+              <span class="font-mono text-[10px] text-text-muted">
                 {{ desc.length }}/500
               </span>
             </div>
@@ -488,37 +317,26 @@ const labelStyle =
               maxlength="500"
               rows="4"
               placeholder="Add context, callouts, settings — anything worth knowing"
-              :style="inputStyle + ' resize: vertical; min-height: 96px;'"
+              :class="inputClass + ' resize-y min-h-24'"
             ></textarea>
           </div>
 
           <!-- Visibility -->
           <div>
-            <label :style="labelStyle">Visibility</label>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px">
+            <label :class="labelClass">Visibility</label>
+            <div class="grid grid-cols-2 gap-2.5">
               <button
                 v-for="opt in ['public', 'unlisted'] as const"
                 :key="opt"
                 @click="visibility = opt"
-                :style="{
-                  padding: '14px 16px',
-                  borderRadius: 'var(--radius-md)',
-                  border:
-                    visibility === opt
-                      ? '1px solid var(--color-brand-light)'
-                      : '1px solid var(--color-border)',
-                  background:
-                    visibility === opt ? 'var(--color-brand-glow)' : 'var(--color-surface-raised)',
-                  color:
-                    visibility === opt
-                      ? 'var(--color-text-primary)'
-                      : 'var(--color-text-secondary)',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s',
-                }"
+                :class="[
+                  'cursor-pointer rounded-md border px-4 py-3.5 text-left transition-all duration-150',
+                  visibility === opt
+                    ? 'border-brand-light bg-brand-glow text-text-primary'
+                    : 'border-border bg-surface-raised text-text-secondary',
+                ]"
               >
-                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px">
+                <div class="mb-1 flex items-center gap-2">
                   <svg
                     v-if="opt === 'public'"
                     width="16"
@@ -551,23 +369,12 @@ const labelStyle =
                     <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
                   </svg>
                   <span
-                    style="
-                      font-family: var(--font-heading);
-                      font-weight: 700;
-                      font-size: 14px;
-                      text-transform: uppercase;
-                    "
+                    class="font-heading text-sm font-bold uppercase"
                   >
                     {{ opt === 'public' ? 'Public' : 'Unlisted' }}
                   </span>
                 </div>
-                <div
-                  style="
-                    font-family: var(--font-body);
-                    font-size: 12px;
-                    color: var(--color-text-muted);
-                  "
-                >
+                <div class="font-body text-xs text-text-muted">
                   {{ opt === 'public' ? 'Visible on feed + search' : 'Only accessible via link' }}
                 </div>
               </button>
@@ -575,24 +382,10 @@ const labelStyle =
           </div>
 
           <!-- Action buttons -->
-          <div style="display: flex; gap: 12px; padding-top: 8px">
+          <div class="flex gap-3 pt-2">
             <button
               @click="step = 1"
-              style="
-                display: inline-flex;
-                align-items: center;
-                gap: 6px;
-                padding: 12px 20px;
-                background: var(--color-surface-overlay);
-                border: 1px solid var(--color-border);
-                border-radius: var(--radius-md);
-                font-family: var(--font-heading);
-                font-weight: 700;
-                font-size: 14px;
-                text-transform: uppercase;
-                color: var(--color-text-secondary);
-                cursor: pointer;
-              "
+              class="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-surface-overlay px-5 py-3 font-heading text-sm font-bold uppercase text-text-secondary"
             >
               <svg
                 width="14"
@@ -612,27 +405,12 @@ const labelStyle =
             <button
               :disabled="!title.trim()"
               @click="startUpload"
-              :style="{
-                flex: 1,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                padding: '12px 20px',
-                background: title.trim()
-                  ? 'var(--color-brand-light)'
-                  : 'var(--color-surface-overlay)',
-                border: title.trim() ? 'none' : '1px solid var(--color-border)',
-                borderRadius: 'var(--radius-md)',
-                fontFamily: 'var(--font-heading)',
-                fontWeight: '700',
-                fontSize: '15px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-                color: title.trim() ? '#fff' : 'var(--color-text-muted)',
-                cursor: title.trim() ? 'pointer' : 'not-allowed',
-                transition: 'all 0.15s',
-              }"
+              :class="[
+                'inline-flex flex-1 items-center justify-center gap-2 rounded-md px-5 py-3 font-heading text-[15px] font-bold uppercase tracking-wider transition-all duration-150',
+                title.trim()
+                  ? 'cursor-pointer border-0 bg-brand-light text-white'
+                  : 'cursor-not-allowed border border-border bg-surface-overlay text-text-muted',
+              ]"
             >
               Start upload
               <svg
@@ -654,109 +432,53 @@ const labelStyle =
 
         <!-- Right: preview card -->
         <div>
-          <label :style="labelStyle + ' margin-bottom: 12px;'">Preview</label>
+          <label :class="labelClass + ' mb-3'">Preview</label>
           <div
-            style="
-              background: var(--color-surface-raised);
-              border: 1px solid var(--color-border);
-              border-radius: var(--radius-md);
-              overflow: hidden;
-            "
+            class="overflow-hidden rounded-md border border-border bg-surface-raised"
           >
             <!-- Thumbnail -->
             <div
-              style="
-                aspect-ratio: 16/9;
-                position: relative;
-                background: var(--color-surface-sunken);
-              "
+              class="relative aspect-video bg-surface-sunken"
             >
               <img
                 v-if="GAMES[game]?.art"
                 :src="GAMES[game].art"
                 :alt="GAMES[game].name"
-                style="width: 100%; height: 100%; object-fit: cover"
+                class="h-full w-full object-cover"
               />
               <!-- Game tag -->
               <div
-                style="
-                  position: absolute;
-                  top: 8px;
-                  left: 8px;
-                  padding: 3px 8px;
-                  background: var(--color-brand);
-                  border-radius: var(--radius-sm);
-                  font-family: var(--font-mono);
-                  font-size: 10px;
-                  letter-spacing: 0.08em;
-                  text-transform: uppercase;
-                  color: #fff;
-                "
+                class="absolute top-2 left-2 rounded-sm bg-brand px-2 py-0.75 font-mono text-[10px] uppercase tracking-[0.08em] text-white"
               >
                 {{ GAMES[game]?.tag }}
               </div>
               <!-- Visibility badge -->
               <div
-                style="
-                  position: absolute;
-                  top: 8px;
-                  right: 8px;
-                  padding: 3px 8px;
-                  background: rgba(0, 0, 0, 0.6);
-                  border-radius: var(--radius-sm);
-                  font-family: var(--font-mono);
-                  font-size: 10px;
-                  letter-spacing: 0.08em;
-                  text-transform: uppercase;
-                  color: var(--color-text-muted);
-                "
+                class="absolute top-2 right-2 rounded-sm bg-black/60 px-2 py-0.75 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
               >
                 {{ visibility }}
               </div>
             </div>
 
-            <div style="padding: 14px">
+            <div class="p-3.5">
               <!-- Title -->
               <div
-                :style="{
-                  fontFamily: 'var(--font-heading)',
-                  fontWeight: '700',
-                  fontSize: '15px',
-                  lineHeight: '1.3',
-                  color: title.trim() ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
-                  marginBottom: '10px',
-                  fontStyle: title.trim() ? 'normal' : 'italic',
-                }"
+                :class="[
+                  'mb-2.5 font-heading text-[15px] font-bold leading-[1.3]',
+                  title.trim() ? 'not-italic text-text-primary' : 'italic text-text-muted',
+                ]"
               >
                 {{ title.trim() || 'Your clip title will appear here' }}
               </div>
 
               <!-- User row -->
-              <div style="display: flex; align-items: center; gap: 8px">
+              <div class="flex items-center gap-2">
                 <div
-                  style="
-                    width: 24px;
-                    height: 24px;
-                    border-radius: 50%;
-                    background: #6d28d9;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    font-family: var(--font-mono);
-                    font-size: 9px;
-                    color: #fff;
-                    flex-shrink: 0;
-                  "
+                  class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand font-mono text-[9px] text-white"
                 >
                   P
                 </div>
-                <span
-                  style="
-                    font-family: var(--font-mono);
-                    font-size: 11px;
-                    color: var(--color-text-secondary);
-                  "
-                >
+                <span class="font-mono text-[11px] text-text-secondary">
                   @phantomveil
                 </span>
               </div>
@@ -764,34 +486,15 @@ const labelStyle =
 
             <!-- Share URL preview -->
             <div
-              style="
-                margin: 0 14px 14px;
-                padding: 10px 12px;
-                border: 1px dashed var(--color-border-strong);
-                border-radius: var(--radius-sm);
-              "
+              class="mx-3.5 mb-3.5 rounded-sm border border-dashed border-border-strong px-3 py-2.5"
             >
               <div
-                style="
-                  font-family: var(--font-mono);
-                  font-size: 9px;
-                  color: var(--color-text-muted);
-                  letter-spacing: 0.08em;
-                  text-transform: uppercase;
-                  margin-bottom: 4px;
-                "
+                class="mb-1 font-mono text-[9px] uppercase tracking-[0.08em] text-text-muted"
               >
                 Share URL preview
               </div>
               <div
-                style="
-                  font-family: var(--font-mono);
-                  font-size: 11px;
-                  color: var(--color-brand-light);
-                  white-space: nowrap;
-                  overflow: hidden;
-                  text-overflow: ellipsis;
-                "
+                class="overflow-hidden font-mono text-[11px] whitespace-nowrap text-ellipsis text-brand-light"
               >
                 ganked.tv/clip/clp_new
               </div>
@@ -803,60 +506,32 @@ const labelStyle =
 
     <!-- Step 3: Upload progress -->
     <div v-else-if="step === 3">
-      <div style="max-width: 560px; margin: 0 auto">
+      <div class="mx-auto max-w-140">
         <!-- Clip summary -->
         <div
-          style="
-            background: var(--color-surface-raised);
-            border: 1px solid var(--color-border);
-            border-radius: var(--radius-md);
-            overflow: hidden;
-            margin-bottom: 32px;
-            display: flex;
-            gap: 0;
-          "
+          class="mb-8 flex gap-0 overflow-hidden rounded-md border border-border bg-surface-raised"
         >
           <!-- Thumbnail -->
-          <div style="width: 140px; flex-shrink: 0; position: relative">
+          <div class="relative w-35 shrink-0">
             <img
               :src="GAMES[game]?.art"
               :alt="GAMES[game]?.name"
-              style="width: 100%; height: 100%; object-fit: cover; display: block"
+              class="block h-full w-full object-cover"
             />
           </div>
-          <div style="padding: 16px; flex: 1; min-width: 0">
+          <div class="min-w-0 flex-1 p-4">
             <div
-              style="
-                font-family: var(--font-mono);
-                font-size: 10px;
-                letter-spacing: 0.08em;
-                text-transform: uppercase;
-                color: var(--color-neon);
-                margin-bottom: 6px;
-              "
+              class="mb-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-neon"
             >
               {{ GAMES[game]?.tag }}
             </div>
             <div
-              style="
-                font-family: var(--font-heading);
-                font-weight: 700;
-                font-size: 16px;
-                color: var(--color-text-primary);
-                line-height: 1.3;
-                margin-bottom: 8px;
-              "
+              class="mb-2 font-heading text-base font-bold leading-[1.3] text-text-primary"
             >
               {{ title }}
             </div>
             <div
-              style="
-                font-family: var(--font-mono);
-                font-size: 10px;
-                color: var(--color-text-muted);
-                text-transform: uppercase;
-                letter-spacing: 0.08em;
-              "
+              class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
             >
               {{ visibility }}
             </div>
@@ -864,77 +539,45 @@ const labelStyle =
         </div>
 
         <!-- Progress bar -->
-        <div
-          style="
-            margin-bottom: 8px;
-            display: flex;
-            justify-content: space-between;
-            align-items: baseline;
-          "
-        >
+        <div class="mb-2 flex items-baseline justify-between">
           <span
-            style="
-              font-family: var(--font-mono);
-              font-size: 11px;
-              color: var(--color-text-muted);
-              letter-spacing: 0.08em;
-              text-transform: uppercase;
-            "
+            class="font-mono text-[11px] uppercase tracking-[0.08em] text-text-muted"
           >
             Uploading
           </span>
-          <span style="font-family: var(--font-mono); font-size: 11px; color: var(--color-neon)">
+          <span class="font-mono text-[11px] text-neon">
             {{ Math.round(progress) }}%
           </span>
         </div>
         <div
-          style="
-            width: 100%;
-            height: 6px;
-            background: var(--color-surface-overlay);
-            border-radius: 999px;
-            overflow: hidden;
-            margin-bottom: 28px;
-          "
+          class="mb-7 h-1.5 w-full overflow-hidden rounded-full bg-surface-overlay"
         >
           <div
-            :style="{
-              height: '100%',
-              width: progress + '%',
-              background: 'linear-gradient(90deg, var(--color-brand), var(--color-brand-light))',
-              borderRadius: '999px',
-              transition: 'width 0.18s ease',
-            }"
+            class="h-full rounded-full bg-[linear-gradient(90deg,var(--color-brand),var(--color-brand-light))] transition-[width] duration-180 ease"
+            :style="{ width: progress + '%' }"
           ></div>
         </div>
 
         <!-- Checklist -->
-        <div style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 36px">
+        <div class="mb-9 flex flex-col gap-3.5">
           <div
             v-for="(item, i) in ['Create record', 'Upload video', 'Generate thumbnail']"
             :key="item"
-            style="display: flex; align-items: center; gap: 12px"
+            class="flex items-center gap-3"
           >
             <div
-              :style="{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                background: checklistDone(i) ? 'var(--color-neon)' : 'var(--color-border-strong)',
-                boxShadow: checklistDone(i) ? '0 0 8px var(--color-neon)' : 'none',
-                flexShrink: 0,
-                transition: 'background 0.3s, box-shadow 0.3s',
-              }"
+              :class="[
+                'h-2 w-2 shrink-0 rounded-full transition-[background,box-shadow] duration-300',
+                checklistDone(i)
+                  ? 'bg-neon shadow-[0_0_8px_var(--color-neon)]'
+                  : 'bg-border-strong',
+              ]"
             ></div>
             <span
-              :style="{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '12px',
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-                color: checklistDone(i) ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
-                transition: 'color 0.3s',
-              }"
+              :class="[
+                'font-mono text-xs uppercase tracking-[0.08em] transition-colors duration-300',
+                checklistDone(i) ? 'text-text-primary' : 'text-text-muted',
+              ]"
             >
               {{ i + 1 }}. {{ item }}
             </span>
@@ -942,26 +585,10 @@ const labelStyle =
         </div>
 
         <!-- Done actions -->
-        <div v-if="progress >= 100" style="display: flex; flex-direction: column; gap: 10px">
+        <div v-if="progress >= 100" class="flex flex-col gap-2.5">
           <button
             @click="router.push('/clip/clp_04')"
-            style="
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              gap: 8px;
-              padding: 14px 24px;
-              background: var(--color-brand-light);
-              border-radius: var(--radius-md);
-              font-family: var(--font-heading);
-              font-weight: 700;
-              font-size: 16px;
-              text-transform: uppercase;
-              letter-spacing: 0.05em;
-              color: #fff;
-              cursor: pointer;
-              width: 100%;
-            "
+            class="flex w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-brand-light px-6 py-3.5 font-heading text-base font-bold uppercase tracking-wider text-white"
           >
             View your clip
             <svg
@@ -980,23 +607,7 @@ const labelStyle =
           </button>
           <button
             @click="router.push('/')"
-            style="
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              padding: 12px 24px;
-              background: transparent;
-              border: 1px solid var(--color-border);
-              border-radius: var(--radius-md);
-              font-family: var(--font-heading);
-              font-weight: 700;
-              font-size: 14px;
-              text-transform: uppercase;
-              letter-spacing: 0.05em;
-              color: var(--color-text-secondary);
-              cursor: pointer;
-              width: 100%;
-            "
+            class="flex w-full cursor-pointer items-center justify-center rounded-md border border-border bg-transparent px-6 py-3 font-heading text-sm font-bold uppercase tracking-wider text-text-secondary"
           >
             Back to feed
           </button>
@@ -1005,11 +616,3 @@ const labelStyle =
     </div>
   </main>
 </template>
-
-<style scoped>
-@media (max-width: 760px) {
-  .upload-meta-grid {
-    grid-template-columns: 1fr !important;
-  }
-}
-</style>

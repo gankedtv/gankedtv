@@ -11,10 +11,8 @@ const active = ref<'all' | string>('all')
 const gameCount = Object.keys(GAMES).length
 const clipCount = CLIPS.length
 
-// Unique creator count across all clips
 const creatorCount = new Set(CLIPS.map((c) => c.user)).size
 
-// Per-game clip + creator counts
 function gameClipCount(key: string) {
   return CLIPS.filter((c) => c.game === key).length
 }
@@ -24,7 +22,6 @@ function gameCreatorCount(key: string) {
 
 const filteredClips = computed(() => {
   const base = active.value === 'all' ? CLIPS : CLIPS.filter((c) => c.game === active.value)
-  // Pad/repeat to fill 8 slots
   const result: typeof CLIPS = []
   while (result.length < 8) {
     result.push(...base)
@@ -35,117 +32,55 @@ const filteredClips = computed(() => {
 const sectionTitle = computed(() =>
   active.value === 'all' ? 'Featured across all games' : `Top in ${GAMES[active.value]?.name}`,
 )
+
+const tileBase =
+  'min-h-27.5 cursor-pointer rounded-md border p-4 text-left transition-[border-color,box-shadow] duration-150 hover:border-border-hover'
+const tileInactive = 'border-border bg-surface-raised'
+const tileActive = 'border-brand shadow-[0_14px_40px_-14px_var(--color-brand-glow)]'
+const tileActiveAll = `${tileActive} bg-brand`
 </script>
 
 <template>
-  <main style="max-width: 1440px; margin: 0 auto; padding: 32px 24px 120px">
+  <main class="mx-auto max-w-360 px-6 pt-8 pb-30">
     <!-- Page header -->
     <div>
       <div
-        style="
-          font-family: var(--font-mono);
-          font-size: 11px;
-          color: var(--color-text-muted);
-          letter-spacing: 0.1em;
-          text-transform: uppercase;
-          margin-bottom: 8px;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        "
+        class="mb-2 flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-text-muted"
       >
         <span
-          style="
-            width: 6px;
-            height: 6px;
-            background: var(--color-neon);
-            border-radius: 50%;
-            box-shadow: 0 0 8px var(--color-neon);
-            animation: pulse 2s infinite;
-            flex-shrink: 0;
-          "
+          class="block h-1.5 w-1.5 shrink-0 rounded-full bg-neon shadow-[0_0_8px_var(--color-neon)] animate-[pulse_2s_infinite]"
         ></span>
         Library · {{ gameCount }} games · {{ clipCount * 200 }}+ clips indexed
       </div>
       <h1
-        style="
-          font-family: var(--font-heading);
-          font-weight: 700;
-          font-size: clamp(32px, 4vw, 52px);
-          letter-spacing: 0.02em;
-          text-transform: uppercase;
-          margin: 0 0 8px;
-          line-height: 1;
-          color: var(--color-text-primary);
-        "
+        class="m-0 mb-2 font-heading text-[clamp(32px,4vw,52px)] font-bold leading-none uppercase tracking-[0.02em] text-text-primary"
       >
         Games
       </h1>
-      <p
-        style="
-          color: var(--color-text-secondary);
-          font-size: 15px;
-          margin: 0;
-          max-width: 56ch;
-          line-height: 1.5;
-        "
-      >
+      <p class="m-0 max-w-[56ch] text-[15px] leading-normal text-text-secondary">
         Every clip is tagged with its game. Pick a game to see its feed, top creators, and today's
         highlights.
       </p>
     </div>
 
     <!-- Game tiles -->
-    <div class="game-tile-grid">
+    <div
+      class="mt-8 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3.5"
+    >
       <!-- All games tile -->
       <button
-        class="game-tile"
-        :style="
-          active === 'all'
-            ? 'background: var(--color-brand); border-color: var(--color-brand); box-shadow: 0 14px 40px -14px var(--color-brand-glow);'
-            : 'background: var(--color-surface-raised); border-color: var(--color-border);'
-        "
+        :class="[tileBase, active === 'all' ? tileActiveAll : tileInactive]"
         @click="active = 'all'"
       >
-        <div
-          style="
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            height: 100%;
-            gap: 8px;
-          "
-        >
-          <span
-            style="
-              font-family: var(--font-heading);
-              font-weight: 700;
-              font-size: 20px;
-              text-transform: uppercase;
-              color: #fff;
-              line-height: 1;
-            "
-            >All Games</span
-          >
-          <div style="display: flex; flex-direction: column; gap: 3px">
-            <span
-              style="
-                font-family: var(--font-mono);
-                font-size: 10px;
-                color: var(--color-neon);
-                letter-spacing: 0.08em;
-              "
-            >
+        <div class="flex h-full flex-col justify-between gap-2">
+          <span class="font-heading text-xl font-bold leading-none uppercase text-white">
+            All Games
+          </span>
+          <div class="flex flex-col gap-0.75">
+            <span class="font-mono text-[10px] tracking-[0.08em] text-neon">
               {{ clipCount * 200 }}+ clips
             </span>
-            <span
-              style="
-                font-family: var(--font-mono);
-                font-size: 10px;
-                color: rgba(255, 255, 255, 0.7);
-                letter-spacing: 0.08em;
-              "
-            >
+            <span class="font-mono text-[10px] tracking-[0.08em] text-white/70">
               {{ creatorCount }} creators
             </span>
           </div>
@@ -156,77 +91,33 @@ const sectionTitle = computed(() =>
       <button
         v-for="(game, key) in GAMES"
         :key="key"
-        class="game-tile"
-        style="position: relative; overflow: hidden"
-        :style="
-          active === key
-            ? 'border-color: var(--color-brand); box-shadow: 0 14px 40px -14px var(--color-brand-glow);'
-            : 'border-color: var(--color-border);'
-        "
+        :class="[
+          tileBase,
+          'relative overflow-hidden',
+          active === key ? tileActive : 'border-border bg-surface-raised',
+        ]"
         @click="active = key"
       >
         <!-- Background art -->
         <img
           :src="game.art"
           alt=""
-          style="
-            position: absolute;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            opacity: 0.4;
-          "
+          class="absolute inset-0 h-full w-full object-cover opacity-40"
         />
         <!-- Gradient overlay -->
         <div
-          style="
-            position: absolute;
-            inset: 0;
-            background: linear-gradient(160deg, rgba(8, 8, 16, 0.4) 0%, rgba(8, 8, 16, 0.85) 100%);
-          "
+          class="absolute inset-0 bg-[linear-gradient(160deg,rgba(8,8,16,0.4)_0%,rgba(8,8,16,0.85)_100%)]"
         ></div>
         <!-- Content -->
-        <div
-          style="
-            position: relative;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            height: 100%;
-            gap: 8px;
-          "
-        >
-          <span
-            style="
-              font-family: var(--font-heading);
-              font-weight: 700;
-              font-size: 20px;
-              text-transform: uppercase;
-              color: #fff;
-              line-height: 1;
-            "
-            >{{ game.name }}</span
-          >
-          <div style="display: flex; flex-direction: column; gap: 3px">
-            <span
-              style="
-                font-family: var(--font-mono);
-                font-size: 10px;
-                color: var(--color-neon);
-                letter-spacing: 0.08em;
-              "
-            >
+        <div class="relative flex h-full flex-col justify-between gap-2">
+          <span class="font-heading text-xl font-bold leading-none uppercase text-white">
+            {{ game.name }}
+          </span>
+          <div class="flex flex-col gap-0.75">
+            <span class="font-mono text-[10px] tracking-[0.08em] text-neon">
               {{ gameClipCount(key) * 200 }}+ clips
             </span>
-            <span
-              style="
-                font-family: var(--font-mono);
-                font-size: 10px;
-                color: rgba(255, 255, 255, 0.7);
-                letter-spacing: 0.08em;
-              "
-            >
+            <span class="font-mono text-[10px] tracking-[0.08em] text-white/70">
               {{ gameCreatorCount(key) }} creators
             </span>
           </div>
@@ -235,45 +126,20 @@ const sectionTitle = computed(() =>
     </div>
 
     <!-- Clip section -->
-    <div style="margin-top: 48px">
+    <div class="mt-12">
       <!-- Section header -->
-      <div
-        style="
-          display: flex;
-          align-items: baseline;
-          justify-content: space-between;
-          margin-bottom: 20px;
-          gap: 16px;
-        "
-      >
+      <div class="mb-5 flex items-baseline justify-between gap-4">
         <h2
-          class="section-title-bar"
-          style="
-            font-family: var(--font-heading);
-            font-weight: 700;
-            font-size: 24px;
-            text-transform: uppercase;
-            margin: 0;
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            color: var(--color-text-primary);
-          "
+          class="section-title-bar m-0 inline-flex items-center gap-3.5 font-heading text-2xl font-bold uppercase tracking-[0.02em] text-text-primary"
         >
           {{ sectionTitle }}
         </h2>
         <a
           href="#"
-          style="
-            font-family: var(--font-mono);
-            font-size: 11px;
-            color: var(--color-text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            white-space: nowrap;
-          "
-          >See all ·→</a
+          class="font-mono text-[11px] uppercase tracking-[0.06em] text-text-secondary whitespace-nowrap"
         >
+          See all ·→
+        </a>
       </div>
 
       <!-- Clip grid -->
@@ -288,29 +154,3 @@ const sectionTitle = computed(() =>
     </div>
   </main>
 </template>
-
-<style scoped>
-.game-tile-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 14px;
-  margin-top: 32px;
-}
-
-.game-tile {
-  min-height: 110px;
-  padding: 16px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  text-align: left;
-  transition:
-    border-color 150ms,
-    box-shadow 150ms;
-  background: var(--color-surface-raised);
-}
-
-.game-tile:hover {
-  border-color: var(--color-border-hover);
-}
-</style>

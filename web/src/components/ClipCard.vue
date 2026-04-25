@@ -12,47 +12,49 @@ const game = computed(() => GAMES[props.clip.game])
 
 <template>
   <article
-    class="relative flex flex-col overflow-hidden cursor-pointer rounded-[var(--radius-md)] border border-border bg-surface-raised transition-all duration-200 hover:-translate-y-0.5 hover:border-brand hover:shadow-[0_14px_40px_-14px_var(--color-brand-glow)]"
+    class="group relative flex cursor-pointer flex-col overflow-hidden rounded-md border border-border bg-surface-raised transition-all duration-200 hover:-translate-y-0.5 hover:border-brand hover:shadow-[0_14px_40px_-14px_var(--color-brand-glow)]"
     @click="emit('click')"
   >
     <!-- Thumbnail -->
-    <div class="relative aspect-video bg-surface-sunken overflow-hidden">
+    <div class="relative aspect-video overflow-hidden bg-surface-sunken">
       <img
         :src="clip.art"
         alt=""
-        class="w-full h-full object-cover transition-transform duration-[400ms] group-hover:scale-[1.04]"
+        class="h-full w-full object-cover transition-transform duration-400 group-hover:scale-104"
       />
       <!-- Game tag — top-left -->
-      <div class="absolute top-2 left-2">
-        <span class="game-tag">{{ game.tag }}</span>
+      <div class="absolute left-2 top-2">
+        <span
+          class="rounded-[3px] border border-border-strong bg-surface-base px-1.75 py-0.75 font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-text-primary"
+        >
+          {{ game.tag }}
+        </span>
       </div>
       <!-- Duration — bottom-right -->
-      <div class="absolute bottom-2 right-2 clip-corner">
+      <div
+        class="absolute bottom-2 right-2 rounded-[3px] bg-black/75 px-1.75 py-1 font-mono text-[10px] tracking-wider leading-none text-white backdrop-blur-xs"
+      >
         {{ formatDuration(clip.duration) }}
       </div>
     </div>
 
     <!-- Body -->
-    <div class="flex flex-col gap-2 px-3.5 pt-3 pb-3.5">
+    <div class="flex flex-col gap-2 px-3.5 pb-3.5 pt-3">
       <h3
-        class="m-0 font-body text-sm font-medium text-text-primary leading-[1.35] line-clamp-2 min-h-[2.7em]"
+        class="m-0 line-clamp-2 min-h-[2.7em] font-body text-sm font-medium leading-[1.35] text-text-primary"
       >
         {{ clip.title }}
       </h3>
 
-      <div
-        class="flex items-center gap-2 overflow-hidden"
-        style="font-family: var(--font-mono); font-size: 11px; color: var(--color-text-secondary)"
-      >
+      <div class="flex items-center gap-2 overflow-hidden font-mono text-[11px] text-text-secondary">
         <UserAvatar :user="clip.user" :size="20" />
-        <span class="truncate min-w-0 shrink text-neon">@{{ user.username }}</span>
+        <span class="min-w-0 shrink truncate text-neon">@{{ user.username }}</span>
         <span class="shrink-0 text-text-muted">·</span>
         <span class="shrink-0">{{ clip.createdAt }} ago</span>
       </div>
 
       <div
-        class="flex gap-2.5 pt-1.5 border-t border-dashed border-border"
-        style="font-family: var(--font-mono); font-size: 11px; color: var(--color-text-muted)"
+        class="flex gap-2.5 border-t border-dashed border-border pt-1.5 font-mono text-[11px] text-text-muted"
       >
         <span class="inline-flex items-center gap-1">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
@@ -74,30 +76,3 @@ const game = computed(() => GAMES[props.clip.game])
     </div>
   </article>
 </template>
-
-<style scoped>
-.game-tag {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  padding: 3px 7px;
-  background: var(--color-surface-base);
-  color: var(--color-text-primary);
-  border: 1px solid var(--color-border-strong);
-  border-radius: 3px;
-  text-transform: uppercase;
-}
-
-.clip-corner {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.05em;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(4px);
-  padding: 4px 7px;
-  border-radius: 3px;
-  line-height: 1;
-}
-</style>

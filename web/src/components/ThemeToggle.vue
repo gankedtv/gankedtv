@@ -10,7 +10,13 @@ const theme = useThemeStore()
     :aria-label="theme.isDark ? 'Switch to light mode' : 'Switch to dark mode'"
     @click="theme.toggle()"
   >
-    <Transition name="icon" mode="out-in">
+    <Transition
+      mode="out-in"
+      enter-active-class="transition-[opacity,transform] duration-150 ease-[ease]"
+      leave-active-class="transition-[opacity,transform] duration-150 ease-[ease]"
+      enter-from-class="opacity-0 -rotate-90 scale-50"
+      leave-to-class="opacity-0 rotate-90 scale-50"
+    >
       <svg
         v-if="theme.isDark"
         key="sun"
@@ -49,23 +55,3 @@ const theme = useThemeStore()
     </Transition>
   </button>
 </template>
-
-<style scoped>
-/* Kept only for Vue Transition hooks — cannot be expressed as Tailwind utilities */
-.icon-enter-active,
-.icon-leave-active {
-  transition:
-    opacity 0.15s ease,
-    transform 0.15s ease;
-}
-
-.icon-enter-from {
-  opacity: 0;
-  transform: rotate(-90deg) scale(0.5);
-}
-
-.icon-leave-to {
-  opacity: 0;
-  transform: rotate(90deg) scale(0.5);
-}
-</style>

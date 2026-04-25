@@ -106,78 +106,50 @@ const currentTime = computed(() => {
 </script>
 
 <template>
-  <div style="max-width: 1400px; margin: 0 auto; padding: 32px 24px 120px">
-    <div class="clip-layout">
+  <div class="mx-auto max-w-350 px-6 pt-8 pb-30">
+    <div
+      class="grid grid-cols-1 items-start gap-7 min-[961px]:grid-cols-[minmax(0,1fr)_340px]"
+    >
       <!-- LEFT COLUMN -->
       <div>
         <!-- Breadcrumb -->
         <div
-          class="flex items-center gap-2 mb-5"
-          style="
-            font-family: var(--font-mono);
-            font-size: 11px;
-            color: var(--color-text-muted);
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-          "
+          class="mb-5 flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.08em] text-text-muted"
         >
-          <router-link to="/" class="hover:text-text-secondary transition-colors">Feed</router-link>
+          <router-link to="/" class="transition-colors hover:text-text-secondary">Feed</router-link>
           <span>/</span>
-          <span style="color: var(--color-brand-light)">{{ game.name }}</span>
+          <span class="text-brand-light">{{ game.name }}</span>
           <span>/</span>
           <span>{{ clip.id }}</span>
         </div>
 
         <!-- Video Player -->
         <div
-          style="
-            aspect-ratio: 16/9;
-            background: #000;
-            border-radius: var(--radius-md);
-            overflow: hidden;
-            border: 1px solid var(--color-border);
-            position: relative;
-          "
+          class="relative aspect-video overflow-hidden rounded-md border border-border bg-black"
         >
           <!-- Thumbnail -->
           <img
             :src="clip.art"
             alt="clip thumbnail"
-            class="absolute inset-0 w-full h-full object-cover"
-            style="opacity: 0.85"
+            class="absolute inset-0 h-full w-full object-cover opacity-85"
           />
 
           <!-- Top HUD -->
           <div
-            class="absolute top-0 left-0 right-0 flex items-center justify-between px-4 py-3"
-            style="background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7), transparent)"
+            class="absolute top-0 right-0 left-0 flex items-center justify-between bg-[linear-gradient(to_bottom,rgba(0,0,0,0.7),transparent)] px-4 py-3"
           >
             <div class="flex items-center gap-2">
               <span
-                class="px-2 py-0.5 rounded"
-                style="
-                  background: var(--color-brand);
-                  font-family: var(--font-mono);
-                  font-size: 10px;
-                  letter-spacing: 0.12em;
-                  text-transform: uppercase;
-                  font-weight: 600;
-                "
+                class="rounded bg-brand px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em]"
                 >{{ game.tag }}</span
               >
               <span
-                style="
-                  font-family: var(--font-mono);
-                  font-size: 11px;
-                  color: rgba(255, 255, 255, 0.55);
-                  letter-spacing: 0.06em;
-                "
+                class="font-mono text-[11px] tracking-[0.06em] text-white/55"
                 >{{ clip.id }}</span
               >
             </div>
             <button
-              class="flex items-center justify-center rounded w-7 h-7 hover:bg-white/10 transition-colors"
-              style="color: rgba(255, 255, 255, 0.7)"
+              class="flex h-7 w-7 items-center justify-center rounded text-white/70 transition-colors hover:bg-white/10"
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                 <circle cx="8" cy="3" r="1.5" />
@@ -189,18 +161,11 @@ const currentTime = computed(() => {
 
           <!-- Center Play/Pause -->
           <button
-            class="absolute inset-0 flex items-center justify-center group"
+            class="group absolute inset-0 flex items-center justify-center"
             @click="togglePlay"
           >
             <div
-              class="flex items-center justify-center rounded-full transition-all duration-150 group-hover:scale-110"
-              style="
-                width: 64px;
-                height: 64px;
-                background: rgba(0, 0, 0, 0.55);
-                border: 2px solid rgba(255, 255, 255, 0.25);
-                backdrop-filter: blur(4px);
-              "
+              class="flex h-16 w-16 items-center justify-center rounded-full border-2 border-white/25 bg-black/55 backdrop-blur-xs transition-all duration-150 group-hover:scale-110"
             >
               <!-- Play icon -->
               <svg v-if="!playing" width="24" height="24" viewBox="0 0 24 24" fill="white">
@@ -215,37 +180,28 @@ const currentTime = computed(() => {
 
           <!-- Bottom Controls -->
           <div
-            class="absolute bottom-0 left-0 right-0 px-4 pb-3 pt-6"
-            style="background: linear-gradient(to top, rgba(0, 0, 0, 0.8), transparent)"
+            class="absolute right-0 bottom-0 left-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.8),transparent)] px-4 pt-6 pb-3"
           >
             <!-- Progress bar -->
             <div
-              class="relative mb-3 cursor-pointer"
-              style="height: 4px; background: rgba(255, 255, 255, 0.15); border-radius: 2px"
+              class="relative mb-3 h-1 cursor-pointer rounded-sm bg-white/15"
               @click="seek"
             >
               <div
-                class="absolute top-0 left-0 h-full rounded"
-                :style="{ width: `${progress * 100}%`, background: 'var(--color-brand-light)' }"
+                class="absolute top-0 left-0 h-full rounded bg-brand-light"
+                :style="{ width: `${progress * 100}%` }"
               />
               <!-- Scrubber dot -->
               <div
-                class="absolute top-1/2 rounded-full"
-                :style="{
-                  left: `${progress * 100}%`,
-                  transform: 'translate(-50%, -50%)',
-                  width: '12px',
-                  height: '12px',
-                  background: 'var(--color-brand-light)',
-                  boxShadow: '0 0 6px var(--color-brand-glow)',
-                }"
+                class="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-light shadow-[0_0_6px_var(--color-brand-glow)]"
+                :style="{ left: `${progress * 100}%` }"
               />
             </div>
 
             <div class="flex items-center gap-3">
               <!-- Play/Pause mini -->
               <button
-                class="text-white hover:text-text-secondary transition-colors"
+                class="text-white transition-colors hover:text-text-secondary"
                 @click="togglePlay"
               >
                 <svg v-if="!playing" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
@@ -257,7 +213,7 @@ const currentTime = computed(() => {
               </button>
 
               <!-- Volume -->
-              <button class="text-white hover:text-text-secondary transition-colors">
+              <button class="text-white transition-colors hover:text-text-secondary">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                   <path
                     d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z"
@@ -266,13 +222,7 @@ const currentTime = computed(() => {
               </button>
 
               <!-- Time -->
-              <span
-                style="
-                  font-family: var(--font-mono);
-                  font-size: 11px;
-                  color: rgba(255, 255, 255, 0.7);
-                "
-              >
+              <span class="font-mono text-[11px] text-white/70">
                 {{ currentTime }} / {{ formatDuration(clip.duration) }}
               </span>
 
@@ -280,19 +230,12 @@ const currentTime = computed(() => {
 
               <!-- Speed badge -->
               <span
-                class="px-1.5 py-0.5 rounded"
-                style="
-                  font-family: var(--font-mono);
-                  font-size: 10px;
-                  background: rgba(255, 255, 255, 0.12);
-                  color: rgba(255, 255, 255, 0.7);
-                  letter-spacing: 0.05em;
-                "
+                class="rounded bg-white/12 px-1.5 py-0.5 font-mono text-[10px] tracking-wider text-white/70"
                 >1x</span
               >
 
               <!-- Fullscreen -->
-              <button class="text-white hover:text-text-secondary transition-colors">
+              <button class="text-white transition-colors hover:text-text-secondary">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                   <path
                     d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"
@@ -306,20 +249,12 @@ const currentTime = computed(() => {
         <!-- Title + Meta Row -->
         <div class="mt-5">
           <h1
-            style="
-              font-family: var(--font-heading);
-              font-weight: 700;
-              font-size: 34px;
-              text-transform: uppercase;
-              letter-spacing: 0.01em;
-              line-height: 1.05;
-              color: var(--color-text-primary);
-            "
+            class="font-heading text-[34px] font-bold leading-[1.05] uppercase tracking-[0.01em] text-text-primary"
           >
             {{ clip.title }}
           </h1>
 
-          <div class="flex flex-wrap items-center gap-3 mt-4">
+          <div class="mt-4 flex flex-wrap items-center gap-3">
             <!-- User info -->
             <div class="flex items-center gap-2">
               <UserAvatar :user="clip.user" :size="36" />
@@ -327,13 +262,7 @@ const currentTime = computed(() => {
                 <div class="flex items-center gap-1.5">
                   <router-link
                     :to="`/user/${user.username}`"
-                    style="
-                      font-family: var(--font-mono);
-                      font-size: 13px;
-                      font-weight: 600;
-                      color: var(--color-neon);
-                    "
-                    class="hover:opacity-80 transition-opacity"
+                    class="font-mono text-[13px] font-semibold text-neon transition-opacity hover:opacity-80"
                     >@{{ user.username }}</router-link
                   >
                   <!-- Verified badge -->
@@ -348,14 +277,7 @@ const currentTime = computed(() => {
                     />
                   </svg>
                 </div>
-                <div
-                  style="
-                    font-family: var(--font-mono);
-                    font-size: 10px;
-                    color: var(--color-text-muted);
-                    letter-spacing: 0.04em;
-                  "
-                >
+                <div class="font-mono text-[10px] tracking-[0.04em] text-text-muted">
                   {{ formatNum(user.followers) }} followers · {{ user.clips }} clips
                 </div>
               </div>
@@ -363,11 +285,11 @@ const currentTime = computed(() => {
 
             <!-- Follow button -->
             <button
-              class="px-4 py-1.5 rounded transition-all duration-150 text-sm font-semibold"
-              :style="
+              class="rounded px-4 py-1.5 font-mono text-[12px] font-semibold tracking-[0.04em] transition-all duration-150"
+              :class="
                 following
-                  ? 'border: 1px solid var(--color-border-strong); color: var(--color-text-secondary); background: transparent; font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.04em;'
-                  : 'background: var(--color-brand); color: #fff; border: 1px solid transparent; font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.04em;'
+                  ? 'border border-border-strong bg-transparent text-text-secondary'
+                  : 'border border-transparent bg-brand text-white'
               "
               @click="toggleFollow"
             >
@@ -380,11 +302,11 @@ const currentTime = computed(() => {
             <div class="flex items-center gap-2">
               <!-- Like -->
               <button
-                class="flex items-center gap-1.5 px-3 py-1.5 rounded transition-all duration-150"
-                :style="
+                class="flex items-center gap-1.5 rounded px-3 py-1.5 font-mono text-[12px] transition-all duration-150"
+                :class="
                   liked
-                    ? 'background: var(--color-brand); color: #fff; font-family: var(--font-mono); font-size: 12px;'
-                    : 'background: var(--color-surface-raised); border: 1px solid var(--color-border); color: var(--color-text-secondary); font-family: var(--font-mono); font-size: 12px;'
+                    ? 'bg-brand text-white'
+                    : 'border border-border bg-surface-raised text-text-secondary'
                 "
                 @click="toggleLike"
               >
@@ -403,14 +325,7 @@ const currentTime = computed(() => {
 
               <!-- Save -->
               <button
-                class="flex items-center gap-1.5 px-3 py-1.5 rounded transition-all duration-150"
-                style="
-                  background: var(--color-surface-raised);
-                  border: 1px solid var(--color-border);
-                  color: var(--color-text-secondary);
-                  font-family: var(--font-mono);
-                  font-size: 12px;
-                "
+                class="flex items-center gap-1.5 rounded border border-border bg-surface-raised px-3 py-1.5 font-mono text-[12px] text-text-secondary transition-all duration-150"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M17 3H7c-1.1 0-1.99.9-1.99 2L5 21l7-3 7 3V5c0-1.1-.9-2-2-2z" />
@@ -420,14 +335,7 @@ const currentTime = computed(() => {
 
               <!-- Share -->
               <button
-                class="flex items-center gap-1.5 px-3 py-1.5 rounded transition-all duration-150"
-                style="
-                  background: var(--color-surface-raised);
-                  border: 1px solid var(--color-border);
-                  color: var(--color-text-secondary);
-                  font-family: var(--font-mono);
-                  font-size: 12px;
-                "
+                class="flex items-center gap-1.5 rounded border border-border bg-surface-raised px-3 py-1.5 font-mono text-[12px] text-text-secondary transition-all duration-150"
                 @click="handleShare"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -442,10 +350,7 @@ const currentTime = computed(() => {
         </div>
 
         <!-- Stat Block -->
-        <div
-          class="grid grid-cols-4 rounded-md mt-6 overflow-hidden"
-          style="gap: 1px; background: var(--color-border)"
-        >
+        <div class="mt-6 grid grid-cols-4 gap-px overflow-hidden rounded-md bg-border">
           <div
             v-for="stat in [
               { label: 'Plays', value: formatNum(clip.views) },
@@ -454,50 +359,27 @@ const currentTime = computed(() => {
               { label: 'Visibility', value: 'Public' },
             ]"
             :key="stat.label"
-            class="flex flex-col gap-1 px-4 py-3"
-            style="background: var(--color-surface-raised)"
+            class="flex flex-col gap-1 bg-surface-raised px-4 py-3"
           >
             <span
-              style="
-                font-family: var(--font-mono);
-                font-size: 10px;
-                color: var(--color-text-muted);
-                letter-spacing: 0.08em;
-                text-transform: uppercase;
-              "
+              class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
               >{{ stat.label }}</span
             >
             <span
-              style="
-                font-family: var(--font-heading);
-                font-size: 20px;
-                font-weight: 700;
-                color: var(--color-text-primary);
-                line-height: 1.2;
-              "
+              class="font-heading text-xl font-bold leading-[1.2] text-text-primary"
               >{{ stat.value }}</span
             >
           </div>
         </div>
 
         <!-- Description Box -->
-        <div
-          class="rounded-md p-4 mt-4"
-          style="background: var(--color-surface-raised); border: 1px solid var(--color-border)"
-        >
+        <div class="mt-4 rounded-md border border-border bg-surface-raised p-4">
           <div
-            class="mb-2"
-            style="
-              font-family: var(--font-mono);
-              font-size: 10px;
-              color: var(--color-text-muted);
-              letter-spacing: 0.1em;
-              text-transform: uppercase;
-            "
+            class="mb-2 font-mono text-[10px] uppercase tracking-widest text-text-muted"
           >
             Description
           </div>
-          <p class="text-sm mb-3" style="color: var(--color-text-secondary); line-height: 1.6">
+          <p class="mb-3 text-sm leading-[1.6] text-text-secondary">
             {{ clip.title }}. Ranked match, prime time lobby. Everything was on the line. Check the
             timestamp at peak action — the rotation read was insane.
           </p>
@@ -505,15 +387,7 @@ const currentTime = computed(() => {
             <span
               v-for="tag in [game.tag, '#clutch', '#ranked', '#highlights']"
               :key="tag"
-              class="px-2 py-0.5 rounded"
-              style="
-                font-family: var(--font-mono);
-                font-size: 11px;
-                background: var(--color-surface-overlay);
-                border: 1px solid var(--color-border);
-                color: var(--color-text-muted);
-                letter-spacing: 0.05em;
-              "
+              class="rounded border border-border bg-surface-overlay px-2 py-0.5 font-mono text-[11px] tracking-wider text-text-muted"
               >#{{ tag.replace('#', '') }}</span
             >
           </div>
@@ -522,57 +396,33 @@ const currentTime = computed(() => {
         <!-- Comments (Chat) -->
         <div class="mt-8">
           <!-- Section title with brand bar -->
-          <div class="flex items-center gap-3 mb-5 section-title-bar">
+          <div class="section-title-bar mb-5 flex items-center gap-3">
             <span
-              style="
-                font-family: var(--font-heading);
-                font-size: 18px;
-                font-weight: 700;
-                text-transform: uppercase;
-                letter-spacing: 0.04em;
-                color: var(--color-text-primary);
-              "
+              class="font-heading text-lg font-bold uppercase tracking-[0.04em] text-text-primary"
               >Chat</span
             >
             <span
-              class="px-2 py-0.5 rounded-full"
-              style="
-                font-family: var(--font-mono);
-                font-size: 11px;
-                background: var(--color-surface-raised);
-                border: 1px solid var(--color-border);
-                color: var(--color-text-muted);
-              "
+              class="rounded-full border border-border bg-surface-raised px-2 py-0.5 font-mono text-[11px] text-text-muted"
               >{{ COMMENTS.length }}</span
             >
           </div>
 
           <!-- Comment Input -->
-          <div class="flex items-start gap-3 mb-6">
+          <div class="mb-6 flex items-start gap-3">
             <UserAvatar user="phantomveil" :size="32" />
-            <div class="flex-1 flex gap-2">
+            <div class="flex flex-1 gap-2">
               <input
                 v-model="comment"
                 type="text"
                 placeholder="Drop a comment..."
-                class="flex-1 rounded-md px-3 py-2 text-sm outline-none transition-colors"
-                style="
-                  background: var(--color-surface-raised);
-                  border: 1px solid var(--color-border);
-                  color: var(--color-text-primary);
-                  font-family: var(--font-body);
-                "
-                @focus="
-                  ($event.target as HTMLElement).style.borderColor = 'var(--color-border-strong)'
-                "
-                @blur="($event.target as HTMLElement).style.borderColor = 'var(--color-border)'"
+                class="flex-1 rounded-md border border-border bg-surface-raised px-3 py-2 font-body text-sm text-text-primary outline-none transition-colors focus:border-border-strong"
               />
               <button
-                class="px-4 py-2 rounded-md text-sm font-semibold transition-all duration-150"
-                :style="
+                class="rounded-md px-4 py-2 text-sm font-semibold transition-all duration-150"
+                :class="
                   comment.trim()
-                    ? 'background: var(--color-brand); color: #fff; opacity: 1;'
-                    : 'background: var(--color-surface-raised); color: var(--color-text-muted); border: 1px solid var(--color-border); opacity: 0.6; cursor: not-allowed;'
+                    ? 'bg-brand text-white opacity-100'
+                    : 'cursor-not-allowed border border-border bg-surface-raised text-text-muted opacity-60'
                 "
                 :disabled="!comment.trim()"
                 @click="postComment"
@@ -590,39 +440,18 @@ const currentTime = computed(() => {
                 :size="32"
               />
               <div class="flex-1">
-                <div class="flex items-center gap-2 mb-1">
-                  <span
-                    style="
-                      font-family: var(--font-mono);
-                      font-size: 12px;
-                      font-weight: 600;
-                      color: var(--color-neon);
-                    "
+                <div class="mb-1 flex items-center gap-2">
+                  <span class="font-mono text-[12px] font-semibold text-neon"
                     >@{{ c.user }}</span
                   >
-                  <span
-                    style="
-                      font-family: var(--font-mono);
-                      font-size: 11px;
-                      color: var(--color-text-muted);
-                    "
-                    >{{ c.time }}</span
-                  >
+                  <span class="font-mono text-[11px] text-text-muted">{{ c.time }}</span>
                 </div>
-                <p
-                  class="text-sm mb-2"
-                  style="color: var(--color-text-secondary); line-height: 1.5"
-                >
+                <p class="mb-2 text-sm leading-normal text-text-secondary">
                   {{ c.text }}
                 </p>
                 <div class="flex items-center gap-3">
                   <button
-                    class="flex items-center gap-1 transition-colors hover:text-text-secondary"
-                    style="
-                      font-family: var(--font-mono);
-                      font-size: 11px;
-                      color: var(--color-text-muted);
-                    "
+                    class="flex items-center gap-1 font-mono text-[11px] text-text-muted transition-colors hover:text-text-secondary"
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
                       <path
@@ -632,12 +461,7 @@ const currentTime = computed(() => {
                     {{ c.likes }}
                   </button>
                   <button
-                    class="transition-colors hover:text-text-secondary"
-                    style="
-                      font-family: var(--font-mono);
-                      font-size: 11px;
-                      color: var(--color-text-muted);
-                    "
+                    class="font-mono text-[11px] text-text-muted transition-colors hover:text-text-secondary"
                   >
                     Reply
                   </button>
@@ -651,30 +475,14 @@ const currentTime = computed(() => {
       <!-- RIGHT RAIL (sidebar) -->
       <div class="flex flex-col gap-6">
         <!-- Up Next Panel -->
-        <div
-          class="rounded-md overflow-hidden"
-          style="background: var(--color-surface-raised); border: 1px solid var(--color-border)"
-        >
-          <div class="px-4 py-3" style="border-bottom: 1px solid var(--color-border)">
+        <div class="overflow-hidden rounded-md border border-border bg-surface-raised">
+          <div class="border-b border-border px-4 py-3">
             <div class="flex items-center gap-2">
               <span
-                class="rounded-full"
-                style="
-                  width: 7px;
-                  height: 7px;
-                  background: var(--color-neon);
-                  display: inline-block;
-                  animation: pulse 2s ease-in-out infinite;
-                "
+                class="inline-block h-1.75 w-1.75 rounded-full bg-neon animate-[pulse_2s_ease-in-out_infinite]"
               />
               <span
-                style="
-                  font-family: var(--font-mono);
-                  font-size: 10px;
-                  color: var(--color-text-muted);
-                  letter-spacing: 0.08em;
-                  text-transform: uppercase;
-                "
+                class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
               >
                 Up Next · Auto-playing in 00:04
               </span>
@@ -682,38 +490,24 @@ const currentTime = computed(() => {
           </div>
 
           <!-- Preview of next clip -->
-          <div v-if="relatedClips[0]" class="p-3 flex gap-3 items-start">
+          <div v-if="relatedClips[0]" class="flex items-start gap-3 p-3">
             <img
               :src="relatedClips[0].art"
               alt="next clip"
-              class="rounded object-cover shrink-0"
-              style="width: 120px; height: 68px"
+              class="h-17 w-30 shrink-0 rounded object-cover"
             />
-            <div class="flex-1 min-w-0">
+            <div class="min-w-0 flex-1">
               <p
-                class="text-sm font-semibold mb-1 line-clamp-2"
-                style="
-                  color: var(--color-text-primary);
-                  line-height: 1.35;
-                  font-family: var(--font-body);
-                "
+                class="mb-1 line-clamp-2 font-body text-sm font-semibold leading-[1.35] text-text-primary"
               >
                 {{ relatedClips[0].title }}
               </p>
               <router-link
                 :to="`/user/${USERS[relatedClips[0].user].username}`"
-                style="font-family: var(--font-mono); font-size: 11px; color: var(--color-neon)"
-                class="hover:opacity-80 transition-opacity"
+                class="font-mono text-[11px] text-neon transition-opacity hover:opacity-80"
                 >@{{ USERS[relatedClips[0].user].username }}</router-link
               >
-              <div
-                style="
-                  font-family: var(--font-mono);
-                  font-size: 11px;
-                  color: var(--color-text-muted);
-                  margin-top: 2px;
-                "
-              >
+              <div class="mt-0.5 font-mono text-[11px] text-text-muted">
                 {{ formatNum(relatedClips[0].views) }} plays
               </div>
             </div>
@@ -722,16 +516,9 @@ const currentTime = computed(() => {
 
         <!-- More from [game] -->
         <div>
-          <div class="flex items-center gap-3 mb-4 section-title-bar">
+          <div class="section-title-bar mb-4 flex items-center gap-3">
             <span
-              style="
-                font-family: var(--font-mono);
-                font-size: 14px;
-                font-weight: 600;
-                text-transform: uppercase;
-                letter-spacing: 0.06em;
-                color: var(--color-text-primary);
-              "
+              class="font-mono text-[14px] font-semibold uppercase tracking-[0.06em] text-text-primary"
               >More from {{ game.name }}</span
             >
           </div>
@@ -741,44 +528,23 @@ const currentTime = computed(() => {
               v-for="related in relatedClips.slice(1, 6)"
               :key="related.id"
               :to="`/clip/${related.id}`"
-              class="flex gap-3 items-start rounded-md p-2 transition-colors cursor-pointer"
-              style="color: inherit; text-decoration: none"
-              @mouseenter="
-                ($event.currentTarget as HTMLElement).style.background =
-                  'var(--color-surface-raised)'
-              "
-              @mouseleave="($event.currentTarget as HTMLElement).style.background = 'transparent'"
+              class="flex cursor-pointer items-start gap-3 rounded-md p-2 text-inherit no-underline transition-colors hover:bg-surface-raised"
             >
               <img
                 :src="related.art"
                 alt="related clip"
-                class="rounded object-cover shrink-0"
-                style="width: 110px; height: 62px"
+                class="h-15.5 w-27.5 shrink-0 rounded object-cover"
               />
-              <div class="flex-1 min-w-0">
+              <div class="min-w-0 flex-1">
                 <p
-                  class="text-sm font-semibold mb-1 line-clamp-2"
-                  style="
-                    color: var(--color-text-primary);
-                    line-height: 1.35;
-                    font-family: var(--font-body);
-                    font-size: 13px;
-                  "
+                  class="mb-1 line-clamp-2 font-body text-[13px] font-semibold leading-[1.35] text-text-primary"
                 >
                   {{ related.title }}
                 </p>
-                <span
-                  style="font-family: var(--font-mono); font-size: 11px; color: var(--color-neon)"
+                <span class="font-mono text-[11px] text-neon"
                   >@{{ USERS[related.user].username }}</span
                 >
-                <div
-                  style="
-                    font-family: var(--font-mono);
-                    font-size: 11px;
-                    color: var(--color-text-muted);
-                    margin-top: 2px;
-                  "
-                >
+                <div class="mt-0.5 font-mono text-[11px] text-text-muted">
                   {{ formatNum(related.views) }} plays
                 </div>
               </div>
@@ -790,73 +556,15 @@ const currentTime = computed(() => {
   </div>
 
   <!-- Toast -->
-  <Transition name="toast">
+  <Transition
+    enter-active-class="animate-[slideUp_0.22s_ease-out_forwards]"
+    leave-active-class="animate-[slideDown_0.2s_ease-in_forwards]"
+  >
     <div
       v-if="showToast"
-      class="rounded-md px-4 py-3 flex items-center gap-2"
-      style="
-        position: fixed;
-        bottom: 24px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: var(--color-surface-overlay);
-        border: 1px solid var(--color-brand);
-        font-family: var(--font-mono);
-        font-size: 13px;
-        color: var(--color-text-primary);
-        letter-spacing: 0.04em;
-        z-index: 9999;
-        white-space: nowrap;
-        box-shadow: 0 0 20px var(--color-brand-glow);
-      "
+      class="fixed bottom-6 left-1/2 z-9999 flex -translate-x-1/2 items-center gap-2 rounded-md border border-brand bg-surface-overlay px-4 py-3 font-mono text-[13px] tracking-[0.04em] whitespace-nowrap text-text-primary shadow-[0_0_20px_var(--color-brand-glow)]"
     >
       {{ toastText }}
     </div>
   </Transition>
 </template>
-
-<style scoped>
-.clip-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  gap: 28px;
-  align-items: start;
-}
-
-@media (max-width: 960px) {
-  .clip-layout {
-    grid-template-columns: 1fr;
-  }
-}
-
-.section-title-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.section-title-bar::before {
-  content: '';
-  width: 4px;
-  height: 20px;
-  background: var(--color-brand);
-  border-radius: 2px;
-  display: inline-block;
-  flex-shrink: 0;
-}
-
-.line-clamp-2 {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.toast-enter-active {
-  animation: slideUp 0.22s ease-out forwards;
-}
-
-.toast-leave-active {
-  animation: slideDown 0.2s ease-in forwards;
-}
-</style>

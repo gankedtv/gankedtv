@@ -118,7 +118,7 @@ Active nav link: `color: var(--color-text-primary)` + 2px brand-light underline.
 
 ## Components
 
-### Avatar (`web/src/components/Avatar.vue`)
+### UserAvatar (`web/src/components/UserAvatar.vue`)
 Colored initial block. Background is a linear gradient derived from the user's avatar color. Always circular. Shows 2-letter uppercase initials in `font-mono` bold.
 
 Props: `user: string` (key in USERS), `size?: number` (px, default 32).
@@ -167,9 +167,13 @@ Clips two opposite corners via `clip-path: polygon(var(--corner-cut) 0, …)`. `
 
 ## Tailwind usage rules
 
-Always use Tailwind utility classes for colors, spacing, typography. Use `style=""` bindings only for dynamic runtime values (e.g. avatar gradient). Use `<style scoped>` only for pseudo-elements or media queries that Tailwind can't express.
+**Tailwind v4 utility classes for everything** — color, spacing, typography, layout, hover/focus states, media queries. No `style="..."` inline attributes on elements. No `<style scoped>` blocks for cases Tailwind can already express.
 
-Never write `var(--color-*)` directly in a template element when a Tailwind class covers it.
+If a specific color (e.g. a vendor brand color like Discord blue) doesn't exist in Tailwind's defaults, **add it to the `@theme {}` block** in [src/assets/base.css](src/assets/base.css) so a utility class is generated, then use the utility (`bg-discord`, `hover:bg-discord-hover`). Don't drop hex values into the template.
+
+Legitimate exceptions, narrow:
+- **Dynamic runtime values** (e.g. an avatar gradient computed from a per-user color) — use inline `:style="..."` Vue bindings; utilities can't express runtime values.
+- **Pseudo-elements that Tailwind's `before:` / `after:` modifiers can't express** (e.g. complex multi-property `clip-path` shapes) — `<style scoped>` is acceptable for the pseudo-element only.
 
 ---
 
@@ -179,5 +183,8 @@ Never write `var(--color-*)` directly in a template element when a Tailwind clas
 - No gradients on primary surfaces (use flat + border depth)
 - No Inter, Roboto, or system-ui as display fonts
 - No scoped CSS for layout, color, or typography — Tailwind utilities
+- No inline `style="..."` for static values — Tailwind utilities or a token-backed utility
 - No `pt-16` or `pt-[64px]` padding on page content — nav is sticky, not fixed
 - No hardcoded brand/surface/text hex values in components — always go through the token (`var(--color-…)` or the matching Tailwind utility), or theme switching breaks for that element
+- No unscoped `<style>` blocks in views — class names collide globally
+- No string-literal event handlers in templates (`onmouseover="..."`) — use Vue handlers (`@mouseenter`) or a CSS `:hover` rule
