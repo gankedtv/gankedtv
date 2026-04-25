@@ -1,8 +1,8 @@
 # GankedTV Frontend Design System
 
-## Concept: "Underground Arena"
+## Concept
 
-An editorial gaming zine meets esports broadcast UI — raw, intentional, high-contrast. Dark-first. Every surface, token, and animation is chosen to feel like a real esports platform, not a generic app.
+An editorial gaming zine meets esports broadcast UI — raw, intentional, high-contrast. Dark-first. The same components and layout ship under three interchangeable palettes; only tokens change.
 
 ---
 
@@ -35,11 +35,25 @@ Google Fonts loaded in `index.html`. CSS vars: `--font-display`, `--font-heading
 
 ---
 
+## Themes
+
+Three palettes share the same CSS-variable contract. The active palette is selected by `data-theme` on `<html>`, written by `useThemeStore().setName(name)`. Components don't change — they read `var(--color-…)` (directly or via Tailwind utilities) and repaint when tokens swap.
+
+| Theme | Vibe | Brand | Accent | Corners | Background |
+|-------|------|-------|--------|---------|------------|
+| `underground` | Editorial dark | `#6d28d9` purple | `#00e5a0` neon green | Chamfered (10px cut) | Radial purple glow |
+| `tactical` | HUD / broadcast | `#ff7a00` orange | `#ffffff` white | Square | Repeating line grid |
+| `arcade` | CRT / chunky neon | `#ff3d8b` pink | `#ffe600` yellow | Square | Pink/yellow gradient + scanlines |
+
+**Default for new visitors:** `arcade`. Persisted under `localStorage['theme:name']`. Stamped on `<html>` before mount in `main.ts` to avoid FOUC.
+
+Tactical also swaps `--font-heading` to `Rajdhani` (everything else stays); Underground and Arcade use `Barlow Condensed`.
+
 ## Color Tokens
 
-All tokens are in `web/src/assets/base.css` in the `@theme` block. They are available both as CSS custom properties (`var(--color-brand)`) and Tailwind utilities (`bg-brand`, `text-brand`, `border-brand`).
+All tokens are in [web/src/assets/base.css](src/assets/base.css). The `@theme {}` block defines Tailwind utilities (`bg-brand`, `text-neon`, `border-border`, …) and acts as the static fallback. Each `[data-theme="…"]` block overrides the same set of variables at runtime, so utilities resolve to whatever the active theme dictates.
 
-### Dark mode (default)
+### Underground (token reference)
 
 | Token | Value | Usage |
 |-------|-------|-------|
@@ -61,18 +75,21 @@ All tokens are in `web/src/assets/base.css` in the `@theme` block. They are avai
 | `--color-error` | `#ff4466` | Errors, live badges |
 | `--color-warning` | `#ffaa00` | Warnings |
 
+Tactical and Arcade override the same tokens with their own values — see `base.css` for the full set.
+
 ### Light mode (`.light` on `<html>`)
 
-Toggled by `useThemeStore().toggle()`. Overrides surface and text tokens; brand/neon/error/warning unchanged.
+Toggled by `useThemeStore().toggle()`. Overrides surface, text, and border tokens scoped per theme (`html.light[data-theme="underground"]`, etc). Brand stays; `--color-neon` flips to a high-contrast color in Tactical and Arcade for legibility on light backgrounds.
 
 ### Theme CSS-only vars (not Tailwind utilities)
 
-| Var | Default | Usage |
-|-----|---------|-------|
-| `--corner-cut` | `10px` | `.chamfer` clip-path polygon corners |
-| `--grid-bg` | radial purple glow | body::before ambient background |
-| `--noise-opacity` | `0.035` | body::after noise layer |
-| `--feed-gap` | `16px` | `.feed-grid` gap — reduced to `10px` in compact density |
+| Var | Underground | Tactical | Arcade | Usage |
+|-----|-------------|----------|--------|-------|
+| `--corner-cut` | `10px` | `0px` | `0px` | `.chamfer` polygon corners (no-op in Tactical/Arcade) |
+| `--grid-bg` | radial purple | line grid | pink/yellow gradient | body::before ambient layer |
+| `--noise-opacity` | `0.035` | `0.02` | `0.03` | body::after noise layer |
+| `--scanline-opacity` | `0` | `0` | `0.08` | body::after scanlines |
+| `--feed-gap` | `16px` | `16px` | `16px` | `.feed-grid` gap (theme-agnostic) |
 
 ---
 
@@ -163,3 +180,4 @@ Never write `var(--color-*)` directly in a template element when a Tailwind clas
 - No Inter, Roboto, or system-ui as display fonts
 - No scoped CSS for layout, color, or typography — Tailwind utilities
 - No `pt-16` or `pt-[64px]` padding on page content — nav is sticky, not fixed
+- No hardcoded brand/surface/text hex values in components — always go through the token (`var(--color-…)` or the matching Tailwind utility), or theme switching breaks for that element

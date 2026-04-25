@@ -42,7 +42,7 @@
   --radius-xl: 1.5rem;
 }
 
-/* Theme-specific CSS vars (not Tailwind utilities) */
+/* Theme-agnostic ambient defaults (overridden per theme below) */
 :root {
   --corner-cut: 10px;
   --grid-bg: radial-gradient(
@@ -55,8 +55,129 @@
   --feed-gap: 16px;
 }
 
-/* Light theme — toggled via .light class on <html> */
-.light {
+/* ============================================================
+   THEMES — three palettes, one CSS-variable contract.
+   Selected via <html data-theme="…"> in stores/theme.ts.
+   ============================================================ */
+
+/* Underground — editorial dark, purple + neon-green, chamfer corners */
+[data-theme='underground'] {
+  --font-display: 'Rajdhani', sans-serif;
+  --font-heading: 'Barlow Condensed', sans-serif;
+  --font-body: 'DM Sans', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+
+  --color-brand: #6d28d9;
+  --color-brand-light: #7c3aed;
+  --color-brand-glow: rgba(124, 58, 237, 0.35);
+  --color-neon: #00e5a0;
+  --color-neon-dim: rgba(0, 229, 160, 0.18);
+
+  --color-surface-base: #080810;
+  --color-surface-raised: #10101c;
+  --color-surface-overlay: #18182a;
+  --color-surface-sunken: #05050c;
+
+  --color-text-primary: #f0eeff;
+  --color-text-secondary: #8888aa;
+  --color-text-muted: #44445a;
+
+  --color-border: #1e1e30;
+  --color-border-hover: #2e2e48;
+  --color-border-strong: #3a3a58;
+
+  --corner-cut: 10px;
+  --grid-bg: radial-gradient(
+    ellipse 80% 60% at 50% -10%,
+    rgba(109, 40, 217, 0.18),
+    transparent 60%
+  );
+  --noise-opacity: 0.035;
+  --scanline-opacity: 0;
+}
+
+/* Tactical — HUD / broadcast, orange + white, square corners, line grid */
+[data-theme='tactical'] {
+  --font-display: 'Rajdhani', sans-serif;
+  --font-heading: 'Rajdhani', sans-serif;
+  --font-body: 'DM Sans', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+
+  --color-brand: #ff7a00;
+  --color-brand-light: #ffa340;
+  --color-brand-glow: rgba(255, 122, 0, 0.35);
+  --color-neon: #ffffff;
+  --color-neon-dim: rgba(255, 255, 255, 0.18);
+
+  --color-surface-base: #0a0d10;
+  --color-surface-raised: #12161b;
+  --color-surface-overlay: #1a1f26;
+  --color-surface-sunken: #060809;
+
+  --color-text-primary: #ecedee;
+  --color-text-secondary: #8a9099;
+  --color-text-muted: #4a5057;
+
+  --color-border: #1e242c;
+  --color-border-hover: #303842;
+  --color-border-strong: #424c58;
+
+  --corner-cut: 0px;
+  --grid-bg:
+    repeating-linear-gradient(
+      0deg,
+      transparent 0,
+      transparent 39px,
+      rgba(255, 255, 255, 0.02) 39px,
+      rgba(255, 255, 255, 0.02) 40px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 39px,
+      rgba(255, 255, 255, 0.02) 39px,
+      rgba(255, 255, 255, 0.02) 40px
+    );
+  --noise-opacity: 0.02;
+  --scanline-opacity: 0;
+}
+
+/* Arcade — CRT / chunky neon, pink + yellow, scanlines on */
+[data-theme='arcade'] {
+  --font-display: 'Rajdhani', sans-serif;
+  --font-heading: 'Barlow Condensed', sans-serif;
+  --font-body: 'DM Sans', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+
+  --color-brand: #ff3d8b;
+  --color-brand-light: #ff6aa8;
+  --color-brand-glow: rgba(255, 61, 139, 0.45);
+  --color-neon: #ffe600;
+  --color-neon-dim: rgba(255, 230, 0, 0.2);
+
+  --color-surface-base: #0a0818;
+  --color-surface-raised: #14102a;
+  --color-surface-overlay: #1f1840;
+  --color-surface-sunken: #060410;
+
+  --color-text-primary: #fff8e8;
+  --color-text-secondary: #b9a9d8;
+  --color-text-muted: #5d4c88;
+
+  --color-border: #2a1f55;
+  --color-border-hover: #3d2d7a;
+  --color-border-strong: #503d9a;
+
+  --corner-cut: 0px;
+  --grid-bg:
+    linear-gradient(180deg, rgba(255, 61, 139, 0.08), transparent 40%),
+    radial-gradient(ellipse 70% 50% at 50% 100%, rgba(255, 230, 0, 0.05), transparent 60%);
+  --noise-opacity: 0.03;
+  --scanline-opacity: 0.08;
+}
+
+/* Light-mode overrides — toggled via .light class on <html>, scoped per theme */
+html.light[data-theme='underground'] {
   --color-surface-base: #f7f5ff;
   --color-surface-raised: #ffffff;
   --color-surface-overlay: #ecebff;
@@ -73,6 +194,34 @@
     transparent 60%
   );
   --noise-opacity: 0.02;
+}
+
+html.light[data-theme='tactical'] {
+  --color-surface-base: #f4f4f2;
+  --color-surface-raised: #ffffff;
+  --color-surface-overlay: #ebebe8;
+  --color-surface-sunken: #eeeeeb;
+  --color-text-primary: #12161b;
+  --color-text-secondary: #5a6069;
+  --color-text-muted: #9aa0a9;
+  --color-border: #dcdcd8;
+  --color-border-hover: #c0c0bc;
+  --color-border-strong: #a0a09c;
+  --color-neon: #12161b;
+}
+
+html.light[data-theme='arcade'] {
+  --color-surface-base: #fff5ec;
+  --color-surface-raised: #ffffff;
+  --color-surface-overlay: #ffe8d0;
+  --color-surface-sunken: #ffeedb;
+  --color-text-primary: #2a0e1e;
+  --color-text-secondary: #6a3a52;
+  --color-text-muted: #b088a0;
+  --color-border: #ffd2b8;
+  --color-border-hover: #ffb890;
+  --color-border-strong: #e89868;
+  --color-neon: #c46b00;
 }
 
 html {
@@ -267,4 +416,10 @@ button {
   .feed-grid {
     grid-template-columns: repeat(4, 1fr);
   }
+}
+
+/* Tactical and Arcade are square-cornered — chamfer is a no-op. */
+[data-theme='tactical'] .chamfer,
+[data-theme='arcade'] .chamfer {
+  clip-path: none;
 }

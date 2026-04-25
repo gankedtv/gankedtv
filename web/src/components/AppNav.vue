@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
+import ThemePicker from './ThemePicker.vue'
 import UserAvatar from './UserAvatar.vue'
 
 const auth = useAuthStore()
@@ -54,7 +55,10 @@ const theme = useThemeStore()
 
       <!-- Actions -->
       <div class="nav__actions">
-        <!-- Theme toggle -->
+        <!-- Theme picker (Underground / Tactical / Arcade) -->
+        <ThemePicker />
+
+        <!-- Light/dark toggle -->
         <button
           class="icon-btn"
           :title="theme.isDark ? 'Switch to light' : 'Switch to dark'"
@@ -158,6 +162,14 @@ const theme = useThemeStore()
 
 .logo__tv {
   color: var(--color-brand-light);
+}
+
+[data-theme='tactical'] .logo__tv {
+  color: var(--color-brand);
+}
+
+[data-theme='arcade'] .logo__tv {
+  color: var(--color-neon);
 }
 
 .nav__links {
