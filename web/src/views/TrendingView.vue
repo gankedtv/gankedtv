@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { CLIPS, USERS, GAMES, formatNum, formatDuration, userByUsername } from '@/lib/mock-data'
 import UserAvatar from '@/components/UserAvatar.vue'
+import IconChevronRight from '@/components/icons/IconChevronRight.vue'
 
 const router = useRouter()
 
@@ -170,18 +171,7 @@ const trendHold = `${trendBase} text-text-muted`
 
           <!-- Chevron -->
           <div class="text-text-muted">
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
+            <IconChevronRight :size="16" />
           </div>
         </div>
       </div>

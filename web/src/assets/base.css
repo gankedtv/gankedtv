@@ -44,6 +44,10 @@
   --radius-md: 0.625rem;
   --radius-lg: 1rem;
   --radius-xl: 1.5rem;
+
+  /* Custom breakpoint — 720px is the mobile/tablet boundary used to drop
+     secondary nav links + theme picker. Use `tablet:` and `max-tablet:` modifiers. */
+  --breakpoint-tablet: 720px;
 }
 
 /* Theme-agnostic ambient defaults (overridden per theme below) */

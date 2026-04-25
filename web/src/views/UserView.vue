@@ -4,6 +4,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { USERS, CLIPS, GAMES, formatNum, userByUsername } from '@/lib/mock-data'
 import UserAvatar from '@/components/UserAvatar.vue'
 import ClipCard from '@/components/ClipCard.vue'
+import IconVerifiedBadge from '@/components/icons/IconVerifiedBadge.vue'
+import IconShare from '@/components/icons/IconShare.vue'
+import IconMoreHorizontal from '@/components/icons/IconMoreHorizontal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -149,23 +152,7 @@ const joinedDate = 'Jan 2024'
             >
               {{ user.display }}
             </h1>
-            <svg
-              v-if="user.verified"
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
-              fill="none"
-              class="mt-1 shrink-0"
-            >
-              <circle cx="12" cy="12" r="11" fill="var(--color-brand)" />
-              <path
-                d="M7 12.5l3.5 3.5 6.5-7"
-                stroke="#fff"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
+            <IconVerifiedBadge v-if="user.verified" :size="22" class="mt-1 shrink-0" />
           </div>
 
           <!-- Handle -->
@@ -198,23 +185,17 @@ const joinedDate = 'Jan 2024'
           <!-- Share -->
           <button
             class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-sm border border-border bg-surface-raised text-text-secondary transition-[border-color] duration-150 hover:border-border-hover"
+            aria-label="Share profile"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <path
-                d="M18 16a3 3 0 00-2.4 1.2L8.7 13.1c.05-.34.08-.69.08-1.04 0-.36-.03-.71-.08-1.05l6.9-4.07A3 3 0 1014.4 4.5l-7.04 4.15A3 3 0 103 12a3 3 0 001.36-.33l7.04 4.15A3 3 0 1018 19a3 3 0 000-3z"
-              />
-            </svg>
+            <IconShare :size="14" />
           </button>
 
           <!-- More -->
           <button
             class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-sm border border-border bg-surface-raised text-text-secondary transition-[border-color] duration-150 hover:border-border-hover"
+            aria-label="More options"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <circle cx="5" cy="12" r="2" />
-              <circle cx="12" cy="12" r="2" />
-              <circle cx="19" cy="12" r="2" />
-            </svg>
+            <IconMoreHorizontal :size="14" />
           </button>
         </div>
       </div>

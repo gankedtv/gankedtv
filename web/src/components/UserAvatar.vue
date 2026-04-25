@@ -30,15 +30,11 @@ const bgStyle = computed(() => ({
 
 <template>
   <span
-    class="avatar shrink-0 inline-flex items-center justify-center rounded-full overflow-hidden"
+    class="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-mono font-semibold tracking-tighter text-white"
     :style="{
       width: `${size}px`,
       height: `${size}px`,
-      fontFamily: 'var(--font-mono)',
-      fontWeight: 600,
       fontSize: `${fontSize}px`,
-      color: '#fff',
-      letterSpacing: '-0.03em',
       ...bgStyle,
     }"
   >

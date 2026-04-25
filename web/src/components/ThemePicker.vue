@@ -12,7 +12,7 @@ const LABELS: Record<ThemeName, string> = {
 
 <template>
   <div
-    class="inline-flex h-9 items-center overflow-hidden rounded-md border border-border max-[720px]:hidden"
+    class="inline-flex h-9 items-center overflow-hidden rounded-md border border-border max-tablet:hidden"
     role="group"
     aria-label="Theme"
   >

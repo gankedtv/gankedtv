@@ -5,6 +5,7 @@ import { CLIPS, GAMES, USERS, formatNum, formatDuration, clipById } from '@/lib/
 import type { Clip } from '@/lib/mock-data'
 import ClipCard from '@/components/ClipCard.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
+import IconPlay from '@/components/icons/IconPlay.vue'
 
 const router = useRouter()
 
@@ -109,11 +110,9 @@ const filterInactive = 'border border-border bg-transparent text-text-muted'
             @click="router.push({ name: 'clip', params: { id: hero.id } })"
           >
             <span
-              class="inline-flex h-18 w-18 items-center justify-center rounded-full border border-white/20 bg-black/55 backdrop-blur-md"
+              class="inline-flex h-18 w-18 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white backdrop-blur-md"
             >
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="#fff">
-                <path d="M8 5v14l11-7L8 5z" />
-              </svg>
+              <IconPlay :size="26" />
             </span>
           </button>
         </div>

@@ -1,17 +1,37 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, computed, watch, watchEffect, onMounted, onUnmounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { CLIPS, USERS, GAMES, COMMENTS, formatNum, formatDuration, clipById } from '@/lib/mock-data'
 import UserAvatar from '@/components/UserAvatar.vue'
+import IconPlay from '@/components/icons/IconPlay.vue'
+import IconPause from '@/components/icons/IconPause.vue'
+import IconHeart from '@/components/icons/IconHeart.vue'
+import IconBookmark from '@/components/icons/IconBookmark.vue'
+import IconShare from '@/components/icons/IconShare.vue'
+import IconMoreVertical from '@/components/icons/IconMoreVertical.vue'
+import IconVerifiedBadge from '@/components/icons/IconVerifiedBadge.vue'
+import IconVolume from '@/components/icons/IconVolume.vue'
+import IconFullscreen from '@/components/icons/IconFullscreen.vue'
 
 const route = useRoute()
+const router = useRouter()
 
 const clipId = computed(() => {
   const id = route.params.id
   return Array.isArray(id) ? id[0] : id
 })
 
-const clip = computed(() => clipById(clipId.value) ?? CLIPS[0])
+const resolvedClip = computed(() => (clipId.value ? clipById(clipId.value) : undefined))
+
+watchEffect(() => {
+  // Surface unknown clip ids as a real 404 instead of silently falling back to CLIPS[0]
+  if (clipId.value && resolvedClip.value === undefined) {
+    router.replace({ name: 'not-found' })
+  }
+})
+
+// Fallback to CLIPS[0] keeps the template safe during the brief tick before the redirect lands
+const clip = computed(() => resolvedClip.value ?? CLIPS[0])
 const game = computed(() => GAMES[clip.value.game])
 const user = computed(() => USERS[clip.value.user])
 
@@ -146,11 +166,7 @@ const currentTime = computed(() => {
             <button
               class="flex h-7 w-7 items-center justify-center rounded text-white/70 transition-colors hover:bg-white/10"
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                <circle cx="8" cy="3" r="1.5" />
-                <circle cx="8" cy="8" r="1.5" />
-                <circle cx="8" cy="13" r="1.5" />
-              </svg>
+              <IconMoreVertical :size="16" />
             </button>
           </div>
 
@@ -160,16 +176,10 @@ const currentTime = computed(() => {
             @click="togglePlay"
           >
             <div
-              class="flex h-16 w-16 items-center justify-center rounded-full border-2 border-white/25 bg-black/55 backdrop-blur-xs transition-all duration-150 group-hover:scale-110"
+              class="flex h-16 w-16 items-center justify-center rounded-full border-2 border-white/25 bg-black/55 text-white backdrop-blur-xs transition-all duration-150 group-hover:scale-110"
             >
-              <!-- Play icon -->
-              <svg v-if="!playing" width="24" height="24" viewBox="0 0 24 24" fill="white">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-              <!-- Pause icon -->
-              <svg v-else width="24" height="24" viewBox="0 0 24 24" fill="white">
-                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-              </svg>
+              <IconPlay v-if="!playing" :size="24" />
+              <IconPause v-else :size="24" />
             </div>
           </button>
 
@@ -196,21 +206,16 @@ const currentTime = computed(() => {
                 class="text-white transition-colors hover:text-text-secondary"
                 @click="togglePlay"
               >
-                <svg v-if="!playing" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-                <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-                </svg>
+                <IconPlay v-if="!playing" :size="18" />
+                <IconPause v-else :size="18" />
               </button>
 
               <!-- Volume -->
-              <button class="text-white transition-colors hover:text-text-secondary">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                  <path
-                    d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z"
-                  />
-                </svg>
+              <button
+                class="text-white transition-colors hover:text-text-secondary"
+                aria-label="Volume"
+              >
+                <IconVolume :size="18" />
               </button>
 
               <!-- Time -->
@@ -227,12 +232,11 @@ const currentTime = computed(() => {
               >
 
               <!-- Fullscreen -->
-              <button class="text-white transition-colors hover:text-text-secondary">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                  <path
-                    d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"
-                  />
-                </svg>
+              <button
+                class="text-white transition-colors hover:text-text-secondary"
+                aria-label="Fullscreen"
+              >
+                <IconFullscreen :size="18" />
               </button>
             </div>
           </div>
@@ -257,17 +261,7 @@ const currentTime = computed(() => {
                     class="font-mono text-[13px] font-semibold text-neon transition-opacity hover:opacity-80"
                     >@{{ user.username }}</router-link
                   >
-                  <!-- Verified badge -->
-                  <svg v-if="user.verified" width="14" height="14" viewBox="0 0 24 24" fill="none">
-                    <circle cx="12" cy="12" r="10" fill="var(--color-brand)" />
-                    <path
-                      d="M9 12l2 2 4-4"
-                      stroke="white"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    />
-                  </svg>
+                  <IconVerifiedBadge v-if="user.verified" :size="14" />
                 </div>
                 <div class="font-mono text-[10px] tracking-[0.04em] text-text-muted">
                   {{ formatNum(user.followers) }} followers · {{ user.clips }} clips
@@ -302,16 +296,7 @@ const currentTime = computed(() => {
                 "
                 @click="toggleLike"
               >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  :fill="liked ? '#fff' : 'currentColor'"
-                >
-                  <path
-                    d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
-                  />
-                </svg>
+                <IconHeart :size="14" />
                 <span>{{ formatNum(likeCount) }}</span>
               </button>
 
@@ -319,9 +304,7 @@ const currentTime = computed(() => {
               <button
                 class="flex items-center gap-1.5 rounded border border-border bg-surface-raised px-3 py-1.5 font-mono text-[12px] text-text-secondary transition-all duration-150"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M17 3H7c-1.1 0-1.99.9-1.99 2L5 21l7-3 7 3V5c0-1.1-.9-2-2-2z" />
-                </svg>
+                <IconBookmark :size="14" />
                 <span>Save</span>
               </button>
 
@@ -330,11 +313,7 @@ const currentTime = computed(() => {
                 class="flex items-center gap-1.5 rounded border border-border bg-surface-raised px-3 py-1.5 font-mono text-[12px] text-text-secondary transition-all duration-150"
                 @click="handleShare"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <path
-                    d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11A2.99 2.99 0 0 0 18 8a3 3 0 0 0 0-6 3 3 0 0 0 0 6c.34 0 .67-.06.98-.14L12 11.99A2.99 2.99 0 0 0 9 11a3 3 0 0 0 0 6 2.99 2.99 0 0 0 2.98-2.77l7.02 4.12c-.31.08-.63.13-.97.13a3 3 0 0 0 3 3 3 3 0 0 0 0-6z"
-                  />
-                </svg>
+                <IconShare :size="14" />
                 <span>Share</span>
               </button>
             </div>
@@ -439,11 +418,7 @@ const currentTime = computed(() => {
                   <button
                     class="flex items-center gap-1 font-mono text-[11px] text-text-muted transition-colors hover:text-text-secondary"
                   >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                      <path
-                        d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
-                      />
-                    </svg>
+                    <IconHeart :size="12" />
                     {{ c.likes }}
                   </button>
                   <button

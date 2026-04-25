@@ -3,6 +3,13 @@ import { ref, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { GAMES } from '@/lib/mock-data'
 import UserAvatar from '@/components/UserAvatar.vue'
+import IconUploadCloud from '@/components/icons/IconUploadCloud.vue'
+import IconFile from '@/components/icons/IconFile.vue'
+import IconFileText from '@/components/icons/IconFileText.vue'
+import IconArrowRight from '@/components/icons/IconArrowRight.vue'
+import IconArrowLeft from '@/components/icons/IconArrowLeft.vue'
+import IconGlobe from '@/components/icons/IconGlobe.vue'
+import IconLink from '@/components/icons/IconLink.vue'
 
 const router = useRouter()
 
@@ -147,22 +154,9 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
       >
         <!-- Upload icon circle -->
         <div
-          class="flex h-16 w-16 items-center justify-center rounded-full border border-border-strong bg-surface-overlay"
+          class="flex h-16 w-16 items-center justify-center rounded-full border border-border-strong bg-surface-overlay text-brand-light"
         >
-          <svg
-            width="28"
-            height="28"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="var(--color-brand-light)"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="17 8 12 3 7 8" />
-            <line x1="12" y1="3" x2="12" y2="15" />
-          </svg>
+          <IconUploadCloud :size="28" />
         </div>
 
         <div>
@@ -176,19 +170,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
         <label
           class="inline-flex cursor-pointer items-center gap-2 rounded-md bg-brand px-5.5 py-2.5 font-heading text-sm font-bold uppercase tracking-wider text-white transition-[background] duration-150"
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-          </svg>
+          <IconFile :size="16" />
           Choose file
           <input type="file" accept="video/*" class="sr-only" @change="handleFileSelect" />
         </label>
@@ -208,24 +190,9 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
       <!-- File confirmation row -->
       <div
         v-if="file"
-        class="mt-5 flex items-center gap-4 rounded-md border border-neon bg-neon-dim px-5 py-4"
+        class="mt-5 flex items-center gap-4 rounded-md border border-neon bg-neon-dim px-5 py-4 text-neon"
       >
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="var(--color-neon)"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          class="shrink-0"
-        >
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <polyline points="14 2 14 8 20 8" />
-          <line x1="16" y1="13" x2="8" y2="13" />
-          <line x1="16" y1="17" x2="8" y2="17" />
-        </svg>
+        <IconFileText :size="20" class="shrink-0" />
         <div class="min-w-0 flex-1">
           <div
             class="overflow-hidden font-body text-sm whitespace-nowrap text-ellipsis text-text-primary"
@@ -241,19 +208,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
           class="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md bg-brand-light px-5 py-2.5 font-heading text-sm font-bold whitespace-nowrap uppercase tracking-wider text-white"
         >
           Continue
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <line x1="5" y1="12" x2="19" y2="12" />
-            <polyline points="12 5 19 12 12 19" />
-          </svg>
+          <IconArrowRight :size="14" :stroke-width="2.5" />
         </button>
       </div>
     </div>
@@ -330,37 +285,8 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
                 ]"
               >
                 <div class="mb-1 flex items-center gap-2">
-                  <svg
-                    v-if="opt === 'public'"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <circle cx="12" cy="12" r="10" />
-                    <line x1="2" y1="12" x2="22" y2="12" />
-                    <path
-                      d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"
-                    />
-                  </svg>
-                  <svg
-                    v-else
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-                  </svg>
+                  <IconGlobe v-if="opt === 'public'" :size="16" />
+                  <IconLink v-else :size="16" />
                   <span class="font-heading text-sm font-bold uppercase">
                     {{ opt === 'public' ? 'Public' : 'Unlisted' }}
                   </span>
@@ -378,19 +304,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
               @click="step = 1"
               class="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-surface-overlay px-5 py-3 font-heading text-sm font-bold uppercase text-text-secondary"
             >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <line x1="19" y1="12" x2="5" y2="12" />
-                <polyline points="12 19 5 12 12 5" />
-              </svg>
+              <IconArrowLeft :size="14" :stroke-width="2.5" />
               Back
             </button>
             <button
@@ -404,19 +318,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
               ]"
             >
               Start upload
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <line x1="5" y1="12" x2="19" y2="12" />
-                <polyline points="12 5 19 12 12 19" />
-              </svg>
+              <IconArrowRight :size="14" :stroke-width="2.5" />
             </button>
           </div>
         </div>
@@ -559,19 +461,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
             class="flex w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-brand-light px-6 py-3.5 font-heading text-base font-bold uppercase tracking-wider text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             View your clip
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <line x1="5" y1="12" x2="19" y2="12" />
-              <polyline points="12 5 19 12 12 19" />
-            </svg>
+            <IconArrowRight :size="16" :stroke-width="2.5" />
           </button>
           <button
             @click="router.push('/')"
