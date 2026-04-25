@@ -1,18 +1,20 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { CLIPS, GAMES, USERS, formatNum, formatDuration } from '@/lib/mock-data'
+import { CLIPS, GAMES, USERS, formatNum, formatDuration, clipById } from '@/lib/mock-data'
+import type { Clip } from '@/lib/mock-data'
 import ClipCard from '@/components/ClipCard.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 
 const router = useRouter()
 
-const hero = CLIPS[3] // Hanzo 6k
-const heroUser = USERS[hero.user]
-const heroGame = GAMES[hero.game]
+// Featured clip — looked up by id so a reorder of the mock fixture won't change the hero.
+const hero = clipById('clp_04')
+const heroUser = hero ? USERS[hero.user] : undefined
+const heroGame = hero ? GAMES[hero.game] : undefined
 
 const filter = ref<string>('all')
-const sort = ref<string>('hot')
+const sort = ref<'hot' | 'new' | 'top'>('hot')
 
 const GAME_FILTERS = [
   { key: 'all', label: 'All Games' },
@@ -24,12 +26,27 @@ const GAME_FILTERS = [
   { key: 'league', label: 'LoL' },
 ]
 
-const filteredClips = computed(() => {
-  if (filter.value === 'all') return CLIPS
-  return CLIPS.filter((c) => c.game === filter.value)
+const filteredClips = computed<Clip[]>(() => {
+  const base =
+    filter.value === 'all' ? [...CLIPS] : CLIPS.filter((c) => c.game === filter.value).slice()
+  switch (sort.value) {
+    case 'top':
+      return base.sort((a, b) => b.likes - a.likes)
+    case 'new':
+      // Mock data has no real timestamp; reverse-id order is the closest stable proxy.
+      return base.sort((a, b) => b.id.localeCompare(a.id))
+    case 'hot':
+    default:
+      // Cheap "hot" score: views + likes × 5
+      return base.sort((a, b) => b.views + b.likes * 5 - (a.views + a.likes * 5))
+  }
 })
 
-const secondaryClips = [CLIPS[0], CLIPS[5], CLIPS[1], CLIPS[11]]
+// Secondary "rising" clips — looked up by id rather than by index so a fixture
+// reorder doesn't silently change which clips appear here. Filter undefined for safety.
+const secondaryClips = ['clp_01', 'clp_06', 'clp_02', 'clp_12']
+  .map((id) => clipById(id))
+  .filter((c): c is Clip => c !== undefined)
 
 const filterBase = 'cursor-pointer rounded-full px-3 py-1.5 font-mono text-[11px] uppercase'
 const filterActive = 'border border-text-primary bg-text-primary text-surface-base'
@@ -59,6 +76,7 @@ const filterInactive = 'border border-border bg-transparent text-text-muted'
 
     <!-- Desktop hero card -->
     <div
+      v-if="hero && heroUser && heroGame"
       class="relative mt-7 mb-12 hidden overflow-hidden rounded-lg border border-border bg-surface-raised min-[900px]:block"
     >
       <div class="grid min-h-115 grid-cols-[1.4fr_1fr]">
@@ -206,10 +224,11 @@ const filterInactive = 'border border-border bg-transparent text-text-muted'
         >
           Rising in Your Games
         </h2>
-        <a
-          href="#"
-          class="font-mono text-[11px] uppercase tracking-[0.06em] whitespace-nowrap text-text-secondary"
-          >See All →</a
+        <RouterLink
+          to="/trending"
+          aria-label="See all trending clips"
+          class="font-mono text-[11px] uppercase tracking-[0.06em] whitespace-nowrap text-text-secondary no-underline"
+          >See All →</RouterLink
         >
       </div>
 

@@ -51,7 +51,7 @@ Tactical also swaps `--font-heading` to `Rajdhani` (everything else stays); Unde
 
 ## Color Tokens
 
-All tokens are in [web/src/assets/base.css](src/assets/base.css). The `@theme {}` block defines Tailwind utilities (`bg-brand`, `text-neon`, `border-border`, …) and acts as the static fallback. Each `[data-theme="…"]` block overrides the same set of variables at runtime, so utilities resolve to whatever the active theme dictates.
+All tokens are in [base.css](src/assets/base.css). The `@theme {}` block defines Tailwind utilities (`bg-brand`, `text-neon`, `border-border`, …) and acts as the static fallback. Each `[data-theme="…"]` block overrides the same set of variables at runtime, so utilities resolve to whatever the active theme dictates.
 
 ### Underground (token reference)
 
@@ -169,7 +169,7 @@ Clips two opposite corners via `clip-path: polygon(var(--corner-cut) 0, …)`. `
 
 **Tailwind v4 utility classes for everything** — color, spacing, typography, layout, hover/focus states, media queries. No `style="..."` inline attributes on elements. No `<style scoped>` blocks for cases Tailwind can already express.
 
-If a specific color (e.g. a vendor brand color like Discord blue) doesn't exist in Tailwind's defaults, **add it to the `@theme {}` block** in [src/assets/base.css](src/assets/base.css) so a utility class is generated, then use the utility (`bg-discord`, `hover:bg-discord-hover`). Don't drop hex values into the template.
+If a specific color (e.g. a vendor brand color like Discord blue) doesn't exist in Tailwind's defaults, **add it to the `@theme {}` block** in [base.css](src/assets/base.css) so a utility class is generated, then use the utility (`bg-discord`, `hover:bg-discord-hover`). Don't drop hex values into the template.
 
 Legitimate exceptions, narrow:
 - **Dynamic runtime values** (e.g. an avatar gradient computed from a per-user color) — use inline `:style="..."` Vue bindings; utilities can't express runtime values.

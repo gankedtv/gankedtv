@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { USERS, CLIPS, GAMES, formatNum, userByUsername } from '@/lib/mock-data'
 import UserAvatar from '@/components/UserAvatar.vue'
@@ -8,27 +8,31 @@ import ClipCard from '@/components/ClipCard.vue'
 const route = useRoute()
 const router = useRouter()
 
-const resolved = computed(() => {
-  const r = userByUsername(route.params.username as string)
-  return r ?? (['phantomveil', USERS.phantomveil] as [string, (typeof USERS)[string]])
+const resolved = computed(() => userByUsername(route.params.username as string))
+
+watchEffect(() => {
+  // Surface unknown usernames as a real 404 instead of silently rendering a placeholder.
+  if (route.params.username && resolved.value === undefined) {
+    router.replace({ name: 'not-found' })
+  }
 })
 
-const userKey = computed(() => resolved.value[0])
-const user = computed(() => resolved.value[1])
+const userKey = computed(() => resolved.value?.[0] ?? '')
+const user = computed(() => resolved.value?.[1])
 
-const bannerGradient = computed(
-  () =>
-    `linear-gradient(135deg, ${user.value.avatar}, color-mix(in oklab, ${user.value.avatar} 20%, #000))`,
-)
+const bannerGradient = computed(() => {
+  const avatar = user.value?.avatar ?? '#000'
+  return `linear-gradient(135deg, ${avatar}, color-mix(in oklab, ${avatar} 20%, #000))`
+})
 
-const avatarGradient = computed(
-  () =>
-    `linear-gradient(135deg, ${user.value.avatar}, color-mix(in oklab, ${user.value.avatar} 20%, #000))`,
-)
+const avatarGradient = computed(() => {
+  const avatar = user.value?.avatar ?? '#000'
+  return `linear-gradient(135deg, ${avatar}, color-mix(in oklab, ${avatar} 20%, #000))`
+})
 
 const initials = computed(
   () =>
-    user.value.display
+    (user.value?.display ?? '')
       .replace(/[^a-zA-Z]/g, '')
       .slice(0, 2)
       .toUpperCase() || '??',
@@ -81,11 +85,20 @@ const followerUsers = computed(() =>
     .slice(0, 8),
 )
 
+// Local follow toggle state (mock — no API yet)
+const followedUsers = ref(new Set<string>())
+function toggleFollowedUser(key: string) {
+  if (followedUsers.value.has(key)) followedUsers.value.delete(key)
+  else followedUsers.value.add(key)
+  // Force reactivity for Set mutations
+  followedUsers.value = new Set(followedUsers.value)
+}
+
 const joinedDate = 'Jan 2024'
 </script>
 
 <template>
-  <main class="relative">
+  <main v-if="user" class="relative">
     <!-- ===================== BANNER ===================== -->
     <div class="relative h-70 overflow-hidden" :style="{ background: bannerGradient }">
       <!-- Stripe texture -->
@@ -287,7 +300,8 @@ const joinedDate = 'Jan 2024'
             <span>Sort:</span>
             <select
               v-model="sort"
-              class="cursor-pointer rounded-sm border border-border bg-surface-raised px-2.5 py-1.25 font-mono text-[11px] text-text-primary outline-none"
+              aria-label="Sort clips"
+              class="cursor-pointer rounded-sm border border-border bg-surface-raised px-2.5 py-1.25 font-mono text-[11px] text-text-primary outline-none focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand"
             >
               <option value="recent">Recent</option>
               <option value="top">Top</option>
@@ -351,19 +365,32 @@ const joinedDate = 'Jan 2024'
                 :key="fk"
                 class="flex flex-col items-center gap-2.5 rounded-md border border-border bg-surface-raised p-5 text-center"
               >
-                <UserAvatar :user="fk" :size="52" />
+                <button
+                  class="cursor-pointer border-none bg-transparent p-0"
+                  :aria-label="`Open ${fu.display}'s profile`"
+                  @click="router.push({ name: 'user', params: { username: fu.username } })"
+                >
+                  <UserAvatar :user="fk" :size="52" />
+                </button>
                 <div class="flex flex-col gap-0.75">
-                  <span
-                    class="font-heading text-base font-bold uppercase tracking-[0.04em] text-text-primary"
-                    >{{ fu.display }}</span
+                  <button
+                    class="cursor-pointer border-none bg-transparent p-0 font-heading text-base font-bold uppercase tracking-[0.04em] text-text-primary"
+                    @click="router.push({ name: 'user', params: { username: fu.username } })"
                   >
+                    {{ fu.display }}
+                  </button>
                   <span class="font-mono text-[11px] text-neon">@{{ fu.username }}</span>
                 </div>
                 <button
-                  class="mt-1 cursor-pointer rounded-sm border-none bg-brand px-4.5 py-1.5 font-mono text-[10px] uppercase tracking-widest text-white transition-colors duration-150 hover:bg-brand-light"
-                  @click="router.push({ name: 'user', params: { username: fu.username } })"
+                  class="mt-1 cursor-pointer rounded-sm border-none px-4.5 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-colors duration-150"
+                  :class="
+                    followedUsers.has(fk)
+                      ? 'border border-border-strong bg-transparent text-text-primary'
+                      : 'bg-brand text-white hover:bg-brand-light'
+                  "
+                  @click="toggleFollowedUser(fk)"
                 >
-                  Follow
+                  {{ followedUsers.has(fk) ? 'Following' : 'Follow' }}
                 </button>
               </div>
             </div>

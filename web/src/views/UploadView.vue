@@ -2,6 +2,7 @@
 import { ref, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { GAMES } from '@/lib/mock-data'
+import UserAvatar from '@/components/UserAvatar.vue'
 
 const router = useRouter()
 
@@ -20,6 +21,9 @@ let uploadInterval: ReturnType<typeof setInterval> | null = null
 // TODO: replace with the real created clip id once the upload API is wired
 const createdClipId = ref<string | null>(null)
 
+// Checklist completion thresholds keyed to the simulated upload progress
+const CHECKLIST_THRESHOLDS = [30, 80, 100] as const
+
 function startUpload() {
   if (uploadInterval) {
     clearInterval(uploadInterval)
@@ -31,7 +35,6 @@ function startUpload() {
     const increment = 5 + Math.random() * 5
     progress.value = Math.min(100, progress.value + increment)
     if (progress.value >= 100) {
-      progress.value = 100
       if (uploadInterval) {
         clearInterval(uploadInterval)
         uploadInterval = null
@@ -53,6 +56,8 @@ function handleFileSelect(e: Event) {
     const f = input.files[0]
     file.value = { name: f.name, size: f.size, type: f.type }
   }
+  // Reset so picking the same file again still fires `change`
+  if (e.target instanceof HTMLInputElement) e.target.value = ''
 }
 
 function handleDrop(e: DragEvent) {
@@ -79,11 +84,8 @@ const SOURCES = ['OBS', 'ShadowPlay', 'Medal', 'Xbox', 'PS5', 'Switch']
 
 const GAME_KEYS = Object.keys(GAMES)
 
-// Checklist timing
 function checklistDone(index: number): boolean {
-  if (index === 0) return progress.value >= 30
-  if (index === 1) return progress.value >= 80
-  return progress.value >= 100
+  return progress.value >= (CHECKLIST_THRESHOLDS[index] ?? 100)
 }
 
 const inputClass =
@@ -458,11 +460,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
 
               <!-- User row -->
               <div class="flex items-center gap-2">
-                <div
-                  class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand font-mono text-[9px] text-white"
-                >
-                  P
-                </div>
+                <UserAvatar user="phantomveil" :size="24" />
                 <span class="font-mono text-[11px] text-text-secondary"> @phantomveil </span>
               </div>
             </div>
