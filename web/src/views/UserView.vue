@@ -125,9 +125,7 @@ const joinedDate = 'Jan 2024'
         <!-- User info -->
         <div class="min-w-55 flex-1 pt-19">
           <!-- Eyebrow -->
-          <div
-            class="mb-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-text-muted"
-          >
+          <div class="mb-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-text-muted">
             {{ user.verified ? 'Verified Creator / Player' : 'Player' }} · Joined {{ joinedDate }}
           </div>
 
@@ -224,24 +222,18 @@ const joinedDate = 'Jan 2024'
           :key="stat.label"
           class="flex flex-col gap-1 bg-surface-raised px-5 py-4"
         >
-          <span
-            class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
-            >{{ stat.label }}</span
-          >
-          <span
-            class="font-heading text-[22px] font-bold leading-none text-text-primary"
-            >{{ stat.value }}</span
-          >
+          <span class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">{{
+            stat.label
+          }}</span>
+          <span class="font-heading text-[22px] font-bold leading-none text-text-primary">{{
+            stat.value
+          }}</span>
         </div>
       </div>
 
       <!-- ---- Main arsenal ---- -->
-      <div
-        class="mt-5 rounded-md border border-border bg-surface-raised px-5 py-4"
-      >
-        <div
-          class="mb-3.5 font-mono text-[10px] uppercase tracking-widest text-text-muted"
-        >
+      <div class="mt-5 rounded-md border border-border bg-surface-raised px-5 py-4">
+        <div class="mb-3.5 font-mono text-[10px] uppercase tracking-widest text-text-muted">
           Main Arsenal
         </div>
         <div class="flex flex-wrap gap-2.5">
@@ -256,10 +248,9 @@ const joinedDate = 'Jan 2024'
               :style="{ backgroundImage: `url(${GAMES[gk].art})`, backgroundSize: 'cover' }"
             ></div>
             <div class="flex flex-col gap-px leading-none">
-              <span
-                class="font-mono text-[11px] font-medium text-text-primary"
-                >{{ GAMES[gk].name }}</span
-              >
+              <span class="font-mono text-[11px] font-medium text-text-primary">{{
+                GAMES[gk].name
+              }}</span>
               <span class="font-mono text-[10px] text-text-muted"
                 >{{ gameClipCount[gk] }} clips</span
               >
@@ -320,13 +311,8 @@ const joinedDate = 'Jan 2024'
           </div>
 
           <!-- Liked tab -->
-          <div
-            v-else-if="tab === 'liked'"
-            class="flex items-center justify-center py-20"
-          >
-            <p
-              class="font-mono text-[13px] tracking-[0.06em] text-text-muted"
-            >
+          <div v-else-if="tab === 'liked'" class="flex items-center justify-center py-20">
+            <p class="font-mono text-[13px] tracking-[0.06em] text-text-muted">
               Liked clips are private.
             </p>
           </div>
@@ -347,14 +333,10 @@ const joinedDate = 'Jan 2024'
                 class="flex flex-col gap-2 rounded-md border border-border bg-surface-raised px-6 py-5"
               >
                 <div class="text-xl leading-none">{{ card.icon }}</div>
-                <div
-                  class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
-                >
+                <div class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
                   {{ card.label }}
                 </div>
-                <div
-                  class="font-heading text-lg font-bold leading-[1.2] text-text-primary"
-                >
+                <div class="font-heading text-lg font-bold leading-[1.2] text-text-primary">
                   {{ card.value }}
                 </div>
               </div>
@@ -375,9 +357,7 @@ const joinedDate = 'Jan 2024'
                     class="font-heading text-base font-bold uppercase tracking-[0.04em] text-text-primary"
                     >{{ fu.display }}</span
                   >
-                  <span class="font-mono text-[11px] text-neon"
-                    >@{{ fu.username }}</span
-                  >
+                  <span class="font-mono text-[11px] text-neon">@{{ fu.username }}</span>
                 </div>
                 <button
                   class="mt-1 cursor-pointer rounded-sm border-none bg-brand px-4.5 py-1.5 font-mono text-[10px] uppercase tracking-widest text-white transition-colors duration-150 hover:bg-brand-light"

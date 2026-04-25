@@ -26,9 +26,7 @@ watchEffect(() => {
 </script>
 
 <template>
-  <div
-    class="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center gap-8 px-6"
-  >
+  <div class="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center gap-8 px-6">
     <!-- Logo + tagline -->
     <div class="flex flex-col items-center gap-2.5 text-center">
       <div class="flex items-center gap-2.5">
@@ -39,21 +37,15 @@ watchEffect(() => {
           GANKED.TV
         </span>
       </div>
-      <div
-        class="font-mono text-[11px] uppercase tracking-widest text-text-muted"
-      >
+      <div class="font-mono text-[11px] uppercase tracking-widest text-text-muted">
         No algorithm. Just clips.
       </div>
     </div>
 
     <!-- Card -->
-    <div
-      class="w-full max-w-100 rounded-lg border border-border bg-surface-raised px-8 py-9"
-    >
+    <div class="w-full max-w-100 rounded-lg border border-border bg-surface-raised px-8 py-9">
       <div class="mb-6 text-center">
-        <h1
-          class="m-0 mb-2 font-heading text-[32px] font-bold uppercase text-text-primary"
-        >
+        <h1 class="m-0 mb-2 font-heading text-[32px] font-bold uppercase text-text-primary">
           Sign In
         </h1>
         <p class="m-0 font-body text-sm text-text-secondary">
@@ -85,11 +77,7 @@ watchEffect(() => {
         <!-- Divider -->
         <div class="flex items-center gap-3">
           <div class="h-px flex-1 bg-border"></div>
-          <span
-            class="font-mono text-[10px] uppercase tracking-widest text-text-muted"
-          >
-            or
-          </span>
+          <span class="font-mono text-[10px] uppercase tracking-widest text-text-muted"> or </span>
           <div class="h-px flex-1 bg-border"></div>
         </div>
 
@@ -121,9 +109,7 @@ watchEffect(() => {
       </div>
 
       <!-- Footer -->
-      <p
-        class="m-0 mt-5 text-center font-mono text-[10px] tracking-wider text-text-muted"
-      >
+      <p class="m-0 mt-5 text-center font-mono text-[10px] tracking-wider text-text-muted">
         By signing in you agree to our Terms of Service.
       </p>
     </div>

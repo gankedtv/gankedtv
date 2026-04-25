@@ -31,8 +31,7 @@ const filteredClips = computed(() => {
 
 const secondaryClips = [CLIPS[0], CLIPS[5], CLIPS[1], CLIPS[11]]
 
-const filterBase =
-  'cursor-pointer rounded-full px-3 py-1.5 font-mono text-[11px] uppercase'
+const filterBase = 'cursor-pointer rounded-full px-3 py-1.5 font-mono text-[11px] uppercase'
 const filterActive = 'border border-text-primary bg-text-primary text-surface-base'
 const filterInactive = 'border border-border bg-transparent text-text-muted'
 </script>
@@ -105,9 +104,7 @@ const filterInactive = 'border border-border bg-transparent text-text-muted'
         <div class="flex flex-col justify-between px-11 py-10">
           <!-- Top content -->
           <div class="flex flex-col gap-4">
-            <div
-              class="font-mono text-[11px] uppercase tracking-[0.15em] text-neon"
-            >
+            <div class="font-mono text-[11px] uppercase tracking-[0.15em] text-neon">
               Featured Clip
             </div>
             <h2
@@ -122,38 +119,24 @@ const filterInactive = 'border border-border bg-transparent text-text-muted'
           </div>
 
           <!-- Stats row -->
-          <div
-            class="my-5 flex gap-7 border-y border-border py-4 font-mono"
-          >
+          <div class="my-5 flex gap-7 border-y border-border py-4 font-mono">
             <div class="flex flex-col gap-1">
-              <span
-                class="text-[10px] uppercase tracking-[0.08em] text-text-muted"
-                >Views</span
-              >
-              <span
-                class="font-heading text-[22px] font-bold text-text-primary"
-                >{{ formatNum(hero.views) }}</span
-              >
+              <span class="text-[10px] uppercase tracking-[0.08em] text-text-muted">Views</span>
+              <span class="font-heading text-[22px] font-bold text-text-primary">{{
+                formatNum(hero.views)
+              }}</span>
             </div>
             <div class="flex flex-col gap-1">
-              <span
-                class="text-[10px] uppercase tracking-[0.08em] text-text-muted"
-                >Likes</span
-              >
-              <span
-                class="font-heading text-[22px] font-bold text-text-primary"
-                >{{ formatNum(hero.likes) }}</span
-              >
+              <span class="text-[10px] uppercase tracking-[0.08em] text-text-muted">Likes</span>
+              <span class="font-heading text-[22px] font-bold text-text-primary">{{
+                formatNum(hero.likes)
+              }}</span>
             </div>
             <div class="flex flex-col gap-1">
-              <span
-                class="text-[10px] uppercase tracking-[0.08em] text-text-muted"
-                >Duration</span
-              >
-              <span
-                class="font-heading text-[22px] font-bold text-text-primary"
-                >{{ formatDuration(hero.duration) }}</span
-              >
+              <span class="text-[10px] uppercase tracking-[0.08em] text-text-muted">Duration</span>
+              <span class="font-heading text-[22px] font-bold text-text-primary">{{
+                formatDuration(hero.duration)
+              }}</span>
             </div>
           </div>
 
@@ -171,8 +154,7 @@ const filterInactive = 'border border-border bg-transparent text-text-muted'
               @click="router.push({ name: 'user', params: { username: heroUser.username } })"
             >
               <UserAvatar :user="hero.user" :size="28" />
-              <span
-                class="font-mono text-[11px] tracking-[0.04em] text-text-secondary"
+              <span class="font-mono text-[11px] tracking-[0.04em] text-text-secondary"
                 >@{{ heroUser.username }}</span
               >
             </button>
@@ -182,9 +164,7 @@ const filterInactive = 'border border-border bg-transparent text-text-muted'
     </div>
 
     <!-- Feed toolbar -->
-    <div
-      class="mb-7 flex flex-wrap items-center gap-3 border-b border-border py-3"
-    >
+    <div class="mb-7 flex flex-wrap items-center gap-3 border-b border-border py-3">
       <button
         v-for="f in GAME_FILTERS"
         :key="f.key"
@@ -195,9 +175,7 @@ const filterInactive = 'border border-border bg-transparent text-text-muted'
       </button>
 
       <!-- Sort -->
-      <div
-        class="ml-auto flex items-center gap-2 font-mono text-[11px] uppercase text-text-muted"
-      >
+      <div class="ml-auto flex items-center gap-2 font-mono text-[11px] uppercase text-text-muted">
         <span>Sort:</span>
         <select
           v-model="sort"

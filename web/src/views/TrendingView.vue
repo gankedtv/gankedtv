@@ -79,9 +79,7 @@ const trendHold = `${trendBase} text-text-muted`
   <main class="mx-auto max-w-360 px-6 pt-8 pb-30">
     <!-- Page header -->
     <div>
-      <div
-        class="mb-2 font-mono text-[11px] uppercase tracking-widest text-text-muted"
-      >
+      <div class="mb-2 font-mono text-[11px] uppercase tracking-widest text-text-muted">
         Updated every 5 min · Ranked by likes + plays
       </div>
       <h1
@@ -91,9 +89,7 @@ const trendHold = `${trendBase} text-text-muted`
       </h1>
 
       <!-- Time window toggle -->
-      <div
-        class="inline-flex gap-0.5 p-1 bg-surface-raised border border-border rounded-sm"
-      >
+      <div class="inline-flex gap-0.5 p-1 bg-surface-raised border border-border rounded-sm">
         <button
           v-for="tw in TIME_WINDOWS"
           :key="tw.key"
@@ -106,16 +102,11 @@ const trendHold = `${trendBase} text-text-muted`
     </div>
 
     <!-- Two-column layout -->
-    <div
-      class="grid grid-cols-[minmax(0,1fr)_340px] gap-7 items-start max-[960px]:grid-cols-1"
-    >
+    <div class="grid grid-cols-[minmax(0,1fr)_340px] gap-7 items-start max-[960px]:grid-cols-1">
       <!-- LEFT: Top 10 leaderboard -->
-      <div
-        class="bg-surface-raised border border-border rounded-md overflow-hidden mt-7"
-      >
+      <div class="bg-surface-raised border border-border rounded-md overflow-hidden mt-7">
         <div class="px-4 py-3.5 border-b border-border">
-          <span
-            class="font-heading font-bold text-sm uppercase text-text-secondary tracking-wider"
+          <span class="font-heading font-bold text-sm uppercase text-text-secondary tracking-wider"
             >Top 10 this period</span
           >
         </div>
@@ -131,11 +122,7 @@ const trendHold = `${trendBase} text-text-muted`
             <span :class="i < 3 ? rankTop : rankRest">#{{ i + 1 }}</span>
             <span
               :class="
-                trendFor(i) === 'up'
-                  ? trendUp
-                  : trendFor(i) === 'down'
-                    ? trendDown
-                    : trendHold
+                trendFor(i) === 'up' ? trendUp : trendFor(i) === 'down' ? trendDown : trendHold
               "
               >{{ trendFor(i) === 'up' ? '▲' : trendFor(i) === 'down' ? '▼' : '—' }}</span
             >
@@ -143,11 +130,7 @@ const trendHold = `${trendBase} text-text-muted`
 
           <!-- Thumbnail -->
           <div class="relative rounded-[4px] overflow-hidden aspect-video">
-            <img
-              :src="clip.art"
-              alt=""
-              class="w-full h-full object-cover block"
-            />
+            <img :src="clip.art" alt="" class="w-full h-full object-cover block" />
             <span
               class="absolute bottom-1 right-1 font-mono text-[10px] text-white bg-black/75 px-1.25 py-0.5 rounded-[3px] leading-none"
               >{{ formatDuration(clip.duration) }}</span
@@ -198,9 +181,7 @@ const trendHold = `${trendBase} text-text-muted`
       <!-- RIGHT sidebar -->
       <div class="flex flex-col gap-4 mt-7">
         <!-- Top creators -->
-        <div
-          class="bg-surface-raised border border-border rounded-md overflow-hidden"
-        >
+        <div class="bg-surface-raised border border-border rounded-md overflow-hidden">
           <div class="px-4 py-3.5 border-b border-border">
             <span
               class="section-title-bar flex items-center gap-2.5 font-heading font-bold text-sm uppercase text-text-secondary tracking-wider"
@@ -214,8 +195,7 @@ const trendHold = `${trendBase} text-text-muted`
             class="flex items-center gap-3 px-4 py-2.5 border-b border-border last:border-b-0 cursor-pointer transition-[background] duration-150 hover:bg-surface-overlay"
             @click="router.push({ name: 'user', params: { username } })"
           >
-            <span
-              class="font-heading font-bold text-lg text-text-muted w-6 shrink-0 leading-none"
+            <span class="font-heading font-bold text-lg text-text-muted w-6 shrink-0 leading-none"
               >#{{ i + 1 }}</span
             >
             <UserAvatar :user="userKeyByUsername(username)" :size="36" />
@@ -225,22 +205,16 @@ const trendHold = `${trendBase} text-text-muted`
               >
                 {{ USERS[userKeyByUsername(username)]?.display }}
               </span>
-              <span class="font-mono text-[10px] text-text-muted">
-                @{{ username }}
-              </span>
+              <span class="font-mono text-[10px] text-text-muted"> @{{ username }} </span>
             </div>
-            <span
-              class="font-mono text-[10px] text-neon whitespace-nowrap shrink-0"
-            >
+            <span class="font-mono text-[10px] text-neon whitespace-nowrap shrink-0">
               +{{ formatNum(CREATOR_GAINED[i]) }}
             </span>
           </div>
         </div>
 
         <!-- Hot games -->
-        <div
-          class="bg-surface-raised border border-border rounded-md overflow-hidden"
-        >
+        <div class="bg-surface-raised border border-border rounded-md overflow-hidden">
           <div class="px-4 py-3.5 border-b border-border">
             <span
               class="section-title-bar flex items-center gap-2.5 font-heading font-bold text-sm uppercase text-text-secondary tracking-wider"
@@ -256,11 +230,7 @@ const trendHold = `${trendBase} text-text-muted`
           >
             <!-- Game art thumbnail -->
             <div class="w-10 h-10 rounded-[4px] overflow-hidden shrink-0 relative">
-              <img
-                :src="game.art"
-                alt=""
-                class="w-full h-full object-cover block"
-              />
+              <img :src="game.art" alt="" class="w-full h-full object-cover block" />
             </div>
             <div class="min-w-0 flex-1 flex flex-col gap-px">
               <span
@@ -273,12 +243,7 @@ const trendHold = `${trendBase} text-text-muted`
               </span>
             </div>
             <!-- Sparkline -->
-            <svg
-              width="56"
-              height="14"
-              viewBox="0 0 56 14"
-              class="shrink-0 overflow-visible"
-            >
+            <svg width="56" height="14" viewBox="0 0 56 14" class="shrink-0 overflow-visible">
               <polyline
                 :points="sparklinePoints(i)"
                 fill="none"

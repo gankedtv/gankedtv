@@ -15,9 +15,7 @@ const navLinkActive =
   <header
     class="sticky top-0 z-50 h-16 border-b border-border bg-[color-mix(in_oklab,var(--color-surface-base)_85%,transparent)] backdrop-blur-[14px]"
   >
-    <div
-      class="mx-auto flex h-full max-w-360 min-w-0 items-center gap-5 px-6 *:shrink-0"
-    >
+    <div class="mx-auto flex h-full max-w-360 min-w-0 items-center gap-5 px-6 *:shrink-0">
       <!-- Logo -->
       <RouterLink
         to="/"

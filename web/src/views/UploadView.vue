@@ -77,17 +77,14 @@ function checklistDone(index: number): boolean {
 
 const inputClass =
   'w-full rounded-md border border-border bg-surface-raised px-3.5 py-3 font-body text-sm text-text-primary outline-none'
-const labelClass =
-  'mb-1.5 block font-mono text-[10px] uppercase tracking-widest text-text-muted'
+const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest text-text-muted'
 </script>
 
 <template>
   <main class="mx-auto max-w-225 px-6 pt-8 pb-30">
     <!-- Page header -->
     <div class="mb-7">
-      <div
-        class="mb-2.5 font-mono text-[11px] uppercase tracking-widest text-text-muted"
-      >
+      <div class="mb-2.5 font-mono text-[11px] uppercase tracking-widest text-text-muted">
         Any source welcome · OBS, ShadowPlay, Medal, Xbox, consoles — just drop the file
       </div>
       <h1
@@ -98,9 +95,7 @@ const labelClass =
     </div>
 
     <!-- Stepper -->
-    <div
-      class="mb-8 flex overflow-hidden rounded-md border border-border bg-surface-raised"
-    >
+    <div class="mb-8 flex overflow-hidden rounded-md border border-border bg-surface-raised">
       <div
         v-for="(s, i) in STEPS"
         :key="s.num"
@@ -119,9 +114,7 @@ const labelClass =
         >
           Step {{ s.num }}
         </div>
-        <div
-          class="font-heading text-base font-bold uppercase text-text-primary"
-        >
+        <div class="font-heading text-base font-bold uppercase text-text-primary">
           {{ s.label }}
         </div>
       </div>
@@ -136,9 +129,7 @@ const labelClass =
         @drop.prevent="handleDrop"
         :class="[
           'flex flex-col items-center gap-4 rounded-lg border-2 border-dashed px-6 py-16 text-center transition-[border-color] duration-200',
-          dragging
-            ? 'border-brand-light bg-brand-glow'
-            : 'border-border-strong bg-transparent',
+          dragging ? 'border-brand-light bg-brand-glow' : 'border-border-strong bg-transparent',
         ]"
       >
         <!-- Upload icon circle -->
@@ -162,14 +153,10 @@ const labelClass =
         </div>
 
         <div>
-          <div
-            class="mb-1.5 font-heading text-[22px] font-bold uppercase text-text-primary"
-          >
+          <div class="mb-1.5 font-heading text-[22px] font-bold uppercase text-text-primary">
             Drop your clip here
           </div>
-          <div class="font-body text-sm text-text-secondary">
-            MP4, MOV, WebM — up to 4 GB
-          </div>
+          <div class="font-body text-sm text-text-secondary">MP4, MOV, WebM — up to 4 GB</div>
         </div>
 
         <!-- Choose file button -->
@@ -260,18 +247,14 @@ const labelClass =
 
     <!-- Step 2: Metadata -->
     <div v-else-if="step === 2">
-      <div
-        class="grid gap-8 grid-cols-1 min-[761px]:grid-cols-[1fr_320px]"
-      >
+      <div class="grid gap-8 grid-cols-1 min-[761px]:grid-cols-[1fr_320px]">
         <!-- Left: form -->
         <div class="flex flex-col gap-6">
           <!-- Title -->
           <div>
             <div class="mb-1.5 flex items-baseline justify-between">
               <label :class="labelClass + ' mb-0'">Title</label>
-              <span class="font-mono text-[10px] text-text-muted">
-                {{ title.length }}/100
-              </span>
+              <span class="font-mono text-[10px] text-text-muted"> {{ title.length }}/100 </span>
             </div>
             <input
               v-model="title"
@@ -305,12 +288,9 @@ const labelClass =
           <div>
             <div class="mb-1.5 flex items-baseline justify-between">
               <label :class="labelClass + ' mb-0'"
-                >Description
-                <span class="text-[9px] text-text-muted">(optional)</span></label
+                >Description <span class="text-[9px] text-text-muted">(optional)</span></label
               >
-              <span class="font-mono text-[10px] text-text-muted">
-                {{ desc.length }}/500
-              </span>
+              <span class="font-mono text-[10px] text-text-muted"> {{ desc.length }}/500 </span>
             </div>
             <textarea
               v-model="desc"
@@ -368,9 +348,7 @@ const labelClass =
                     <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
                     <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
                   </svg>
-                  <span
-                    class="font-heading text-sm font-bold uppercase"
-                  >
+                  <span class="font-heading text-sm font-bold uppercase">
                     {{ opt === 'public' ? 'Public' : 'Unlisted' }}
                   </span>
                 </div>
@@ -433,13 +411,9 @@ const labelClass =
         <!-- Right: preview card -->
         <div>
           <label :class="labelClass + ' mb-3'">Preview</label>
-          <div
-            class="overflow-hidden rounded-md border border-border bg-surface-raised"
-          >
+          <div class="overflow-hidden rounded-md border border-border bg-surface-raised">
             <!-- Thumbnail -->
-            <div
-              class="relative aspect-video bg-surface-sunken"
-            >
+            <div class="relative aspect-video bg-surface-sunken">
               <img
                 v-if="GAMES[game]?.art"
                 :src="GAMES[game].art"
@@ -478,9 +452,7 @@ const labelClass =
                 >
                   P
                 </div>
-                <span class="font-mono text-[11px] text-text-secondary">
-                  @phantomveil
-                </span>
+                <span class="font-mono text-[11px] text-text-secondary"> @phantomveil </span>
               </div>
             </div>
 
@@ -488,9 +460,7 @@ const labelClass =
             <div
               class="mx-3.5 mb-3.5 rounded-sm border border-dashed border-border-strong px-3 py-2.5"
             >
-              <div
-                class="mb-1 font-mono text-[9px] uppercase tracking-[0.08em] text-text-muted"
-              >
+              <div class="mb-1 font-mono text-[9px] uppercase tracking-[0.08em] text-text-muted">
                 Share URL preview
               </div>
               <div
@@ -520,19 +490,13 @@ const labelClass =
             />
           </div>
           <div class="min-w-0 flex-1 p-4">
-            <div
-              class="mb-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-neon"
-            >
+            <div class="mb-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-neon">
               {{ GAMES[game]?.tag }}
             </div>
-            <div
-              class="mb-2 font-heading text-base font-bold leading-[1.3] text-text-primary"
-            >
+            <div class="mb-2 font-heading text-base font-bold leading-[1.3] text-text-primary">
               {{ title }}
             </div>
-            <div
-              class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
-            >
+            <div class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
               {{ visibility }}
             </div>
           </div>
@@ -540,18 +504,12 @@ const labelClass =
 
         <!-- Progress bar -->
         <div class="mb-2 flex items-baseline justify-between">
-          <span
-            class="font-mono text-[11px] uppercase tracking-[0.08em] text-text-muted"
-          >
+          <span class="font-mono text-[11px] uppercase tracking-[0.08em] text-text-muted">
             Uploading
           </span>
-          <span class="font-mono text-[11px] text-neon">
-            {{ Math.round(progress) }}%
-          </span>
+          <span class="font-mono text-[11px] text-neon"> {{ Math.round(progress) }}% </span>
         </div>
-        <div
-          class="mb-7 h-1.5 w-full overflow-hidden rounded-full bg-surface-overlay"
-        >
+        <div class="mb-7 h-1.5 w-full overflow-hidden rounded-full bg-surface-overlay">
           <div
             class="h-full rounded-full bg-[linear-gradient(90deg,var(--color-brand),var(--color-brand-light))] transition-[width] duration-180 ease"
             :style="{ width: progress + '%' }"

@@ -46,7 +46,9 @@ const game = computed(() => GAMES[props.clip.game])
         {{ clip.title }}
       </h3>
 
-      <div class="flex items-center gap-2 overflow-hidden font-mono text-[11px] text-text-secondary">
+      <div
+        class="flex items-center gap-2 overflow-hidden font-mono text-[11px] text-text-secondary"
+      >
         <UserAvatar :user="clip.user" :size="20" />
         <span class="min-w-0 shrink truncate text-neon">@{{ user.username }}</span>
         <span class="shrink-0 text-text-muted">·</span>

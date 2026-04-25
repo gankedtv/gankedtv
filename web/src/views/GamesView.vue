@@ -64,9 +64,7 @@ const tileActiveAll = `${tileActive} bg-brand`
     </div>
 
     <!-- Game tiles -->
-    <div
-      class="mt-8 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3.5"
-    >
+    <div class="mt-8 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3.5">
       <!-- All games tile -->
       <button
         :class="[tileBase, active === 'all' ? tileActiveAll : tileInactive]"

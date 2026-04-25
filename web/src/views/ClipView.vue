@@ -107,9 +107,7 @@ const currentTime = computed(() => {
 
 <template>
   <div class="mx-auto max-w-350 px-6 pt-8 pb-30">
-    <div
-      class="grid grid-cols-1 items-start gap-7 min-[961px]:grid-cols-[minmax(0,1fr)_340px]"
-    >
+    <div class="grid grid-cols-1 items-start gap-7 min-[961px]:grid-cols-[minmax(0,1fr)_340px]">
       <!-- LEFT COLUMN -->
       <div>
         <!-- Breadcrumb -->
@@ -124,9 +122,7 @@ const currentTime = computed(() => {
         </div>
 
         <!-- Video Player -->
-        <div
-          class="relative aspect-video overflow-hidden rounded-md border border-border bg-black"
-        >
+        <div class="relative aspect-video overflow-hidden rounded-md border border-border bg-black">
           <!-- Thumbnail -->
           <img
             :src="clip.art"
@@ -143,10 +139,9 @@ const currentTime = computed(() => {
                 class="rounded bg-brand px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em]"
                 >{{ game.tag }}</span
               >
-              <span
-                class="font-mono text-[11px] tracking-[0.06em] text-white/55"
-                >{{ clip.id }}</span
-              >
+              <span class="font-mono text-[11px] tracking-[0.06em] text-white/55">{{
+                clip.id
+              }}</span>
             </div>
             <button
               class="flex h-7 w-7 items-center justify-center rounded text-white/70 transition-colors hover:bg-white/10"
@@ -183,10 +178,7 @@ const currentTime = computed(() => {
             class="absolute right-0 bottom-0 left-0 bg-[linear-gradient(to_top,rgba(0,0,0,0.8),transparent)] px-4 pt-6 pb-3"
           >
             <!-- Progress bar -->
-            <div
-              class="relative mb-3 h-1 cursor-pointer rounded-sm bg-white/15"
-              @click="seek"
-            >
+            <div class="relative mb-3 h-1 cursor-pointer rounded-sm bg-white/15" @click="seek">
               <div
                 class="absolute top-0 left-0 h-full rounded bg-brand-light"
                 :style="{ width: `${progress * 100}%` }"
@@ -361,22 +353,18 @@ const currentTime = computed(() => {
             :key="stat.label"
             class="flex flex-col gap-1 bg-surface-raised px-4 py-3"
           >
-            <span
-              class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
-              >{{ stat.label }}</span
-            >
-            <span
-              class="font-heading text-xl font-bold leading-[1.2] text-text-primary"
-              >{{ stat.value }}</span
-            >
+            <span class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">{{
+              stat.label
+            }}</span>
+            <span class="font-heading text-xl font-bold leading-[1.2] text-text-primary">{{
+              stat.value
+            }}</span>
           </div>
         </div>
 
         <!-- Description Box -->
         <div class="mt-4 rounded-md border border-border bg-surface-raised p-4">
-          <div
-            class="mb-2 font-mono text-[10px] uppercase tracking-widest text-text-muted"
-          >
+          <div class="mb-2 font-mono text-[10px] uppercase tracking-widest text-text-muted">
             Description
           </div>
           <p class="mb-3 text-sm leading-[1.6] text-text-secondary">
@@ -441,9 +429,7 @@ const currentTime = computed(() => {
               />
               <div class="flex-1">
                 <div class="mb-1 flex items-center gap-2">
-                  <span class="font-mono text-[12px] font-semibold text-neon"
-                    >@{{ c.user }}</span
-                  >
+                  <span class="font-mono text-[12px] font-semibold text-neon">@{{ c.user }}</span>
                   <span class="font-mono text-[11px] text-text-muted">{{ c.time }}</span>
                 </div>
                 <p class="mb-2 text-sm leading-normal text-text-secondary">
@@ -481,9 +467,7 @@ const currentTime = computed(() => {
               <span
                 class="inline-block h-1.75 w-1.75 rounded-full bg-neon animate-[pulse_2s_ease-in-out_infinite]"
               />
-              <span
-                class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
-              >
+              <span class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
                 Up Next · Auto-playing in 00:04
               </span>
             </div>
