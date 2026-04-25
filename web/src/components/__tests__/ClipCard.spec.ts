@@ -3,7 +3,9 @@ import { mount } from '@vue/test-utils'
 import ClipCard from '../ClipCard.vue'
 import { CLIPS } from '@/lib/mock-data'
 
-const clip = CLIPS[0] // Unreal 1v5 clutch — valorant / phantomveil
+// Look up by id so this test isn't sensitive to the order of the mock fixture
+const clip = CLIPS.find((c) => c.id === 'clp_01')
+if (!clip) throw new Error('Test fixture clip clp_01 not found in CLIPS mock data')
 
 describe('ClipCard', () => {
   it('renders the clip title', () => {

@@ -17,8 +17,14 @@ const dragging = ref(false)
 
 // Upload simulation
 let uploadInterval: ReturnType<typeof setInterval> | null = null
+// TODO: replace with the real created clip id once the upload API is wired
+const createdClipId = ref<string | null>(null)
 
 function startUpload() {
+  if (uploadInterval) {
+    clearInterval(uploadInterval)
+    uploadInterval = null
+  }
   step.value = 3
   progress.value = 0
   uploadInterval = setInterval(() => {
@@ -26,7 +32,12 @@ function startUpload() {
     progress.value = Math.min(100, progress.value + increment)
     if (progress.value >= 100) {
       progress.value = 100
-      if (uploadInterval) clearInterval(uploadInterval)
+      if (uploadInterval) {
+        clearInterval(uploadInterval)
+        uploadInterval = null
+      }
+      // Mock: stand-in for the API-returned id; real wiring happens in #11/#12/#13/#14
+      createdClipId.value = 'clp_04'
     }
   }, 180)
 }
@@ -545,8 +556,9 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
         <!-- Done actions -->
         <div v-if="progress >= 100" class="flex flex-col gap-2.5">
           <button
-            @click="router.push('/clip/clp_04')"
-            class="flex w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-brand-light px-6 py-3.5 font-heading text-base font-bold uppercase tracking-wider text-white"
+            :disabled="!createdClipId"
+            @click="createdClipId && router.push(`/clip/${createdClipId}`)"
+            class="flex w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-brand-light px-6 py-3.5 font-heading text-base font-bold uppercase tracking-wider text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             View your clip
             <svg

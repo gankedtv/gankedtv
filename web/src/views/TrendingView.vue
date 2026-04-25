@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { CLIPS, USERS, GAMES, formatNum, formatDuration } from '@/lib/mock-data'
+import { CLIPS, USERS, GAMES, formatNum, formatDuration, userByUsername } from '@/lib/mock-data'
 import UserAvatar from '@/components/UserAvatar.vue'
 
 const router = useRouter()
@@ -14,7 +14,7 @@ const TIME_WINDOWS = [
   { key: 'all', label: 'All time' },
 ] as const
 
-const window = ref<string>('24h')
+const timeWindow = ref<string>('24h')
 
 const topClips = computed(() => [...CLIPS].sort((a, b) => b.likes - a.likes).slice(0, 10))
 
@@ -27,17 +27,25 @@ function trendFor(i: number): 'up' | 'hold' | 'down' {
 const TOP_CREATOR_KEYS = ['sundownr', 'phantomveil', 'nyxproto', 'rustyquill', 'wrenhowl'] as const
 const CREATOR_GAINED = [3180, 2740, 1820, 990, 540]
 
-// Map username → USERS key
 function userKeyByUsername(username: string): string {
-  return Object.keys(USERS).find((k) => USERS[k].username === username) ?? username
+  return userByUsername(username)?.[0] ?? username
 }
 
-const HOT_GAMES_CLIPS_TODAY = [412, 388, 274, 210, 188, 156]
+// Today's clip count per game, keyed by GAMES key (not by array index)
+const HOT_GAMES_CLIPS_TODAY: Record<string, number> = {
+  valorant: 412,
+  rocket: 388,
+  minecraft: 274,
+  overwatch: 210,
+  fortnite: 188,
+  league: 156,
+}
+const DEFAULT_CLIPS_TODAY = 100
 const gameEntries = Object.entries(GAMES)
 
 // Simple deterministic sparkline points
-function sparklinePoints(index: number): string {
-  const base = HOT_GAMES_CLIPS_TODAY[index]
+function sparklinePoints(gameKey: string): string {
+  const base = HOT_GAMES_CLIPS_TODAY[gameKey] ?? DEFAULT_CLIPS_TODAY
   const vals = [
     base * 0.55,
     base * 0.62,
@@ -93,8 +101,8 @@ const trendHold = `${trendBase} text-text-muted`
         <button
           v-for="tw in TIME_WINDOWS"
           :key="tw.key"
-          :class="window === tw.key ? timeBtnActive : timeBtnInactive"
-          @click="window = tw.key"
+          :class="timeWindow === tw.key ? timeBtnActive : timeBtnInactive"
+          @click="timeWindow = tw.key"
         >
           {{ tw.label }}
         </button>
@@ -223,7 +231,7 @@ const trendHold = `${trendBase} text-text-muted`
           </div>
 
           <div
-            v-for="([key, game], i) in gameEntries"
+            v-for="[key, game] in gameEntries"
             :key="key"
             class="flex items-center gap-3 px-4 py-2.5 border-b border-border last:border-b-0 cursor-pointer transition-[background] duration-150 hover:bg-surface-overlay"
             @click="router.push({ name: 'games', query: { game: key } })"
@@ -239,13 +247,13 @@ const trendHold = `${trendBase} text-text-muted`
                 {{ game.name }}
               </span>
               <span class="font-mono text-[10px] text-neon">
-                +{{ HOT_GAMES_CLIPS_TODAY[i] }} clips today
+                +{{ HOT_GAMES_CLIPS_TODAY[key] ?? DEFAULT_CLIPS_TODAY }} clips today
               </span>
             </div>
             <!-- Sparkline -->
             <svg width="56" height="14" viewBox="0 0 56 14" class="shrink-0 overflow-visible">
               <polyline
-                :points="sparklinePoints(i)"
+                :points="sparklinePoints(key)"
                 fill="none"
                 stroke="var(--color-neon)"
                 stroke-width="1.5"

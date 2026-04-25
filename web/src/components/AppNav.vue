@@ -140,8 +140,12 @@ const navLinkActive =
         </RouterLink>
 
         <!-- Avatar -->
-        <RouterLink v-if="auth.isAuthenticated" to="/user/phantomveil" class="inline-flex">
-          <UserAvatar user="phantomveil" :size="36" />
+        <RouterLink
+          v-if="auth.isAuthenticated && auth.user"
+          :to="`/user/${auth.user.username}`"
+          class="inline-flex"
+        >
+          <UserAvatar :user="auth.user.username" :size="36" />
         </RouterLink>
       </div>
     </div>

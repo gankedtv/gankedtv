@@ -212,7 +212,7 @@ const joinedDate = 'Jan 2024'
       >
         <div
           v-for="stat in [
-            { label: 'Clips', value: formatNum(user.clips) },
+            { label: 'Clips', value: formatNum(userClips.length) },
             { label: 'Followers', value: formatNum(user.followers) },
             { label: 'Following', value: '284' },
             { label: 'Total plays', value: formatNum(totalPlays) },

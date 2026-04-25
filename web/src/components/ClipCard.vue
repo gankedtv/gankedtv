@@ -8,12 +8,23 @@ const emit = defineEmits<{ click: [] }>()
 
 const user = computed(() => USERS[props.clip.user])
 const game = computed(() => GAMES[props.clip.game])
+
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault()
+    emit('click')
+  }
+}
 </script>
 
 <template>
   <article
-    class="group relative flex cursor-pointer flex-col overflow-hidden rounded-md border border-border bg-surface-raised transition-all duration-200 hover:-translate-y-0.5 hover:border-brand hover:shadow-[0_14px_40px_-14px_var(--color-brand-glow)]"
+    role="button"
+    tabindex="0"
+    :aria-label="clip.title"
+    class="group relative flex cursor-pointer flex-col overflow-hidden rounded-md border border-border bg-surface-raised transition-all duration-200 outline-none hover:-translate-y-0.5 hover:border-brand hover:shadow-[0_14px_40px_-14px_var(--color-brand-glow)] focus-visible:border-brand focus-visible:shadow-[0_14px_40px_-14px_var(--color-brand-glow)]"
     @click="emit('click')"
+    @keydown="onKeydown"
   >
     <!-- Thumbnail -->
     <div class="relative aspect-video overflow-hidden bg-surface-sunken">

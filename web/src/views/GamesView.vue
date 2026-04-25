@@ -22,6 +22,7 @@ function gameCreatorCount(key: string) {
 
 const filteredClips = computed(() => {
   const base = active.value === 'all' ? CLIPS : CLIPS.filter((c) => c.game === active.value)
+  if (base.length === 0) return []
   const result: typeof CLIPS = []
   while (result.length < 8) {
     result.push(...base)
