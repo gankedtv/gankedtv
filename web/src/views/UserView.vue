@@ -50,7 +50,8 @@ const avatarColor = computed(() => {
 })
 
 const bannerGradient = computed(
-  () => `linear-gradient(135deg, ${avatarColor.value}, color-mix(in oklab, ${avatarColor.value} 20%, #000))`,
+  () =>
+    `linear-gradient(135deg, ${avatarColor.value}, color-mix(in oklab, ${avatarColor.value} 20%, #000))`,
 )
 
 const initials = computed(() => {
@@ -71,12 +72,8 @@ const joinedDate = computed(() => {
   })
 })
 
-const totalPlays = computed(() =>
-  (profile.value?.clips ?? []).reduce((s, c) => s + c.viewCount, 0),
-)
-const totalLikes = computed(() =>
-  (profile.value?.clips ?? []).reduce((s, c) => s + c.likeCount, 0),
-)
+const totalPlays = computed(() => (profile.value?.clips ?? []).reduce((s, c) => s + c.viewCount, 0))
+const totalLikes = computed(() => (profile.value?.clips ?? []).reduce((s, c) => s + c.likeCount, 0))
 
 function formatNum(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
@@ -263,13 +260,8 @@ const TABS: { key: Tab; label: string }[] = [
         <div class="mt-6">
           <!-- Clips tab -->
           <div v-if="tab === 'clips'">
-            <div
-              v-if="profile.clips.length === 0"
-              class="flex items-center justify-center py-20"
-            >
-              <p class="font-mono text-[13px] tracking-[0.06em] text-text-muted">
-                No clips yet.
-              </p>
+            <div v-if="profile.clips.length === 0" class="flex items-center justify-center py-20">
+              <p class="font-mono text-[13px] tracking-[0.06em] text-text-muted">No clips yet.</p>
             </div>
             <div v-else class="feed-grid">
               <article

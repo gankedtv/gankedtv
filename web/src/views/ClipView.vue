@@ -298,7 +298,10 @@ onMounted(() => {
       </div>
 
       <!-- Description -->
-      <div v-if="clip.description" class="mt-4 rounded-md border border-border bg-surface-raised p-4">
+      <div
+        v-if="clip.description"
+        class="mt-4 rounded-md border border-border bg-surface-raised p-4"
+      >
         <div class="mb-2 font-mono text-[10px] uppercase tracking-widest text-text-muted">
           Description
         </div>

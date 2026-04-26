@@ -41,7 +41,10 @@ describe('api/clips', () => {
         author: { id: 'u', username: 'zoe', avatarUrl: null },
         likedByMe: false,
       }
-      vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(detail)))
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse(detail)),
+      )
 
       const result = await clips.getDetail(detail.id)
 

@@ -422,9 +422,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
             <div
               :class="[
                 'h-2 w-2 shrink-0 rounded-full transition-[background,box-shadow] duration-300',
-                item.done
-                  ? 'bg-neon shadow-[0_0_8px_var(--color-neon)]'
-                  : 'bg-border-strong',
+                item.done ? 'bg-neon shadow-[0_0_8px_var(--color-neon)]' : 'bg-border-strong',
               ]"
             ></div>
             <span
@@ -445,7 +443,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
           {{ errorMsg }}
           <button
             class="mt-2 block cursor-pointer rounded-sm border border-border bg-surface-raised px-3 py-1.5 text-text-primary"
-            @click="(stage = 'idle'), (step = 2)"
+            @click="((stage = 'idle'), (step = 2))"
           >
             Back to details
           </button>
