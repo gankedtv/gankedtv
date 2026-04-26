@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/client'
 import { users, type UserProfile } from '@/api/users'
+import { safeImageUrl } from '@/lib/url'
 import IconShare from '@/components/icons/IconShare.vue'
 import IconMoreHorizontal from '@/components/icons/IconMoreHorizontal.vue'
 
@@ -181,8 +182,8 @@ const TABS: { key: Tab; label: string }[] = [
           :style="{ background: bannerGradient }"
         >
           <img
-            v-if="profile.avatarUrl"
-            :src="profile.avatarUrl"
+            v-if="safeImageUrl(profile.avatarUrl)"
+            :src="safeImageUrl(profile.avatarUrl) ?? ''"
             :alt="profile.username"
             class="h-full w-full rounded-full object-cover"
           />

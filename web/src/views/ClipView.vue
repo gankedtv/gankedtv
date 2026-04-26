@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onBeforeUnmount, useTemplateRef } from 'vue'
+import { ref, computed, watch, onBeforeUnmount, useTemplateRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Plyr from 'plyr'
 import 'plyr/dist/plyr.css'
 import { ApiError } from '@/api/client'
 import { clips, type ClipDetail } from '@/api/clips'
 import { useAuthStore } from '@/stores/auth'
+import { safeImageUrl } from '@/lib/url'
 import IconHeart from '@/components/icons/IconHeart.vue'
-import IconBookmark from '@/components/icons/IconBookmark.vue'
 import IconShare from '@/components/icons/IconShare.vue'
 import IconMoreVertical from '@/components/icons/IconMoreVertical.vue'
 
@@ -163,10 +163,6 @@ const authorColor = computed(() => {
   return `hsl(${Math.abs(hash) % 360}, 65%, 45%)`
 })
 
-onMounted(() => {
-  // ensure auth is bootstrapped so likedByMe reflects the current session
-  auth.bootstrap().catch(() => {})
-})
 </script>
 
 <template>
@@ -222,8 +218,8 @@ onMounted(() => {
               }"
             >
               <img
-                v-if="clip.author.avatarUrl"
-                :src="clip.author.avatarUrl"
+                v-if="safeImageUrl(clip.author.avatarUrl)"
+                :src="safeImageUrl(clip.author.avatarUrl) ?? ''"
                 :alt="clip.author.username"
                 class="h-full w-full object-cover"
               />
@@ -257,15 +253,6 @@ onMounted(() => {
             >
               <IconHeart :size="14" />
               <span>{{ formatNum(likeCount) }}</span>
-            </button>
-
-            <button
-              class="flex items-center gap-1.5 rounded border border-border bg-surface-raised px-3 py-1.5 font-mono text-[12px] text-text-secondary transition-all duration-150"
-              disabled
-              title="Coming soon"
-            >
-              <IconBookmark :size="14" />
-              <span>Save</span>
             </button>
 
             <button

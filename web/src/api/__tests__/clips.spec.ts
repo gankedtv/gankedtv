@@ -86,6 +86,9 @@ describe('api/clips', () => {
       const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
       expect(url).toBe(`${BASE_URL}/clips`)
       expect(init.method).toBe('POST')
+      // The api() client must auto-set this when body is a plain object — locked here
+      // so a future client refactor doesn't silently drop the header on JSON requests.
+      expect(new Headers(init.headers).get('Content-Type')).toBe('application/json')
       expect(JSON.parse(String(init.body))).toEqual({
         title: 'My clip',
         description: 'desc',

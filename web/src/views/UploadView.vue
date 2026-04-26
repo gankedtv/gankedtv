@@ -72,11 +72,16 @@ function formatSize(bytes: number): string {
   return (bytes / 1024).toFixed(1) + ' KB'
 }
 
+// Generous ceiling so a 500 MB upload over a slow connection still finishes,
+// but bounded so a fully-stalled connection doesn't spin forever.
+const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000
+
 function putWithProgress(url: string, body: File): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     activeXhr = xhr
     xhr.open('PUT', url)
+    xhr.timeout = UPLOAD_TIMEOUT_MS
     if (body.type) xhr.setRequestHeader('Content-Type', body.type)
     xhr.upload.onprogress = (ev) => {
       if (ev.lengthComputable) uploadPct.value = (ev.loaded / ev.total) * 100
@@ -93,6 +98,10 @@ function putWithProgress(url: string, body: File): Promise<void> {
     xhr.onabort = () => {
       activeXhr = null
       reject(new Error('PUT aborted'))
+    }
+    xhr.ontimeout = () => {
+      activeXhr = null
+      reject(new Error('Upload timed out — check your connection and try again'))
     }
     xhr.send(body)
   })
