@@ -52,6 +52,17 @@ describe('api/clips', () => {
       const [url] = vi.mocked(fetch).mock.calls[0] as [string]
       expect(url).toBe(`${BASE_URL}/clips/${detail.id}`)
     })
+
+    it('URI-encodes special characters in the id path segment', async () => {
+      // Server uses GUIDs today, but encoding is a cheap insurance against future
+      // schemes (slugs, short codes) that could include reserved characters.
+      vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({})))
+
+      await clips.getDetail('weird id/with?chars')
+
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+      expect(url).toBe(`${BASE_URL}/clips/${encodeURIComponent('weird id/with?chars')}`)
+    })
   })
 
   describe('create()', () => {

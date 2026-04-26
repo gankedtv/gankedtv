@@ -26,15 +26,19 @@ watch(
     errored.value = false
     profile.value = null
     try {
-      profile.value = await users.getByUsername(name)
+      const result = await users.getByUsername(name)
+      // Bail if the user navigated to a different profile mid-request.
+      if (username.value !== name) return
+      profile.value = result
     } catch (err) {
+      if (username.value !== name) return
       if (err instanceof ApiError && err.status === 404) {
         router.replace({ name: 'not-found' })
         return
       }
       errored.value = true
     } finally {
-      loading.value = false
+      if (username.value === name) loading.value = false
     }
   },
   { immediate: true },
@@ -96,8 +100,24 @@ function timeAgo(iso: string): string {
   return `${Math.floor(diff / 86400)}d`
 }
 
-function copyShareUrl() {
-  navigator.clipboard?.writeText(window.location.href)
+const copyMessage = ref<string | null>(null)
+let copyTimer: ReturnType<typeof setTimeout> | null = null
+
+async function copyShareUrl() {
+  if (!navigator.clipboard) {
+    copyMessage.value = 'Copy not supported'
+  } else {
+    try {
+      await navigator.clipboard.writeText(window.location.href)
+      copyMessage.value = 'Link copied'
+    } catch {
+      copyMessage.value = 'Copy failed'
+    }
+  }
+  if (copyTimer !== null) clearTimeout(copyTimer)
+  copyTimer = setTimeout(() => {
+    copyMessage.value = null
+  }, 1800)
 }
 
 type Tab = 'clips' | 'liked'
@@ -211,6 +231,13 @@ const TABS: { key: Tab; label: string }[] = [
           >
             <IconMoreHorizontal :size="14" />
           </button>
+          <span
+            v-if="copyMessage"
+            aria-live="polite"
+            class="font-mono text-[11px] uppercase tracking-widest text-neon"
+          >
+            {{ copyMessage }}
+          </span>
         </div>
       </div>
 

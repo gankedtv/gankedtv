@@ -64,10 +64,7 @@ export const clips = {
   },
 
   create(body: CreateClipBody): Promise<{ id: string }> {
-    return api<{ id: string }>('/clips', {
-      method: 'POST',
-      body: body as unknown as BodyInit,
-    })
+    return api<{ id: string }>('/clips', { method: 'POST', body })
   },
 
   getUploadUrl(id: string): Promise<UploadUrl> {

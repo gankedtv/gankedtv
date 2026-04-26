@@ -13,7 +13,12 @@ import IconLink from '@/components/icons/IconLink.vue'
 
 const router = useRouter()
 
-const MAX_UPLOAD_MB = Number(import.meta.env.VITE_MAX_UPLOAD_SIZE_MB ?? 500)
+// Guard against a missing/garbage env value: Number('foo') is NaN, and `f.size > NaN`
+// is always false — silently disabling the size cap. Fall back to a safe default instead.
+const MAX_UPLOAD_MB = (() => {
+  const parsed = Number(String(import.meta.env.VITE_MAX_UPLOAD_SIZE_MB ?? '').trim())
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 500
+})()
 const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 
 type Step = 1 | 2 | 3
@@ -134,6 +139,17 @@ const checklistDone = computed(() => ({
   upload: stage.value === 'completing' || stage.value === 'done',
   complete: stage.value === 'done',
 }))
+
+function goBackToDetails() {
+  // Drop the half-created clip id so the next attempt creates a fresh draft instead
+  // of re-using the failed one. The orphaned draft row is cleaned up server-side
+  // by the future scheduled-sweep job (Phase 2 maintenance).
+  stage.value = 'idle'
+  step.value = 2
+  createdClipId.value = null
+  uploadPct.value = 0
+  errorMsg.value = null
+}
 
 const STEPS = [
   { num: '1', label: 'Select file' },
@@ -443,7 +459,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
           {{ errorMsg }}
           <button
             class="mt-2 block cursor-pointer rounded-sm border border-border bg-surface-raised px-3 py-1.5 text-text-primary"
-            @click="((stage = 'idle'), (step = 2))"
+            @click="goBackToDetails"
           >
             Back to details
           </button>

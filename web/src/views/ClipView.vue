@@ -42,17 +42,21 @@ watch(
     teardownPlayer()
     try {
       const detail = await clips.getDetail(id)
+      // Bail if the user navigated to a different clip while we were loading;
+      // applying this response would corrupt the new clip's state.
+      if (clipId.value !== id) return
       clip.value = detail
       liked.value = detail.likedByMe
       likeCount.value = detail.likeCount
     } catch (err) {
+      if (clipId.value !== id) return
       if (err instanceof ApiError && err.status === 404) {
         router.replace({ name: 'not-found' })
         return
       }
       errored.value = true
     } finally {
-      loading.value = false
+      if (clipId.value === id) loading.value = false
     }
   },
   { immediate: true },
@@ -100,16 +104,21 @@ async function toggleLike() {
   }
   // Optimistic UI: flip locally first, roll back on error so a flaky network doesn't strand
   // the user on a wrong-looking counter.
+  const targetId = clip.value.id
   const wasLiked = liked.value
   liked.value = !wasLiked
   likeCount.value += wasLiked ? -1 : 1
   likeBusy.value = true
   try {
-    const res = wasLiked ? await clips.unlike(clip.value.id) : await clips.like(clip.value.id)
+    const res = wasLiked ? await clips.unlike(targetId) : await clips.like(targetId)
+    // If the user navigated to a different clip while the request was in flight,
+    // skip the apply so we don't stamp this clip's count onto the next one.
+    if (clip.value?.id !== targetId) return
     liked.value = res.liked
     likeCount.value = res.likeCount
     if (res.liked) fireToast('♥ Added to your liked clips')
   } catch {
+    if (clip.value?.id !== targetId) return
     liked.value = wasLiked
     likeCount.value += wasLiked ? 1 : -1
     fireToast('Could not update like — try again')
