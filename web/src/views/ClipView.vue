@@ -162,7 +162,6 @@ const authorColor = computed(() => {
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0
   return `hsl(${Math.abs(hash) % 360}, 65%, 45%)`
 })
-
 </script>
 
 <template>
