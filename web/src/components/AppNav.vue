@@ -1,121 +1,116 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import ThemeToggle from './ThemeToggle.vue'
+import { useThemeStore } from '@/stores/theme'
+import ThemePicker from './ThemePicker.vue'
+import UserAvatar from './UserAvatar.vue'
+import IconSearch from './icons/IconSearch.vue'
+import IconSun from './icons/IconSun.vue'
+import IconMoon from './icons/IconMoon.vue'
+import IconPlus from './icons/IconPlus.vue'
 
 const auth = useAuthStore()
-const scrolled = ref(false)
-const menuOpen = ref(false)
+const theme = useThemeStore()
 
-const navLinkClass =
-  "relative rounded-md px-3 py-1.5 text-sm font-medium text-text-secondary no-underline transition-[color,background-color] duration-150 hover:bg-surface-overlay hover:text-text-primary after:absolute after:-bottom-0.5 after:left-3 after:right-3 after:h-0.5 after:rounded-[1px] after:bg-brand-light after:opacity-0 after:transition-opacity after:duration-150 after:content-[''] [&.nav-link--active]:text-brand-light [&.nav-link--active]:after:opacity-100"
-
-function onScroll() {
-  scrolled.value = window.scrollY > 20
-}
-
-onMounted(() => {
-  window.addEventListener('scroll', onScroll, { passive: true })
-  onScroll()
-})
-onUnmounted(() => window.removeEventListener('scroll', onScroll))
+const navLinkActive =
+  "text-text-primary after:content-[''] after:absolute after:left-3.5 after:right-3.5 after:bottom-0.5 after:h-0.5 after:bg-brand-light"
 </script>
 
 <template>
   <header
-    class="fixed top-0 right-0 left-0 z-50 border-b bg-surface-base/90 backdrop-blur-md transition-colors duration-200"
-    :class="scrolled ? 'border-border' : 'border-transparent'"
+    class="sticky top-0 z-50 h-16 border-b border-border bg-[color-mix(in_oklab,var(--color-surface-base)_85%,transparent)] backdrop-blur-[14px]"
   >
-    <div class="mx-auto flex h-16 max-w-7xl items-center gap-8 px-6">
+    <div class="mx-auto flex h-full max-w-360 min-w-0 items-center gap-5 px-6 *:shrink-0">
+      <!-- Logo -->
       <RouterLink
         to="/"
-        class="shrink-0 font-display text-[1.375rem] font-bold uppercase tracking-[0.05em] text-text-primary no-underline"
+        class="flex items-center gap-2 font-display text-[22px] font-bold uppercase tracking-[0.06em] text-text-primary no-underline"
       >
-        GANKED<span class="text-brand-light">.TV</span>
+        <span class="logo__mark"></span>
+        GANKED<span class="logo__tv">.TV</span>
       </RouterLink>
 
-      <nav
-        class="hidden flex-1 items-center justify-center gap-1 sm:flex"
-        aria-label="Main navigation"
-      >
-        <RouterLink to="/" :class="navLinkClass" exact-active-class="nav-link--active">
-          Home
+      <!-- Nav links -->
+      <nav class="flex flex-1 items-center gap-1" aria-label="Main navigation">
+        <RouterLink
+          to="/"
+          class="relative rounded-sm px-3.5 py-2 text-[13px] font-medium uppercase tracking-[0.04em] text-text-secondary no-underline transition-colors duration-150 hover:bg-surface-overlay hover:text-text-primary"
+          :exact-active-class="navLinkActive"
+        >
+          Feed
         </RouterLink>
         <RouterLink
-          v-if="auth.isAuthenticated"
-          to="/upload"
-          :class="navLinkClass"
-          active-class="nav-link--active"
+          to="/games"
+          class="relative rounded-sm px-3.5 py-2 text-[13px] font-medium uppercase tracking-[0.04em] text-text-secondary no-underline transition-colors duration-150 hover:bg-surface-overlay hover:text-text-primary max-tablet:hidden"
+          :active-class="navLinkActive"
         >
-          Upload
+          Games
+        </RouterLink>
+        <RouterLink
+          to="/trending"
+          class="relative rounded-sm px-3.5 py-2 text-[13px] font-medium uppercase tracking-[0.04em] text-text-secondary no-underline transition-colors duration-150 hover:bg-surface-overlay hover:text-text-primary max-tablet:hidden"
+          :active-class="navLinkActive"
+        >
+          Trending
         </RouterLink>
       </nav>
 
-      <div class="ml-auto flex shrink-0 items-center gap-3">
-        <ThemeToggle />
+      <!-- Search (desktop only, decorative) -->
+      <div
+        class="hidden h-9 w-60 max-w-60 min-w-0 shrink items-center gap-2 overflow-hidden rounded-md border border-border bg-surface-overlay px-3 font-mono text-xs whitespace-nowrap text-text-muted min-[1281px]:flex"
+        aria-hidden="true"
+      >
+        <IconSearch :size="14" :stroke-width="2.2" class="shrink-0" />
+        <span class="min-w-0 flex-1 truncate">search clips, players, games</span>
+        <kbd class="shrink-0">⌘K</kbd>
+      </div>
+
+      <!-- Actions -->
+      <div class="ml-auto flex items-center gap-2">
+        <!-- Theme picker (Underground / Tactical / Arcade) -->
+        <ThemePicker />
+
+        <!-- Light/dark toggle -->
         <button
-          class="rounded-md p-1.5 text-text-secondary transition-colors duration-150 hover:bg-surface-overlay hover:text-text-primary sm:hidden"
-          :aria-expanded="menuOpen"
-          aria-label="Toggle navigation"
-          @click="menuOpen = !menuOpen"
+          class="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-border bg-transparent text-text-secondary transition-all duration-150 hover:border-border-hover hover:text-text-primary"
+          :title="theme.isDark ? 'Switch to light' : 'Switch to dark'"
+          :aria-label="theme.isDark ? 'Switch to light mode' : 'Switch to dark mode'"
+          :aria-pressed="!theme.isDark"
+          @click="theme.toggle()"
         >
-          <svg
-            class="h-5 w-5"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            viewBox="0 0 24 24"
-          >
-            <path
-              v-if="!menuOpen"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M4 6h16M4 12h16M4 18h16"
-            />
-            <path v-else stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
+          <IconSun v-if="theme.isDark" :size="16" />
+          <IconMoon v-else :size="16" />
         </button>
+
+        <!-- Upload button -->
         <RouterLink
-          v-if="!auth.isAuthenticated"
+          v-if="auth.isAuthenticated"
+          to="/upload"
+          class="inline-flex h-9 cursor-pointer items-center rounded-md bg-brand px-4 text-[13px] font-semibold uppercase tracking-[0.02em] text-white no-underline transition-colors duration-150 hover:bg-brand-light"
+        >
+          <span class="inline-flex items-center gap-1.5">
+            <IconPlus :size="12" :stroke-width="2.5" />
+            <span class="hidden min-[1041px]:inline">Upload</span>
+          </span>
+        </RouterLink>
+
+        <!-- Sign in -->
+        <RouterLink
+          v-else
           to="/login"
-          class="rounded-md bg-brand px-4 py-1.5 text-sm font-medium text-text-primary no-underline transition-colors duration-150 hover:bg-brand-light"
+          class="inline-flex h-9 cursor-pointer items-center rounded-md bg-brand px-4 text-[13px] font-semibold uppercase tracking-[0.02em] text-white no-underline transition-colors duration-150 hover:bg-brand-light"
         >
           Sign In
         </RouterLink>
-        <template v-else>
-          <span class="font-mono text-[0.8125rem] text-text-secondary">
-            {{ auth.user?.username }}
-          </span>
-          <button
-            class="font-mono text-xs text-text-muted transition-colors duration-150 hover:text-brand-light"
-            @click="auth.logout()"
-          >
-            Sign out
-          </button>
-        </template>
-      </div>
-    </div>
 
-    <div v-if="menuOpen" class="border-t border-border px-6 py-3 sm:hidden">
-      <nav class="flex flex-col gap-1" aria-label="Mobile navigation">
+        <!-- Avatar -->
         <RouterLink
-          to="/"
-          :class="navLinkClass"
-          exact-active-class="nav-link--active"
-          @click="menuOpen = false"
+          v-if="auth.isAuthenticated && auth.user"
+          :to="`/user/${auth.user.username}`"
+          class="inline-flex"
         >
-          Home
+          <UserAvatar :user="auth.user.username" :size="36" />
         </RouterLink>
-        <RouterLink
-          v-if="auth.isAuthenticated"
-          to="/upload"
-          :class="navLinkClass"
-          active-class="nav-link--active"
-          @click="menuOpen = false"
-        >
-          Upload
-        </RouterLink>
-      </nav>
+      </div>
     </div>
   </header>
 </template>
