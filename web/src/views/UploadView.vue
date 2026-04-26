@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, onUnmounted } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { GAMES } from '@/lib/mock-data'
-import UserAvatar from '@/components/UserAvatar.vue'
+import { ApiError } from '@/api/client'
+import { clips } from '@/api/clips'
 import IconUploadCloud from '@/components/icons/IconUploadCloud.vue'
 import IconFile from '@/components/icons/IconFile.vue'
 import IconFileText from '@/components/icons/IconFileText.vue'
@@ -13,66 +13,52 @@ import IconLink from '@/components/icons/IconLink.vue'
 
 const router = useRouter()
 
-// State
-const step = ref<1 | 2 | 3>(1)
-const file = ref<{ name: string; size: number; type: string } | null>(null)
+const MAX_UPLOAD_MB = Number(import.meta.env.VITE_MAX_UPLOAD_SIZE_MB ?? 500)
+const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+
+type Step = 1 | 2 | 3
+const step = ref<Step>(1)
+const file = ref<File | null>(null)
 const title = ref('')
 const desc = ref('')
-const game = ref('valorant')
 const visibility = ref<'public' | 'unlisted'>('public')
-const progress = ref(0)
 const dragging = ref(false)
 
-// Upload simulation
-let uploadInterval: ReturnType<typeof setInterval> | null = null
-// TODO: replace with the real created clip id once the upload API is wired
+// Upload state — granular so the checklist can light up step-by-step.
+type UploadStage = 'idle' | 'creating' | 'uploading' | 'completing' | 'done' | 'error'
+const stage = ref<UploadStage>('idle')
+const uploadPct = ref(0)
+const errorMsg = ref<string | null>(null)
 const createdClipId = ref<string | null>(null)
-
-// Checklist completion thresholds keyed to the simulated upload progress
-const CHECKLIST_THRESHOLDS = [30, 80, 100] as const
-
-function startUpload() {
-  if (uploadInterval) {
-    clearInterval(uploadInterval)
-    uploadInterval = null
-  }
-  step.value = 3
-  progress.value = 0
-  uploadInterval = setInterval(() => {
-    const increment = 5 + Math.random() * 5
-    progress.value = Math.min(100, progress.value + increment)
-    if (progress.value >= 100) {
-      if (uploadInterval) {
-        clearInterval(uploadInterval)
-        uploadInterval = null
-      }
-      // Mock: stand-in for the API-returned id; real wiring happens in #11/#12/#13/#14
-      createdClipId.value = 'clp_04'
-    }
-  }, 180)
-}
+let activeXhr: XMLHttpRequest | null = null
 
 onUnmounted(() => {
-  if (uploadInterval) clearInterval(uploadInterval)
+  if (activeXhr) activeXhr.abort()
 })
 
-// File handling
+function pickFile(f: File | null) {
+  if (!f) return
+  if (!f.type.startsWith('video/')) {
+    errorMsg.value = `Unsupported file type "${f.type || 'unknown'}" — pick a video.`
+    return
+  }
+  if (f.size > MAX_UPLOAD_BYTES) {
+    errorMsg.value = `File is ${formatSize(f.size)} — limit is ${MAX_UPLOAD_MB} MB.`
+    return
+  }
+  errorMsg.value = null
+  file.value = f
+}
+
 function handleFileSelect(e: Event) {
   const input = e.target as HTMLInputElement
-  if (input.files?.[0]) {
-    const f = input.files[0]
-    file.value = { name: f.name, size: f.size, type: f.type }
-  }
-  // Reset so picking the same file again still fires `change`
+  pickFile(input.files?.[0] ?? null)
   if (e.target instanceof HTMLInputElement) e.target.value = ''
 }
 
 function handleDrop(e: DragEvent) {
   dragging.value = false
-  const dropped = e.dataTransfer?.files?.[0]
-  if (dropped) {
-    file.value = { name: dropped.name, size: dropped.size, type: dropped.type }
-  }
+  pickFile(e.dataTransfer?.files?.[0] ?? null)
 }
 
 function formatSize(bytes: number): string {
@@ -81,19 +67,80 @@ function formatSize(bytes: number): string {
   return (bytes / 1024).toFixed(1) + ' KB'
 }
 
+function putWithProgress(url: string, body: File): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    activeXhr = xhr
+    xhr.open('PUT', url)
+    if (body.type) xhr.setRequestHeader('Content-Type', body.type)
+    xhr.upload.onprogress = (ev) => {
+      if (ev.lengthComputable) uploadPct.value = (ev.loaded / ev.total) * 100
+    }
+    xhr.onload = () => {
+      activeXhr = null
+      if (xhr.status >= 200 && xhr.status < 300) resolve()
+      else reject(new Error(`PUT failed: ${xhr.status}`))
+    }
+    xhr.onerror = () => {
+      activeXhr = null
+      reject(new Error('PUT network error'))
+    }
+    xhr.onabort = () => {
+      activeXhr = null
+      reject(new Error('PUT aborted'))
+    }
+    xhr.send(body)
+  })
+}
+
+async function startUpload() {
+  if (!file.value || !title.value.trim()) return
+  step.value = 3
+  stage.value = 'creating'
+  uploadPct.value = 0
+  errorMsg.value = null
+  try {
+    const created = await clips.create({
+      title: title.value.trim(),
+      description: desc.value.trim() || null,
+      gameId: null,
+      visibility: visibility.value,
+    })
+    createdClipId.value = created.id
+
+    stage.value = 'uploading'
+    const presigned = await clips.getUploadUrl(created.id)
+    await putWithProgress(presigned.url, file.value)
+
+    stage.value = 'completing'
+    await clips.complete(created.id)
+
+    stage.value = 'done'
+    uploadPct.value = 100
+  } catch (err) {
+    stage.value = 'error'
+    if (err instanceof ApiError) {
+      errorMsg.value = `Server error (${err.status}). Please try again.`
+    } else if (err instanceof Error) {
+      errorMsg.value = err.message
+    } else {
+      errorMsg.value = 'Upload failed.'
+    }
+  }
+}
+
+const checklistDone = computed(() => ({
+  create: stage.value !== 'idle' && stage.value !== 'creating',
+  upload: stage.value === 'completing' || stage.value === 'done',
+  complete: stage.value === 'done',
+}))
+
 const STEPS = [
   { num: '1', label: 'Select file' },
   { num: '2', label: 'Describe' },
   { num: '3', label: 'Upload' },
 ]
-
 const SOURCES = ['OBS', 'ShadowPlay', 'Medal', 'Xbox', 'PS5', 'Switch']
-
-const GAME_KEYS = Object.keys(GAMES)
-
-function checklistDone(index: number): boolean {
-  return progress.value >= (CHECKLIST_THRESHOLDS[index] ?? 100)
-}
 
 const inputClass =
   'w-full rounded-md border border-border bg-surface-raised px-3.5 py-3 font-body text-sm text-text-primary outline-none'
@@ -142,7 +189,6 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
 
     <!-- Step 1: File picker -->
     <div v-if="step === 1">
-      <!-- Drop zone -->
       <div
         @dragover.prevent="dragging = true"
         @dragleave.prevent="dragging = false"
@@ -152,7 +198,6 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
           dragging ? 'border-brand-light bg-brand-glow' : 'border-border-strong bg-transparent',
         ]"
       >
-        <!-- Upload icon circle -->
         <div
           class="flex h-16 w-16 items-center justify-center rounded-full border border-border-strong bg-surface-overlay text-brand-light"
         >
@@ -163,19 +208,19 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
           <div class="mb-1.5 font-heading text-[22px] font-bold uppercase text-text-primary">
             Drop your clip here
           </div>
-          <div class="font-body text-sm text-text-secondary">MP4, MOV, WebM — up to 4 GB</div>
+          <div class="font-body text-sm text-text-secondary">
+            MP4 or video — up to {{ MAX_UPLOAD_MB }} MB
+          </div>
         </div>
 
-        <!-- Choose file button -->
         <label
-          class="inline-flex cursor-pointer items-center gap-2 rounded-md bg-brand px-5.5 py-2.5 font-heading text-sm font-bold uppercase tracking-wider text-white transition-[background] duration-150"
+          class="inline-flex cursor-pointer items-center gap-2 rounded-md bg-brand px-5.5 py-2.5 font-heading text-sm font-bold uppercase tracking-wider text-white"
         >
           <IconFile :size="16" />
           Choose file
           <input type="file" accept="video/*" class="sr-only" @change="handleFileSelect" />
         </label>
 
-        <!-- Source badges -->
         <div class="mt-2 flex flex-wrap justify-center gap-2">
           <span
             v-for="src in SOURCES"
@@ -187,7 +232,13 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
         </div>
       </div>
 
-      <!-- File confirmation row -->
+      <p
+        v-if="errorMsg"
+        class="mt-4 rounded-md border border-brand bg-surface-overlay px-4 py-2 font-mono text-[12px] text-brand-light"
+      >
+        {{ errorMsg }}
+      </p>
+
       <div
         v-if="file"
         class="mt-5 flex items-center gap-4 rounded-md border border-neon bg-neon-dim px-5 py-4 text-neon"
@@ -216,9 +267,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
     <!-- Step 2: Metadata -->
     <div v-else-if="step === 2">
       <div class="grid gap-8 grid-cols-1 min-[761px]:grid-cols-[1fr_320px]">
-        <!-- Left: form -->
         <div class="flex flex-col gap-6">
-          <!-- Title -->
           <div>
             <div class="mb-1.5 flex items-baseline justify-between">
               <label :class="labelClass + ' mb-0'">Title</label>
@@ -232,27 +281,6 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
             />
           </div>
 
-          <!-- Game picker -->
-          <div>
-            <label :class="labelClass">Game</label>
-            <div class="flex flex-wrap gap-2">
-              <button
-                v-for="key in GAME_KEYS"
-                :key="key"
-                @click="game = key"
-                :class="[
-                  'cursor-pointer rounded-md border px-3.5 py-2 font-heading text-[13px] font-bold uppercase tracking-[0.04em] transition-all duration-150',
-                  game === key
-                    ? 'border-brand-light bg-brand text-white'
-                    : 'border-border bg-surface-raised text-text-secondary',
-                ]"
-              >
-                {{ GAMES[key].tag }}
-              </button>
-            </div>
-          </div>
-
-          <!-- Description -->
           <div>
             <div class="mb-1.5 flex items-baseline justify-between">
               <label :class="labelClass + ' mb-0'"
@@ -269,7 +297,6 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
             ></textarea>
           </div>
 
-          <!-- Visibility -->
           <div>
             <label :class="labelClass">Visibility</label>
             <div class="grid grid-cols-2 gap-2.5">
@@ -298,7 +325,6 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
             </div>
           </div>
 
-          <!-- Action buttons -->
           <div class="flex gap-3 pt-2">
             <button
               @click="step = 1"
@@ -323,25 +349,15 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
           </div>
         </div>
 
-        <!-- Right: preview card -->
         <div>
           <label :class="labelClass + ' mb-3'">Preview</label>
           <div class="overflow-hidden rounded-md border border-border bg-surface-raised">
-            <!-- Thumbnail -->
             <div class="relative aspect-video bg-surface-sunken">
-              <img
-                v-if="GAMES[game]?.art"
-                :src="GAMES[game].art"
-                :alt="GAMES[game].name"
-                class="h-full w-full object-cover"
-              />
-              <!-- Game tag -->
               <div
-                class="absolute top-2 left-2 rounded-sm bg-brand px-2 py-0.75 font-mono text-[10px] uppercase tracking-[0.08em] text-white"
+                class="absolute inset-0 flex items-center justify-center font-mono text-[10px] uppercase tracking-widest text-text-muted"
               >
-                {{ GAMES[game]?.tag }}
+                {{ file?.name ?? 'No file' }}
               </div>
-              <!-- Visibility badge -->
               <div
                 class="absolute top-2 right-2 rounded-sm bg-black/60 px-2 py-0.75 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
               >
@@ -350,7 +366,6 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
             </div>
 
             <div class="p-3.5">
-              <!-- Title -->
               <div
                 :class="[
                   'mb-2.5 font-heading text-[15px] font-bold leading-[1.3]',
@@ -358,26 +373,6 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
                 ]"
               >
                 {{ title.trim() || 'Your clip title will appear here' }}
-              </div>
-
-              <!-- User row -->
-              <div class="flex items-center gap-2">
-                <UserAvatar user="phantomveil" :size="24" />
-                <span class="font-mono text-[11px] text-text-secondary"> @phantomveil </span>
-              </div>
-            </div>
-
-            <!-- Share URL preview -->
-            <div
-              class="mx-3.5 mb-3.5 rounded-sm border border-dashed border-border-strong px-3 py-2.5"
-            >
-              <div class="mb-1 font-mono text-[9px] uppercase tracking-[0.08em] text-text-muted">
-                Share URL preview
-              </div>
-              <div
-                class="overflow-hidden font-mono text-[11px] whitespace-nowrap text-ellipsis text-brand-light"
-              >
-                ganked.tv/clip/clp_new
               </div>
             </div>
           </div>
@@ -388,56 +383,46 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
     <!-- Step 3: Upload progress -->
     <div v-else-if="step === 3">
       <div class="mx-auto max-w-140">
-        <!-- Clip summary -->
         <div
           class="mb-8 flex gap-0 overflow-hidden rounded-md border border-border bg-surface-raised"
         >
-          <!-- Thumbnail -->
-          <div class="relative w-35 shrink-0">
-            <img
-              :src="GAMES[game]?.art"
-              :alt="GAMES[game]?.name"
-              class="block h-full w-full object-cover"
-            />
-          </div>
           <div class="min-w-0 flex-1 p-4">
-            <div class="mb-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-neon">
-              {{ GAMES[game]?.tag }}
-            </div>
             <div class="mb-2 font-heading text-base font-bold leading-[1.3] text-text-primary">
               {{ title }}
             </div>
             <div class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
-              {{ visibility }}
+              {{ visibility }} · {{ file ? formatSize(file.size) : '' }}
             </div>
           </div>
         </div>
 
-        <!-- Progress bar -->
         <div class="mb-2 flex items-baseline justify-between">
           <span class="font-mono text-[11px] uppercase tracking-[0.08em] text-text-muted">
-            Uploading
+            {{ stage === 'uploading' ? 'Uploading' : stage === 'done' ? 'Done' : 'Preparing' }}
           </span>
-          <span class="font-mono text-[11px] text-neon"> {{ Math.round(progress) }}% </span>
+          <span class="font-mono text-[11px] text-neon"> {{ Math.round(uploadPct) }}% </span>
         </div>
         <div class="mb-7 h-1.5 w-full overflow-hidden rounded-full bg-surface-overlay">
           <div
             class="h-full rounded-full bg-[linear-gradient(90deg,var(--color-brand),var(--color-brand-light))] transition-[width] duration-180 ease"
-            :style="{ width: progress + '%' }"
+            :style="{ width: uploadPct + '%' }"
           ></div>
         </div>
 
-        <!-- Checklist -->
         <div class="mb-9 flex flex-col gap-3.5">
           <div
-            v-for="(item, i) in ['Create record', 'Upload video', 'Generate thumbnail']"
-            :key="item"
+            v-for="item in [
+              { label: '1. Create record', done: checklistDone.create },
+              { label: '2. Upload video', done: checklistDone.upload },
+              { label: '3. Finalize', done: checklistDone.complete },
+            ]"
+            :key="item.label"
             class="flex items-center gap-3"
           >
             <div
               :class="[
                 'h-2 w-2 shrink-0 rounded-full transition-[background,box-shadow] duration-300',
-                checklistDone(i)
+                item.done
                   ? 'bg-neon shadow-[0_0_8px_var(--color-neon)]'
                   : 'bg-border-strong',
               ]"
@@ -445,16 +430,28 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
             <span
               :class="[
                 'font-mono text-xs uppercase tracking-[0.08em] transition-colors duration-300',
-                checklistDone(i) ? 'text-text-primary' : 'text-text-muted',
+                item.done ? 'text-text-primary' : 'text-text-muted',
               ]"
             >
-              {{ i + 1 }}. {{ item }}
+              {{ item.label }}
             </span>
           </div>
         </div>
 
-        <!-- Done actions -->
-        <div v-if="progress >= 100" class="flex flex-col gap-2.5">
+        <div
+          v-if="stage === 'error'"
+          class="mb-6 rounded-md border border-brand bg-surface-overlay px-4 py-3 font-mono text-[12px] text-brand-light"
+        >
+          {{ errorMsg }}
+          <button
+            class="mt-2 block cursor-pointer rounded-sm border border-border bg-surface-raised px-3 py-1.5 text-text-primary"
+            @click="(stage = 'idle'), (step = 2)"
+          >
+            Back to details
+          </button>
+        </div>
+
+        <div v-if="stage === 'done'" class="flex flex-col gap-2.5">
           <button
             :disabled="!createdClipId"
             @click="createdClipId && router.push(`/clip/${createdClipId}`)"
