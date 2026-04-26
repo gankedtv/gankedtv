@@ -56,7 +56,10 @@ describe('api/clips', () => {
     it('URI-encodes special characters in the id path segment', async () => {
       // Server uses GUIDs today, but encoding is a cheap insurance against future
       // schemes (slugs, short codes) that could include reserved characters.
-      vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({})))
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({})),
+      )
 
       await clips.getDetail('weird id/with?chars')
 
