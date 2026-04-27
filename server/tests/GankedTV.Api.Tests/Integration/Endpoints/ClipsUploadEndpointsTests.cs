@@ -75,7 +75,7 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
             Id = id,
             UserId = userId,
             Title = "seed",
-            VideoKey = $"clips/{id}.mp4",
+            VideoKey = $"clips/{userId}/{id}.mp4",
             Status = status,
             Visibility = "public",
             FileSizeBytes = fileSizeBytes,
@@ -322,10 +322,13 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
         body.GetProperty("url").GetString().Should().Be("http://localhost:9000/clips/signed?sig=abc");
         body.GetProperty("expiresAt").GetDateTimeOffset()
             .Should().BeCloseTo(DateTimeOffset.UtcNow.AddMinutes(15), TimeSpan.FromMinutes(1));
+        // Pinned to the same content type the server signed for so a future contract
+        // change is forced to think about the client-side Content-Type header too.
+        body.GetProperty("contentType").GetString().Should().Be("video/mp4");
 
         _storage.Received(1).GetPresignedPutUrl(
             "clips",
-            $"clips/{clipId}.mp4",
+            $"clips/{userId}/{clipId}.mp4",
             "video/mp4",
             TimeSpan.FromMinutes(15));
     }

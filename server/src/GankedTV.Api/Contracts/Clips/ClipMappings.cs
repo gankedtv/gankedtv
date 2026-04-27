@@ -12,7 +12,7 @@ public static class ClipMappings
         new(result.ClipId);
 
     public static UploadUrlResponse ToUploadUrlResponse(this UploadUrlResult result) =>
-        new(result.Url, result.ExpiresAt);
+        new(result.Url, result.ExpiresAt, result.ContentType);
 
     public static CompleteClipResponse ToCompleteClipResponse(this CompleteClipResult result) =>
         new(result.ClipId, result.FileSizeBytes);

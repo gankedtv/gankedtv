@@ -39,6 +39,10 @@ export interface ClipDetail {
 export interface UploadUrl {
   url: string
   expiresAt: string
+  // The MIME the server signed the presigned PUT for. The client MUST send this exact
+  // value as the request Content-Type — S3/MinIO includes it in the signature and will
+  // 403 the upload otherwise.
+  contentType: string
 }
 
 export interface CreateClipBody {

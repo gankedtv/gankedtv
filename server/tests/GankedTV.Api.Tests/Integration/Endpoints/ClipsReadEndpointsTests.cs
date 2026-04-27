@@ -78,7 +78,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
             Id = id,
             UserId = userId,
             Title = title ?? $"clip-{id:N}".Substring(0, 20),
-            VideoKey = $"clips/{id}.mp4",
+            VideoKey = $"clips/{userId}/{id}.mp4",
             ThumbnailKey = $"thumbs/{id}.jpg",
             Status = status,
             Visibility = visibility,

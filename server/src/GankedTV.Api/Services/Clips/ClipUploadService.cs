@@ -102,14 +102,15 @@ public sealed class ClipUploadService : IClipUploadService
             return ClipResult<UploadUrlResult>.Fail(ClipUploadError.InvalidState);
         }
 
+        var contentType = PrimaryContentType;
         var url = _storage.GetPresignedPutUrl(
             _minio.ClipsBucket,
             clip.VideoKey,
-            PrimaryContentType,
+            contentType,
             UploadUrlExpiry);
         var expiresAt = _clock.GetUtcNow().Add(UploadUrlExpiry);
 
-        return ClipResult<UploadUrlResult>.Ok(new UploadUrlResult(url, expiresAt));
+        return ClipResult<UploadUrlResult>.Ok(new UploadUrlResult(url, expiresAt, contentType));
     }
 
     public async Task<ClipResult<CompleteClipResult>> CompleteAsync(

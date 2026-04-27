@@ -80,13 +80,15 @@ function formatSize(bytes: number): string {
 // but bounded so a fully-stalled connection doesn't spin forever.
 const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000
 
-function putWithProgress(url: string, body: File): Promise<void> {
+function putWithProgress(url: string, body: File, contentType: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     activeXhr = xhr
     xhr.open('PUT', url)
     xhr.timeout = UPLOAD_TIMEOUT_MS
-    if (body.type) xhr.setRequestHeader('Content-Type', body.type)
+    // Must match the Content-Type the server signed for, NOT the browser-detected
+    // file MIME — S3 includes it in the signature and 403s on mismatch.
+    xhr.setRequestHeader('Content-Type', contentType)
     xhr.upload.onprogress = (ev) => {
       if (ev.lengthComputable) uploadPct.value = (ev.loaded / ev.total) * 100
     }
@@ -128,7 +130,7 @@ async function startUpload() {
 
     stage.value = 'uploading'
     const presigned = await clips.getUploadUrl(created.id)
-    await putWithProgress(presigned.url, file.value)
+    await putWithProgress(presigned.url, file.value, presigned.contentType)
 
     stage.value = 'completing'
     await clips.complete(created.id)
@@ -137,14 +139,28 @@ async function startUpload() {
     uploadPct.value = 100
   } catch (err) {
     stage.value = 'error'
-    if (err instanceof ApiError) {
-      errorMsg.value = `Server error (${err.status}). Please try again.`
-    } else if (err instanceof Error) {
-      errorMsg.value = err.message
-    } else {
-      errorMsg.value = 'Upload failed.'
-    }
+    errorMsg.value = friendlyUploadError(err)
   }
+}
+
+function friendlyUploadError(err: unknown): string {
+  if (err instanceof ApiError) {
+    return `Server error (${err.status}). Please try again.`
+  }
+  if (err instanceof Error) {
+    // Normalize the raw XHR errors from putWithProgress so users see actionable copy
+    // instead of `PUT failed: 403`. Pre-formatted messages (e.g. the timeout) are
+    // already user-friendly and pass through unchanged.
+    const m = err.message
+    if (m.startsWith('PUT failed') || m.startsWith('PUT network error')) {
+      return 'Upload was interrupted. Please try again.'
+    }
+    if (m.startsWith('PUT aborted')) {
+      return 'Upload cancelled.'
+    }
+    return m
+  }
+  return 'Upload failed.'
 }
 
 const checklistDone = computed(() => ({

@@ -87,7 +87,7 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
             Title = title,
             Description = description,
             GameId = gameId,
-            VideoKey = $"clips/{id}.mp4",
+            VideoKey = $"clips/{userId}/{id}.mp4",
             ThumbnailKey = thumbnailKey,
             Status = status,
             Visibility = visibility,
