@@ -68,7 +68,9 @@ public sealed class ClipUploadService : IClipUploadService
             GameId = input.GameId,
             Title = title,
             Description = string.IsNullOrEmpty(input.Description) ? null : input.Description,
-            VideoKey = $"clips/{id}.mp4",
+            // Namespace by user id (immutable — username can change via PATCH /me)
+            // so a single bucket listing groups one user's blobs together.
+            VideoKey = $"clips/{userId}/{id}.mp4",
             Status = ClipStatuses.Draft,
             Visibility = visibility,
             CreatedAt = now,

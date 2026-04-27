@@ -121,7 +121,7 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
         var clip = await db.Clips.AsNoTracking().SingleAsync(c => c.Id == id);
         clip.UserId.Should().Be(userId);
         clip.Status.Should().Be("draft");
-        clip.VideoKey.Should().Be($"clips/{id}.mp4");
+        clip.VideoKey.Should().Be($"clips/{userId}/{id}.mp4");
         clip.Visibility.Should().Be("unlisted");
         clip.Title.Should().Be("My first clip");
         clip.Description.Should().Be("did a thing");

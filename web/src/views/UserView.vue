@@ -193,7 +193,9 @@ const TABS: { key: Tab; label: string }[] = [
     <!-- ===================== INNER CONTENT ===================== -->
     <div class="mx-auto max-w-7xl px-6 pb-30">
       <!-- ---- Profile header ---- -->
-      <div class="-mt-17.5 flex flex-wrap items-start gap-7">
+      <!-- relative + z-10 lifts the avatar above the banner's fade overlay so the
+           negative-margin overlap actually paints on top instead of behind. -->
+      <div class="relative z-10 -mt-17.5 flex flex-wrap items-start gap-7">
         <!-- Large avatar -->
         <div
           class="flex h-35 w-35 shrink-0 select-none items-center justify-center rounded-full border-4 border-surface-base font-heading text-[56px] font-bold tracking-[-0.02em] text-white"
