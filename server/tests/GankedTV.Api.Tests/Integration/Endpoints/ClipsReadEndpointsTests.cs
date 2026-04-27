@@ -486,7 +486,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         // Expiry passed to the storage service should be roughly one hour.
         _storage.Received(1).GetPresignedGetUrl(
             Arg.Any<string>(),
-            $"clips/{clipId}.mp4",
+            $"clips/{userId}/{clipId}.mp4",
             Arg.Is<TimeSpan?>(ts => ts.HasValue && ts.Value == TimeSpan.FromHours(1)));
     }
 

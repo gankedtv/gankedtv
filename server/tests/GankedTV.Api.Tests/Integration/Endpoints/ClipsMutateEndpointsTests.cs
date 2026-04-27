@@ -407,7 +407,7 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
 
         _storage.Received().GetPresignedGetUrl(
             Arg.Any<string>(),
-            $"clips/{clipId}.mp4",
+            $"clips/{ownerId}/{clipId}.mp4",
             Arg.Is<TimeSpan?>(ts => ts.HasValue && ts.Value == TimeSpan.FromHours(1)));
     }
 
@@ -497,7 +497,7 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
         // video key into the thumbnails bucket (and vice versa), silently breaking cleanup.
         await _storage.Received(1).DeleteObjectAsync(
             minio.ClipsBucket,
-            $"clips/{clipId}.mp4",
+            $"clips/{ownerId}/{clipId}.mp4",
             Arg.Any<CancellationToken>());
         await _storage.Received(1).DeleteObjectAsync(
             minio.ThumbnailsBucket,
