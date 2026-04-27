@@ -27,37 +27,45 @@ const toastText = ref('')
 const videoEl = useTemplateRef<HTMLVideoElement>('videoEl')
 let player: Plyr | null = null
 
+// Monotonic request counter — guards against A→B→A races where comparing
+// `clipId.value === id` would falsely accept the first A response after the
+// second A request supersedes it.
+let latestLoadId = 0
+
 const clipId = computed(() => {
   const id = route.params.id
   return Array.isArray(id) ? id[0] : id
 })
 
+async function loadClip(id: string) {
+  const myLoadId = ++latestLoadId
+  loading.value = true
+  errored.value = false
+  clip.value = null
+  teardownPlayer()
+  try {
+    const detail = await clips.getDetail(id)
+    if (myLoadId !== latestLoadId) return
+    clip.value = detail
+    liked.value = detail.likedByMe
+    likeCount.value = detail.likeCount
+  } catch (err) {
+    if (myLoadId !== latestLoadId) return
+    if (err instanceof ApiError && err.status === 404) {
+      router.replace({ name: 'not-found' })
+      return
+    }
+    errored.value = true
+  } finally {
+    if (myLoadId === latestLoadId) loading.value = false
+  }
+}
+
 watch(
   clipId,
-  async (id) => {
+  (id) => {
     if (!id) return
-    loading.value = true
-    errored.value = false
-    clip.value = null
-    teardownPlayer()
-    try {
-      const detail = await clips.getDetail(id)
-      // Bail if the user navigated to a different clip while we were loading;
-      // applying this response would corrupt the new clip's state.
-      if (clipId.value !== id) return
-      clip.value = detail
-      liked.value = detail.likedByMe
-      likeCount.value = detail.likeCount
-    } catch (err) {
-      if (clipId.value !== id) return
-      if (err instanceof ApiError && err.status === 404) {
-        router.replace({ name: 'not-found' })
-        return
-      }
-      errored.value = true
-    } finally {
-      if (clipId.value === id) loading.value = false
-    }
+    loadClip(id)
   },
   { immediate: true },
 )
@@ -84,8 +92,6 @@ function teardownPlayer() {
   }
 }
 
-onBeforeUnmount(teardownPlayer)
-
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 function fireToast(text: string) {
   toastText.value = text
@@ -95,6 +101,11 @@ function fireToast(text: string) {
     showToast.value = false
   }, 2400)
 }
+
+onBeforeUnmount(() => {
+  teardownPlayer()
+  if (toastTimer !== null) clearTimeout(toastTimer)
+})
 
 async function toggleLike() {
   if (!clip.value || likeBusy.value) return
@@ -162,6 +173,9 @@ const authorColor = computed(() => {
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0
   return `hsl(${Math.abs(hash) % 360}, 65%, 45%)`
 })
+
+// Hoisted so the template doesn't re-parse the URL on every render.
+const authorAvatarUrl = computed(() => safeImageUrl(clip.value?.author.avatarUrl))
 </script>
 
 <template>
@@ -178,7 +192,7 @@ const authorColor = computed(() => {
       </span>
       <button
         class="cursor-pointer rounded-sm border border-border bg-surface-raised px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
-        @click="router.go(0)"
+        @click="clipId && loadClip(clipId)"
       >
         Retry
       </button>
@@ -217,8 +231,8 @@ const authorColor = computed(() => {
               }"
             >
               <img
-                v-if="safeImageUrl(clip.author.avatarUrl)"
-                :src="safeImageUrl(clip.author.avatarUrl) ?? ''"
+                v-if="authorAvatarUrl"
+                :src="authorAvatarUrl"
                 :alt="clip.author.username"
                 class="h-full w-full object-cover"
               />

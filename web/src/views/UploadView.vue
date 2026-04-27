@@ -44,10 +44,14 @@ onUnmounted(() => {
 function pickFile(f: File | null) {
   if (!f) return
   if (!f.type.startsWith('video/')) {
+    // Clear any prior valid selection — leaving the old file as the "current"
+    // pick alongside an error about a different file is confusing.
+    file.value = null
     errorMsg.value = `Unsupported file type "${f.type || 'unknown'}" — pick a video.`
     return
   }
   if (f.size > MAX_UPLOAD_BYTES) {
+    file.value = null
     errorMsg.value = `File is ${formatSize(f.size)} — limit is ${MAX_UPLOAD_MB} MB.`
     return
   }

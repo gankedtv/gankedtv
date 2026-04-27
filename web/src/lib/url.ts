@@ -11,9 +11,16 @@ export function safeImageUrl(url: string | null | undefined): string | null {
   try {
     const parsed = new URL(url, window.location.origin)
     if (parsed.protocol === 'https:' || parsed.protocol === 'http:') return url
-    // Allow only image data URLs — `data:text/html,...` is harmless inside <img> but
-    // would be dangerous if this helper ever gets reused for <iframe src> etc.
-    if (parsed.protocol === 'data:' && /^data:image\//i.test(url)) return url
+    // Allow image data URLs but reject SVG explicitly — SVG can carry inline
+    // <script> that executes in <object>/<iframe> contexts (and historically in
+    // some <img> contexts via foreignObject). `data:text/html,...` would also
+    // be dangerous outside <img>; rejecting both keeps this helper safe to
+    // reuse anywhere a URL is bound to a media-loading element.
+    if (parsed.protocol === 'data:') {
+      const isImage = /^data:image\//i.test(url)
+      const isSvg = /^data:image\/svg\b/i.test(url)
+      if (isImage && !isSvg) return url
+    }
     return null
   } catch {
     return null

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/client'
 import { users, type UserProfile } from '@/api/users'
@@ -19,28 +19,36 @@ const username = computed(() => {
   return Array.isArray(u) ? u[0] : u
 })
 
+// Monotonic counter — guards A→B→A races where comparing `username.value === name`
+// would falsely accept the first A response after the second A request supersedes it.
+let latestLoadId = 0
+
+async function loadProfile(name: string) {
+  const myLoadId = ++latestLoadId
+  loading.value = true
+  errored.value = false
+  profile.value = null
+  try {
+    const result = await users.getByUsername(name)
+    if (myLoadId !== latestLoadId) return
+    profile.value = result
+  } catch (err) {
+    if (myLoadId !== latestLoadId) return
+    if (err instanceof ApiError && err.status === 404) {
+      router.replace({ name: 'not-found' })
+      return
+    }
+    errored.value = true
+  } finally {
+    if (myLoadId === latestLoadId) loading.value = false
+  }
+}
+
 watch(
   username,
-  async (name) => {
+  (name) => {
     if (!name) return
-    loading.value = true
-    errored.value = false
-    profile.value = null
-    try {
-      const result = await users.getByUsername(name)
-      // Bail if the user navigated to a different profile mid-request.
-      if (username.value !== name) return
-      profile.value = result
-    } catch (err) {
-      if (username.value !== name) return
-      if (err instanceof ApiError && err.status === 404) {
-        router.replace({ name: 'not-found' })
-        return
-      }
-      errored.value = true
-    } finally {
-      if (username.value === name) loading.value = false
-    }
+    loadProfile(name)
   },
   { immediate: true },
 )
@@ -61,13 +69,19 @@ const bannerGradient = computed(
 
 const initials = computed(() => {
   const name = profile.value?.username ?? ''
-  return (
-    name
-      .replace(/[^a-zA-Z]/g, '')
-      .slice(0, 2)
-      .toUpperCase() || '??'
-  )
+  // Unicode-aware: keep letters/digits across scripts (Cyrillic, CJK, Hangul,
+  // emoji-as-letter, etc.) and split on grapheme clusters so accented letters
+  // and multi-codepoint glyphs count as one. The old `[^a-zA-Z]` strip would
+  // hand a Korean or Cyrillic username an unhelpful `??` fallback.
+  const letters = Array.from(name.normalize('NFC'))
+    .filter((c) => /\p{L}|\p{N}/u.test(c))
+    .slice(0, 2)
+    .join('')
+  return letters.toUpperCase() || '??'
 })
+
+// Hoisted so the template doesn't re-parse the URL on every render.
+const avatarImageUrl = computed(() => safeImageUrl(profile.value?.avatarUrl))
 
 const joinedDate = computed(() => {
   if (!profile.value) return ''
@@ -121,6 +135,10 @@ async function copyShareUrl() {
   }, 1800)
 }
 
+onBeforeUnmount(() => {
+  if (copyTimer !== null) clearTimeout(copyTimer)
+})
+
 type Tab = 'clips' | 'liked'
 const tab = ref<Tab>('clips')
 
@@ -143,7 +161,7 @@ const TABS: { key: Tab; label: string }[] = [
     </span>
     <button
       class="cursor-pointer rounded-sm border border-border bg-surface-raised px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
-      @click="router.go(0)"
+      @click="username && loadProfile(username)"
     >
       Retry
     </button>
@@ -182,8 +200,8 @@ const TABS: { key: Tab; label: string }[] = [
           :style="{ background: bannerGradient }"
         >
           <img
-            v-if="safeImageUrl(profile.avatarUrl)"
-            :src="safeImageUrl(profile.avatarUrl) ?? ''"
+            v-if="avatarImageUrl"
+            :src="avatarImageUrl"
             :alt="profile.username"
             class="h-full w-full rounded-full object-cover"
           />

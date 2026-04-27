@@ -61,8 +61,17 @@ if [ -n "$touched_server" ]; then
 fi
 
 if [ -n "$touched_web" ]; then
+  # Only re-install when a manifest changed in the pushed range; cached node_modules
+  # is otherwise reused, saving a cold-cache install on every push.
+  manifest_changed=$(echo "$changed_files" | grep -E '^web/(package\.json|bun\.lock)$' || true)
   echo "pre-push: formatting web…"
-  (cd web && bun install --frozen-lockfile && bun run format)
+  (
+    cd web
+    if [ -n "$manifest_changed" ]; then
+      bun install --frozen-lockfile
+    fi
+    bun run format
+  )
 fi
 
 if [ "$diff_before" != "$(git diff)" ]; then

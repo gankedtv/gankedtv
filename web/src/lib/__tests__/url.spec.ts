@@ -19,9 +19,15 @@ describe('safeImageUrl()', () => {
   })
 
   it('returns null for non-image data URLs', () => {
-    // `data:text/html,...` is harmless in an <img>, but rejecting it keeps the
-    // helper safe to reuse in <iframe src> etc.
     expect(safeImageUrl('data:text/html,<script>alert(1)</script>')).toBeNull()
+  })
+
+  it('returns null for SVG data URLs (script-capable)', () => {
+    // SVG can carry inline <script> that executes in <object>/<iframe> contexts.
+    expect(
+      safeImageUrl('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg"/>'),
+    ).toBeNull()
+    expect(safeImageUrl('data:image/svg+xml;base64,PHN2Zy8+')).toBeNull()
   })
 
   it('returns null for javascript: URLs', () => {
