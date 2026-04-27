@@ -78,7 +78,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
             Id = id,
             UserId = userId,
             Title = title ?? $"clip-{id:N}".Substring(0, 20),
-            VideoKey = $"clips/{id}.mp4",
+            VideoKey = $"clips/{userId}/{id}.mp4",
             ThumbnailKey = $"thumbs/{id}.jpg",
             Status = status,
             Visibility = visibility,
@@ -486,7 +486,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         // Expiry passed to the storage service should be roughly one hour.
         _storage.Received(1).GetPresignedGetUrl(
             Arg.Any<string>(),
-            $"clips/{clipId}.mp4",
+            $"clips/{userId}/{clipId}.mp4",
             Arg.Is<TimeSpan?>(ts => ts.HasValue && ts.Value == TimeSpan.FromHours(1)));
     }
 

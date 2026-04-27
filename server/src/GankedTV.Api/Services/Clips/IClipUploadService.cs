@@ -14,7 +14,7 @@ public sealed record CreateClipInput(
     string? Visibility);
 
 public sealed record CreateClipResult(Guid ClipId);
-public sealed record UploadUrlResult(string Url, DateTimeOffset ExpiresAt);
+public sealed record UploadUrlResult(string Url, DateTimeOffset ExpiresAt, string ContentType);
 public sealed record CompleteClipResult(Guid ClipId, long FileSizeBytes);
 
 public enum ClipUploadError

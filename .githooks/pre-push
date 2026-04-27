@@ -50,12 +50,42 @@ if [ -z "$touched_server" ] && [ -z "$touched_web" ]; then
   exit 0
 fi
 
+# Run formatters first (write mode) so we can fail fast if anything changed.
+# Snapshot the diff before so we can detect formatter-induced changes even on
+# files that were already dirty.
+diff_before=$(git diff)
+
+if [ -n "$touched_server" ]; then
+  echo "pre-push: formatting server…"
+  (cd server && dotnet format)
+fi
+
+if [ -n "$touched_web" ]; then
+  # Only re-install when a manifest changed in the pushed range; cached node_modules
+  # is otherwise reused, saving a cold-cache install on every push.
+  manifest_changed=$(echo "$changed_files" | grep -E '^web/(package\.json|bun\.lock)$' || true)
+  echo "pre-push: formatting web…"
+  (
+    cd web
+    if [ -n "$manifest_changed" ]; then
+      bun install --frozen-lockfile
+    fi
+    bun run format
+  )
+fi
+
+if [ "$diff_before" != "$(git diff)" ]; then
+  echo
+  echo "pre-push: the formatter modified files. Review, commit, and push again:"
+  git diff --name-only | sed 's/^/  /'
+  exit 1
+fi
+
 if [ -n "$touched_server" ]; then
   echo "pre-push: running server checks…"
   (
     cd server
     dotnet build --configuration Release
-    dotnet format --verify-no-changes --no-restore
     dotnet test --configuration Release /p:CollectCoverage=true /p:Threshold=85%2C85
   )
 fi
@@ -64,8 +94,6 @@ if [ -n "$touched_web" ]; then
   echo "pre-push: running web checks…"
   (
     cd web
-    bun install --frozen-lockfile
-    bun run format:check
     bun run lint:check
     bun run build
     bun run test:coverage

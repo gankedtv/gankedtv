@@ -75,7 +75,7 @@ public class LikesEndpointsTests : IAsyncLifetime
             Id = id,
             UserId = userId,
             Title = "likable",
-            VideoKey = $"clips/{id}.mp4",
+            VideoKey = $"clips/{userId}/{id}.mp4",
             Status = "ready",
             Visibility = "public",
             LikeCount = initialLikeCount,

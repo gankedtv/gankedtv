@@ -83,7 +83,7 @@ public class UsersEndpointsTests : IAsyncLifetime
             Id = id,
             UserId = userId,
             Title = title ?? "seed",
-            VideoKey = $"clips/{id}.mp4",
+            VideoKey = $"clips/{userId}/{id}.mp4",
             ThumbnailKey = $"thumbs/{id}.jpg",
             Status = status,
             Visibility = visibility,

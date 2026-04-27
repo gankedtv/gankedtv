@@ -68,7 +68,9 @@ public sealed class ClipUploadService : IClipUploadService
             GameId = input.GameId,
             Title = title,
             Description = string.IsNullOrEmpty(input.Description) ? null : input.Description,
-            VideoKey = $"clips/{id}.mp4",
+            // Namespace by user id (immutable — username can change via PATCH /me)
+            // so a single bucket listing groups one user's blobs together.
+            VideoKey = $"clips/{userId}/{id}.mp4",
             Status = ClipStatuses.Draft,
             Visibility = visibility,
             CreatedAt = now,
@@ -100,14 +102,15 @@ public sealed class ClipUploadService : IClipUploadService
             return ClipResult<UploadUrlResult>.Fail(ClipUploadError.InvalidState);
         }
 
+        var contentType = PrimaryContentType;
         var url = _storage.GetPresignedPutUrl(
             _minio.ClipsBucket,
             clip.VideoKey,
-            PrimaryContentType,
+            contentType,
             UploadUrlExpiry);
         var expiresAt = _clock.GetUtcNow().Add(UploadUrlExpiry);
 
-        return ClipResult<UploadUrlResult>.Ok(new UploadUrlResult(url, expiresAt));
+        return ClipResult<UploadUrlResult>.Ok(new UploadUrlResult(url, expiresAt, contentType));
     }
 
     public async Task<ClipResult<CompleteClipResult>> CompleteAsync(

@@ -75,10 +75,12 @@ function buildHeaders(accessToken: string | null, extra?: HeadersInit): Headers 
   return headers
 }
 
-export async function api<T = undefined>(
-  path: string,
-  init: RequestInit & { _isRetry?: boolean } = {},
-): Promise<T> {
+export type ApiInit = Omit<RequestInit, 'body'> & {
+  body?: BodyInit | object | null
+  _isRetry?: boolean
+}
+
+export async function api<T = undefined>(path: string, init: ApiInit = {}): Promise<T> {
   const { _isRetry, ...fetchInit } = init
 
   const headers = buildHeaders(_auth.getAccessToken(), fetchInit.headers)
@@ -97,7 +99,11 @@ export async function api<T = undefined>(
     fetchInit.body = JSON.stringify(fetchInit.body)
   }
 
-  const response = await fetch(`${BASE_URL}${path}`, { ...fetchInit, headers })
+  const response = await fetch(`${BASE_URL}${path}`, {
+    ...fetchInit,
+    headers,
+    body: fetchInit.body as BodyInit | null | undefined,
+  })
 
   if (response.status === 401 && !_isRetry && _auth.getRefreshToken()) {
     // Streaming request bodies cannot be replayed on retry.

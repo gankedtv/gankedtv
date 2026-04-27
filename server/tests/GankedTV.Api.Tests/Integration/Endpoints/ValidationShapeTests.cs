@@ -215,7 +215,7 @@ public class ValidationShapeTests : IAsyncLifetime
             Id = id,
             UserId = userId,
             Title = title,
-            VideoKey = $"clips/{id}.mp4",
+            VideoKey = $"clips/{userId}/{id}.mp4",
             Status = "ready",
             Visibility = "public",
             CreatedAt = now,
