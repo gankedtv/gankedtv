@@ -52,6 +52,7 @@ public class RefreshTokenServiceTests
         rows[0].TokenHash.Should().NotBe(raw);
         rows[0].TokenHash.Should().Be(RefreshTokenService.Hash(raw));
         rows[0].RevokedAt.Should().BeNull();
+        rows[0].FamilyId.Should().NotBe(Guid.Empty);
         rows[0].ExpiresAt.Should().BeAfter(DateTimeOffset.UtcNow.AddDays(29));
     }
 
@@ -103,6 +104,49 @@ public class RefreshTokenServiceTests
         await using var rotateDb = _fx.CreateContext();
         var act = () => new RefreshTokenService(rotateDb, DefaultOpts()).RotateAsync(raw);
         await act.Should().ThrowAsync<InvalidRefreshTokenException>();
+    }
+
+    [Fact]
+    public async Task RotateAsync_ExpiredToken_DoesNotTouchLiveFamilySiblings()
+    {
+        // An expired-but-never-revoked token presented for rotation must not trigger family
+        // revocation — it's not a theft signal, just an unlucky user with a stale token.
+        // Live siblings (e.g. another tab that is still within TTL) must remain usable.
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("mona");
+
+        var family = Guid.NewGuid();
+        const string expiredRaw = "manual-expired-token";
+        string liveRaw;
+        await using (var db = _fx.CreateContext())
+        {
+            db.RefreshTokens.Add(new RefreshToken
+            {
+                UserId = userId,
+                TokenHash = RefreshTokenService.Hash(expiredRaw),
+                FamilyId = family,
+                ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1),
+            });
+            liveRaw = await new RefreshTokenService(db, DefaultOpts()).IssueAsync(userId);
+        }
+        // Force the live token into the same family as the expired one.
+        await using (var db = _fx.CreateContext())
+        {
+            await db.RefreshTokens
+                .Where(t => t.TokenHash == RefreshTokenService.Hash(liveRaw))
+                .ExecuteUpdateAsync(s => s.SetProperty(t => t.FamilyId, family));
+        }
+
+        await using (var db = _fx.CreateContext())
+        {
+            var act = () => new RefreshTokenService(db, DefaultOpts()).RotateAsync(expiredRaw);
+            await act.Should().ThrowAsync<InvalidRefreshTokenException>();
+        }
+
+        // Sibling must still be rotatable.
+        await using var rotateDb = _fx.CreateContext();
+        var rotated = await new RefreshTokenService(rotateDb, DefaultOpts()).RotateAsync(liveRaw);
+        rotated.NewRawToken.Should().NotBeNullOrEmpty();
     }
 
     [Fact]
@@ -207,6 +251,168 @@ public class RefreshTokenServiceTests
         await using var verify = _fx.CreateContext();
         var row = await verify.RefreshTokens.AsNoTracking().SingleAsync();
         row.RevokedAt.Should().Be(firstRevokedAt);
+    }
+
+    [Fact]
+    public async Task RotateAsync_CopiesFamilyIdFromParent()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("hugo");
+
+        string raw;
+        await using (var db = _fx.CreateContext())
+        {
+            raw = await new RefreshTokenService(db, DefaultOpts()).IssueAsync(userId);
+        }
+
+        Guid parentFamily;
+        await using (var db = _fx.CreateContext())
+        {
+            parentFamily = (await db.RefreshTokens.AsNoTracking().SingleAsync()).FamilyId;
+        }
+
+        RotateResult result;
+        await using (var db = _fx.CreateContext())
+        {
+            result = await new RefreshTokenService(db, DefaultOpts()).RotateAsync(raw);
+        }
+
+        await using var verify = _fx.CreateContext();
+        var families = await verify.RefreshTokens.AsNoTracking().Select(t => t.FamilyId).Distinct().ToListAsync();
+        families.Should().ContainSingle().Which.Should().Be(parentFamily);
+    }
+
+    [Fact]
+    public async Task RotateAsync_RotationChain_SharesOneFamily()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("ivan");
+
+        string current;
+        await using (var db = _fx.CreateContext())
+        {
+            current = await new RefreshTokenService(db, DefaultOpts()).IssueAsync(userId);
+        }
+
+        for (var i = 0; i < 3; i++)
+        {
+            await using var db = _fx.CreateContext();
+            current = (await new RefreshTokenService(db, DefaultOpts()).RotateAsync(current)).NewRawToken;
+        }
+
+        await using var verify = _fx.CreateContext();
+        var rows = await verify.RefreshTokens.AsNoTracking().ToListAsync();
+        rows.Should().HaveCount(4);
+        rows.Select(r => r.FamilyId).Distinct().Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task RotateAsync_ReplayOfRevokedToken_RevokesEntireFamily()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("judy");
+        var clock = new FakeClock(DateTimeOffset.UtcNow);
+
+        string tokenA;
+        await using (var db = _fx.CreateContext())
+        {
+            tokenA = await new RefreshTokenService(db, DefaultOpts(), clock: clock).IssueAsync(userId);
+        }
+
+        // Legitimate rotation: A -> B. A is now revoked.
+        string tokenB;
+        await using (var db = _fx.CreateContext())
+        {
+            tokenB = (await new RefreshTokenService(db, DefaultOpts(), clock: clock).RotateAsync(tokenA)).NewRawToken;
+        }
+
+        // Advance past the replay grace window so the next presentation of A is treated as theft.
+        clock.Set(clock.GetUtcNow().AddMinutes(5));
+
+        await using (var rotateDb = _fx.CreateContext())
+        {
+            var act = () => new RefreshTokenService(rotateDb, DefaultOpts(), clock: clock).RotateAsync(tokenA);
+            await act.Should().ThrowAsync<InvalidRefreshTokenException>();
+        }
+
+        await using var verify = _fx.CreateContext();
+        var rows = await verify.RefreshTokens.AsNoTracking().ToListAsync();
+        rows.Should().HaveCount(2);
+        rows.Should().OnlyContain(r => r.RevokedAt != null);
+
+        // Token B (the previously-live successor) cannot be rotated either.
+        await using var rotateB = _fx.CreateContext();
+        var rotateActB = () => new RefreshTokenService(rotateB, DefaultOpts(), clock: clock).RotateAsync(tokenB);
+        await rotateActB.Should().ThrowAsync<InvalidRefreshTokenException>();
+    }
+
+    [Fact]
+    public async Task RotateAsync_ConcurrentRotationDoesNotTriggerFamilyRevoke()
+    {
+        // The CAS-loser path is reachable in legitimate flows (multiple tabs racing to refresh).
+        // Fresh revocations within the grace window must NOT trigger family revoke, otherwise
+        // the user's just-issued successor token would be killed on every concurrent refresh.
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("liam");
+
+        string tokenA;
+        await using (var db = _fx.CreateContext())
+        {
+            tokenA = await new RefreshTokenService(db, DefaultOpts()).IssueAsync(userId);
+        }
+
+        // Legitimate rotation A -> B.
+        await using (var db = _fx.CreateContext())
+        {
+            await new RefreshTokenService(db, DefaultOpts()).RotateAsync(tokenA);
+        }
+
+        // Immediately replay A — should throw (token revoked) but leave B live.
+        await using (var db = _fx.CreateContext())
+        {
+            var act = () => new RefreshTokenService(db, DefaultOpts()).RotateAsync(tokenA);
+            await act.Should().ThrowAsync<InvalidRefreshTokenException>();
+        }
+
+        await using var verify = _fx.CreateContext();
+        var liveRows = await verify.RefreshTokens.AsNoTracking().Where(t => t.RevokedAt == null).ToListAsync();
+        liveRows.Should().ContainSingle("the freshly-issued successor must remain live during a concurrent rotation race");
+    }
+
+    [Fact]
+    public async Task RotateAsync_ReplayDoesNotTouchOtherFamilies()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("kim");
+        var clock = new FakeClock(DateTimeOffset.UtcNow);
+
+        // Two independent login sessions = two families.
+        string tokenF1, tokenF2;
+        await using (var db = _fx.CreateContext())
+        {
+            tokenF1 = await new RefreshTokenService(db, DefaultOpts(), clock: clock).IssueAsync(userId);
+        }
+        await using (var db = _fx.CreateContext())
+        {
+            tokenF2 = await new RefreshTokenService(db, DefaultOpts(), clock: clock).IssueAsync(userId);
+        }
+
+        // Rotate F1 to revoke its only token, then replay it past the grace window.
+        await using (var db = _fx.CreateContext())
+        {
+            await new RefreshTokenService(db, DefaultOpts(), clock: clock).RotateAsync(tokenF1);
+        }
+        clock.Set(clock.GetUtcNow().AddMinutes(5));
+        await using (var db = _fx.CreateContext())
+        {
+            var act = () => new RefreshTokenService(db, DefaultOpts(), clock: clock).RotateAsync(tokenF1);
+            await act.Should().ThrowAsync<InvalidRefreshTokenException>();
+        }
+
+        // F2 must still be live and rotatable.
+        await using var rotateF2 = _fx.CreateContext();
+        var rotated = await new RefreshTokenService(rotateF2, DefaultOpts(), clock: clock).RotateAsync(tokenF2);
+        rotated.NewRawToken.Should().NotBeNullOrEmpty();
     }
 
     [Fact]
