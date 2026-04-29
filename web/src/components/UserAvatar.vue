@@ -27,7 +27,10 @@ function hashHue(input: string): number {
 }
 
 const initials = computed(() => {
-  const letters = props.user.username.replace(/[^a-zA-Z]/g, '').slice(0, 2).toUpperCase()
+  const letters = props.user.username
+    .replace(/[^a-zA-Z]/g, '')
+    .slice(0, 2)
+    .toUpperCase()
   return letters || '??'
 })
 

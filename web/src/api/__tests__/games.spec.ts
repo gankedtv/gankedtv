@@ -25,7 +25,10 @@ function jsonResponse(body: unknown, status = 200): Response {
 describe('api/games', () => {
   describe('list()', () => {
     it('GETs /games without query when no limit', async () => {
-      vi.stubGlobal('fetch', vi.fn(async () => jsonResponse([])))
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse([])),
+      )
 
       await games.list()
 
@@ -34,7 +37,10 @@ describe('api/games', () => {
     })
 
     it('appends ?limit= when provided', async () => {
-      vi.stubGlobal('fetch', vi.fn(async () => jsonResponse([])))
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse([])),
+      )
 
       await games.list(6)
 
@@ -43,10 +49,11 @@ describe('api/games', () => {
     })
 
     it('returns the parsed list', async () => {
-      const body = [
-        { id: 1, name: 'Valorant', slug: 'valorant', tag: 'VALORANT', coverUrl: null },
-      ]
-      vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(body)))
+      const body = [{ id: 1, name: 'Valorant', slug: 'valorant', tag: 'VALORANT', coverUrl: null }]
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse(body)),
+      )
 
       const result = await games.list()
 
@@ -56,7 +63,10 @@ describe('api/games', () => {
 
   describe('search()', () => {
     it('URL-encodes the search term', async () => {
-      vi.stubGlobal('fetch', vi.fn(async () => jsonResponse([])))
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse([])),
+      )
 
       await games.search('valor & rl')
 
@@ -66,7 +76,10 @@ describe('api/games', () => {
     })
 
     it('appends limit when provided', async () => {
-      vi.stubGlobal('fetch', vi.fn(async () => jsonResponse([])))
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse([])),
+      )
 
       await games.search('val', 3)
 

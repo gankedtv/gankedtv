@@ -181,7 +181,9 @@ onMounted(loadMore)
                 }}</span>
               </div>
               <div v-if="hero.durationSecs !== null" class="flex flex-col gap-1">
-                <span class="text-[10px] uppercase tracking-[0.08em] text-text-muted">Duration</span>
+                <span class="text-[10px] uppercase tracking-[0.08em] text-text-muted"
+                  >Duration</span
+                >
                 <span class="font-heading text-[22px] font-bold text-text-primary">{{
                   formatDuration(hero.durationSecs)
                 }}</span>

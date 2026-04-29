@@ -379,10 +379,15 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
         <div class="flex flex-col gap-6">
           <!-- Game picker -->
           <div>
-            <label :class="labelClass">Game <span class="text-[9px] text-text-muted">(optional)</span></label>
+            <label :class="labelClass"
+              >Game <span class="text-[9px] text-text-muted">(optional)</span></label
+            >
 
             <!-- Selected pill -->
-            <div v-if="selectedGame" class="mb-2 inline-flex items-center gap-2 rounded-md border border-brand-light bg-brand-glow px-3 py-1.5">
+            <div
+              v-if="selectedGame"
+              class="mb-2 inline-flex items-center gap-2 rounded-md border border-brand-light bg-brand-glow px-3 py-1.5"
+            >
               <span class="font-mono text-[10px] uppercase tracking-[0.06em] text-text-primary">
                 {{ selectedGame.tag }}
               </span>
