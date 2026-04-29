@@ -128,11 +128,7 @@ const trendHold = `${trendBase} text-text-muted`
       </button>
     </StatusPanel>
 
-    <StatusPanel
-      v-else-if="loading && topClips.length === 0"
-      kind="loading"
-      message="Loading…"
-    />
+    <StatusPanel v-else-if="loading && topClips.length === 0" kind="loading" message="Loading…" />
 
     <StatusPanel
       v-else-if="!loading && topClips.length === 0"
