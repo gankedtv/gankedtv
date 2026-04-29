@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import type { ClipFeedItem } from '@/api/clips'
-import { formatNum, formatDuration, formatRelativeTime } from '@/lib/format'
+import { formatNum, formatRelativeTime } from '@/lib/format'
 import UserAvatar from './UserAvatar.vue'
+import GameTag from './GameTag.vue'
+import DurationBadge from './DurationBadge.vue'
+import AuthorHandle from './AuthorHandle.vue'
 import IconHeart from './icons/IconHeart.vue'
 import IconEye from './icons/IconEye.vue'
 
@@ -36,19 +39,10 @@ function onKeydown(e: KeyboardEvent) {
       <div v-else class="h-full w-full bg-surface-sunken" />
       <!-- Game tag — top-left -->
       <div v-if="props.clip.game" class="absolute left-2 top-2">
-        <span
-          class="rounded-[3px] border border-border-strong bg-surface-base px-1.75 py-0.75 font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-text-primary"
-        >
-          {{ props.clip.game.tag }}
-        </span>
+        <GameTag :tag="props.clip.game.tag" />
       </div>
       <!-- Duration — bottom-right -->
-      <div
-        v-if="props.clip.durationSecs !== null"
-        class="absolute bottom-2 right-2 rounded-[3px] bg-black/75 px-1.75 py-1 font-mono text-[10px] tracking-wider leading-none text-white backdrop-blur-xs"
-      >
-        {{ formatDuration(props.clip.durationSecs) }}
-      </div>
+      <DurationBadge :seconds="props.clip.durationSecs" class="absolute bottom-2 right-2" />
     </div>
 
     <!-- Body -->
@@ -63,7 +57,10 @@ function onKeydown(e: KeyboardEvent) {
         class="flex items-center gap-2 overflow-hidden font-mono text-[11px] text-text-secondary"
       >
         <UserAvatar :user="clip.author" :size="20" />
-        <span class="min-w-0 shrink truncate text-neon">@{{ clip.author.username }}</span>
+        <AuthorHandle
+          :username="clip.author.username"
+          class="min-w-0 shrink truncate text-neon"
+        />
         <span class="shrink-0 text-text-muted">·</span>
         <span class="shrink-0">{{ formatRelativeTime(clip.createdAt) }} ago</span>
       </div>

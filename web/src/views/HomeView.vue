@@ -5,6 +5,10 @@ import { clips, type ClipFeedItem } from '@/api/clips'
 import { formatNum, formatDuration, formatRelativeTime } from '@/lib/format'
 import ClipCard from '@/components/ClipCard.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
+import GameTag from '@/components/GameTag.vue'
+import DurationBadge from '@/components/DurationBadge.vue'
+import AuthorHandle from '@/components/AuthorHandle.vue'
+import StatusPanel from '@/components/StatusPanel.vue'
 import IconPlay from '@/components/icons/IconPlay.vue'
 
 const router = useRouter()
@@ -72,44 +76,39 @@ onMounted(loadMore)
 
     <!-- Initial loading state — explicit so the empty-state branch doesn't flash
          in the gap between mount and the first response. -->
-    <div
+    <StatusPanel
       v-if="loading && items.length === 0 && !errored"
-      class="mt-10 flex items-center justify-center py-16"
-    >
-      <span class="font-mono text-sm uppercase tracking-widest text-text-muted">Loading…</span>
-    </div>
+      kind="loading"
+      message="Loading…"
+    />
 
     <!-- Empty state -->
-    <div
+    <StatusPanel
       v-else-if="!loading && items.length === 0 && !errored"
-      class="mt-10 flex flex-col items-center justify-center gap-2 rounded-md border border-border bg-surface-raised py-16 text-center"
+      kind="empty"
+      message="No clips yet — be the first."
     >
-      <span class="font-mono text-sm uppercase tracking-widest text-text-muted">
-        No clips yet — be the first.
-      </span>
       <RouterLink
         to="/upload"
         class="rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
       >
         Upload a clip
       </RouterLink>
-    </div>
+    </StatusPanel>
 
     <!-- Error state -->
-    <div
+    <StatusPanel
       v-else-if="errored"
-      class="mt-10 flex flex-col items-center justify-center gap-2 rounded-md border border-border bg-surface-raised py-16"
+      kind="error"
+      message="Couldn't load the feed."
     >
-      <span class="font-mono text-sm uppercase tracking-widest text-text-muted">
-        Couldn't load the feed.
-      </span>
       <button
         class="cursor-pointer rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
         @click="loadMore"
       >
         Retry
       </button>
-    </div>
+    </StatusPanel>
 
     <template v-else-if="hero">
       <!-- Desktop hero card -->
@@ -131,20 +130,14 @@ onMounted(loadMore)
             ></div>
             <!-- Game badge -->
             <div v-if="hero.game" class="absolute top-5 left-5">
-              <span
-                class="rounded-[3px] border border-border-strong bg-surface-base px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-primary"
-              >
-                {{ hero.game.tag }}
-              </span>
+              <GameTag :tag="hero.game.tag" size="md" />
             </div>
             <!-- Duration badge -->
-            <div v-if="hero.durationSecs !== null" class="absolute bottom-5 left-5">
-              <span
-                class="rounded bg-black/70 px-2.5 py-1.25 font-mono text-[11px] tracking-[0.06em] text-white backdrop-blur-md"
-              >
-                {{ formatDuration(hero.durationSecs) }}
-              </span>
-            </div>
+            <DurationBadge
+              :seconds="hero.durationSecs"
+              size="md"
+              class="absolute bottom-5 left-5"
+            />
             <button
               class="absolute inset-0 flex cursor-pointer items-center justify-center bg-transparent"
               :aria-label="`Play: ${hero.title}`"
@@ -172,7 +165,7 @@ onMounted(loadMore)
               <p class="m-0 max-w-[36ch] text-[15px] leading-normal text-text-secondary">
                 <span v-if="hero.game">{{ hero.game.name }} · </span>uploaded
                 {{ formatRelativeTime(hero.createdAt) }} ago by
-                <span class="text-text-primary">@{{ hero.author.username }}</span>
+                <AuthorHandle :username="hero.author.username" class="text-text-primary" />
               </p>
             </div>
 
@@ -211,9 +204,10 @@ onMounted(loadMore)
                 @click="router.push({ name: 'user', params: { username: hero.author.username } })"
               >
                 <UserAvatar :user="hero.author" :size="28" />
-                <span class="font-mono text-[11px] tracking-[0.04em] text-text-secondary"
-                  >@{{ hero.author.username }}</span
-                >
+                <AuthorHandle
+                  :username="hero.author.username"
+                  class="text-[11px] tracking-[0.04em] text-text-secondary"
+                />
               </button>
             </div>
           </div>

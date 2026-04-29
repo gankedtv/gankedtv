@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router'
 import { games as gamesApi, type GameListItem } from '@/api/games'
 import { clips, type ClipFeedItem } from '@/api/clips'
 import ClipCard from '@/components/ClipCard.vue'
+import GameTag from '@/components/GameTag.vue'
+import StatusPanel from '@/components/StatusPanel.vue'
 
 const router = useRouter()
 
@@ -92,20 +94,14 @@ const tileActiveAll = `${tileActive} bg-brand`
       </p>
     </div>
 
-    <div
-      v-if="errored"
-      class="mt-10 flex flex-col items-center gap-2 rounded-md border border-border bg-surface-raised py-12"
-    >
-      <span class="font-mono text-sm uppercase tracking-widest text-text-muted">
-        Couldn't load games.
-      </span>
+    <StatusPanel v-if="errored" kind="error" message="Couldn't load games.">
       <button
         class="cursor-pointer rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
         @click="load"
       >
         Retry
       </button>
-    </div>
+    </StatusPanel>
 
     <template v-else>
       <!-- Game tiles -->
@@ -143,11 +139,7 @@ const tileActiveAll = `${tileActive} bg-brand`
               {{ g.name }}
             </span>
             <div class="flex items-center gap-2">
-              <span
-                class="rounded-[3px] border border-border-strong bg-surface-base px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.06em] text-text-secondary"
-              >
-                {{ g.tag }}
-              </span>
+              <GameTag :tag="g.tag" tone="subtle" />
               <span class="font-mono text-[10px] tracking-[0.08em] text-text-muted">
                 {{ clipCountByGame.get(g.slug) ?? 0 }} clips
               </span>
@@ -166,9 +158,11 @@ const tileActiveAll = `${tileActive} bg-brand`
           </h2>
         </div>
 
-        <div v-if="loading && filteredClips.length === 0" class="py-12 text-center">
-          <span class="font-mono text-sm uppercase tracking-widest text-text-muted">Loading…</span>
-        </div>
+        <StatusPanel
+          v-if="loading && filteredClips.length === 0"
+          kind="loading"
+          message="Loading…"
+        />
         <div v-else-if="filteredClips.length" class="feed-grid">
           <ClipCard
             v-for="clip in filteredClips"

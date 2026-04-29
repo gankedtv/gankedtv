@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router'
 import { ApiError } from '@/api/client'
 import { clips } from '@/api/clips'
 import { games as gamesApi, type GameListItem } from '@/api/games'
+import GameChipButton from '@/components/GameChipButton.vue'
+import GameSearchResult from '@/components/GameSearchResult.vue'
 import IconUploadCloud from '@/components/icons/IconUploadCloud.vue'
 import IconFile from '@/components/icons/IconFile.vue'
 import IconFileText from '@/components/icons/IconFileText.vue'
@@ -411,15 +413,12 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
 
             <!-- Popular chips -->
             <div v-if="!selectedGame && popularGames.length" class="mb-2 flex flex-wrap gap-2">
-              <button
+              <GameChipButton
                 v-for="g in popularGames"
                 :key="g.id"
-                type="button"
+                :tag="g.tag"
                 @click="pickGame(g)"
-                class="cursor-pointer rounded-sm border border-border bg-surface-overlay px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted transition-colors duration-150 hover:border-brand-light hover:text-text-primary"
-              >
-                {{ g.tag }}
-              </button>
+              />
             </div>
 
             <!-- Typeahead -->
@@ -433,19 +432,16 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
               />
               <ul
                 v-if="showGameDropdown && gameResults.length"
+                role="listbox"
                 class="absolute left-0 right-0 top-full z-10 mt-1 max-h-60 overflow-auto rounded-md border border-border-strong bg-surface-raised"
               >
-                <li
+                <GameSearchResult
                   v-for="g in gameResults"
                   :key="g.id"
-                  @mousedown.prevent="pickGame(g)"
-                  class="flex cursor-pointer items-center gap-3 px-3.5 py-2.5 transition-colors duration-150 hover:bg-surface-overlay"
-                >
-                  <span class="font-mono text-[10px] uppercase tracking-[0.06em] text-neon">
-                    {{ g.tag }}
-                  </span>
-                  <span class="font-body text-sm text-text-primary">{{ g.name }}</span>
-                </li>
+                  :tag="g.tag"
+                  :name="g.name"
+                  @select="pickGame(g)"
+                />
               </ul>
             </div>
           </div>

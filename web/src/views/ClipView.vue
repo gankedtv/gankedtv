@@ -5,8 +5,12 @@ import Plyr from 'plyr'
 import 'plyr/dist/plyr.css'
 import { ApiError } from '@/api/client'
 import { clips, type ClipDetail } from '@/api/clips'
+import { formatNum, formatRelativeTime } from '@/lib/format'
 import { useAuthStore } from '@/stores/auth'
 import { safeImageUrl } from '@/lib/url'
+import GameTag from '@/components/GameTag.vue'
+import AuthorHandle from '@/components/AuthorHandle.vue'
+import StatusPanel from '@/components/StatusPanel.vue'
 import IconHeart from '@/components/icons/IconHeart.vue'
 import IconShare from '@/components/icons/IconShare.vue'
 import IconMoreVertical from '@/components/icons/IconMoreVertical.vue'
@@ -147,19 +151,6 @@ async function handleShare() {
   }
 }
 
-function formatNum(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
-  return String(n)
-}
-
-function timeAgo(iso: string): string {
-  const diff = (Date.now() - new Date(iso).getTime()) / 1000
-  if (diff < 60) return `${Math.floor(diff)}s`
-  if (diff < 3600) return `${Math.floor(diff / 60)}m`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h`
-  return `${Math.floor(diff / 86400)}d`
-}
 
 const initialsFor = (username: string): string =>
   username
@@ -181,22 +172,17 @@ const authorAvatarUrl = computed(() => safeImageUrl(clip.value?.author.avatarUrl
 <template>
   <div class="mx-auto max-w-350 px-6 pt-8 pb-30">
     <!-- Loading -->
-    <div v-if="loading" class="flex items-center justify-center py-30">
-      <span class="font-mono text-sm uppercase tracking-widest text-text-muted">Loading…</span>
-    </div>
+    <StatusPanel v-if="loading" kind="loading" message="Loading…" />
 
     <!-- Error -->
-    <div v-else-if="errored" class="flex flex-col items-center justify-center gap-3 py-30">
-      <span class="font-mono text-sm uppercase tracking-widest text-text-muted">
-        Couldn't load this clip.
-      </span>
+    <StatusPanel v-else-if="errored" kind="error" message="Couldn't load this clip.">
       <button
         class="cursor-pointer rounded-sm border border-border bg-surface-raised px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
         @click="clipId && loadClip(clipId)"
       >
         Retry
       </button>
-    </div>
+    </StatusPanel>
 
     <div v-else-if="clip">
       <!-- Breadcrumb -->
@@ -216,11 +202,7 @@ const authorAvatarUrl = computed(() => safeImageUrl(clip.value?.author.avatarUrl
       <!-- Title + Meta Row -->
       <div class="mt-5">
         <div v-if="clip.game" class="mb-2">
-          <span
-            class="rounded-[3px] border border-border-strong bg-surface-base px-2 py-0.75 font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-text-primary"
-          >
-            {{ clip.game.tag }}
-          </span>
+          <GameTag :tag="clip.game.tag" />
           <span class="ml-2 font-mono text-[11px] uppercase tracking-[0.06em] text-text-muted">
             {{ clip.game.name }}
           </span>
@@ -249,13 +231,13 @@ const authorAvatarUrl = computed(() => safeImageUrl(clip.value?.author.avatarUrl
               <span v-else>{{ initialsFor(clip.author.username) }}</span>
             </span>
             <div>
-              <router-link
-                :to="`/user/${clip.author.username}`"
-                class="font-mono text-[13px] font-semibold text-neon transition-opacity hover:opacity-80"
-                >@{{ clip.author.username }}</router-link
-              >
+              <AuthorHandle
+                :username="clip.author.username"
+                as="link"
+                class="text-[13px] font-semibold text-neon"
+              />
               <div class="font-mono text-[10px] tracking-[0.04em] text-text-muted">
-                Uploaded {{ timeAgo(clip.createdAt) }} ago
+                Uploaded {{ formatRelativeTime(clip.createdAt) }} ago
               </div>
             </div>
           </div>
@@ -302,7 +284,7 @@ const authorAvatarUrl = computed(() => safeImageUrl(clip.value?.author.avatarUrl
           v-for="stat in [
             { label: 'Plays', value: formatNum(clip.viewCount) },
             { label: 'Likes', value: formatNum(likeCount) },
-            { label: 'Uploaded', value: timeAgo(clip.createdAt) + ' ago' },
+            { label: 'Uploaded', value: formatRelativeTime(clip.createdAt) + ' ago' },
           ]"
           :key="stat.label"
           class="flex flex-col gap-1 bg-surface-raised px-4 py-3"

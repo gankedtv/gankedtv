@@ -3,7 +3,11 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { clips, type ClipFeedItem } from '@/api/clips'
 import { games as gamesApi, type GameListItem } from '@/api/games'
-import { formatNum, formatDuration } from '@/lib/format'
+import { formatNum } from '@/lib/format'
+import GameTag from '@/components/GameTag.vue'
+import DurationBadge from '@/components/DurationBadge.vue'
+import AuthorHandle from '@/components/AuthorHandle.vue'
+import StatusPanel from '@/components/StatusPanel.vue'
 import IconChevronRight from '@/components/icons/IconChevronRight.vue'
 
 const router = useRouter()
@@ -105,29 +109,20 @@ const trendHold = `${trendBase} text-text-muted`
       </div>
     </div>
 
-    <div
-      v-if="errored"
-      class="mt-10 flex flex-col items-center gap-2 rounded-md border border-border bg-surface-raised py-12"
-    >
-      <span class="font-mono text-sm uppercase tracking-widest text-text-muted">
-        Couldn't load trending.
-      </span>
+    <StatusPanel v-if="errored" kind="error" message="Couldn't load trending.">
       <button
         class="cursor-pointer rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
         @click="load"
       >
         Retry
       </button>
-    </div>
+    </StatusPanel>
 
-    <div
+    <StatusPanel
       v-else-if="!loading && topClips.length === 0"
-      class="mt-10 flex flex-col items-center gap-2 rounded-md border border-border bg-surface-raised py-12"
-    >
-      <span class="font-mono text-sm uppercase tracking-widest text-text-muted">
-        No clips yet — be the first.
-      </span>
-    </div>
+      kind="empty"
+      message="No clips yet — be the first."
+    />
 
     <!-- Two-column layout -->
     <div
@@ -165,11 +160,7 @@ const trendHold = `${trendBase} text-text-muted`
               alt=""
               class="w-full h-full object-cover block"
             />
-            <span
-              v-if="clip.durationSecs !== null"
-              class="absolute bottom-1 right-1 font-mono text-[10px] text-white bg-black/75 px-1.25 py-0.5 rounded-[3px] leading-none"
-              >{{ formatDuration(clip.durationSecs) }}</span
-            >
+            <DurationBadge :seconds="clip.durationSecs" class="absolute bottom-1 right-1" />
           </div>
 
           <div class="min-w-0 flex flex-col gap-1">
@@ -178,12 +169,8 @@ const trendHold = `${trendBase} text-text-muted`
               >{{ clip.title }}</span
             >
             <div class="flex items-center gap-1.5 font-mono text-[10px]">
-              <span
-                v-if="clip.game"
-                class="bg-surface-base border border-border-strong rounded-[3px] px-1.5 py-0.5 text-text-secondary uppercase tracking-[0.06em]"
-                >{{ clip.game.tag }}</span
-              >
-              <span class="text-neon">@{{ clip.author.username }}</span>
+              <GameTag v-if="clip.game" :tag="clip.game.tag" tone="subtle" />
+              <AuthorHandle :username="clip.author.username" class="text-neon" />
             </div>
           </div>
 
@@ -216,11 +203,7 @@ const trendHold = `${trendBase} text-text-muted`
             class="flex items-center gap-3 px-4 py-2.5 border-b border-border last:border-b-0 cursor-pointer transition-[background] duration-150 hover:bg-surface-overlay"
             @click="router.push({ name: 'games', query: { game: g.slug } })"
           >
-            <span
-              class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[4px] border border-border-strong bg-surface-base font-mono text-[10px] uppercase tracking-[0.06em] text-text-primary"
-            >
-              {{ g.tag }}
-            </span>
+            <GameTag :tag="g.tag" variant="square" />
             <div class="min-w-0 flex-1 flex flex-col gap-px">
               <span
                 class="font-body text-[13px] font-medium text-text-primary whitespace-nowrap overflow-hidden text-ellipsis"

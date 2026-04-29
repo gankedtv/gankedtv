@@ -4,6 +4,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/client'
 import { users, type UserProfile } from '@/api/users'
 import { safeImageUrl } from '@/lib/url'
+import { formatNum, formatRelativeTime } from '@/lib/format'
+import DurationBadge from '@/components/DurationBadge.vue'
+import StatusPanel from '@/components/StatusPanel.vue'
 import IconShare from '@/components/icons/IconShare.vue'
 import IconMoreHorizontal from '@/components/icons/IconMoreHorizontal.vue'
 
@@ -94,27 +97,6 @@ const joinedDate = computed(() => {
 const totalPlays = computed(() => (profile.value?.clips ?? []).reduce((s, c) => s + c.viewCount, 0))
 const totalLikes = computed(() => (profile.value?.clips ?? []).reduce((s, c) => s + c.likeCount, 0))
 
-function formatNum(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
-  return String(n)
-}
-
-function formatDuration(s: number | null): string {
-  if (s === null) return '–'
-  const m = Math.floor(s / 60)
-  const r = s % 60
-  return `${m}:${String(r).padStart(2, '0')}`
-}
-
-function timeAgo(iso: string): string {
-  const diff = (Date.now() - new Date(iso).getTime()) / 1000
-  if (diff < 60) return `${Math.floor(diff)}s`
-  if (diff < 3600) return `${Math.floor(diff / 60)}m`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h`
-  return `${Math.floor(diff / 86400)}d`
-}
-
 const copyMessage = ref<string | null>(null)
 let copyTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -151,20 +133,19 @@ const TABS: { key: Tab; label: string }[] = [
 </script>
 
 <template>
-  <main v-if="loading" class="flex items-center justify-center py-30">
-    <span class="font-mono text-sm uppercase tracking-widest text-text-muted">Loading…</span>
+  <main v-if="loading">
+    <StatusPanel kind="loading" message="Loading…" />
   </main>
 
-  <main v-else-if="errored" class="flex flex-col items-center justify-center gap-3 py-30">
-    <span class="font-mono text-sm uppercase tracking-widest text-text-muted">
-      Couldn't load this profile.
-    </span>
-    <button
-      class="cursor-pointer rounded-sm border border-border bg-surface-raised px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
-      @click="username && loadProfile(username)"
-    >
-      Retry
-    </button>
+  <main v-else-if="errored">
+    <StatusPanel kind="error" message="Couldn't load this profile.">
+      <button
+        class="cursor-pointer rounded-sm border border-border bg-surface-raised px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+        @click="username && loadProfile(username)"
+      >
+        Retry
+      </button>
+    </StatusPanel>
   </main>
 
   <main v-else-if="profile" class="relative">
@@ -324,11 +305,7 @@ const TABS: { key: Tab; label: string }[] = [
                 @keydown.space.prevent="router.push({ name: 'clip', params: { id: clip.id } })"
               >
                 <div class="relative aspect-video overflow-hidden bg-surface-sunken">
-                  <div
-                    class="absolute bottom-2 right-2 rounded-[3px] bg-black/75 px-1.75 py-1 font-mono text-[10px] tracking-wider leading-none text-white backdrop-blur-xs"
-                  >
-                    {{ formatDuration(clip.durationSecs) }}
-                  </div>
+                  <DurationBadge :seconds="clip.durationSecs" class="absolute bottom-2 right-2" />
                 </div>
                 <div class="flex flex-col gap-2 px-3.5 pb-3.5 pt-3">
                   <h3
@@ -341,7 +318,7 @@ const TABS: { key: Tab; label: string }[] = [
                   >
                     <span>♥ {{ formatNum(clip.likeCount) }}</span>
                     <span>▶ {{ formatNum(clip.viewCount) }}</span>
-                    <span class="ml-auto">{{ timeAgo(clip.createdAt) }} ago</span>
+                    <span class="ml-auto">{{ formatRelativeTime(clip.createdAt) }} ago</span>
                   </div>
                 </div>
               </article>
