@@ -167,13 +167,15 @@ public sealed class ClipUploadService : IClipUploadService
         }
 
         // Conditional atomic update guards against two concurrent completes racing past
-        // the status check above and both flipping the row to ready.
+        // the status check above and both flipping the row to processing.
+        // Status transitions to Processing — the media-job worker picks the row up,
+        // extracts the thumbnail, and flips it to Ready (or Failed after max attempts).
         var now = _clock.GetUtcNow();
         var rowsAffected = await _db.Clips
             .Where(c => c.Id == clipId && c.Status == ClipStatuses.Draft)
             .ExecuteUpdateAsync(
                 setters => setters
-                    .SetProperty(c => c.Status, ClipStatuses.Ready)
+                    .SetProperty(c => c.Status, ClipStatuses.Processing)
                     .SetProperty(c => c.FileSizeBytes, meta.SizeBytes)
                     .SetProperty(c => c.UpdatedAt, now),
                 ct);
@@ -190,6 +192,13 @@ public sealed class ClipUploadService : IClipUploadService
         gameSlug is { Length: > 0 }
             ? $"{userId}/{gameSlug}/{clipId}.mp4"
             : $"{userId}/{clipId}.mp4";
+
+    // Mirrors BuildVideoKey so the thumbnail and video for a given clip live at parallel
+    // paths in their respective buckets — keeps manual inspection / GDPR purges simple.
+    internal static string BuildThumbnailKey(Guid userId, Guid clipId, string? gameSlug) =>
+        gameSlug is { Length: > 0 }
+            ? $"{userId}/{gameSlug}/{clipId}.jpg"
+            : $"{userId}/{clipId}.jpg";
 
     private bool IsAllowedContentType(string? contentType)
     {

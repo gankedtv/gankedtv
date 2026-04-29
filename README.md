@@ -14,6 +14,12 @@ Social media platform to share your gaming clips.
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
 - [Bun](https://bun.sh)
 - [Docker](https://www.docker.com/get-started)
+- **ffmpeg** (provides `ffmpeg` and `ffprobe`) — required for the thumbnail-generation worker.
+  Without it, clip uploads land in `status='failed'` after the worker exhausts its retries.
+  - Arch/CachyOS: `sudo pacman -S ffmpeg`
+  - Debian/Ubuntu: `sudo apt install ffmpeg`
+  - macOS: `brew install ffmpeg`
+  - Set `FFMPEG_PATH` / `FFPROBE_PATH` env vars if the binaries aren't on `$PATH`.
 
 ## Getting Started
 

@@ -20,6 +20,12 @@ public class Clip
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 
+    // Lease columns for the media-job worker. ProcessingStartedAt is set when the worker
+    // claims a row and cleared on success; ProcessingAttempts increments on each claim and
+    // gates the row out of the queue once it exceeds the configured maximum.
+    public DateTimeOffset? ProcessingStartedAt { get; set; }
+    public int ProcessingAttempts { get; set; }
+
     public User User { get; set; } = null!;
     public Game? Game { get; set; }
     public ICollection<Like> Likes { get; set; } = [];

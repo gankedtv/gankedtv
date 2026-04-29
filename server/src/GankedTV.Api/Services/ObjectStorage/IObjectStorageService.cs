@@ -23,4 +23,14 @@ public interface IObjectStorageService
         string bucket,
         string key,
         CancellationToken ct = default);
+
+    // Direct PUT for server-generated artifacts (thumbnails, future transcodes). Browser
+    // uploads still use GetPresignedPutUrl — this path is for the API process / worker
+    // writing bytes it produced itself.
+    Task PutObjectAsync(
+        string bucket,
+        string key,
+        Stream content,
+        string contentType,
+        CancellationToken ct = default);
 }

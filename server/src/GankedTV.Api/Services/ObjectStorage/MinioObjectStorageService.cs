@@ -96,6 +96,25 @@ public sealed class MinioObjectStorageService : IObjectStorageService
         }, ct);
     }
 
+    public async Task PutObjectAsync(
+        string bucket,
+        string key,
+        Stream content,
+        string contentType,
+        CancellationToken ct = default)
+    {
+        // AutoCloseStream=false so callers (which own the stream) can still dispose it
+        // themselves; AWSSDK would otherwise dispose the InputStream after the upload.
+        await _s3.PutObjectAsync(new PutObjectRequest
+        {
+            BucketName = bucket,
+            Key = key,
+            InputStream = content,
+            ContentType = contentType,
+            AutoCloseStream = false,
+        }, ct);
+    }
+
     public async Task<ObjectMetadata?> GetObjectMetadataAsync(
         string bucket,
         string key,

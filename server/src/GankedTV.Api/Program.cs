@@ -10,6 +10,7 @@ using GankedTV.Api.Endpoints;
 using GankedTV.Api.Middleware;
 using GankedTV.Api.Services.Clips;
 using GankedTV.Api.Services.Maintenance;
+using GankedTV.Api.Services.Media;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Tools;
 using GankedTV.Api.Validation;
@@ -98,6 +99,36 @@ builder.Services.AddOptions<MaintenanceOptions>()
     .Validate(o => o.ClipBatchSize > 0, "Maintenance.ClipBatchSize must be positive.")
     .ValidateOnStart();
 builder.Services.AddHostedService<MaintenanceHostedService>();
+
+builder.Services.AddOptions<MediaJobOptions>()
+    .Configure(opts =>
+    {
+        builder.Configuration.GetSection("MediaJobs").Bind(opts);
+        var enabled = Environment.GetEnvironmentVariable("MEDIA_JOBS_ENABLED");
+        if (bool.TryParse(enabled, out var e)) opts.Enabled = e;
+        var pollSec = Environment.GetEnvironmentVariable("MEDIA_JOBS_POLL_INTERVAL_SECS");
+        if (int.TryParse(pollSec, out var ps) && ps > 0) opts.PollInterval = TimeSpan.FromSeconds(ps);
+        var leaseMin = Environment.GetEnvironmentVariable("MEDIA_JOBS_LEASE_MINUTES");
+        if (int.TryParse(leaseMin, out var lm) && lm > 0) opts.LeaseDuration = TimeSpan.FromMinutes(lm);
+        var maxAttempts = Environment.GetEnvironmentVariable("MEDIA_JOBS_MAX_ATTEMPTS");
+        if (int.TryParse(maxAttempts, out var ma) && ma > 0) opts.MaxAttempts = ma;
+        var ffmpeg = Environment.GetEnvironmentVariable("FFMPEG_PATH");
+        if (!string.IsNullOrWhiteSpace(ffmpeg)) opts.FfmpegPath = ffmpeg;
+        var ffprobe = Environment.GetEnvironmentVariable("FFPROBE_PATH");
+        if (!string.IsNullOrWhiteSpace(ffprobe)) opts.FfprobePath = ffprobe;
+    })
+    .Validate(o => o.PollInterval > TimeSpan.Zero, "MediaJobs.PollInterval must be positive.")
+    .Validate(o => o.LeaseDuration > TimeSpan.Zero, "MediaJobs.LeaseDuration must be positive.")
+    .Validate(o => o.ProcessTimeout > TimeSpan.Zero, "MediaJobs.ProcessTimeout must be positive.")
+    .Validate(o => o.MaxAttempts > 0, "MediaJobs.MaxAttempts must be positive.")
+    .Validate(o => o.MaxDrainPerTick > 0, "MediaJobs.MaxDrainPerTick must be positive.")
+    .Validate(o => !string.IsNullOrWhiteSpace(o.FfmpegPath), "MediaJobs.FfmpegPath must be set.")
+    .Validate(o => !string.IsNullOrWhiteSpace(o.FfprobePath), "MediaJobs.FfprobePath must be set.")
+    .ValidateOnStart();
+builder.Services.AddSingleton<IFfmpegRunner, FfmpegRunner>();
+builder.Services.AddScoped<IClipMediaJobStore, ClipMediaJobStore>();
+builder.Services.AddScoped<IThumbnailJobService, ThumbnailJobService>();
+builder.Services.AddHostedService<MediaJobHostedService>();
 
 builder.Services.AddOptions<ClipValidationOptions>()
     .Configure(opts =>

@@ -1,0 +1,25 @@
+# Multi-stage build for the API + media-job worker (issue #57). The runtime image
+# bundles ffmpeg / ffprobe because the in-process MediaJobHostedService shells out
+# to them on every clip-complete. Production deployments that move the worker to a
+# dedicated GPU host should use a derivative of this image with NVENC-enabled ffmpeg
+# (jellyfin/ffmpeg or jrottenberg/ffmpeg builds with the right flags).
+
+ARG DOTNET_VERSION=10.0
+
+FROM mcr.microsoft.com/dotnet/sdk:${DOTNET_VERSION} AS build
+WORKDIR /src
+COPY GankedTV.slnx ./
+COPY src/GankedTV.Api/GankedTV.Api.csproj src/GankedTV.Api/
+RUN dotnet restore src/GankedTV.Api/GankedTV.Api.csproj
+COPY src/ src/
+RUN dotnet publish src/GankedTV.Api/GankedTV.Api.csproj -c Release -o /app/publish --no-restore
+
+FROM mcr.microsoft.com/dotnet/aspnet:${DOTNET_VERSION} AS runtime
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=build /app/publish ./
+ENV ASPNETCORE_URLS=http://+:5000
+EXPOSE 5000
+ENTRYPOINT ["dotnet", "GankedTV.Api.dll"]
