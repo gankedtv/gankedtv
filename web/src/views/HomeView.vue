@@ -12,7 +12,11 @@ const router = useRouter()
 const items = ref<ClipFeedItem[]>([])
 const cursor = ref<string | null>(null)
 const loading = ref(false)
+// Initial-load failure (no items rendered yet) — full-page error panel.
 const errored = ref(false)
+// Pagination failure with content already on screen — inline retry on the
+// "Load more" button so we don't blow away the loaded feed.
+const paginationErrored = ref(false)
 
 // Hero is the newest ready clip; secondary uses the next chunk. The server returns
 // items ordered by createdAt desc so position 0 is always the freshest.
@@ -22,17 +26,21 @@ const grid = computed(() => items.value.slice(5))
 
 async function loadMore() {
   if (loading.value) return
+  const isFirstPage = items.value.length === 0
   loading.value = true
-  errored.value = false
+  if (isFirstPage) errored.value = false
+  paginationErrored.value = false
   try {
     const page = await clips.feed({ cursor: cursor.value, limit: 20 })
     items.value.push(...page.items)
     cursor.value = page.nextCursor
   } catch (err) {
-    // Surface every failure — the feed is unauthenticated and read-only, so any
-    // 4xx from this endpoint is also a real error worth showing the user.
     console.error('feed: load failed', err)
-    errored.value = true
+    if (isFirstPage) {
+      errored.value = true
+    } else {
+      paginationErrored.value = true
+    }
   } finally {
     loading.value = false
   }
@@ -139,6 +147,7 @@ onMounted(loadMore)
             </div>
             <button
               class="absolute inset-0 flex cursor-pointer items-center justify-center bg-transparent"
+              :aria-label="`Play: ${hero.title}`"
               @click="router.push({ name: 'clip', params: { id: hero.id } })"
             >
               <span
@@ -247,13 +256,19 @@ onMounted(loadMore)
       </div>
 
       <!-- Load more -->
-      <div v-if="cursor" class="mt-10 flex justify-center">
+      <div v-if="cursor || paginationErrored" class="mt-10 flex flex-col items-center gap-2">
+        <span
+          v-if="paginationErrored"
+          class="font-mono text-[11px] uppercase tracking-widest text-text-muted"
+        >
+          Couldn't load more — try again.
+        </span>
         <button
           :disabled="loading"
           @click="loadMore"
           class="cursor-pointer rounded-sm border border-border bg-surface-raised px-6 py-2.5 font-mono text-[11px] uppercase tracking-[0.08em] text-text-primary transition-colors duration-150 hover:border-brand-light disabled:opacity-50"
         >
-          {{ loading ? 'Loading…' : 'Load more' }}
+          {{ loading ? 'Loading…' : paginationErrored ? 'Retry' : 'Load more' }}
         </button>
       </div>
     </template>

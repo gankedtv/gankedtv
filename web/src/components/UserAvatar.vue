@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 // Accept any object with the bits we need; this matches both AuthorSummary
 // from the clips feed and the MeResponse used by AppNav.
@@ -42,6 +42,22 @@ const bgStyle = computed(() => {
   const b = `hsl(${(hue + 40) % 360}, 65%, 22%)`
   return { background: `linear-gradient(135deg, ${a}, ${b})` }
 })
+
+// If the avatar image fails to load, fall back to the initials gradient instead
+// of letting the browser show a broken-image icon. Reset whenever the URL changes
+// so a new (possibly working) URL gets a retry.
+const imageBroken = ref(false)
+watch(
+  () => props.user.avatarUrl,
+  () => {
+    imageBroken.value = false
+  },
+)
+const showImage = computed(() => Boolean(props.user.avatarUrl) && !imageBroken.value)
+
+function onImageError() {
+  imageBroken.value = true
+}
 </script>
 
 <template>
@@ -51,14 +67,15 @@ const bgStyle = computed(() => {
       width: `${size}px`,
       height: `${size}px`,
       fontSize: `${fontSize}px`,
-      ...(user.avatarUrl ? {} : bgStyle),
+      ...(showImage ? {} : bgStyle),
     }"
   >
     <img
-      v-if="user.avatarUrl"
-      :src="user.avatarUrl"
+      v-if="showImage"
+      :src="user.avatarUrl!"
       :alt="user.username"
       class="h-full w-full object-cover"
+      @error="onImageError"
     />
     <template v-else>{{ initials }}</template>
   </span>

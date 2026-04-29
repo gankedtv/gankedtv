@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { games as gamesApi, type GameListItem } from '@/api/games'
 import { clips, type ClipFeedItem } from '@/api/clips'
@@ -15,7 +15,19 @@ const errored = ref(false)
 // 'all' shows the entire feed grid; selecting a game filters client-side off the
 // loaded feed page. Per-game endpoints with their own pagination are out of scope
 // for this PR — see the backlog for `GET /games/{slug}/clips`.
-const active = ref<'all' | string>('all')
+//
+// The selected game is driven by the URL (?game=<slug>) so the watcher below is
+// the single source of truth — tile clicks call `selectGame()` which only
+// updates the route. Back/forward and deep links Just Work as a side effect.
+const active = computed<'all' | string>(() => {
+  const q = router.currentRoute.value.query.game
+  return typeof q === 'string' && q ? q : 'all'
+})
+
+function selectGame(slug: 'all' | string) {
+  const next = slug === 'all' ? undefined : slug
+  router.replace({ query: { ...router.currentRoute.value.query, game: next } })
+}
 
 const clipCountByGame = computed(() => {
   const counts = new Map<string, number>()
@@ -50,24 +62,7 @@ async function load() {
   }
 }
 
-onMounted(() => {
-  // Allow deep links like /games?game=valorant from TrendingView.
-  const initial = router.currentRoute.value.query.game
-  if (typeof initial === 'string' && initial) active.value = initial
-  load()
-})
-
-// Vue-router reuses the GamesView component on in-app navigations between
-// /games?game=X URLs, so onMounted only runs once. Watch the query so a
-// router.push to a different game keeps the picker in sync.
-watch(
-  () => router.currentRoute.value.query.game,
-  (next) => {
-    if (typeof next === 'string' && next && next !== active.value) {
-      active.value = next
-    }
-  },
-)
+onMounted(load)
 
 const tileBase =
   'min-h-27.5 cursor-pointer rounded-md border p-4 text-left transition-[border-color,box-shadow] duration-150 hover:border-border-hover'
@@ -117,7 +112,8 @@ const tileActiveAll = `${tileActive} bg-brand`
       <div class="mt-8 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3.5">
         <button
           :class="[tileBase, active === 'all' ? tileActiveAll : tileInactive]"
-          @click="active = 'all'"
+          :aria-pressed="active === 'all'"
+          @click="selectGame('all')"
         >
           <div class="flex h-full flex-col justify-between gap-2">
             <span class="font-heading text-xl font-bold leading-none uppercase text-white">
@@ -139,7 +135,8 @@ const tileActiveAll = `${tileActive} bg-brand`
             'relative overflow-hidden',
             active === g.slug ? tileActive : 'border-border bg-surface-raised',
           ]"
-          @click="active = g.slug"
+          :aria-pressed="active === g.slug"
+          @click="selectGame(g.slug)"
         >
           <div class="relative flex h-full flex-col justify-between gap-2">
             <span class="font-heading text-xl font-bold leading-none uppercase text-text-primary">

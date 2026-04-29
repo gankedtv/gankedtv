@@ -1,6 +1,12 @@
 export function formatNum(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
+  if (n >= 1_000) {
+    // Edge case: 999_950 / 1000 = 999.95, which toFixed rounds to "1000.0".
+    // Promote to 'M' once the rounded K value would overflow into 4 digits.
+    const k = n / 1_000
+    if (k >= 999.95) return (n / 1_000_000).toFixed(1) + 'M'
+    return k.toFixed(1) + 'K'
+  }
   return String(n)
 }
 
