@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { games as gamesApi, type GameListItem } from '@/api/games'
 import { clips, type ClipFeedItem } from '@/api/clips'
@@ -56,6 +56,18 @@ onMounted(() => {
   if (typeof initial === 'string' && initial) active.value = initial
   load()
 })
+
+// Vue-router reuses the GamesView component on in-app navigations between
+// /games?game=X URLs, so onMounted only runs once. Watch the query so a
+// router.push to a different game keeps the picker in sync.
+watch(
+  () => router.currentRoute.value.query.game,
+  (next) => {
+    if (typeof next === 'string' && next && next !== active.value) {
+      active.value = next
+    }
+  },
+)
 
 const tileBase =
   'min-h-27.5 cursor-pointer rounded-md border p-4 text-left transition-[border-color,box-shadow] duration-150 hover:border-border-hover'
@@ -157,7 +169,10 @@ const tileActiveAll = `${tileActive} bg-brand`
           </h2>
         </div>
 
-        <div v-if="filteredClips.length" class="feed-grid">
+        <div v-if="loading && filteredClips.length === 0" class="py-12 text-center">
+          <span class="font-mono text-sm uppercase tracking-widest text-text-muted">Loading…</span>
+        </div>
+        <div v-else-if="filteredClips.length" class="feed-grid">
           <ClipCard
             v-for="clip in filteredClips"
             :key="clip.id"

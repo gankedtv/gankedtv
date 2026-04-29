@@ -75,7 +75,7 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
             Id = id,
             UserId = userId,
             Title = "seed",
-            VideoKey = $"clips/{userId}/{id}.mp4",
+            VideoKey = $"{userId}/{id}.mp4",
             Status = status,
             Visibility = "public",
             FileSizeBytes = fileSizeBytes,
@@ -216,20 +216,29 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task Create_WithValidGameId_PersistsKeyWithSlugSegment()
     {
-        // Game id 2 ("valorant") is seeded by the migration's HasData. The video key
-        // should namespace under the game slug so MinIO listings group per title.
+        // Look up the seeded "valorant" by slug rather than hard-coding the id —
+        // a future reorder of the HasData seed shouldn't quietly break this test.
         await _fx.ResetAsync();
         var (userId, token) = await SeedUserAndIssueTokenAsync();
-        using var client = ClientWithBearer(token);
 
-        var resp = await client.PostAsJsonAsync("/clips", new { title = "ace", gameId = 2 });
+        int valorantId;
+        await using (var lookup = _fx.CreateContext())
+        {
+            valorantId = await lookup.Games
+                .Where(g => g.Slug == "valorant")
+                .Select(g => g.Id)
+                .SingleAsync();
+        }
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync("/clips", new { title = "ace", gameId = valorantId });
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         var id = (await resp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
 
         await using var db = _fx.CreateContext();
         var clip = await db.Clips.AsNoTracking().SingleAsync(c => c.Id == id);
-        clip.GameId.Should().Be(2);
+        clip.GameId.Should().Be(valorantId);
         clip.VideoKey.Should().Be($"{userId}/valorant/{id}.mp4");
     }
 
@@ -362,7 +371,7 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
 
         _storage.Received(1).GetPresignedPutUrl(
             "clips",
-            $"clips/{userId}/{clipId}.mp4",
+            $"{userId}/{clipId}.mp4",
             "video/mp4",
             TimeSpan.FromMinutes(15));
     }

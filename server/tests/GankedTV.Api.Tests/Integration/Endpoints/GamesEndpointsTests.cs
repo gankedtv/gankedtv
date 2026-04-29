@@ -148,6 +148,31 @@ public class GamesEndpointsTests : IAsyncLifetime
 
         var resp = await client.GetAsync("/games");
 
-        resp.StatusCode.Should().NotBe(HttpStatusCode.Unauthorized);
+        // Verify both that auth isn't required AND that the endpoint is healthy —
+        // a 5xx would also `NotBe(Unauthorized)` and silently pass.
+        resp.IsSuccessStatusCode.Should().BeTrue($"got {(int)resp.StatusCode}");
+    }
+
+    [Fact]
+    public async Task GetGames_LikeMetacharsInSearch_AreMatchedLiterally()
+    {
+        // Without escaping, a search of "%" would match every row via the resulting
+        // `%%%` ILIKE pattern. Seed a row with a literal '%' in its name and verify
+        // the search only finds that row.
+        await _fx.ResetAsync();
+        await using (var db = _fx.CreateContext())
+        {
+            await db.Games.Where(g => g.Slug == "literal-percent-game").ExecuteDeleteAsync();
+            db.Games.Add(new Game { Name = "Game 100% Real", Slug = "literal-percent-game", Tag = "PCT" });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/games?search=%25"); // url-encoded '%'
+
+        resp.IsSuccessStatusCode.Should().BeTrue();
+        var games = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var slugs = games.EnumerateArray().Select(g => g.GetProperty("slug").GetString()).ToArray();
+        slugs.Should().ContainSingle().Which.Should().Be("literal-percent-game");
     }
 }

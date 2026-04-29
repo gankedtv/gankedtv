@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ApiError } from '@/api/client'
 import { clips, type ClipFeedItem } from '@/api/clips'
 import { formatNum, formatDuration, formatRelativeTime } from '@/lib/format'
 import ClipCard from '@/components/ClipCard.vue'
@@ -30,9 +29,10 @@ async function loadMore() {
     items.value.push(...page.items)
     cursor.value = page.nextCursor
   } catch (err) {
-    if (!(err instanceof ApiError) || err.status >= 500) {
-      errored.value = true
-    }
+    // Surface every failure — the feed is unauthenticated and read-only, so any
+    // 4xx from this endpoint is also a real error worth showing the user.
+    console.error('feed: load failed', err)
+    errored.value = true
   } finally {
     loading.value = false
   }

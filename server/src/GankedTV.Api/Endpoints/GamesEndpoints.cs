@@ -28,10 +28,17 @@ public static class GamesEndpoints
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            // Trim incoming search; case-insensitive ILIKE against Name and Slug.
-            var pattern = $"%{search.Trim()}%";
+            // Trim, then escape LIKE metacharacters so a user typing "100%" doesn't
+            // turn into a wildcard match. Backslash is escaped first to avoid
+            // double-escaping the escapes themselves.
+            var trimmed = search.Trim()
+                .Replace(@"\", @"\\")
+                .Replace("%", @"\%")
+                .Replace("_", @"\_");
+            var pattern = $"%{trimmed}%";
             query = query.Where(g =>
-                EF.Functions.ILike(g.Name, pattern) || EF.Functions.ILike(g.Slug, pattern));
+                EF.Functions.ILike(g.Name, pattern, @"\")
+                || EF.Functions.ILike(g.Slug, pattern, @"\"));
         }
 
         var rows = await query

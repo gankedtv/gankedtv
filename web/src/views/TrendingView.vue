@@ -38,7 +38,8 @@ async function load() {
     const [feed, games] = await Promise.all([clips.feed({ limit: 100 }), gamesApi.list(8)])
     allClips.value = feed.items
     hotGames.value = games
-  } catch {
+  } catch (err) {
+    console.error('trending: load failed', err)
     errored.value = true
   } finally {
     loading.value = false
@@ -47,6 +48,10 @@ async function load() {
 
 onMounted(load)
 
+// Visual-only indicator on the leaderboard rows — *not* derived from real
+// trend data. We don't track engagement deltas yet (server has no time-window
+// query). Top 3 always show ▲, 3–5 show —, the rest alternate. Replace once a
+// real `trendDelta` field lands on the trending response.
 function trendFor(i: number): 'up' | 'hold' | 'down' {
   if (i < 3) return 'up'
   if (i < 6) return 'hold'

@@ -60,10 +60,17 @@ watch(gameSearch, (q) => {
     return
   }
   gameSearchTimer = setTimeout(async () => {
+    // Capture the query at scheduling time. If the user types more characters
+    // before the slow request resolves, the still-in-flight stale response would
+    // otherwise overwrite the newer results — drop it instead.
+    const queryAtCall = trimmed
     try {
-      gameResults.value = await gamesApi.search(trimmed, 8)
+      const results = await gamesApi.search(queryAtCall, 8)
+      if (gameSearch.value.trim() !== queryAtCall) return
+      gameResults.value = results
       showGameDropdown.value = true
     } catch {
+      if (gameSearch.value.trim() !== queryAtCall) return
       gameResults.value = []
     }
   }, 200)

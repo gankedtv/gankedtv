@@ -37,7 +37,7 @@ const initials = computed(() => {
 const fontSize = computed(() => Math.floor(props.size * 0.35))
 
 const bgStyle = computed(() => {
-  const hue = hashHue(props.user.username || '')
+  const hue = hashHue(props.user.username)
   const a = `hsl(${hue}, 65%, 45%)`
   const b = `hsl(${(hue + 40) % 360}, 65%, 22%)`
   return { background: `linear-gradient(135deg, ${a}, ${b})` }
