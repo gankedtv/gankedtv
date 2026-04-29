@@ -59,6 +59,19 @@ public sealed class ClipUploadService : IClipUploadService
         }
         var visibility = ClipVisibilities.Normalize(rawVisibility);
 
+        string? gameSlug = null;
+        if (input.GameId is { } gameId)
+        {
+            gameSlug = await _db.Games.AsNoTracking()
+                .Where(g => g.Id == gameId)
+                .Select(g => g.Slug)
+                .FirstOrDefaultAsync(ct);
+            if (gameSlug is null)
+            {
+                return ClipResult<CreateClipResult>.Fail(ClipUploadError.InvalidGame);
+            }
+        }
+
         var id = Guid.NewGuid();
         var now = _clock.GetUtcNow();
         var clip = new Clip
@@ -69,8 +82,9 @@ public sealed class ClipUploadService : IClipUploadService
             Title = title,
             Description = string.IsNullOrEmpty(input.Description) ? null : input.Description,
             // Namespace by user id (immutable — username can change via PATCH /me)
-            // so a single bucket listing groups one user's blobs together.
-            VideoKey = $"clips/{userId}/{id}.mp4",
+            // and by game slug so listing the bucket groups one user's clips per title.
+            // No-game uploads omit the slug segment (no `null/` placeholder).
+            VideoKey = BuildVideoKey(userId, id, gameSlug),
             Status = ClipStatuses.Draft,
             Visibility = visibility,
             CreatedAt = now,
@@ -171,6 +185,11 @@ public sealed class ClipUploadService : IClipUploadService
 
         return ClipResult<CompleteClipResult>.Ok(new CompleteClipResult(clipId, meta.SizeBytes));
     }
+
+    internal static string BuildVideoKey(Guid userId, Guid clipId, string? gameSlug) =>
+        gameSlug is { Length: > 0 }
+            ? $"{userId}/{gameSlug}/{clipId}.mp4"
+            : $"{userId}/{clipId}.mp4";
 
     private bool IsAllowedContentType(string? contentType)
     {

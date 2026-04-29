@@ -6,6 +6,13 @@ export interface AuthorSummary {
   avatarUrl: string | null
 }
 
+export interface GameSummary {
+  id: number
+  name: string
+  slug: string
+  tag: string
+}
+
 export interface ClipFeedItem {
   id: string
   title: string
@@ -16,6 +23,7 @@ export interface ClipFeedItem {
   likeCount: number
   createdAt: string
   author: AuthorSummary
+  game: GameSummary | null
   likedByMe: boolean
 }
 
@@ -33,7 +41,18 @@ export interface ClipDetail {
   likeCount: number
   createdAt: string
   author: AuthorSummary
+  game: GameSummary | null
   likedByMe: boolean
+}
+
+export interface ClipFeedPage {
+  items: ClipFeedItem[]
+  nextCursor: string | null
+}
+
+export interface ClipFeedQuery {
+  cursor?: string | null
+  limit?: number
 }
 
 export interface UploadUrl {
@@ -63,6 +82,14 @@ export interface LikeResult {
 }
 
 export const clips = {
+  feed(query: ClipFeedQuery = {}): Promise<ClipFeedPage> {
+    const params = new URLSearchParams()
+    if (query.cursor) params.set('cursor', query.cursor)
+    if (query.limit !== undefined) params.set('limit', String(query.limit))
+    const qs = params.toString()
+    return api<ClipFeedPage>(`/clips/feed${qs ? `?${qs}` : ''}`)
+  },
+
   getDetail(id: string): Promise<ClipDetail> {
     return api<ClipDetail>(`/clips/${encodeURIComponent(id)}`)
   },

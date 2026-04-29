@@ -69,7 +69,8 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         DateTimeOffset createdAt,
         string status = "ready",
         string visibility = "public",
-        string? title = null)
+        string? title = null,
+        int? gameId = null)
     {
         var id = Guid.NewGuid();
         await using var db = _fx.CreateContext();
@@ -77,8 +78,9 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         {
             Id = id,
             UserId = userId,
+            GameId = gameId,
             Title = title ?? $"clip-{id:N}".Substring(0, 20),
-            VideoKey = $"clips/{userId}/{id}.mp4",
+            VideoKey = $"{userId}/{id}.mp4",
             ThumbnailKey = $"thumbs/{id}.jpg",
             Status = status,
             Visibility = visibility,
@@ -419,6 +421,31 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         author.GetProperty("username").GetString().Should().Be("shapely");
     }
 
+    [Fact]
+    public async Task Feed_GameProjection_PopulatedWhenSet_NullWhenNotSet()
+    {
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var withGame = await SeedClipAsync(userId, now.AddSeconds(-1), title: "with-game", gameId: 2);
+        var withoutGame = await SeedClipAsync(userId, now.AddSeconds(-2), title: "no-game");
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/feed");
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+
+        var byId = body.GetProperty("items").EnumerateArray()
+            .ToDictionary(e => e.GetProperty("id").GetGuid(), e => e);
+
+        var gameNode = byId[withGame].GetProperty("game");
+        gameNode.ValueKind.Should().Be(JsonValueKind.Object);
+        gameNode.GetProperty("id").GetInt32().Should().Be(2);
+        gameNode.GetProperty("slug").GetString().Should().Be("valorant");
+        gameNode.GetProperty("tag").GetString().Should().Be("VALORANT");
+
+        byId[withoutGame].GetProperty("game").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
     // ---- GET /clips/{id} ----
 
     [Fact]
@@ -486,8 +513,37 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         // Expiry passed to the storage service should be roughly one hour.
         _storage.Received(1).GetPresignedGetUrl(
             Arg.Any<string>(),
-            $"clips/{userId}/{clipId}.mp4",
+            $"{userId}/{clipId}.mp4",
             Arg.Is<TimeSpan?>(ts => ts.HasValue && ts.Value == TimeSpan.FromHours(1)));
+    }
+
+    [Fact]
+    public async Task Detail_GameProjection_PopulatedWhenSet_NullWhenNotSet()
+    {
+        // Mirrors the feed-side projection test for the detail endpoint so a future
+        // regression in ToDetail() / `.Include(c => c.Game)` on detail is caught.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var withGame = await SeedClipAsync(userId, DateTimeOffset.UtcNow, title: "with-game", gameId: 2);
+        var withoutGame = await SeedClipAsync(userId, DateTimeOffset.UtcNow, title: "no-game");
+
+        _storage.GetPresignedGetUrl(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan?>())
+            .Returns("https://example/url");
+
+        using var client = _factory!.CreateClient();
+
+        var withResp = await client.GetAsync($"/clips/{withGame}");
+        withResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var withBody = await withResp.Content.ReadFromJsonAsync<JsonElement>();
+        var game = withBody.GetProperty("game");
+        game.ValueKind.Should().Be(JsonValueKind.Object);
+        game.GetProperty("id").GetInt32().Should().Be(2);
+        game.GetProperty("slug").GetString().Should().Be("valorant");
+        game.GetProperty("tag").GetString().Should().Be("VALORANT");
+
+        var withoutResp = await client.GetAsync($"/clips/{withoutGame}");
+        var withoutBody = await withoutResp.Content.ReadFromJsonAsync<JsonElement>();
+        withoutBody.GetProperty("game").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     [Fact]

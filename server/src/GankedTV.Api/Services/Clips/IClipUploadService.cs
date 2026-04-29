@@ -22,6 +22,7 @@ public enum ClipUploadError
     InvalidTitle,
     InvalidDescription,
     InvalidVisibility,
+    InvalidGame,
     NotFound,
     InvalidState,
     ObjectNotUploaded,

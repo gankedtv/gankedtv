@@ -75,7 +75,7 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
             Id = id,
             UserId = userId,
             Title = "seed",
-            VideoKey = $"clips/{userId}/{id}.mp4",
+            VideoKey = $"{userId}/{id}.mp4",
             Status = status,
             Visibility = "public",
             FileSizeBytes = fileSizeBytes,
@@ -121,7 +121,7 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
         var clip = await db.Clips.AsNoTracking().SingleAsync(c => c.Id == id);
         clip.UserId.Should().Be(userId);
         clip.Status.Should().Be("draft");
-        clip.VideoKey.Should().Be($"clips/{userId}/{id}.mp4");
+        clip.VideoKey.Should().Be($"{userId}/{id}.mp4");
         clip.Visibility.Should().Be("unlisted");
         clip.Title.Should().Be("My first clip");
         clip.Description.Should().Be("did a thing");
@@ -211,6 +211,49 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
         await using var db = _fx.CreateContext();
         var clip = await db.Clips.AsNoTracking().SingleAsync(c => c.Id == id);
         clip.Visibility.Should().Be("unlisted");
+    }
+
+    [Fact]
+    public async Task Create_WithValidGameId_PersistsKeyWithSlugSegment()
+    {
+        // Look up the seeded "valorant" by slug rather than hard-coding the id —
+        // a future reorder of the HasData seed shouldn't quietly break this test.
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+
+        int valorantId;
+        await using (var lookup = _fx.CreateContext())
+        {
+            valorantId = await lookup.Games
+                .Where(g => g.Slug == "valorant")
+                .Select(g => g.Id)
+                .SingleAsync();
+        }
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync("/clips", new { title = "ace", gameId = valorantId });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var id = (await resp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+
+        await using var db = _fx.CreateContext();
+        var clip = await db.Clips.AsNoTracking().SingleAsync(c => c.Id == id);
+        clip.GameId.Should().Be(valorantId);
+        clip.VideoKey.Should().Be($"{userId}/valorant/{id}.mp4");
+    }
+
+    [Fact]
+    public async Task Create_WithUnknownGameId_Returns400InvalidGame()
+    {
+        await _fx.ResetAsync();
+        var (_, token) = await SeedUserAndIssueTokenAsync();
+        using var client = ClientWithBearer(token);
+
+        var resp = await client.PostAsJsonAsync("/clips", new { title = "x", gameId = 999_999 });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("code").GetString().Should().Be("invalid_game");
     }
 
     [Fact]
@@ -328,7 +371,7 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
 
         _storage.Received(1).GetPresignedPutUrl(
             "clips",
-            $"clips/{userId}/{clipId}.mp4",
+            $"{userId}/{clipId}.mp4",
             "video/mp4",
             TimeSpan.FromMinutes(15));
     }

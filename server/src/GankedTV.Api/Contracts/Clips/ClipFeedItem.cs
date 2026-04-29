@@ -1,3 +1,5 @@
+using GankedTV.Api.Contracts.Games;
+
 namespace GankedTV.Api.Contracts.Clips;
 
 public sealed record ClipFeedItem(
@@ -10,4 +12,5 @@ public sealed record ClipFeedItem(
     int LikeCount,
     DateTimeOffset CreatedAt,
     AuthorSummary Author,
+    GameSummary? Game,
     bool LikedByMe);

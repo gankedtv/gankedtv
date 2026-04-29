@@ -96,6 +96,7 @@ public static class ClipsUploadEndpoints
         ClipUploadError.InvalidTitle => ProblemResults.BadRequest("invalid_title"),
         ClipUploadError.InvalidDescription => ProblemResults.BadRequest("invalid_description"),
         ClipUploadError.InvalidVisibility => ProblemResults.BadRequest("invalid_visibility"),
+        ClipUploadError.InvalidGame => ProblemResults.BadRequest("invalid_game"),
         ClipUploadError.NotFound => ProblemResults.NotFound("not_found"),
         ClipUploadError.InvalidState => ProblemResults.BadRequest("invalid_state"),
         ClipUploadError.ObjectNotUploaded => ProblemResults.BadRequest("object_not_uploaded"),

@@ -1,3 +1,4 @@
+using GankedTV.Api.Contracts.Games;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Services.Clips;
 
@@ -7,6 +8,9 @@ public static class ClipMappings
 {
     public static AuthorSummary ToAuthorSummary(this User user) =>
         new(user.Id, user.Username, user.AvatarUrl);
+
+    public static GameSummary ToGameSummary(this Game game) =>
+        new(game.Id, game.Name, game.Slug, game.Tag);
 
     public static CreateClipResponse ToCreateClipResponse(this CreateClipResult result) =>
         new(result.ClipId);
@@ -28,6 +32,7 @@ public static class ClipMappings
             clip.LikeCount,
             clip.CreatedAt,
             clip.User.ToAuthorSummary(),
+            clip.Game?.ToGameSummary(),
             likedByMe);
 
     public static ClipDetailResponse ToDetail(
@@ -49,5 +54,6 @@ public static class ClipMappings
             clip.LikeCount,
             clip.CreatedAt,
             clip.User.ToAuthorSummary(),
+            clip.Game?.ToGameSummary(),
             likedByMe);
 }

@@ -265,6 +265,7 @@ app.MapClipsReadEndpoints();
 app.MapClipsMutateEndpoints();
 app.MapLikesEndpoints();
 app.MapUsersEndpoints();
+app.MapGamesEndpoints();
 
 if (app.Environment.IsDevelopment())
 {
