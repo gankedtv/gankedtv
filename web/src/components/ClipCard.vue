@@ -57,10 +57,7 @@ function onKeydown(e: KeyboardEvent) {
         class="flex items-center gap-2 overflow-hidden font-mono text-[11px] text-text-secondary"
       >
         <UserAvatar :user="clip.author" :size="20" />
-        <AuthorHandle
-          :username="clip.author.username"
-          class="min-w-0 shrink truncate text-neon"
-        />
+        <AuthorHandle :username="clip.author.username" class="min-w-0 shrink truncate text-neon" />
         <span class="shrink-0 text-text-muted">·</span>
         <span class="shrink-0">{{ formatRelativeTime(clip.createdAt) }} ago</span>
       </div>

@@ -151,7 +151,6 @@ async function handleShare() {
   }
 }
 
-
 const initialsFor = (username: string): string =>
   username
     .replace(/[^a-zA-Z]/g, '')

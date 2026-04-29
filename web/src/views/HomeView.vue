@@ -97,11 +97,7 @@ onMounted(loadMore)
     </StatusPanel>
 
     <!-- Error state -->
-    <StatusPanel
-      v-else-if="errored"
-      kind="error"
-      message="Couldn't load the feed."
-    >
+    <StatusPanel v-else-if="errored" kind="error" message="Couldn't load the feed.">
       <button
         class="cursor-pointer rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
         @click="loadMore"

@@ -24,7 +24,13 @@ defineProps<{
   <span
     v-if="variant === 'square'"
     class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[4px] border border-border-strong bg-surface-base font-mono text-[10px] font-medium uppercase tracking-[0.06em]"
-    :class="tone === 'subtle' ? 'text-text-secondary' : tone === 'muted' ? 'text-text-muted' : 'text-text-primary'"
+    :class="
+      tone === 'subtle'
+        ? 'text-text-secondary'
+        : tone === 'muted'
+          ? 'text-text-muted'
+          : 'text-text-primary'
+    "
   >
     {{ tag }}
   </span>
@@ -33,7 +39,11 @@ defineProps<{
     class="rounded-[3px] border border-border-strong bg-surface-base font-mono font-medium uppercase tracking-[0.06em]"
     :class="[
       size === 'md' ? 'px-2.5 py-1 text-[10px] tracking-[0.08em]' : 'px-1.5 py-0.5 text-[10px]',
-      tone === 'subtle' ? 'text-text-secondary' : tone === 'muted' ? 'text-text-muted' : 'text-text-primary',
+      tone === 'subtle'
+        ? 'text-text-secondary'
+        : tone === 'muted'
+          ? 'text-text-muted'
+          : 'text-text-primary',
     ]"
   >
     {{ tag }}
