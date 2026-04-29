@@ -15,7 +15,7 @@ defineProps<{
   <span class="font-mono">
     <RouterLink
       v-if="as === 'link'"
-      :to="`/user/${username}`"
+      :to="{ name: 'user', params: { username } }"
       class="transition-opacity hover:opacity-80"
       >@{{ username }}</RouterLink
     >

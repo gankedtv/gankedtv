@@ -91,18 +91,28 @@ const trendHold = `${trendBase} text-text-muted`
       </h1>
 
       <!-- Time window toggle. Server doesn't support `?since=` yet — non-active
-           tabs are disabled until the backend filter lands so the controls don't
-           lie about what they do. -->
-      <div class="inline-flex gap-0.5 p-1 bg-surface-raised border border-border rounded-sm">
+           tabs are visually inert until the backend filter lands. We use
+           aria-disabled (not the native `disabled` attr) so the buttons stay
+           focusable and screen readers can announce the "coming soon" hint. -->
+      <p id="time-window-hint" class="sr-only">
+        Server-side time filtering coming soon — only the active window is selectable.
+      </p>
+      <div
+        class="inline-flex gap-0.5 p-1 bg-surface-raised border border-border rounded-sm"
+        role="group"
+        aria-label="Trending time window"
+      >
         <button
           v-for="tw in TIME_WINDOWS"
           :key="tw.key"
+          type="button"
           :class="[
             timeWindow === tw.key ? timeBtnActive : timeBtnInactive,
             tw.key === timeWindow ? '' : 'opacity-50 cursor-not-allowed',
           ]"
-          :disabled="tw.key !== timeWindow"
-          :title="tw.key === timeWindow ? '' : 'Server-side time filtering coming soon'"
+          :aria-disabled="tw.key !== timeWindow"
+          :aria-pressed="tw.key === timeWindow"
+          aria-describedby="time-window-hint"
         >
           {{ tw.label }}
         </button>
@@ -117,6 +127,12 @@ const trendHold = `${trendBase} text-text-muted`
         Retry
       </button>
     </StatusPanel>
+
+    <StatusPanel
+      v-else-if="loading && topClips.length === 0"
+      kind="loading"
+      message="Loading…"
+    />
 
     <StatusPanel
       v-else-if="!loading && topClips.length === 0"
