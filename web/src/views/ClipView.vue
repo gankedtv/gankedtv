@@ -215,6 +215,16 @@ const authorAvatarUrl = computed(() => safeImageUrl(clip.value?.author.avatarUrl
 
       <!-- Title + Meta Row -->
       <div class="mt-5">
+        <div v-if="clip.game" class="mb-2">
+          <span
+            class="rounded-[3px] border border-border-strong bg-surface-base px-2 py-0.75 font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-text-primary"
+          >
+            {{ clip.game.tag }}
+          </span>
+          <span class="ml-2 font-mono text-[11px] uppercase tracking-[0.06em] text-text-muted">
+            {{ clip.game.name }}
+          </span>
+        </div>
         <h1
           class="font-heading text-[34px] font-bold leading-[1.05] uppercase tracking-[0.01em] text-text-primary"
         >

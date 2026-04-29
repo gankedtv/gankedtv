@@ -20,6 +20,7 @@ public sealed class SeedCommand(
     public static readonly Guid SeedUserId = new("00000000-0000-0000-0000-00000000CAFE");
     public const string SeedUsername = "seeduser";
     public const int SeedClipCount = 10;
+    private const int GameRotationCount = 5;
 
     public static bool ShouldRun(string[] args) => args.Contains(FlagName);
 
@@ -55,6 +56,14 @@ public sealed class SeedCommand(
             logger.LogInformation("Seed: created user {Username}", user.Username);
         }
 
+        // Rotate seeded clips across the seeded games (Ids 1..GameRotationCount) so the
+        // dev feed always shows clips with game tags rendered, without needing manual setup.
+        var gameIds = await db.Games
+            .OrderBy(g => g.Id)
+            .Select(g => g.Id)
+            .Take(GameRotationCount)
+            .ToListAsync(ct);
+
         for (var i = 1; i <= SeedClipCount; i++)
         {
             var clipId = SeedClipId(i);
@@ -65,6 +74,7 @@ public sealed class SeedCommand(
             {
                 Id = clipId,
                 UserId = user.Id,
+                GameId = gameIds.Count == 0 ? null : gameIds[(i - 1) % gameIds.Count],
                 Title = SeedClipTitle(i),
                 Description = $"Seeded sample clip #{i:D2}.",
                 VideoKey = $"seed/clip-{i:D2}.mp4",

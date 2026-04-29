@@ -37,13 +37,19 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             e.HasKey(g => g.Id);
             e.Property(g => g.Name).HasMaxLength(255);
             e.Property(g => g.Slug).HasMaxLength(255);
+            e.Property(g => g.Tag).HasMaxLength(16);
             e.HasIndex(g => g.Slug).IsUnique().HasDatabaseName("idx_games_slug");
+            e.HasIndex(g => g.Name).HasDatabaseName("idx_games_name");
             e.HasData(
-                new Game { Id = 1, Name = "League of Legends", Slug = "league-of-legends" },
-                new Game { Id = 2, Name = "Valorant", Slug = "valorant" },
-                new Game { Id = 3, Name = "Counter-Strike 2", Slug = "cs2" },
-                new Game { Id = 4, Name = "Fortnite", Slug = "fortnite" },
-                new Game { Id = 5, Name = "Apex Legends", Slug = "apex-legends" });
+                new Game { Id = 1, Name = "League of Legends", Slug = "league-of-legends", Tag = "LOL" },
+                new Game { Id = 2, Name = "Valorant", Slug = "valorant", Tag = "VALORANT" },
+                new Game { Id = 3, Name = "Counter-Strike 2", Slug = "cs2", Tag = "CS2" },
+                new Game { Id = 4, Name = "Fortnite", Slug = "fortnite", Tag = "FN" },
+                new Game { Id = 5, Name = "Apex Legends", Slug = "apex-legends", Tag = "APEX" },
+                new Game { Id = 6, Name = "Rocket League", Slug = "rocket-league", Tag = "RL" },
+                new Game { Id = 7, Name = "Overwatch 2", Slug = "overwatch-2", Tag = "OW2" },
+                new Game { Id = 8, Name = "Dota 2", Slug = "dota-2", Tag = "DOTA2" },
+                new Game { Id = 9, Name = "Marvel Rivals", Slug = "marvel-rivals", Tag = "RIVALS" });
         });
 
         modelBuilder.Entity<Clip>(e =>

@@ -69,7 +69,8 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         DateTimeOffset createdAt,
         string status = "ready",
         string visibility = "public",
-        string? title = null)
+        string? title = null,
+        int? gameId = null)
     {
         var id = Guid.NewGuid();
         await using var db = _fx.CreateContext();
@@ -77,6 +78,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         {
             Id = id,
             UserId = userId,
+            GameId = gameId,
             Title = title ?? $"clip-{id:N}".Substring(0, 20),
             VideoKey = $"clips/{userId}/{id}.mp4",
             ThumbnailKey = $"thumbs/{id}.jpg",
@@ -417,6 +419,31 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         var author = item.GetProperty("author");
         author.GetProperty("id").GetGuid().Should().Be(userId);
         author.GetProperty("username").GetString().Should().Be("shapely");
+    }
+
+    [Fact]
+    public async Task Feed_GameProjection_PopulatedWhenSet_NullWhenNotSet()
+    {
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var withGame = await SeedClipAsync(userId, now.AddSeconds(-1), title: "with-game", gameId: 2);
+        var withoutGame = await SeedClipAsync(userId, now.AddSeconds(-2), title: "no-game");
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/feed");
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+
+        var byId = body.GetProperty("items").EnumerateArray()
+            .ToDictionary(e => e.GetProperty("id").GetGuid(), e => e);
+
+        var gameNode = byId[withGame].GetProperty("game");
+        gameNode.ValueKind.Should().Be(JsonValueKind.Object);
+        gameNode.GetProperty("id").GetInt32().Should().Be(2);
+        gameNode.GetProperty("slug").GetString().Should().Be("valorant");
+        gameNode.GetProperty("tag").GetString().Should().Be("VALORANT");
+
+        byId[withoutGame].GetProperty("game").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     // ---- GET /clips/{id} ----

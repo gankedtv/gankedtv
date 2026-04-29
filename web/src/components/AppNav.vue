@@ -108,7 +108,7 @@ const navLinkActive =
           :to="`/user/${auth.user.username}`"
           class="inline-flex"
         >
-          <UserAvatar :user="auth.user.username" :size="36" />
+          <UserAvatar :user="auth.user" :size="36" />
         </RouterLink>
       </div>
     </div>

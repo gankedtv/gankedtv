@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { CLIPS, USERS, GAMES, formatNum, formatDuration, userByUsername } from '@/lib/mock-data'
-import UserAvatar from '@/components/UserAvatar.vue'
+import { clips, type ClipFeedItem } from '@/api/clips'
+import { games as gamesApi, type GameListItem } from '@/api/games'
+import { formatNum, formatDuration } from '@/lib/format'
 import IconChevronRight from '@/components/icons/IconChevronRight.vue'
 
 const router = useRouter()
@@ -15,58 +16,41 @@ const TIME_WINDOWS = [
   { key: 'all', label: 'All time' },
 ] as const
 
+// The server doesn't filter by time window yet — these tabs are visual until that
+// lands. Surfacing them keeps the UX intent visible (and lets the server-side
+// follow-up just wire `?since=` without UI work).
 const timeWindow = ref<string>('24h')
 
-const topClips = computed(() => [...CLIPS].sort((a, b) => b.likes - a.likes).slice(0, 10))
+const allClips = ref<ClipFeedItem[]>([])
+const loading = ref(false)
+const errored = ref(false)
+
+const topClips = computed(() =>
+  [...allClips.value].sort((a, b) => b.likeCount - a.likeCount).slice(0, 10),
+)
+
+const hotGames = ref<GameListItem[]>([])
+
+async function load() {
+  loading.value = true
+  errored.value = false
+  try {
+    const [feed, games] = await Promise.all([clips.feed({ limit: 100 }), gamesApi.list(8)])
+    allClips.value = feed.items
+    hotGames.value = games
+  } catch {
+    errored.value = true
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(load)
 
 function trendFor(i: number): 'up' | 'hold' | 'down' {
   if (i < 3) return 'up'
   if (i < 6) return 'hold'
   return i % 2 === 0 ? 'up' : 'down'
-}
-
-const TOP_CREATOR_KEYS = ['sundownr', 'phantomveil', 'nyxproto', 'rustyquill', 'wrenhowl'] as const
-const CREATOR_GAINED = [3180, 2740, 1820, 990, 540]
-
-function userKeyByUsername(username: string): string {
-  return userByUsername(username)?.[0] ?? username
-}
-
-// Today's clip count per game, keyed by GAMES key (not by array index)
-const HOT_GAMES_CLIPS_TODAY: Record<string, number> = {
-  valorant: 412,
-  rocket: 388,
-  minecraft: 274,
-  overwatch: 210,
-  fortnite: 188,
-  league: 156,
-}
-const DEFAULT_CLIPS_TODAY = 100
-const gameEntries = Object.entries(GAMES)
-
-// Simple deterministic sparkline points
-function sparklinePoints(gameKey: string): string {
-  const base = HOT_GAMES_CLIPS_TODAY[gameKey] ?? DEFAULT_CLIPS_TODAY
-  const vals = [
-    base * 0.55,
-    base * 0.62,
-    base * 0.48,
-    base * 0.7,
-    base * 0.65,
-    base * 0.82,
-    base * 0.91,
-    base,
-  ]
-  const max = Math.max(...vals)
-  const min = Math.min(...vals)
-  const range = max - min || 1
-  return vals
-    .map((v, i) => {
-      const x = (i / (vals.length - 1)) * 56
-      const y = 12 - ((v - min) / range) * 12
-      return `${x.toFixed(1)},${y.toFixed(1)}`
-    })
-    .join(' ')
 }
 
 const timeBtnBase =
@@ -89,7 +73,7 @@ const trendHold = `${trendBase} text-text-muted`
     <!-- Page header -->
     <div>
       <div class="mb-2 font-mono text-[11px] uppercase tracking-widest text-text-muted">
-        Updated every 5 min · Ranked by likes + plays
+        Ranked by likes (server-side trending coming soon)
       </div>
       <h1
         class="m-0 mb-5 font-heading text-[clamp(32px,4vw,52px)] font-bold uppercase leading-none tracking-[0.02em] text-text-primary"
@@ -97,26 +81,59 @@ const trendHold = `${trendBase} text-text-muted`
         Trending
       </h1>
 
-      <!-- Time window toggle -->
+      <!-- Time window toggle. Server doesn't support `?since=` yet — non-active
+           tabs are disabled until the backend filter lands so the controls don't
+           lie about what they do. -->
       <div class="inline-flex gap-0.5 p-1 bg-surface-raised border border-border rounded-sm">
         <button
           v-for="tw in TIME_WINDOWS"
           :key="tw.key"
-          :class="timeWindow === tw.key ? timeBtnActive : timeBtnInactive"
-          @click="timeWindow = tw.key"
+          :class="[
+            timeWindow === tw.key ? timeBtnActive : timeBtnInactive,
+            tw.key === timeWindow ? '' : 'opacity-50 cursor-not-allowed',
+          ]"
+          :disabled="tw.key !== timeWindow"
+          :title="tw.key === timeWindow ? '' : 'Server-side time filtering coming soon'"
         >
           {{ tw.label }}
         </button>
       </div>
     </div>
 
+    <div
+      v-if="errored"
+      class="mt-10 flex flex-col items-center gap-2 rounded-md border border-border bg-surface-raised py-12"
+    >
+      <span class="font-mono text-sm uppercase tracking-widest text-text-muted">
+        Couldn't load trending.
+      </span>
+      <button
+        class="cursor-pointer rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+        @click="load"
+      >
+        Retry
+      </button>
+    </div>
+
+    <div
+      v-else-if="!loading && topClips.length === 0"
+      class="mt-10 flex flex-col items-center gap-2 rounded-md border border-border bg-surface-raised py-12"
+    >
+      <span class="font-mono text-sm uppercase tracking-widest text-text-muted">
+        No clips yet — be the first.
+      </span>
+    </div>
+
     <!-- Two-column layout -->
-    <div class="grid grid-cols-[minmax(0,1fr)_340px] gap-7 items-start max-[960px]:grid-cols-1">
+    <div
+      v-else
+      class="grid grid-cols-[minmax(0,1fr)_340px] gap-7 items-start max-[960px]:grid-cols-1"
+    >
       <!-- LEFT: Top 10 leaderboard -->
       <div class="bg-surface-raised border border-border rounded-md overflow-hidden mt-7">
         <div class="px-4 py-3.5 border-b border-border">
           <span class="font-heading font-bold text-sm uppercase text-text-secondary tracking-wider"
-            >Top 10 this period</span
+            >Top 10 by likes</span
           >
         </div>
 
@@ -126,7 +143,6 @@ const trendHold = `${trendBase} text-text-muted`
           class="grid grid-cols-[60px_120px_1fr_auto_auto] gap-4 items-center px-4 py-3 cursor-pointer transition-[background] duration-150 border-b border-border last:border-b-0 hover:bg-surface-overlay"
           @click="router.push({ name: 'clip', params: { id: clip.id } })"
         >
-          <!-- Rank + trend -->
           <div class="flex flex-col items-start gap-0.5">
             <span :class="i < 3 ? rankTop : rankRest">#{{ i + 1 }}</span>
             <span
@@ -137,16 +153,20 @@ const trendHold = `${trendBase} text-text-muted`
             >
           </div>
 
-          <!-- Thumbnail -->
-          <div class="relative rounded-[4px] overflow-hidden aspect-video">
-            <img :src="clip.art" alt="" class="w-full h-full object-cover block" />
+          <div class="relative rounded-[4px] overflow-hidden aspect-video bg-surface-sunken">
+            <img
+              v-if="clip.thumbnailKey"
+              :src="clip.thumbnailKey"
+              alt=""
+              class="w-full h-full object-cover block"
+            />
             <span
+              v-if="clip.durationSecs !== null"
               class="absolute bottom-1 right-1 font-mono text-[10px] text-white bg-black/75 px-1.25 py-0.5 rounded-[3px] leading-none"
-              >{{ formatDuration(clip.duration) }}</span
+              >{{ formatDuration(clip.durationSecs) }}</span
             >
           </div>
 
-          <!-- Title + meta -->
           <div class="min-w-0 flex flex-col gap-1">
             <span
               class="font-body text-[13px] font-medium text-text-primary leading-[1.35] line-clamp-2"
@@ -154,22 +174,21 @@ const trendHold = `${trendBase} text-text-muted`
             >
             <div class="flex items-center gap-1.5 font-mono text-[10px]">
               <span
+                v-if="clip.game"
                 class="bg-surface-base border border-border-strong rounded-[3px] px-1.5 py-0.5 text-text-secondary uppercase tracking-[0.06em]"
-                >{{ GAMES[clip.game]?.tag }}</span
+                >{{ clip.game.tag }}</span
               >
-              <span class="text-neon">@{{ USERS[clip.user]?.username }}</span>
+              <span class="text-neon">@{{ clip.author.username }}</span>
             </div>
           </div>
 
-          <!-- Stats -->
           <div
             class="flex flex-col gap-1 text-right font-mono text-[11px] text-text-secondary whitespace-nowrap"
           >
-            <span>♥ {{ formatNum(clip.likes) }}</span>
-            <span class="text-text-muted">{{ formatNum(clip.views) }} plays</span>
+            <span>♥ {{ formatNum(clip.likeCount) }}</span>
+            <span class="text-text-muted">{{ formatNum(clip.viewCount) }} plays</span>
           </div>
 
-          <!-- Chevron -->
           <div class="text-text-muted">
             <IconChevronRight :size="16" />
           </div>
@@ -178,40 +197,6 @@ const trendHold = `${trendBase} text-text-muted`
 
       <!-- RIGHT sidebar -->
       <div class="flex flex-col gap-4 mt-7">
-        <!-- Top creators -->
-        <div class="bg-surface-raised border border-border rounded-md overflow-hidden">
-          <div class="px-4 py-3.5 border-b border-border">
-            <span
-              class="section-title-bar flex items-center gap-2.5 font-heading font-bold text-sm uppercase text-text-secondary tracking-wider"
-              >Top Creators</span
-            >
-          </div>
-
-          <div
-            v-for="(username, i) in TOP_CREATOR_KEYS"
-            :key="username"
-            class="flex items-center gap-3 px-4 py-2.5 border-b border-border last:border-b-0 cursor-pointer transition-[background] duration-150 hover:bg-surface-overlay"
-            @click="router.push({ name: 'user', params: { username } })"
-          >
-            <span class="font-heading font-bold text-lg text-text-muted w-6 shrink-0 leading-none"
-              >#{{ i + 1 }}</span
-            >
-            <UserAvatar :user="userKeyByUsername(username)" :size="36" />
-            <div class="min-w-0 flex-1 flex flex-col gap-px">
-              <span
-                class="font-body text-[13px] font-medium text-text-primary whitespace-nowrap overflow-hidden text-ellipsis"
-              >
-                {{ USERS[userKeyByUsername(username)]?.display }}
-              </span>
-              <span class="font-mono text-[10px] text-text-muted"> @{{ username }} </span>
-            </div>
-            <span class="font-mono text-[10px] text-neon whitespace-nowrap shrink-0">
-              +{{ formatNum(CREATOR_GAINED[i]) }}
-            </span>
-          </div>
-        </div>
-
-        <!-- Hot games -->
         <div class="bg-surface-raised border border-border rounded-md overflow-hidden">
           <div class="px-4 py-3.5 border-b border-border">
             <span
@@ -221,37 +206,26 @@ const trendHold = `${trendBase} text-text-muted`
           </div>
 
           <div
-            v-for="[key, game] in gameEntries"
-            :key="key"
+            v-for="g in hotGames"
+            :key="g.id"
             class="flex items-center gap-3 px-4 py-2.5 border-b border-border last:border-b-0 cursor-pointer transition-[background] duration-150 hover:bg-surface-overlay"
-            @click="router.push({ name: 'games', query: { game: key } })"
+            @click="router.push({ name: 'games', query: { game: g.slug } })"
           >
-            <!-- Game art thumbnail -->
-            <div class="w-10 h-10 rounded-[4px] overflow-hidden shrink-0 relative">
-              <img :src="game.art" alt="" class="w-full h-full object-cover block" />
-            </div>
+            <span
+              class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[4px] border border-border-strong bg-surface-base font-mono text-[10px] uppercase tracking-[0.06em] text-text-primary"
+            >
+              {{ g.tag }}
+            </span>
             <div class="min-w-0 flex-1 flex flex-col gap-px">
               <span
                 class="font-body text-[13px] font-medium text-text-primary whitespace-nowrap overflow-hidden text-ellipsis"
               >
-                {{ game.name }}
+                {{ g.name }}
               </span>
-              <span class="font-mono text-[10px] text-neon">
-                +{{ HOT_GAMES_CLIPS_TODAY[key] ?? DEFAULT_CLIPS_TODAY }} clips today
+              <span class="font-mono text-[10px] text-text-muted">
+                {{ g.slug }}
               </span>
             </div>
-            <!-- Sparkline -->
-            <svg width="56" height="14" viewBox="0 0 56 14" class="shrink-0 overflow-visible">
-              <polyline
-                :points="sparklinePoints(key)"
-                fill="none"
-                stroke="var(--color-neon)"
-                stroke-width="1.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                opacity="0.7"
-              />
-            </svg>
           </div>
         </div>
       </div>

@@ -1,15 +1,12 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { USERS, GAMES, formatNum, formatDuration, type Clip } from '@/lib/mock-data'
+import type { ClipFeedItem } from '@/api/clips'
+import { formatNum, formatDuration, formatRelativeTime } from '@/lib/format'
 import UserAvatar from './UserAvatar.vue'
 import IconHeart from './icons/IconHeart.vue'
 import IconEye from './icons/IconEye.vue'
 
-const props = defineProps<{ clip: Clip }>()
+const props = defineProps<{ clip: ClipFeedItem }>()
 const emit = defineEmits<{ click: [] }>()
-
-const user = computed(() => USERS[props.clip.user])
-const game = computed(() => GAMES[props.clip.game])
 
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter' || e.key === ' ') {
@@ -31,23 +28,26 @@ function onKeydown(e: KeyboardEvent) {
     <!-- Thumbnail -->
     <div class="relative aspect-video overflow-hidden bg-surface-sunken">
       <img
-        :src="clip.art"
+        v-if="props.clip.thumbnailKey"
+        :src="props.clip.thumbnailKey"
         alt=""
         class="h-full w-full object-cover transition-transform duration-400 group-hover:scale-104"
       />
+      <div v-else class="h-full w-full bg-surface-sunken" />
       <!-- Game tag — top-left -->
-      <div class="absolute left-2 top-2">
+      <div v-if="props.clip.game" class="absolute left-2 top-2">
         <span
           class="rounded-[3px] border border-border-strong bg-surface-base px-1.75 py-0.75 font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-text-primary"
         >
-          {{ game.tag }}
+          {{ props.clip.game.tag }}
         </span>
       </div>
       <!-- Duration — bottom-right -->
       <div
+        v-if="props.clip.durationSecs !== null"
         class="absolute bottom-2 right-2 rounded-[3px] bg-black/75 px-1.75 py-1 font-mono text-[10px] tracking-wider leading-none text-white backdrop-blur-xs"
       >
-        {{ formatDuration(clip.duration) }}
+        {{ formatDuration(props.clip.durationSecs) }}
       </div>
     </div>
 
@@ -62,10 +62,10 @@ function onKeydown(e: KeyboardEvent) {
       <div
         class="flex items-center gap-2 overflow-hidden font-mono text-[11px] text-text-secondary"
       >
-        <UserAvatar :user="clip.user" :size="20" />
-        <span class="min-w-0 shrink truncate text-neon">@{{ user.username }}</span>
+        <UserAvatar :user="clip.author" :size="20" />
+        <span class="min-w-0 shrink truncate text-neon">@{{ clip.author.username }}</span>
         <span class="shrink-0 text-text-muted">·</span>
-        <span class="shrink-0">{{ clip.createdAt }} ago</span>
+        <span class="shrink-0">{{ formatRelativeTime(clip.createdAt) }} ago</span>
       </div>
 
       <div
@@ -73,11 +73,11 @@ function onKeydown(e: KeyboardEvent) {
       >
         <span class="inline-flex items-center gap-1">
           <IconHeart :size="11" />
-          {{ formatNum(clip.likes) }}
+          {{ formatNum(clip.likeCount) }}
         </span>
         <span class="inline-flex items-center gap-1">
           <IconEye :size="11" />
-          {{ formatNum(clip.views) }}
+          {{ formatNum(clip.viewCount) }}
         </span>
       </div>
     </div>

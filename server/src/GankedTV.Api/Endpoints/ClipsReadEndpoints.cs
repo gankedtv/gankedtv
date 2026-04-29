@@ -56,6 +56,7 @@ public static class ClipsReadEndpoints
             .OrderByDescending(c => c.CreatedAt)
             .ThenByDescending(c => c.Id)
             .Include(c => c.User)
+            .Include(c => c.Game)
             .Take(clampedLimit + 1)
             .ToListAsync(ct);
 
@@ -116,6 +117,7 @@ public static class ClipsReadEndpoints
     {
         var clip = await db.Clips.AsNoTracking()
             .Include(c => c.User)
+            .Include(c => c.Game)
             .FirstOrDefaultAsync(
                 c => c.Id == id && c.Visibility == "public" && c.Status == "ready",
                 ct);

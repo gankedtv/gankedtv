@@ -121,7 +121,7 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
         var clip = await db.Clips.AsNoTracking().SingleAsync(c => c.Id == id);
         clip.UserId.Should().Be(userId);
         clip.Status.Should().Be("draft");
-        clip.VideoKey.Should().Be($"clips/{userId}/{id}.mp4");
+        clip.VideoKey.Should().Be($"{userId}/{id}.mp4");
         clip.Visibility.Should().Be("unlisted");
         clip.Title.Should().Be("My first clip");
         clip.Description.Should().Be("did a thing");
@@ -211,6 +211,40 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
         await using var db = _fx.CreateContext();
         var clip = await db.Clips.AsNoTracking().SingleAsync(c => c.Id == id);
         clip.Visibility.Should().Be("unlisted");
+    }
+
+    [Fact]
+    public async Task Create_WithValidGameId_PersistsKeyWithSlugSegment()
+    {
+        // Game id 2 ("valorant") is seeded by the migration's HasData. The video key
+        // should namespace under the game slug so MinIO listings group per title.
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        using var client = ClientWithBearer(token);
+
+        var resp = await client.PostAsJsonAsync("/clips", new { title = "ace", gameId = 2 });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var id = (await resp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+
+        await using var db = _fx.CreateContext();
+        var clip = await db.Clips.AsNoTracking().SingleAsync(c => c.Id == id);
+        clip.GameId.Should().Be(2);
+        clip.VideoKey.Should().Be($"{userId}/valorant/{id}.mp4");
+    }
+
+    [Fact]
+    public async Task Create_WithUnknownGameId_Returns400InvalidGame()
+    {
+        await _fx.ResetAsync();
+        var (_, token) = await SeedUserAndIssueTokenAsync();
+        using var client = ClientWithBearer(token);
+
+        var resp = await client.PostAsJsonAsync("/clips", new { title = "x", gameId = 999_999 });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("code").GetString().Should().Be("invalid_game");
     }
 
     [Fact]

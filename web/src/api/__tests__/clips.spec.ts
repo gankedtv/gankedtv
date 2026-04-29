@@ -23,6 +23,36 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe('api/clips', () => {
+  describe('feed()', () => {
+    it('GETs /clips/feed without params when no query is supplied', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ items: [], nextCursor: null })),
+      )
+
+      const result = await clips.feed()
+
+      expect(result).toEqual({ items: [], nextCursor: null })
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+      expect(url).toBe(`${BASE_URL}/clips/feed`)
+    })
+
+    it('encodes cursor and limit into the query string', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ items: [], nextCursor: null })),
+      )
+
+      await clips.feed({ cursor: 'abc=', limit: 5 })
+
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+      // URLSearchParams encodes '=' inside the value; both keys must be present.
+      expect(url).toContain('cursor=abc%3D')
+      expect(url).toContain('limit=5')
+      expect(url.startsWith(`${BASE_URL}/clips/feed?`)).toBe(true)
+    })
+  })
+
   describe('getDetail()', () => {
     it('issues GET /clips/{id} and returns the parsed detail', async () => {
       const detail = {
