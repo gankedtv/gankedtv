@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 import { clips, type ClipFeedItem } from '@/api/clips'
 import { games as gamesApi, type GameListItem } from '@/api/games'
 import { formatNum } from '@/lib/format'
@@ -10,8 +9,6 @@ import AuthorHandle from '@/components/AuthorHandle.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import IconChevronRight from '@/components/icons/IconChevronRight.vue'
-
-const router = useRouter()
 
 const TIME_WINDOWS = [
   { key: '1h', label: 'Last hour' },
@@ -142,11 +139,12 @@ const trendHold = `${trendBase} text-text-muted`
           >
         </div>
 
-        <div
+        <RouterLink
           v-for="(clip, i) in topClips"
           :key="clip.id"
-          class="grid grid-cols-[60px_120px_1fr_auto_auto] gap-4 items-center px-4 py-3 cursor-pointer transition-[background] duration-150 border-b border-border last:border-b-0 hover:bg-surface-overlay"
-          @click="router.push({ name: 'clip', params: { id: clip.id } })"
+          :to="{ name: 'clip', params: { id: clip.id } }"
+          :aria-label="`#${i + 1}: ${clip.title}`"
+          class="grid grid-cols-[60px_120px_1fr_auto_auto] gap-4 items-center px-4 py-3 transition-[background] duration-150 border-b border-border last:border-b-0 outline-none hover:bg-surface-overlay focus-visible:bg-surface-overlay focus-visible:ring-2 focus-visible:ring-brand-light"
         >
           <div class="flex flex-col items-start gap-0.5">
             <span :class="i < 3 ? rankTop : rankRest">#{{ i + 1 }}</span>
@@ -189,7 +187,7 @@ const trendHold = `${trendBase} text-text-muted`
           <div class="text-text-muted">
             <IconChevronRight :size="16" />
           </div>
-        </div>
+        </RouterLink>
       </div>
 
       <!-- RIGHT sidebar -->
@@ -202,11 +200,12 @@ const trendHold = `${trendBase} text-text-muted`
             >
           </div>
 
-          <div
+          <RouterLink
             v-for="g in hotGames"
             :key="g.id"
-            class="flex items-center gap-3 px-4 py-2.5 border-b border-border last:border-b-0 cursor-pointer transition-[background] duration-150 hover:bg-surface-overlay"
-            @click="router.push({ name: 'games', query: { game: g.slug } })"
+            :to="{ name: 'games', query: { game: g.slug } }"
+            :aria-label="`Filter feed by ${g.name}`"
+            class="flex items-center gap-3 px-4 py-2.5 border-b border-border last:border-b-0 transition-[background] duration-150 outline-none hover:bg-surface-overlay focus-visible:bg-surface-overlay focus-visible:ring-2 focus-visible:ring-brand-light"
           >
             <GameTag :tag="g.tag" variant="square" />
             <div class="min-w-0 flex-1 flex flex-col gap-px">
@@ -219,7 +218,7 @@ const trendHold = `${trendBase} text-text-muted`
                 {{ g.slug }}
               </span>
             </div>
-          </div>
+          </RouterLink>
         </div>
       </div>
     </div>
