@@ -8,6 +8,7 @@ import GameTag from '@/components/GameTag.vue'
 import DurationBadge from '@/components/DurationBadge.vue'
 import AuthorHandle from '@/components/AuthorHandle.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import IconChevronRight from '@/components/icons/IconChevronRight.vue'
 
 const router = useRouter()
@@ -79,16 +80,8 @@ const trendHold = `${trendBase} text-text-muted`
 
 <template>
   <main class="mx-auto max-w-360 px-6 pt-8 pb-30">
-    <!-- Page header -->
-    <div>
-      <div class="mb-2 font-mono text-[11px] uppercase tracking-widest text-text-muted">
-        Ranked by likes (server-side trending coming soon)
-      </div>
-      <h1
-        class="m-0 mb-5 font-heading text-[clamp(32px,4vw,52px)] font-bold uppercase leading-none tracking-[0.02em] text-text-primary"
-      >
-        Trending
-      </h1>
+    <PageHeader title="Trending">
+      <template #caption>Ranked by likes (server-side trending coming soon)</template>
 
       <!-- Time window toggle. Server doesn't support `?since=` yet — non-active
            tabs are visually inert until the backend filter lands. We use
@@ -98,7 +91,7 @@ const trendHold = `${trendBase} text-text-muted`
         Server-side time filtering coming soon — only the active window is selectable.
       </p>
       <div
-        class="inline-flex gap-0.5 p-1 bg-surface-raised border border-border rounded-sm"
+        class="mt-5 inline-flex gap-0.5 p-1 bg-surface-raised border border-border rounded-sm"
         role="group"
         aria-label="Trending time window"
       >
@@ -117,7 +110,7 @@ const trendHold = `${trendBase} text-text-muted`
           {{ tw.label }}
         </button>
       </div>
-    </div>
+    </PageHeader>
 
     <StatusPanel v-if="errored" kind="error" message="Couldn't load trending.">
       <button

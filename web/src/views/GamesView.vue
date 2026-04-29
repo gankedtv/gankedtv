@@ -6,6 +6,7 @@ import { clips, type ClipFeedItem } from '@/api/clips'
 import ClipCard from '@/components/ClipCard.vue'
 import GameTag from '@/components/GameTag.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
+import PageHeader from '@/components/PageHeader.vue'
 
 const router = useRouter()
 
@@ -75,24 +76,14 @@ const tileActiveAll = `${tileActive} bg-brand`
 
 <template>
   <main class="mx-auto max-w-360 px-6 pt-8 pb-30">
-    <div>
-      <div
-        class="mb-2 flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-text-muted"
-      >
-        <span
-          class="block h-1.5 w-1.5 shrink-0 rounded-full bg-neon shadow-[0_0_8px_var(--color-neon)] animate-[pulse_2s_infinite]"
-        ></span>
+    <PageHeader title="Games" pulse>
+      <template #caption>
         Library · {{ allGames.length }} games · {{ allClips.length }} clips loaded
-      </div>
-      <h1
-        class="m-0 mb-2 font-heading text-[clamp(32px,4vw,52px)] font-bold leading-none uppercase tracking-[0.02em] text-text-primary"
-      >
-        Games
-      </h1>
-      <p class="m-0 max-w-[56ch] text-[15px] leading-normal text-text-secondary">
+      </template>
+      <p class="m-0 mt-2 max-w-[56ch] text-[15px] leading-normal text-text-secondary">
         Every clip is tagged with its game. Pick a game to filter the feed.
       </p>
-    </div>
+    </PageHeader>
 
     <StatusPanel v-if="errored" kind="error" message="Couldn't load games.">
       <button

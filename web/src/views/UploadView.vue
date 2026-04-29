@@ -6,6 +6,7 @@ import { clips } from '@/api/clips'
 import { games as gamesApi, type GameListItem } from '@/api/games'
 import GameChipButton from '@/components/GameChipButton.vue'
 import GameSearchResult from '@/components/GameSearchResult.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import IconUploadCloud from '@/components/icons/IconUploadCloud.vue'
 import IconFile from '@/components/icons/IconFile.vue'
 import IconFileText from '@/components/icons/IconFileText.vue'
@@ -267,17 +268,11 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
 
 <template>
   <main class="mx-auto max-w-225 px-6 pt-8 pb-30">
-    <!-- Page header -->
-    <div class="mb-7">
-      <div class="mb-2.5 font-mono text-[11px] uppercase tracking-widest text-text-muted">
+    <PageHeader title="Upload a clip" class="mb-7">
+      <template #caption>
         Any source welcome · OBS, ShadowPlay, Medal, Xbox, consoles — just drop the file
-      </div>
-      <h1
-        class="m-0 font-heading text-[clamp(32px,4vw,52px)] font-bold leading-none uppercase text-text-primary"
-      >
-        Upload a clip
-      </h1>
-    </div>
+      </template>
+    </PageHeader>
 
     <!-- Stepper -->
     <div class="mb-8 flex overflow-hidden rounded-md border border-border bg-surface-raised">

@@ -9,6 +9,7 @@ import GameTag from '@/components/GameTag.vue'
 import DurationBadge from '@/components/DurationBadge.vue'
 import AuthorHandle from '@/components/AuthorHandle.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import IconPlay from '@/components/icons/IconPlay.vue'
 
 const router = useRouter()
@@ -57,22 +58,9 @@ onMounted(loadMore)
   <main
     class="mx-auto max-w-360 px-6 pt-8 pb-30 max-[899px]:px-3.5 max-[899px]:pt-4 max-[899px]:pb-20"
   >
-    <!-- Page header -->
-    <div>
-      <div
-        class="mb-2 flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-text-muted"
-      >
-        <span
-          class="h-1.5 w-1.5 shrink-0 rounded-full bg-neon shadow-[0_0_8px_var(--color-neon)] animate-[pulse_2s_infinite]"
-        ></span>
-        Live Feed · {{ items.length }} clips
-      </div>
-      <h1
-        class="m-0 font-heading text-[clamp(32px,4vw,52px)] font-bold leading-none uppercase tracking-[0.02em] text-text-primary"
-      >
-        The Feed
-      </h1>
-    </div>
+    <PageHeader title="The Feed" pulse>
+      <template #caption>Live Feed · {{ items.length }} clips</template>
+    </PageHeader>
 
     <!-- Initial loading state — explicit so the empty-state branch doesn't flash
          in the gap between mount and the first response. -->
