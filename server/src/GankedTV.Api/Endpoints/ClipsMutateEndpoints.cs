@@ -3,6 +3,7 @@ using System.Security.Claims;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Data;
 using GankedTV.Api.Problems;
+using GankedTV.Api.Services.Maintenance;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Validation;
 using Microsoft.AspNetCore.Mvc;
@@ -145,30 +146,17 @@ public static class ClipsMutateEndpoints
             return ProblemResults.Forbidden("forbidden");
         }
 
-        var videoKey = clip.VideoKey;
-        var thumbnailKey = clip.ThumbnailKey;
-
         db.Clips.Remove(clip);
         await db.SaveChangesAsync(ct);
 
         // S3 cleanup is best-effort: the DB row is already gone, so a cleanup failure must not
         // surface as 500 (that would mislead the client into retrying a non-existent row).
-        // Orphaned S3 objects are cheap; a future reaper can sweep them.
-        try
-        {
-            await storage.DeleteObjectAsync(minio.Value.ClipsBucket, videoKey, ct);
-            if (!string.IsNullOrEmpty(thumbnailKey))
-            {
-                await storage.DeleteObjectAsync(minio.Value.ThumbnailsBucket, thumbnailKey, ct);
-            }
-        }
-        catch (Exception ex)
-        {
-            loggerFactory.CreateLogger(LogCategory).LogWarning(
-                ex,
-                "Failed to delete S3 objects for clip {ClipId} (video={VideoKey}, thumb={ThumbKey})",
-                id, videoKey, thumbnailKey);
-        }
+        await ClipBlobCleanup.TryDeleteAsync(
+            storage,
+            minio.Value,
+            clip,
+            loggerFactory.CreateLogger(LogCategory),
+            ct);
 
         return Results.NoContent();
     }

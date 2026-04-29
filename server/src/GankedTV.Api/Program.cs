@@ -9,6 +9,7 @@ using GankedTV.Api.Data;
 using GankedTV.Api.Endpoints;
 using GankedTV.Api.Middleware;
 using GankedTV.Api.Services.Clips;
+using GankedTV.Api.Services.Maintenance;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Tools;
 using GankedTV.Api.Validation;
@@ -75,6 +76,28 @@ builder.Services.AddSingleton<IAmazonS3>(sp =>
 
 builder.Services.AddSingleton<IObjectStorageService, MinioObjectStorageService>();
 builder.Services.AddHostedService<BucketBootstrapHostedService>();
+
+builder.Services.AddOptions<MaintenanceOptions>()
+    .Configure(opts =>
+    {
+        builder.Configuration.GetSection("Maintenance").Bind(opts);
+        var enabled = Environment.GetEnvironmentVariable("MAINTENANCE_ENABLED");
+        if (bool.TryParse(enabled, out var e)) opts.Enabled = e;
+        var interval = Environment.GetEnvironmentVariable("MAINTENANCE_SWEEP_INTERVAL_MINUTES");
+        if (int.TryParse(interval, out var im) && im > 0) opts.SweepInterval = TimeSpan.FromMinutes(im);
+        var clipHours = Environment.GetEnvironmentVariable("MAINTENANCE_CLIP_THRESHOLD_HOURS");
+        if (int.TryParse(clipHours, out var ch) && ch > 0) opts.ClipStaleThreshold = TimeSpan.FromHours(ch);
+        var rtDays = Environment.GetEnvironmentVariable("MAINTENANCE_REFRESH_TOKEN_RETENTION_DAYS");
+        if (int.TryParse(rtDays, out var rd) && rd > 0) opts.RefreshTokenRetention = TimeSpan.FromDays(rd);
+        var batch = Environment.GetEnvironmentVariable("MAINTENANCE_CLIP_BATCH_SIZE");
+        if (int.TryParse(batch, out var bs) && bs > 0) opts.ClipBatchSize = bs;
+    })
+    .Validate(o => o.SweepInterval > TimeSpan.Zero, "Maintenance.SweepInterval must be positive.")
+    .Validate(o => o.ClipStaleThreshold > TimeSpan.Zero, "Maintenance.ClipStaleThreshold must be positive.")
+    .Validate(o => o.RefreshTokenRetention > TimeSpan.Zero, "Maintenance.RefreshTokenRetention must be positive.")
+    .Validate(o => o.ClipBatchSize > 0, "Maintenance.ClipBatchSize must be positive.")
+    .ValidateOnStart();
+builder.Services.AddHostedService<MaintenanceHostedService>();
 
 builder.Services.AddOptions<ClipValidationOptions>()
     .Configure(opts =>

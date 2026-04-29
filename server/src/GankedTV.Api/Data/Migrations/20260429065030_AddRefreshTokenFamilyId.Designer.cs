@@ -3,6 +3,7 @@ using System;
 using GankedTV.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace GankedTV.Api.Data.Migrations
 {
     [DbContext(typeof(GankedTvDbContext))]
-    partial class GankedTvDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260429065030_AddRefreshTokenFamilyId")]
+    partial class AddRefreshTokenFamilyId
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -129,10 +132,6 @@ namespace GankedTV.Api.Data.Migrations
 
                     b.HasIndex("UserId")
                         .HasDatabaseName("idx_clips_user_id");
-
-                    b.HasIndex("Status", "CreatedAt")
-                        .HasDatabaseName("idx_clips_draft_created_at")
-                        .HasFilter("status = 'draft'");
 
                     b.ToTable("clips", (string)null);
                 });

@@ -72,6 +72,12 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             e.HasIndex(c => c.GameId).HasDatabaseName("idx_clips_game_id");
             e.HasIndex(c => c.CreatedAt).IsDescending().HasDatabaseName("idx_clips_created_at");
             e.HasIndex(c => c.Status).HasFilter("status = 'ready'").HasDatabaseName("idx_clips_status");
+            // Drives the orphan-clip sweep query (status = 'draft' AND created_at < cutoff).
+            // Composite key so EF distinguishes it from idx_clips_created_at; partial filter
+            // keeps the index tiny — only a transient minority of rows are ever 'draft'.
+            e.HasIndex(c => new { c.Status, c.CreatedAt })
+                .HasFilter("status = 'draft'")
+                .HasDatabaseName("idx_clips_draft_created_at");
         });
 
         modelBuilder.Entity<Like>(e =>
@@ -95,6 +101,7 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             e.HasKey(t => t.Id);
             e.Property(t => t.Id).HasDefaultValueSql("gen_random_uuid()");
             e.Property(t => t.TokenHash).IsRequired();
+            e.Property(t => t.FamilyId).IsRequired();
             e.Property(t => t.CreatedAt).HasDefaultValueSql("now()");
 
             e.HasOne(t => t.User)
@@ -104,6 +111,7 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
 
             e.HasIndex(t => t.UserId).HasDatabaseName("idx_refresh_tokens_user_id");
             e.HasIndex(t => t.TokenHash).IsUnique().HasDatabaseName("idx_refresh_tokens_token_hash");
+            e.HasIndex(t => t.FamilyId).HasDatabaseName("idx_refresh_tokens_family_id");
         });
     }
 }
