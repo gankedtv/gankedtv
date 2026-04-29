@@ -19,8 +19,22 @@ public class MaintenanceHostedServiceIntegrationTests
 
     public MaintenanceHostedServiceIntegrationTests(PostgresFixture fx) => _fx = fx;
 
-    private (MaintenanceHostedService svc, IServiceScope scope, IObjectStorageService storage, FakeClock clock)
-        Build(MaintenanceOptions options, DateTimeOffset now)
+    private sealed class Harness : IAsyncDisposable
+    {
+        public required MaintenanceHostedService Service { get; init; }
+        public required IServiceScope Scope { get; init; }
+        public required IObjectStorageService Storage { get; init; }
+        public required FakeClock Clock { get; init; }
+        public required ServiceProvider Provider { get; init; }
+
+        public async ValueTask DisposeAsync()
+        {
+            Scope.Dispose();
+            await Provider.DisposeAsync();
+        }
+    }
+
+    private Harness Build(MaintenanceOptions options, DateTimeOffset now)
     {
         var clock = new FakeClock(now);
         var storage = Substitute.For<IObjectStorageService>();
@@ -43,7 +57,14 @@ public class MaintenanceHostedServiceIntegrationTests
             clock,
             NullLogger<MaintenanceHostedService>.Instance);
 
-        return (svc, sp.CreateScope(), storage, clock);
+        return new Harness
+        {
+            Service = svc,
+            Scope = sp.CreateScope(),
+            Storage = storage,
+            Clock = clock,
+            Provider = sp,
+        };
     }
 
     private async Task<Guid> SeedUserAsync(string username)
@@ -102,20 +123,20 @@ public class MaintenanceHostedServiceIntegrationTests
             await db.SaveChangesAsync();
         }
 
-        var (svc, scope, storage, _) = Build(
+        await using var harness = Build(
             new MaintenanceOptions { ClipStaleThreshold = TimeSpan.FromHours(1) },
             now);
 
-        await svc.SweepOrphanedClipsAsync(scope, CancellationToken.None);
+        await harness.Service.SweepOrphanedClipsAsync(harness.Scope, CancellationToken.None);
 
         await using var verify = _fx.CreateContext();
         var remainingTitles = await verify.Clips.AsNoTracking().Select(c => c.Title).ToListAsync();
         remainingTitles.Should().BeEquivalentTo("fresh-draft", "old-ready");
 
-        await storage.Received(1).DeleteObjectAsync("clips", "user/stale.mp4", Arg.Any<CancellationToken>());
-        await storage.Received(1).DeleteObjectAsync("thumbnails", "user/stale.jpg", Arg.Any<CancellationToken>());
-        await storage.DidNotReceive().DeleteObjectAsync("clips", "user/fresh.mp4", Arg.Any<CancellationToken>());
-        await storage.DidNotReceive().DeleteObjectAsync("clips", "user/ready.mp4", Arg.Any<CancellationToken>());
+        await harness.Storage.Received(1).DeleteObjectAsync("clips", "user/stale.mp4", Arg.Any<CancellationToken>());
+        await harness.Storage.Received(1).DeleteObjectAsync("thumbnails", "user/stale.jpg", Arg.Any<CancellationToken>());
+        await harness.Storage.DidNotReceive().DeleteObjectAsync("clips", "user/fresh.mp4", Arg.Any<CancellationToken>());
+        await harness.Storage.DidNotReceive().DeleteObjectAsync("clips", "user/ready.mp4", Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -139,13 +160,13 @@ public class MaintenanceHostedServiceIntegrationTests
             await db.SaveChangesAsync();
         }
 
-        var (svc, scope, storage, _) = Build(
+        await using var harness = Build(
             new MaintenanceOptions { ClipStaleThreshold = TimeSpan.FromHours(1) },
             now);
 
-        await svc.SweepOrphanedClipsAsync(scope, CancellationToken.None);
+        await harness.Service.SweepOrphanedClipsAsync(harness.Scope, CancellationToken.None);
 
-        await storage.DidNotReceive().DeleteObjectAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await harness.Storage.DidNotReceive().DeleteObjectAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -170,16 +191,14 @@ public class MaintenanceHostedServiceIntegrationTests
             await db.SaveChangesAsync();
         }
 
-        // Storage substitute that throws on the clip-sweep path. Even though no draft clips
-        // exist (so the sweep returns early on count == 0), we make the DbContext throw by
-        // poisoning the IObjectStorageService resolution: register a factory that throws.
+        // Storage factory that throws so the clip sweep fails. Seed a stale draft clip so
+        // SweepOrphanedClipsAsync actually resolves IObjectStorageService and hits the throw.
         var services = new ServiceCollection();
         services.AddDbContext<GankedTvDbContext>(opts =>
             opts.UseNpgsql(_fx.ConnectionString).UseSnakeCaseNamingConvention());
         services.AddScoped<IObjectStorageService>(_ => throw new InvalidOperationException("storage poisoned"));
-        var sp = services.BuildServiceProvider();
+        await using var sp = services.BuildServiceProvider();
 
-        // Seed a stale draft clip so SweepOrphanedClipsAsync resolves IObjectStorageService and throws.
         await using (var db = _fx.CreateContext())
         {
             db.Clips.Add(new Clip
@@ -201,6 +220,7 @@ public class MaintenanceHostedServiceIntegrationTests
             SweepInterval = TimeSpan.FromHours(1),
             ClipStaleThreshold = TimeSpan.FromHours(1),
             RefreshTokenRetention = TimeSpan.FromDays(30),
+            ClipBatchSize = 1000,
         });
         var minioMonitor = Substitute.For<IOptionsMonitor<MinioOptions>>();
         minioMonitor.CurrentValue.Returns(new MinioOptions { ClipsBucket = "clips", ThumbnailsBucket = "thumbnails" });
@@ -213,11 +233,22 @@ public class MaintenanceHostedServiceIntegrationTests
             NullLogger<MaintenanceHostedService>.Instance);
 
         await svc.StartAsync(CancellationToken.None);
-        // Give the immediate tick a moment to execute both sweeps.
-        await Task.Delay(500);
+
+        // Poll deterministically until the token sweep has run (or the budget elapses).
+        // The sweep deletes hash-ancient — when it's gone, sweep 2 has executed.
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(10);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            await using var poll = _fx.CreateContext();
+            if (!await poll.RefreshTokens.AsNoTracking().AnyAsync(t => t.TokenHash == "hash-ancient"))
+            {
+                break;
+            }
+            await Task.Delay(50);
+        }
+
         await svc.StopAsync(CancellationToken.None);
 
-        // Token sweep ran despite clip sweep throwing on storage resolution.
         await using var verify = _fx.CreateContext();
         (await verify.RefreshTokens.AsNoTracking().AnyAsync(t => t.TokenHash == "hash-ancient"))
             .Should().BeFalse("the refresh-token sweep must run even when the clip sweep fails");
@@ -257,11 +288,11 @@ public class MaintenanceHostedServiceIntegrationTests
             await db.SaveChangesAsync();
         }
 
-        var (svc, scope, _, _) = Build(
+        await using var harness = Build(
             new MaintenanceOptions { RefreshTokenRetention = TimeSpan.FromDays(30) },
             now);
 
-        await svc.SweepExpiredRefreshTokensAsync(scope, CancellationToken.None);
+        await harness.Service.SweepExpiredRefreshTokensAsync(harness.Scope, CancellationToken.None);
 
         await using var verify = _fx.CreateContext();
         var hashes = await verify.RefreshTokens.AsNoTracking().Select(t => t.TokenHash).ToListAsync();

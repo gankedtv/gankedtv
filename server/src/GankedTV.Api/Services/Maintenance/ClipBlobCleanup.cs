@@ -7,8 +7,8 @@ public static class ClipBlobCleanup
 {
     // Best-effort delete of a clip's video and thumbnail objects. Each delete is wrapped
     // independently so a thumbnail failure cannot suppress the video delete (and vice versa).
-    // Callers must already have removed (or be about to remove) the DB row — orphaned blobs
-    // are cheap; orphaned rows pointing at missing blobs are not.
+    // Callers must remove the DB row first — orphaned blobs are cheap to garbage-collect later;
+    // orphaned rows pointing at missing blobs would surface as 404s on every read attempt.
     public static async Task TryDeleteAsync(
         IObjectStorageService storage,
         MinioOptions buckets,
@@ -19,6 +19,11 @@ public static class ClipBlobCleanup
         try
         {
             await storage.DeleteObjectAsync(buckets.ClipsBucket, clip.VideoKey, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Cooperative cancellation must propagate; only swallow real S3 errors.
+            throw;
         }
         catch (Exception ex)
         {
@@ -36,6 +41,10 @@ public static class ClipBlobCleanup
         try
         {
             await storage.DeleteObjectAsync(buckets.ThumbnailsBucket, clip.ThumbnailKey, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {

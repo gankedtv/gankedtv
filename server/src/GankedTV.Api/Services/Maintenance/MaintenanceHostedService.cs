@@ -122,10 +122,13 @@ public sealed class MaintenanceHostedService : BackgroundService
             orphans.RemoveAt(orphans.Count - 1);
         }
 
+        // Mark the DB row for deletion first, then attempt the blob cleanup — same row-first
+        // ordering as DELETE /clips/{id}. SaveChangesAsync below commits all queued removes
+        // in one transaction.
         foreach (var clip in orphans)
         {
-            await ClipBlobCleanup.TryDeleteAsync(storage, buckets, clip, _logger, ct);
             db.Clips.Remove(clip);
+            await ClipBlobCleanup.TryDeleteAsync(storage, buckets, clip, _logger, ct);
         }
 
         await db.SaveChangesAsync(ct);
