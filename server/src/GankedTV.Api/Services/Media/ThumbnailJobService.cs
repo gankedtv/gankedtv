@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using GankedTV.Api.Services.Clips;
 using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.Extensions.Options;
@@ -98,7 +99,8 @@ public sealed class ThumbnailJobService : IThumbnailJobService
         var result = await _ffmpeg.RunAsync(opts.FfprobePath, args, opts.ProcessTimeout, ct);
         if (result.ExitCode != 0)
         {
-            throw new InvalidOperationException($"ffprobe failed (exit {result.ExitCode}): {result.Stderr}");
+            throw new InvalidOperationException(
+                $"ffprobe failed (exit {result.ExitCode}): {RedactUrls(result.Stderr)}");
         }
 
         // ffprobe occasionally reports duration only on the format object (container-level)
@@ -158,7 +160,7 @@ public sealed class ThumbnailJobService : IThumbnailJobService
         if (result.ExitCode != 0 || !File.Exists(outputPath) || new FileInfo(outputPath).Length <= 0)
         {
             throw new InvalidOperationException(
-                $"ffmpeg frame extraction failed (exit {result.ExitCode}): {result.Stderr}");
+                $"ffmpeg frame extraction failed (exit {result.ExitCode}): {RedactUrls(result.Stderr)}");
         }
     }
 
@@ -176,6 +178,16 @@ public sealed class ThumbnailJobService : IThumbnailJobService
             _logger.LogWarning(ex, "Failed to delete temp thumbnail file {Path}", path);
         }
     }
+
+    // Strip http(s) URLs from ffmpeg/ffprobe stderr before embedding in exceptions.
+    // Stderr routinely echoes the input URL on failure ("Failed to open https://…?
+    // X-Amz-Signature=…"); the presigned URL signature is short-lived but should not
+    // ride along into log lines or upstream error envelopes in clear text.
+    private static readonly Regex UrlPattern = new(
+        @"https?://\S+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    internal static string RedactUrls(string input) =>
+        string.IsNullOrEmpty(input) ? input : UrlPattern.Replace(input, "[redacted-url]");
 
     private static int? TryGetInt(JsonElement el, string name) =>
         el.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : null;

@@ -117,6 +117,41 @@ public class ThumbnailJobServiceTests
     }
 
     [Fact]
+    public async Task ExtractAsync_FfprobeFailureMessage_RedactsPresignedUrl()
+    {
+        // Stderr that echoes the input URL must not leak the presigned signature into
+        // the exception message — that ride-along ends up in logs / upstream envelopes.
+        const string leakyStderr =
+            "[https @ 0x55] HTTP error 403 Forbidden\n"
+            + "https://minio.local/clips/abc.mp4?X-Amz-Signature=DEADBEEF&X-Amz-Date=20260430";
+        var (svc, ffmpeg, _) = Build();
+        ffmpeg.RunAsync(Arg.Is("ffprobe"), Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(new FfmpegResult(1, "", leakyStderr));
+
+        var act = async () => await svc.ExtractAsync(NewJob(), null, CancellationToken.None);
+        var thrown = await act.Should().ThrowAsync<InvalidOperationException>();
+        thrown.Which.Message.Should().Contain("[redacted-url]");
+        thrown.Which.Message.Should().NotContain("X-Amz-Signature");
+        thrown.Which.Message.Should().NotContain("minio.local");
+    }
+
+    [Fact]
+    public async Task ExtractAsync_FfmpegFailureMessage_RedactsPresignedUrl()
+    {
+        const string leakyStderr =
+            "Error opening input: https://minio.local/clips/x.mp4?X-Amz-Signature=CAFEBABE";
+        var (svc, ffmpeg, _) = Build();
+        StubFfprobe(ffmpeg, """{"streams":[{"width":1,"height":1,"duration":"5.0"}]}""");
+        ffmpeg.RunAsync(Arg.Is("ffmpeg"), Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(new FfmpegResult(1, "", leakyStderr));
+
+        var act = async () => await svc.ExtractAsync(NewJob(), null, CancellationToken.None);
+        var thrown = await act.Should().ThrowAsync<InvalidOperationException>();
+        thrown.Which.Message.Should().Contain("[redacted-url]");
+        thrown.Which.Message.Should().NotContain("X-Amz-Signature");
+    }
+
+    [Fact]
     public async Task ExtractAsync_FfprobeMalformedJson_Throws()
     {
         var (svc, ffmpeg, _) = Build();

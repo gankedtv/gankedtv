@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace GankedTV.Api.Services.Media;
 
@@ -11,6 +12,12 @@ public sealed class FfmpegRunner : IFfmpegRunner
     // can see in logs that the buffer was truncated.
     private const int MaxCapturedChars = 256 * 1024;
     private const string TruncationMarker = "...(truncated)";
+
+    // Strip http(s) URLs from stderr before embedding in a TimeoutException — ffmpeg
+    // echoes its input URL on failure, and presigned MinIO/S3 URLs carry signed query
+    // params that shouldn't ride along into log lines or upstream error envelopes.
+    private static readonly Regex UrlPattern = new(
+        @"https?://\S+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     public async Task<FfmpegResult> RunAsync(
         string executable,
@@ -63,7 +70,7 @@ public sealed class FfmpegRunner : IFfmpegRunner
             // Begin*ReadLine pipeline can race with disposal and lose data or throw.
             await WaitForExitWithoutTokenAsync(process);
             throw new TimeoutException(
-                $"Process '{executable}' exceeded {timeout.TotalSeconds:F0}s timeout. Stderr: {stderr}");
+                $"Process '{executable}' exceeded {timeout.TotalSeconds:F0}s timeout. Stderr: {UrlPattern.Replace(stderr.ToString(), "[redacted-url]")}");
         }
         catch (OperationCanceledException)
         {
