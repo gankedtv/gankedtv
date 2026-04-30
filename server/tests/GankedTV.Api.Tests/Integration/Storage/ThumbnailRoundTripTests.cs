@@ -49,7 +49,9 @@ public class ThumbnailRoundTripTests : IAsyncLifetime
         if (_factory is not null) await _factory.DisposeAsync();
     }
 
-    [Fact]
+    // 60s ceiling: the worker's own ProcessTimeout is 2 min, so a wedged ffmpeg would
+    // otherwise hang CI well past anything reasonable. The full happy path runs in ~1s.
+    [Fact(Timeout = 60_000)]
     public async Task Worker_ProcessesCompletedClip_ExtractsThumbnail_FlipsToReady()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"gankedtv-test-{Guid.NewGuid():N}");
@@ -137,7 +139,11 @@ public class ThumbnailRoundTripTests : IAsyncLifetime
         finally
         {
             try { Directory.Delete(tempDir, recursive: true); }
-            catch (IOException) { /* best effort — temp dir cleanup must not mask the real result */ }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Best effort — temp dir cleanup must not mask the real test result.
+                // Matches the catch shape in ThumbnailJobService.TryDelete.
+            }
         }
     }
 
@@ -147,9 +153,15 @@ public class ThumbnailRoundTripTests : IAsyncLifetime
     // and for the worker's seek-and-extract to land a frame.
     private static async Task GenerateTestMp4Async(string outputPath)
     {
+        // Honor FFMPEG_PATH so a contributor whose ffmpeg lives outside PATH (and who
+        // already sets FFMPEG_PATH for the API process per CLAUDE.md) doesn't have to
+        // duplicate the config just to run this test.
+        var ffmpegBin = Environment.GetEnvironmentVariable("FFMPEG_PATH");
+        if (string.IsNullOrWhiteSpace(ffmpegBin)) ffmpegBin = "ffmpeg";
+
         var psi = new ProcessStartInfo
         {
-            FileName = "ffmpeg",
+            FileName = ffmpegBin,
             RedirectStandardError = true,
             RedirectStandardOutput = true,
             UseShellExecute = false,
