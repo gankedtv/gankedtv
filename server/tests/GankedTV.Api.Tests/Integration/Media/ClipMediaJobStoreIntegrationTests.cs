@@ -420,7 +420,11 @@ public class ClipMediaJobStoreIntegrationTests
 
         await using var verify = NewContext();
         var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
-        clip.ProcessingStartedAt.Should().Be(bLeaseStart);
+        // Postgres `timestamp with time zone` stores microseconds; .NET DateTimeOffset
+        // is 100ns ticks. Use a microsecond-tolerance compare so the assertion isn't
+        // sensitive to the truncation that happens on roundtrip.
+        clip.ProcessingStartedAt.Should().NotBeNull();
+        clip.ProcessingStartedAt!.Value.Should().BeCloseTo(bLeaseStart, TimeSpan.FromMicroseconds(1));
         clip.ProcessingAttempts.Should().Be(3);
     }
 }
