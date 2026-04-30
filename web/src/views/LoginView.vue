@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { watchEffect } from 'vue'
+import { ref, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { oauthStartUrl } from '@/api/auth'
+import { api } from '@/api/client'
 import IconDiscord from '@/components/icons/IconDiscord.vue'
 import IconGoogle from '@/components/icons/IconGoogle.vue'
 
@@ -25,6 +26,34 @@ watchEffect(() => {
     router.replace(returnTo || '/')
   }
 })
+
+// Dev-only sign-in: hits the /dev/token endpoint (mounted only when the API is in
+// Development mode) and drops the resulting JWT into the auth store. This is the
+// stand-in until manual email/password registration lands (issue #62).
+const isDev = import.meta.env.DEV
+const devLoading = ref(false)
+const devError = ref<string | null>(null)
+
+async function devSignIn(username = 'seeduser') {
+  devLoading.value = true
+  devError.value = null
+  try {
+    const res = await api<{ token: string; refresh: string }>('/dev/token', {
+      method: 'POST',
+      body: { username },
+    })
+    auth.setSession(res.token, res.refresh)
+    await auth.fetchMe()
+    router.replace(returnTo || '/')
+  } catch (err) {
+    devError.value =
+      err instanceof Error
+        ? err.message
+        : 'Dev sign-in failed. Is the API running in Development mode?'
+  } finally {
+    devLoading.value = false
+  }
+}
 </script>
 
 <template>
@@ -80,6 +109,24 @@ watchEffect(() => {
           <IconGoogle :size="20" class="shrink-0" />
           Continue with Google
         </a>
+      </div>
+
+      <!-- Dev sign-in (local only — never bundled in production builds) -->
+      <div v-if="isDev" class="mt-5 border-t border-border pt-5">
+        <p class="m-0 mb-2 font-mono text-[10px] uppercase tracking-widest text-text-muted">
+          Dev mode
+        </p>
+        <button
+          type="button"
+          :disabled="devLoading"
+          class="flex w-full items-center justify-center gap-2 rounded-md border border-border-strong bg-surface-overlay px-5 py-2.5 font-heading text-[13px] font-bold uppercase tracking-[0.06em] text-text-primary transition-[background-color,border-color] duration-150 hover:border-border-hover hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-50"
+          @click="devSignIn()"
+        >
+          {{ devLoading ? 'Signing in…' : 'Sign in as seeduser' }}
+        </button>
+        <p v-if="devError" class="m-0 mt-2 text-center font-mono text-[10px] text-error">
+          {{ devError }}
+        </p>
       </div>
 
       <!-- Footer -->

@@ -19,8 +19,11 @@ public static class MeEndpoints
 
     public static IEndpointRouteBuilder MapMeEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/me", GetMe).RequireAuthorization();
-        app.MapPatch("/me", PatchMe).RequireAuthorization().WithValidation<UpdateMeRequest>();
+        // Mounted under /auth so the path doesn't match common tracker-blocker lists
+        // (uBlock / Brave Shields / Arc / corporate DLP appliances all flag bare "/me"
+        // as analytics) and so it sits in the same namespace as /auth/login etc.
+        app.MapGet("/auth/me", GetMe).RequireAuthorization();
+        app.MapPatch("/auth/me", PatchMe).RequireAuthorization().WithValidation<UpdateMeRequest>();
         return app;
     }
 

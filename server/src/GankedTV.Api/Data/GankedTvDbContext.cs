@@ -61,6 +61,7 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             e.Property(c => c.Visibility).HasMaxLength(20).HasDefaultValue("public");
             e.Property(c => c.ViewCount).HasDefaultValue(0);
             e.Property(c => c.LikeCount).HasDefaultValue(0);
+            e.Property(c => c.ProcessingAttempts).HasDefaultValue(0);
             e.Property(c => c.CreatedAt).HasDefaultValueSql("now()");
             e.Property(c => c.UpdatedAt).HasDefaultValueSql("now()");
 
@@ -84,6 +85,12 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             e.HasIndex(c => new { c.Status, c.CreatedAt })
                 .HasFilter("status = 'draft'")
                 .HasDatabaseName("idx_clips_draft_created_at");
+            // Drives the media-job worker's claim query. UpdatedAt orders rows so the
+            // oldest stuck row is picked first; the partial filter keeps the index
+            // size bounded by the in-flight queue, not the whole clips table.
+            e.HasIndex(c => new { c.Status, c.UpdatedAt })
+                .HasFilter("status = 'processing'")
+                .HasDatabaseName("idx_clips_processing_updated_at");
         });
 
         modelBuilder.Entity<Like>(e =>

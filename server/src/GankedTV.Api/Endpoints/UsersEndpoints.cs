@@ -3,7 +3,9 @@ using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Contracts.Users;
 using GankedTV.Api.Data;
 using GankedTV.Api.Problems;
+using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace GankedTV.Api.Endpoints;
 
@@ -22,6 +24,8 @@ public static class UsersEndpoints
         string username,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
+        IObjectStorageService storage,
+        IOptions<MinioOptions> minio,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(username))
@@ -51,7 +55,12 @@ public static class UsersEndpoints
         var likedIds = await ClipsReadEndpoints.LoadLikedClipIdsAsync(
             db, principal, clips.Select(c => c.Id), ct);
 
-        var clipDtos = clips.Select(c => c.ToFeedItem(likedIds.Contains(c.Id))).ToList();
+        var thumbnailsBucket = minio.Value.ThumbnailsBucket;
+        var clipDtos = clips
+            .Select(c => c.ToFeedItem(
+                ClipsReadEndpoints.BuildThumbnailUrl(storage, thumbnailsBucket, c.ThumbnailKey),
+                likedIds.Contains(c.Id)))
+            .ToList();
 
         return Results.Ok(user.ToProfile(clipDtos));
     }

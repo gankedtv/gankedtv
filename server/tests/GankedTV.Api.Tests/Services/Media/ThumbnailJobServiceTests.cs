@@ -1,0 +1,284 @@
+using FluentAssertions;
+using GankedTV.Api.Services.Media;
+using GankedTV.Api.Services.ObjectStorage;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
+
+namespace GankedTV.Api.Tests.Services.Media;
+
+public class ThumbnailJobServiceTests
+{
+    private static readonly MediaJobOptions DefaultJobOptions = new()
+    {
+        FfmpegPath = "ffmpeg",
+        FfprobePath = "ffprobe",
+        ProcessTimeout = TimeSpan.FromSeconds(30),
+        ThumbnailFrameOffset = TimeSpan.FromSeconds(1),
+    };
+
+    private static readonly MinioOptions DefaultMinio = new()
+    {
+        ClipsBucket = "clips",
+        ThumbnailsBucket = "thumbnails",
+    };
+
+    private static (ThumbnailJobService svc, IFfmpegRunner ffmpeg, IObjectStorageService storage)
+        Build(MediaJobOptions? options = null)
+    {
+        var storage = Substitute.For<IObjectStorageService>();
+        var ffmpeg = Substitute.For<IFfmpegRunner>();
+        var jobOpts = Substitute.For<IOptionsMonitor<MediaJobOptions>>();
+        jobOpts.CurrentValue.Returns(options ?? DefaultJobOptions);
+        var minioOpts = Substitute.For<IOptionsMonitor<MinioOptions>>();
+        minioOpts.CurrentValue.Returns(DefaultMinio);
+        storage.GetPresignedGetUrl(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan?>())
+            .Returns("http://signed/video.mp4");
+
+        var svc = new ThumbnailJobService(storage, ffmpeg, jobOpts, minioOpts, NullLogger<ThumbnailJobService>.Instance);
+        return (svc, ffmpeg, storage);
+    }
+
+    private static void StubFfprobe(IFfmpegRunner ffmpeg, string json) =>
+        ffmpeg.RunAsync(Arg.Is("ffprobe"), Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(new FfmpegResult(0, json, ""));
+
+    private static void StubFfmpegFrame(IFfmpegRunner ffmpeg, byte[] jpegBytes)
+    {
+        ffmpeg.RunAsync(Arg.Is("ffmpeg"), Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                // Simulate ffmpeg writing the frame to disk: copy our canned bytes to the
+                // output path that ThumbnailJobService passed as the last positional arg.
+                var args = call.Arg<IReadOnlyList<string>>();
+                var outputPath = args[^1];
+                File.WriteAllBytes(outputPath, jpegBytes);
+                return new FfmpegResult(0, "", "");
+            });
+    }
+
+    [Fact]
+    public async Task ExtractAsync_HappyPath_UploadsToThumbnailsBucketAndReturnsMetadata()
+    {
+        var (svc, ffmpeg, storage) = Build();
+        StubFfprobe(ffmpeg, """
+        {
+          "streams": [{ "width": 1920, "height": 1080, "duration": "12.345" }],
+          "format": { "duration": "12.345" }
+        }
+        """);
+        StubFfmpegFrame(ffmpeg, new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3, 4 });
+
+        var userId = Guid.NewGuid();
+        var clipId = Guid.NewGuid();
+        var job = new ClaimedMediaJob(clipId, userId, GameId: 2, VideoKey: $"{userId}/valorant/{clipId}.mp4", AttemptNumber: 1);
+
+        var result = await svc.ExtractAsync(job, "valorant", CancellationToken.None);
+
+        result.ThumbnailKey.Should().Be($"{userId}/valorant/{clipId}.jpg");
+        result.Width.Should().Be(1920);
+        result.Height.Should().Be(1080);
+        result.DurationSecs.Should().Be(12);
+
+        await storage.Received(1).PutObjectAsync(
+            "thumbnails",
+            $"{userId}/valorant/{clipId}.jpg",
+            Arg.Any<Stream>(),
+            "image/jpeg",
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ExtractAsync_NoGameSlug_KeyOmitsSlugSegment()
+    {
+        var (svc, ffmpeg, storage) = Build();
+        StubFfprobe(ffmpeg, """{"streams":[{"width":640,"height":360,"duration":"5.0"}]}""");
+        StubFfmpegFrame(ffmpeg, new byte[] { 0xFF, 0xD8, 0xFF });
+
+        var userId = Guid.NewGuid();
+        var clipId = Guid.NewGuid();
+        var job = new ClaimedMediaJob(clipId, userId, GameId: null, VideoKey: $"{userId}/{clipId}.mp4", AttemptNumber: 1);
+
+        var result = await svc.ExtractAsync(job, gameSlug: null, CancellationToken.None);
+
+        result.ThumbnailKey.Should().Be($"{userId}/{clipId}.jpg");
+    }
+
+    [Fact]
+    public async Task ExtractAsync_FfprobeNonZeroExit_Throws()
+    {
+        var (svc, ffmpeg, _) = Build();
+        ffmpeg.RunAsync(Arg.Is("ffprobe"), Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(new FfmpegResult(1, "", "no such input"));
+
+        var act = async () => await svc.ExtractAsync(NewJob(), null, CancellationToken.None);
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*ffprobe failed*");
+    }
+
+    [Fact]
+    public async Task ExtractAsync_FfprobeFailureMessage_RedactsPresignedUrl()
+    {
+        // Stderr that echoes the input URL must not leak the presigned signature into
+        // the exception message — that ride-along ends up in logs / upstream envelopes.
+        const string leakyStderr =
+            "[https @ 0x55] HTTP error 403 Forbidden\n"
+            + "https://minio.local/clips/abc.mp4?X-Amz-Signature=DEADBEEF&X-Amz-Date=20260430";
+        var (svc, ffmpeg, _) = Build();
+        ffmpeg.RunAsync(Arg.Is("ffprobe"), Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(new FfmpegResult(1, "", leakyStderr));
+
+        var act = async () => await svc.ExtractAsync(NewJob(), null, CancellationToken.None);
+        var thrown = await act.Should().ThrowAsync<InvalidOperationException>();
+        thrown.Which.Message.Should().Contain("[redacted-url]");
+        thrown.Which.Message.Should().NotContain("X-Amz-Signature");
+        thrown.Which.Message.Should().NotContain("minio.local");
+    }
+
+    [Fact]
+    public async Task ExtractAsync_FfmpegFailureMessage_RedactsPresignedUrl()
+    {
+        const string leakyStderr =
+            "Error opening input: https://minio.local/clips/x.mp4?X-Amz-Signature=CAFEBABE";
+        var (svc, ffmpeg, _) = Build();
+        StubFfprobe(ffmpeg, """{"streams":[{"width":1,"height":1,"duration":"5.0"}]}""");
+        ffmpeg.RunAsync(Arg.Is("ffmpeg"), Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(new FfmpegResult(1, "", leakyStderr));
+
+        var act = async () => await svc.ExtractAsync(NewJob(), null, CancellationToken.None);
+        var thrown = await act.Should().ThrowAsync<InvalidOperationException>();
+        thrown.Which.Message.Should().Contain("[redacted-url]");
+        thrown.Which.Message.Should().NotContain("X-Amz-Signature");
+    }
+
+    [Fact]
+    public async Task ExtractAsync_FfprobeMalformedJson_Throws()
+    {
+        var (svc, ffmpeg, _) = Build();
+        StubFfprobe(ffmpeg, "{ this is not json");
+
+        var act = async () => await svc.ExtractAsync(NewJob(), null, CancellationToken.None);
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*malformed JSON*");
+    }
+
+    [Fact]
+    public async Task ExtractAsync_FfmpegNonZeroExit_Throws()
+    {
+        var (svc, ffmpeg, _) = Build();
+        StubFfprobe(ffmpeg, """{"streams":[{"width":1,"height":1,"duration":"1.0"}]}""");
+        ffmpeg.RunAsync(Arg.Is("ffmpeg"), Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(new FfmpegResult(1, "", "decode error"));
+
+        var act = async () => await svc.ExtractAsync(NewJob(), null, CancellationToken.None);
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*frame extraction failed*");
+    }
+
+    [Fact]
+    public async Task ExtractAsync_FfmpegProducesEmptyFile_Throws()
+    {
+        var (svc, ffmpeg, _) = Build();
+        StubFfprobe(ffmpeg, """{"streams":[{"width":1,"height":1,"duration":"1.0"}]}""");
+        StubFfmpegFrame(ffmpeg, Array.Empty<byte>());
+
+        var act = async () => await svc.ExtractAsync(NewJob(), null, CancellationToken.None);
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*frame extraction failed*");
+    }
+
+    [Fact]
+    public async Task ExtractAsync_DurationShorterThanOffset_SeeksToZero()
+    {
+        // For a 0.5s clip we should hit -ss 0, not -ss 1 (which would be past EOF).
+        var (svc, ffmpeg, _) = Build();
+        StubFfprobe(ffmpeg, """{"streams":[{"width":1,"height":1,"duration":"0.5"}]}""");
+        IReadOnlyList<string>? capturedArgs = null;
+        ffmpeg.RunAsync(Arg.Is("ffmpeg"), Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                capturedArgs = call.Arg<IReadOnlyList<string>>();
+                File.WriteAllBytes(capturedArgs[^1], new byte[] { 0xFF });
+                return new FfmpegResult(0, "", "");
+            });
+
+        await svc.ExtractAsync(NewJob(), null, CancellationToken.None);
+
+        capturedArgs.Should().NotBeNull();
+        var ssIdx = capturedArgs!.ToList().IndexOf("-ss");
+        ssIdx.Should().BeGreaterThanOrEqualTo(0);
+        capturedArgs[ssIdx + 1].Should().Be("0.000");
+    }
+
+    [Fact]
+    public async Task ExtractAsync_DurationEqualsOffset_SeeksToZero()
+    {
+        // Boundary case: duration == ThumbnailFrameOffset. The <= comparison should
+        // prefer the safe -ss 0 path so we don't seek to exactly the EOF frame, which
+        // some demuxers handle inconsistently.
+        var (svc, ffmpeg, _) = Build();
+        StubFfprobe(ffmpeg, """{"streams":[{"width":1,"height":1,"duration":"1.0"}]}""");
+        IReadOnlyList<string>? capturedArgs = null;
+        ffmpeg.RunAsync(Arg.Is("ffmpeg"), Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                capturedArgs = call.Arg<IReadOnlyList<string>>();
+                File.WriteAllBytes(capturedArgs[^1], new byte[] { 0xFF });
+                return new FfmpegResult(0, "", "");
+            });
+
+        await svc.ExtractAsync(NewJob(), null, CancellationToken.None);
+
+        capturedArgs.Should().NotBeNull();
+        var ssIdx = capturedArgs!.ToList().IndexOf("-ss");
+        ssIdx.Should().BeGreaterThanOrEqualTo(0);
+        capturedArgs[ssIdx + 1].Should().Be("0.000");
+    }
+
+    [Fact]
+    public async Task ExtractAsync_DurationFromFormatBlock_IsUsed()
+    {
+        // Some containers report duration only at the format level — exercise that fallback.
+        var (svc, ffmpeg, _) = Build();
+        StubFfprobe(ffmpeg, """
+        {
+          "streams": [{ "width": 100, "height": 50 }],
+          "format": { "duration": "8.7" }
+        }
+        """);
+        StubFfmpegFrame(ffmpeg, new byte[] { 1, 2, 3 });
+
+        var result = await svc.ExtractAsync(NewJob(), null, CancellationToken.None);
+
+        result.DurationSecs.Should().Be(9);
+    }
+
+    [Fact]
+    public async Task ExtractAsync_MissingDimensions_LeavesNulls()
+    {
+        var (svc, ffmpeg, _) = Build();
+        StubFfprobe(ffmpeg, """{"streams":[]}""");
+        StubFfmpegFrame(ffmpeg, new byte[] { 1 });
+
+        var result = await svc.ExtractAsync(NewJob(), null, CancellationToken.None);
+
+        result.Width.Should().BeNull();
+        result.Height.Should().BeNull();
+        result.DurationSecs.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ExtractAsync_DimensionsExceedShortMax_AreClampedToShortMax()
+    {
+        // Dimensions persist as smallint on the clips table; defend the cast even though
+        // 8K videos at 7680x4320 are still well inside int16. Synthetic input forces the path.
+        var (svc, ffmpeg, _) = Build();
+        StubFfprobe(ffmpeg, """{"streams":[{"width":99999,"height":99999,"duration":"1.0"}]}""");
+        StubFfmpegFrame(ffmpeg, new byte[] { 1 });
+
+        var result = await svc.ExtractAsync(NewJob(), null, CancellationToken.None);
+
+        result.Width.Should().Be(short.MaxValue);
+        result.Height.Should().Be(short.MaxValue);
+    }
+
+    private static ClaimedMediaJob NewJob() =>
+        new(Guid.NewGuid(), Guid.NewGuid(), GameId: null, VideoKey: "k.mp4", AttemptNumber: 1);
+}

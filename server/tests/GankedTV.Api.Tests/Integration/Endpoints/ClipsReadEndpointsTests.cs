@@ -401,11 +401,15 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Feed_FeedItemShape_ContainsAuthorAndThumbnailKey()
+    public async Task Feed_FeedItemShape_ContainsAuthorAndThumbnailUrl()
     {
         await _fx.ResetAsync();
         var (userId, _) = await SeedUserAndIssueTokenAsync("shapely");
         var clipId = await SeedClipAsync(userId, DateTimeOffset.UtcNow, title: "a clip");
+
+        const string presignedThumb = "https://minio.local/thumbs/presigned?sig=t";
+        _storage.GetPresignedGetUrl(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan?>())
+            .Returns(presignedThumb);
 
         using var client = _factory!.CreateClient();
         var resp = await client.GetAsync("/clips/feed");
@@ -414,12 +418,17 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
 
         item.GetProperty("id").GetGuid().Should().Be(clipId);
         item.GetProperty("title").GetString().Should().Be("a clip");
-        item.GetProperty("thumbnailKey").GetString().Should().Be($"thumbs/{clipId}.jpg");
-        item.TryGetProperty("videoUrl", out _).Should().BeFalse("feed items intentionally omit presigned URLs");
+        // The feed exposes a presigned thumbnail URL, never the raw bucket key.
+        item.GetProperty("thumbnailUrl").GetString().Should().Be(presignedThumb);
+        item.TryGetProperty("thumbnailKey", out _).Should().BeFalse(
+            "raw bucket keys are not part of the public contract");
+        item.TryGetProperty("videoUrl", out _).Should().BeFalse(
+            "feed items intentionally omit video presigned URLs");
         var author = item.GetProperty("author");
         author.GetProperty("id").GetGuid().Should().Be(userId);
         author.GetProperty("username").GetString().Should().Be("shapely");
     }
+
 
     [Fact]
     public async Task Feed_GameProjection_PopulatedWhenSet_NullWhenNotSet()

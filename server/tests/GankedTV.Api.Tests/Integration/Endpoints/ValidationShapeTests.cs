@@ -47,7 +47,7 @@ public class ValidationShapeTests : IAsyncLifetime
         var (_, token) = await SeedUserAndIssueTokenAsync("alice");
         using var client = ClientWithBearer(token);
 
-        var resp = await client.PatchAsJsonAsync("/me", new { bio = new string('x', 501) });
+        var resp = await client.PatchAsJsonAsync("/auth/me", new { bio = new string('x', 501) });
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         resp.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
@@ -64,7 +64,7 @@ public class ValidationShapeTests : IAsyncLifetime
         var (_, token) = await SeedUserAndIssueTokenAsync("bob");
         using var client = ClientWithBearer(token);
 
-        var resp = await client.PatchAsJsonAsync<object?>("/me", null);
+        var resp = await client.PatchAsJsonAsync<object?>("/auth/me", null);
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
@@ -81,7 +81,7 @@ public class ValidationShapeTests : IAsyncLifetime
         await _fx.ResetAsync();
         using var client = _factory!.CreateClient();
 
-        var resp = await client.PatchAsJsonAsync("/me", new { bio = "ok" });
+        var resp = await client.PatchAsJsonAsync("/auth/me", new { bio = "ok" });
 
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         resp.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
@@ -115,7 +115,7 @@ public class ValidationShapeTests : IAsyncLifetime
         var (_, token) = await SeedUserAndIssueTokenAsync("carol");
         using var client = ClientWithBearer(token);
 
-        var resp = await client.PatchAsJsonAsync("/me", new { username = "   " });
+        var resp = await client.PatchAsJsonAsync("/auth/me", new { username = "   " });
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();

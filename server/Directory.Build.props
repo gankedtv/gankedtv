@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <!--
+      .NET 10 SDK 10.0.104 ships without prune-package data for several runtime
+      framework references (Microsoft.AspNetCore.App), surfacing as NETSDK1226 on
+      `dotnet restore` / `dotnet ef`. Until the SDK ships matching prune metadata,
+      opt out of the check here so the dev/CI workflow doesn't need a per-command
+      MSBuild flag. Drop this once the SDK catches up.
+    -->
+    <AllowMissingPrunePackageData>true</AllowMissingPrunePackageData>
+  </PropertyGroup>
+</Project>

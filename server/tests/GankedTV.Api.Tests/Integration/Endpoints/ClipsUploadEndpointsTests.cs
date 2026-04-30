@@ -561,7 +561,10 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
 
         await using var db2 = _fx.CreateContext();
         var clip = await db2.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
-        clip.Status.Should().Be("ready");
+        // /complete now transitions Draft -> Processing; the media-job worker flips it to
+        // Ready (or Failed) after extracting the thumbnail. Status=='ready' is asserted by
+        // the worker-side tests in Services.Media.
+        clip.Status.Should().Be("processing");
         clip.FileSizeBytes.Should().Be(98765);
         clip.UpdatedAt.Should().BeAfter(originalUpdated);
     }

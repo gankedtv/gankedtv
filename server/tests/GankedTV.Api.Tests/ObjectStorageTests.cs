@@ -275,6 +275,25 @@ public class ObjectStorageTests
     }
 
     [Fact]
+    public async Task PutObjectAsync_PassesBucketKeyAndContentTypeToS3()
+    {
+        var s3 = Substitute.For<IAmazonS3>();
+        PutObjectRequest? captured = null;
+        s3.PutObjectAsync(Arg.Do<PutObjectRequest>(r => captured = r), Arg.Any<CancellationToken>())
+            .Returns(new PutObjectResponse());
+
+        using var stream = new MemoryStream(new byte[] { 1, 2, 3, 4 });
+        await BuildService(s3).PutObjectAsync("thumbnails", "u/c.jpg", stream, "image/jpeg");
+
+        captured.Should().NotBeNull();
+        captured!.BucketName.Should().Be("thumbnails");
+        captured.Key.Should().Be("u/c.jpg");
+        captured.ContentType.Should().Be("image/jpeg");
+        captured.AutoCloseStream.Should().BeFalse();
+        captured.InputStream.Should().BeSameAs(stream);
+    }
+
+    [Fact]
     public async Task GetObjectMetadataAsync_PropagatesNonNotFoundErrors()
     {
         var s3 = Substitute.For<IAmazonS3>();

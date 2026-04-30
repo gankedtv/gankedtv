@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Data;
+using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Problems;
 using GankedTV.Api.Services.Maintenance;
 using GankedTV.Api.Services.ObjectStorage;
@@ -67,6 +68,15 @@ public static class ClipsMutateEndpoints
             return ProblemResults.Forbidden("forbidden");
         }
 
+        // Only Ready clips are PATCH-able. Non-Ready (draft/processing/failed) rows have
+        // no thumbnail and ClipDetailResponse's contract requires a non-null ThumbnailUrl;
+        // also matches GET /clips/{id} which already filters to Ready, so the response
+        // shape is consistent across read/edit.
+        if (clip.Status != ClipStatuses.Ready)
+        {
+            return ProblemResults.Conflict("invalid_state");
+        }
+
         var limits = validation.Value;
 
         if (req.Title is not null)
@@ -115,10 +125,12 @@ public static class ClipsMutateEndpoints
 
         var expiresAt = DateTimeOffset.UtcNow.Add(VideoUrlLifetime);
         var videoUrl = storage.GetPresignedGetUrl(minio.Value.ClipsBucket, clip.VideoKey, VideoUrlLifetime);
+        var thumbnailUrl = ClipsReadEndpoints.BuildThumbnailUrl(
+            storage, minio.Value.ThumbnailsBucket, clip.ThumbnailKey);
         var likedByMe = await db.Likes.AsNoTracking()
             .AnyAsync(l => l.ClipId == clip.Id && l.UserId == userId, ct);
 
-        return Results.Ok(clip.ToDetail(videoUrl, expiresAt, likedByMe));
+        return Results.Ok(clip.ToDetail(videoUrl, expiresAt, thumbnailUrl, likedByMe));
     }
 
     private static async Task<IResult> DeleteClip(

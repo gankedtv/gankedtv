@@ -67,6 +67,11 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
         return client;
     }
 
+    // Sentinel so the helper can tell "thumbnailKey not specified — synthesize a
+    // sensible default" apart from "explicitly passed null" (used by the cleanup
+    // test that exercises the no-thumbnail defensive branch).
+    private const string DefaultThumbnailKey = "<<default>>";
+
     private async Task<Guid> SeedClipAsync(
         Guid userId,
         string title = "seed",
@@ -74,11 +79,17 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
         string visibility = "public",
         string status = "ready",
         int? gameId = null,
-        string? thumbnailKey = null,
+        string? thumbnailKey = DefaultThumbnailKey,
         DateTimeOffset? createdAt = null)
     {
         var id = Guid.NewGuid();
         var seeded = createdAt ?? DateTimeOffset.UtcNow;
+        // Ready clips always have a thumbnail key (the worker is the only path to
+        // Ready and never marks Ready without one). Synthesize a placeholder when the
+        // caller didn't specify so the strict ToDetail mapping doesn't blow up.
+        var resolvedThumbKey = thumbnailKey == DefaultThumbnailKey
+            ? (status == ClipStatuses.Ready ? $"thumbs/{id}.jpg" : null)
+            : thumbnailKey;
         await using var db = _fx.CreateContext();
         db.Clips.Add(new Clip
         {
@@ -88,7 +99,7 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
             Description = description,
             GameId = gameId,
             VideoKey = $"clips/{userId}/{id}.mp4",
-            ThumbnailKey = thumbnailKey,
+            ThumbnailKey = resolvedThumbKey,
             Status = status,
             Visibility = visibility,
             CreatedAt = seeded,
@@ -152,6 +163,27 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
         var resp = await client.PatchAsJsonAsync($"/clips/{clipId}", new { visibility = "bogus" });
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Theory]
+    [InlineData("draft")]
+    [InlineData("processing")]
+    [InlineData("failed")]
+    public async Task Patch_NonReadyClip_Returns409InvalidState(string status)
+    {
+        // PATCH only operates on Ready clips — matches GET /clips/{id}'s Ready filter so
+        // the response shape (ClipDetailResponse with non-null ThumbnailUrl) stays valid.
+        await _fx.ResetAsync();
+        var (ownerId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(ownerId, status: status);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PatchAsJsonAsync($"/clips/{clipId}", new { title = "edited" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        // Pin the problem code so a future regression that returns 409 for a different
+        // reason (e.g. the username-conflict path leaking through) doesn't pass silently.
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("invalid_state");
     }
 
     [Fact]

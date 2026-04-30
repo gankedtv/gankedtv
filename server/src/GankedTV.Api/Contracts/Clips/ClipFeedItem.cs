@@ -6,7 +6,10 @@ public sealed record ClipFeedItem(
     Guid Id,
     string Title,
     string? Description,
-    string? ThumbnailKey,
+    // Presigned GET URL for the thumbnail JPEG. Always set on Ready clips — the worker
+    // is the only path to Ready and never marks a clip Ready without a thumbnail key.
+    // Clients use this directly as an <img src>; the bucket key is not exposed.
+    string ThumbnailUrl,
     short? DurationSecs,
     int ViewCount,
     int LikeCount,

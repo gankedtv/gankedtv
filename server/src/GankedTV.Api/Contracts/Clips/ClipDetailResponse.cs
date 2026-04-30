@@ -8,7 +8,10 @@ public sealed record ClipDetailResponse(
     string? Description,
     string VideoUrl,
     DateTimeOffset VideoUrlExpiresAt,
-    string? ThumbnailKey,
+    // Presigned GET URL for the thumbnail JPEG (Plyr poster). Always set on Ready
+    // clips — the worker is the only path to Ready and never marks a clip Ready
+    // without a thumbnail key.
+    string ThumbnailUrl,
     short? DurationSecs,
     short? Width,
     short? Height,

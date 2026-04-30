@@ -22,6 +22,20 @@ make clean                    # Stop and remove volumes
 make logs                     # View infrastructure logs
 ```
 
+### Host requirements
+
+The dev workflow runs `dotnet watch` on the host, which means the API process — including the thumbnail-generation worker (issue #57) — runs on your host directly. Install these locally:
+
+- **`dotnet`** (SDK matching `<TargetFramework>` in [server/src/GankedTV.Api/GankedTV.Api.csproj](server/src/GankedTV.Api/GankedTV.Api.csproj)).
+- **`ffmpeg`** (provides `ffmpeg` and `ffprobe`) — required for the thumbnail worker. Without it, `POST /clips/{id}/complete` enqueues the clip but the worker fails on every attempt and the clip eventually lands in `status='failed'`.
+  - Arch/CachyOS: `sudo pacman -S ffmpeg`
+  - Debian/Ubuntu: `sudo apt install ffmpeg`
+  - macOS: `brew install ffmpeg`
+  - Override the binary location with `FFMPEG_PATH` / `FFPROBE_PATH` env vars when not on `$PATH`.
+- **`bun`** for the web app.
+
+[server/Dockerfile.api](server/Dockerfile.api) ships an API image with ffmpeg pre-installed — it's there for production / CI parity builds, not used by the dev compose stack.
+
 ### Git hooks
 ```bash
 make hooks                    # One-time: install pre-push hook via core.hooksPath
@@ -33,7 +47,7 @@ Hook lives at `.githooks/pre-push` and mirrors CI, scoped to changed top-level d
 dotnet build server           # Build
 dotnet test server            # Run all tests
 dotnet test server --filter "FullyQualifiedName~TestClassName"  # Run specific tests
-dotnet watch --project server/src/GankedTV.Api  # Run with hot reload
+make server  # Run with hot reload
 dotnet test server /p:CollectCoverage=true /p:Threshold=85%2C85  # Run with coverage + threshold gate (%2C is an escaped comma)
 ```
 

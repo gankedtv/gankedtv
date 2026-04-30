@@ -133,206 +133,211 @@ const TABS: { key: Tab; label: string }[] = [
 </script>
 
 <template>
-  <main v-if="loading">
-    <StatusPanel kind="loading" message="Loading…" />
-  </main>
+  <!-- Single root so the route-level <Transition mode="out-in"> can animate the
+       leave cleanly. v-if chains with no else fall through to a comment node, which
+       Vue's transition system can't drive — wrap everything in one element. -->
+  <div>
+    <main v-if="loading">
+      <StatusPanel kind="loading" message="Loading…" />
+    </main>
 
-  <main v-else-if="errored">
-    <StatusPanel kind="error" message="Couldn't load this profile.">
-      <button
-        class="cursor-pointer rounded-sm border border-border bg-surface-raised px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
-        @click="username && loadProfile(username)"
-      >
-        Retry
-      </button>
-    </StatusPanel>
-  </main>
-
-  <main v-else-if="profile" class="relative">
-    <!-- ===================== BANNER ===================== -->
-    <div class="relative h-70 overflow-hidden" :style="{ background: bannerGradient }">
-      <div
-        class="absolute inset-0 bg-[repeating-linear-gradient(45deg,rgba(255,255,255,0.04)_0_12px,transparent_12px_24px)]"
-      ></div>
-      <div
-        class="absolute inset-0 bg-[linear-gradient(0deg,var(--color-surface-base),transparent_60%)]"
-      ></div>
-
-      <!-- Breadcrumb -->
-      <div class="absolute top-6 right-0 left-0">
-        <div class="mx-auto max-w-7xl px-6">
-          <button
-            class="flex cursor-pointer items-center gap-1.5 border-none bg-transparent p-0 font-mono text-[11px] uppercase tracking-[0.08em] text-white/55"
-            @click="router.push({ name: 'home' })"
-          >
-            ← Feed / @{{ profile.username }}
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ===================== INNER CONTENT ===================== -->
-    <div class="mx-auto max-w-7xl px-6 pb-30">
-      <!-- ---- Profile header ---- -->
-      <!-- relative + z-10 lifts the avatar above the banner's fade overlay so the
-           negative-margin overlap actually paints on top instead of behind. -->
-      <div class="relative z-10 -mt-17.5 flex flex-wrap items-start gap-7">
-        <!-- Large avatar -->
-        <div
-          class="flex h-35 w-35 shrink-0 select-none items-center justify-center rounded-full border-4 border-surface-base font-heading text-[56px] font-bold tracking-[-0.02em] text-white"
-          :style="{ background: bannerGradient }"
+    <main v-else-if="errored">
+      <StatusPanel kind="error" message="Couldn't load this profile.">
+        <button
+          class="cursor-pointer rounded-sm border border-border bg-surface-raised px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+          @click="username && loadProfile(username)"
         >
-          <img
-            v-if="avatarImageUrl"
-            :src="avatarImageUrl"
-            :alt="profile.username"
-            class="h-full w-full rounded-full object-cover"
-          />
-          <span v-else>{{ initials }}</span>
-        </div>
+          Retry
+        </button>
+      </StatusPanel>
+    </main>
 
-        <!-- User info -->
-        <div class="min-w-55 flex-1 pt-19">
-          <div class="mb-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-text-muted">
-            Player · Joined {{ joinedDate }}
-          </div>
-
-          <div class="flex flex-wrap items-center gap-2.5">
-            <h1
-              class="m-0 font-heading text-[44px] font-bold leading-none uppercase tracking-[0.02em] text-text-primary"
-            >
-              {{ profile.username }}
-            </h1>
-          </div>
-
-          <div class="mt-1.5 font-mono text-sm tracking-[0.04em] text-neon">
-            @{{ profile.username }}
-          </div>
-
-          <p
-            v-if="profile.bio"
-            class="m-0 mt-2.5 max-w-130 text-sm leading-[1.55] text-text-secondary"
-          >
-            {{ profile.bio }}
-          </p>
-        </div>
-
-        <!-- Action buttons (follow + share + more) -->
-        <!-- Follow lives in Phase 3 (social-graph endpoints). Share is best-effort clipboard. -->
-        <div class="flex flex-wrap items-center gap-2 pt-19">
-          <button
-            class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-sm border border-border bg-surface-raised text-text-secondary transition-[border-color] duration-150 hover:border-border-hover"
-            aria-label="Share profile"
-            @click="copyShareUrl"
-          >
-            <IconShare :size="14" />
-          </button>
-          <button
-            class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-sm border border-border bg-surface-raised text-text-secondary transition-[border-color] duration-150 hover:border-border-hover"
-            aria-label="More options"
-          >
-            <IconMoreHorizontal :size="14" />
-          </button>
-          <span
-            v-if="copyMessage"
-            aria-live="polite"
-            class="font-mono text-[11px] uppercase tracking-widest text-neon"
-          >
-            {{ copyMessage }}
-          </span>
-        </div>
-      </div>
-
-      <!-- ---- Stat block ---- -->
-      <div
-        class="mt-7 grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-px overflow-hidden rounded-md border border-border bg-border"
-      >
+    <main v-else-if="profile" class="relative">
+      <!-- ===================== BANNER ===================== -->
+      <div class="relative h-70 overflow-hidden" :style="{ background: bannerGradient }">
         <div
-          v-for="stat in [
-            { label: 'Clips', value: formatNum(profile.clips.length) },
-            { label: 'Total plays', value: formatNum(totalPlays) },
-            { label: 'Total likes', value: formatNum(totalLikes) },
-          ]"
-          :key="stat.label"
-          class="flex flex-col gap-1 bg-surface-raised px-5 py-4"
-        >
-          <span class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">{{
-            stat.label
-          }}</span>
-          <span class="font-heading text-[22px] font-bold leading-none text-text-primary">{{
-            stat.value
-          }}</span>
-        </div>
-      </div>
+          class="absolute inset-0 bg-[repeating-linear-gradient(45deg,rgba(255,255,255,0.04)_0_12px,transparent_12px_24px)]"
+        ></div>
+        <div
+          class="absolute inset-0 bg-[linear-gradient(0deg,var(--color-surface-base),transparent_60%)]"
+        ></div>
 
-      <!-- ---- Tabs ---- -->
-      <div class="mt-9">
-        <div class="flex items-center border-b border-border">
-          <div class="flex flex-1 gap-0">
+        <!-- Breadcrumb -->
+        <div class="absolute top-6 right-0 left-0">
+          <div class="mx-auto max-w-7xl px-6">
             <button
-              v-for="t in TABS"
-              :key="t.key"
-              :class="[
-                'relative cursor-pointer border-none bg-transparent px-4.5 py-3 font-mono text-xs uppercase tracking-[0.08em] transition-colors duration-150 hover:text-text-primary',
-                tab === t.key
-                  ? `text-text-primary after:absolute after:right-0 after:-bottom-px after:left-0 after:h-0.5 after:rounded-t-xs after:bg-brand-light after:content-['']`
-                  : 'text-text-muted',
-              ]"
-              @click="tab = t.key"
+              class="flex cursor-pointer items-center gap-1.5 border-none bg-transparent p-0 font-mono text-[11px] uppercase tracking-[0.08em] text-white/55"
+              @click="router.push({ name: 'home' })"
             >
-              {{ t.label }}
+              ← Feed / @{{ profile.username }}
             </button>
           </div>
         </div>
+      </div>
 
-        <!-- Tab content -->
-        <div class="mt-6">
-          <!-- Clips tab -->
-          <div v-if="tab === 'clips'">
-            <div v-if="profile.clips.length === 0" class="flex items-center justify-center py-20">
-              <p class="font-mono text-[13px] tracking-[0.06em] text-text-muted">No clips yet.</p>
+      <!-- ===================== INNER CONTENT ===================== -->
+      <div class="mx-auto max-w-7xl px-6 pb-30">
+        <!-- ---- Profile header ---- -->
+        <!-- relative + z-10 lifts the avatar above the banner's fade overlay so the
+           negative-margin overlap actually paints on top instead of behind. -->
+        <div class="relative z-10 -mt-17.5 flex flex-wrap items-start gap-7">
+          <!-- Large avatar -->
+          <div
+            class="flex h-35 w-35 shrink-0 select-none items-center justify-center rounded-full border-4 border-surface-base font-heading text-[56px] font-bold tracking-[-0.02em] text-white"
+            :style="{ background: bannerGradient }"
+          >
+            <img
+              v-if="avatarImageUrl"
+              :src="avatarImageUrl"
+              :alt="profile.username"
+              class="h-full w-full rounded-full object-cover"
+            />
+            <span v-else>{{ initials }}</span>
+          </div>
+
+          <!-- User info -->
+          <div class="min-w-55 flex-1 pt-19">
+            <div class="mb-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-text-muted">
+              Player · Joined {{ joinedDate }}
             </div>
-            <div v-else class="feed-grid">
-              <article
-                v-for="clip in profile.clips"
-                :key="clip.id"
-                role="button"
-                tabindex="0"
-                :aria-label="clip.title"
-                class="group relative flex cursor-pointer flex-col overflow-hidden rounded-md border border-border bg-surface-raised transition-all duration-200 outline-none hover:-translate-y-0.5 hover:border-brand hover:shadow-[0_14px_40px_-14px_var(--color-brand-glow)] focus-visible:border-brand focus-visible:shadow-[0_14px_40px_-14px_var(--color-brand-glow)]"
-                @click="router.push({ name: 'clip', params: { id: clip.id } })"
-                @keydown.enter.prevent="router.push({ name: 'clip', params: { id: clip.id } })"
-                @keydown.space.prevent="router.push({ name: 'clip', params: { id: clip.id } })"
+
+            <div class="flex flex-wrap items-center gap-2.5">
+              <h1
+                class="m-0 font-heading text-[44px] font-bold leading-none uppercase tracking-[0.02em] text-text-primary"
               >
-                <div class="relative aspect-video overflow-hidden bg-surface-sunken">
-                  <DurationBadge :seconds="clip.durationSecs" class="absolute bottom-2 right-2" />
-                </div>
-                <div class="flex flex-col gap-2 px-3.5 pb-3.5 pt-3">
-                  <h3
-                    class="m-0 line-clamp-2 min-h-[2.7em] font-body text-sm font-medium leading-[1.35] text-text-primary"
-                  >
-                    {{ clip.title }}
-                  </h3>
-                  <div
-                    class="flex gap-2.5 border-t border-dashed border-border pt-1.5 font-mono text-[11px] text-text-muted"
-                  >
-                    <span>♥ {{ formatNum(clip.likeCount) }}</span>
-                    <span>▶ {{ formatNum(clip.viewCount) }}</span>
-                    <span class="ml-auto">{{ formatRelativeTime(clip.createdAt) }} ago</span>
-                  </div>
-                </div>
-              </article>
+                {{ profile.username }}
+              </h1>
+            </div>
+
+            <div class="mt-1.5 font-mono text-sm tracking-[0.04em] text-neon">
+              @{{ profile.username }}
+            </div>
+
+            <p
+              v-if="profile.bio"
+              class="m-0 mt-2.5 max-w-130 text-sm leading-[1.55] text-text-secondary"
+            >
+              {{ profile.bio }}
+            </p>
+          </div>
+
+          <!-- Action buttons (follow + share + more) -->
+          <!-- Follow lives in Phase 3 (social-graph endpoints). Share is best-effort clipboard. -->
+          <div class="flex flex-wrap items-center gap-2 pt-19">
+            <button
+              class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-sm border border-border bg-surface-raised text-text-secondary transition-[border-color] duration-150 hover:border-border-hover"
+              aria-label="Share profile"
+              @click="copyShareUrl"
+            >
+              <IconShare :size="14" />
+            </button>
+            <button
+              class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-sm border border-border bg-surface-raised text-text-secondary transition-[border-color] duration-150 hover:border-border-hover"
+              aria-label="More options"
+            >
+              <IconMoreHorizontal :size="14" />
+            </button>
+            <span
+              v-if="copyMessage"
+              aria-live="polite"
+              class="font-mono text-[11px] uppercase tracking-widest text-neon"
+            >
+              {{ copyMessage }}
+            </span>
+          </div>
+        </div>
+
+        <!-- ---- Stat block ---- -->
+        <div
+          class="mt-7 grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-px overflow-hidden rounded-md border border-border bg-border"
+        >
+          <div
+            v-for="stat in [
+              { label: 'Clips', value: formatNum(profile.clips.length) },
+              { label: 'Total plays', value: formatNum(totalPlays) },
+              { label: 'Total likes', value: formatNum(totalLikes) },
+            ]"
+            :key="stat.label"
+            class="flex flex-col gap-1 bg-surface-raised px-5 py-4"
+          >
+            <span class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">{{
+              stat.label
+            }}</span>
+            <span class="font-heading text-[22px] font-bold leading-none text-text-primary">{{
+              stat.value
+            }}</span>
+          </div>
+        </div>
+
+        <!-- ---- Tabs ---- -->
+        <div class="mt-9">
+          <div class="flex items-center border-b border-border">
+            <div class="flex flex-1 gap-0">
+              <button
+                v-for="t in TABS"
+                :key="t.key"
+                :class="[
+                  'relative cursor-pointer border-none bg-transparent px-4.5 py-3 font-mono text-xs uppercase tracking-[0.08em] transition-colors duration-150 hover:text-text-primary',
+                  tab === t.key
+                    ? `text-text-primary after:absolute after:right-0 after:-bottom-px after:left-0 after:h-0.5 after:rounded-t-xs after:bg-brand-light after:content-['']`
+                    : 'text-text-muted',
+                ]"
+                @click="tab = t.key"
+              >
+                {{ t.label }}
+              </button>
             </div>
           </div>
 
-          <!-- Liked tab — placeholder until /me/liked exists (Phase 3) -->
-          <div v-else-if="tab === 'liked'" class="flex items-center justify-center py-20">
-            <p class="font-mono text-[13px] tracking-[0.06em] text-text-muted">
-              Liked clips are private.
-            </p>
+          <!-- Tab content -->
+          <div class="mt-6">
+            <!-- Clips tab -->
+            <div v-if="tab === 'clips'">
+              <div v-if="profile.clips.length === 0" class="flex items-center justify-center py-20">
+                <p class="font-mono text-[13px] tracking-[0.06em] text-text-muted">No clips yet.</p>
+              </div>
+              <div v-else class="feed-grid">
+                <article
+                  v-for="clip in profile.clips"
+                  :key="clip.id"
+                  role="button"
+                  tabindex="0"
+                  :aria-label="clip.title"
+                  class="group relative flex cursor-pointer flex-col overflow-hidden rounded-md border border-border bg-surface-raised transition-all duration-200 outline-none hover:-translate-y-0.5 hover:border-brand hover:shadow-[0_14px_40px_-14px_var(--color-brand-glow)] focus-visible:border-brand focus-visible:shadow-[0_14px_40px_-14px_var(--color-brand-glow)]"
+                  @click="router.push({ name: 'clip', params: { id: clip.id } })"
+                  @keydown.enter.prevent="router.push({ name: 'clip', params: { id: clip.id } })"
+                  @keydown.space.prevent="router.push({ name: 'clip', params: { id: clip.id } })"
+                >
+                  <div class="relative aspect-video overflow-hidden bg-surface-sunken">
+                    <DurationBadge :seconds="clip.durationSecs" class="absolute bottom-2 right-2" />
+                  </div>
+                  <div class="flex flex-col gap-2 px-3.5 pb-3.5 pt-3">
+                    <h3
+                      class="m-0 line-clamp-2 min-h-[2.7em] font-body text-sm font-medium leading-[1.35] text-text-primary"
+                    >
+                      {{ clip.title }}
+                    </h3>
+                    <div
+                      class="flex gap-2.5 border-t border-dashed border-border pt-1.5 font-mono text-[11px] text-text-muted"
+                    >
+                      <span>♥ {{ formatNum(clip.likeCount) }}</span>
+                      <span>▶ {{ formatNum(clip.viewCount) }}</span>
+                      <span class="ml-auto">{{ formatRelativeTime(clip.createdAt) }} ago</span>
+                    </div>
+                  </div>
+                </article>
+              </div>
+            </div>
+
+            <!-- Liked tab — placeholder until /me/liked exists (Phase 3) -->
+            <div v-else-if="tab === 'liked'" class="flex items-center justify-center py-20">
+              <p class="font-mono text-[13px] tracking-[0.06em] text-text-muted">
+                Liked clips are private.
+              </p>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  </main>
+    </main>
+  </div>
 </template>

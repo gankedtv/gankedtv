@@ -17,6 +17,10 @@ public static class ClipsReadEndpoints
     private const int DefaultLimit = 20;
     private const int MaxLimit = 100;
     private static readonly TimeSpan VideoUrlLifetime = TimeSpan.FromHours(1);
+    // Thumbnail URLs ride the same 1-hour signed window as video URLs — keeping the
+    // two lifetimes aligned means a feed page that's still fresh enough to play the
+    // video still has working poster images.
+    private static readonly TimeSpan ThumbnailUrlLifetime = TimeSpan.FromHours(1);
 
     public static IEndpointRouteBuilder MapClipsReadEndpoints(this IEndpointRouteBuilder app)
     {
@@ -31,6 +35,8 @@ public static class ClipsReadEndpoints
         int? limit,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
+        IObjectStorageService storage,
+        IOptions<MinioOptions> minio,
         CancellationToken ct)
     {
         var clampedLimit = Math.Clamp(limit ?? DefaultLimit, 1, MaxLimit);
@@ -65,10 +71,25 @@ public static class ClipsReadEndpoints
 
         var likedIds = await LoadLikedClipIdsAsync(db, principal, page.Select(c => c.Id), ct);
 
-        var items = page.Select(c => c.ToFeedItem(likedIds.Contains(c.Id))).ToList();
+        var thumbnailsBucket = minio.Value.ThumbnailsBucket;
+        var items = page
+            .Select(c => c.ToFeedItem(
+                BuildThumbnailUrl(storage, thumbnailsBucket, c.ThumbnailKey),
+                likedIds.Contains(c.Id)))
+            .ToList();
         var nextCursor = hasMore ? BuildCursor(page[^1].CreatedAt, page[^1].Id) : null;
 
         return Results.Ok(new ClipFeedResponse(items, nextCursor));
+    }
+
+    // Public Ready clips always have a thumbnail (the worker is the only path to Ready
+    // and never marks Ready without writing ThumbnailKey first). Caller is expected to
+    // pass non-null; passing null indicates a corrupted row and we fail loudly.
+    internal static string BuildThumbnailUrl(
+        IObjectStorageService storage, string bucket, string? thumbnailKey)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(thumbnailKey);
+        return storage.GetPresignedGetUrl(bucket, thumbnailKey, ThumbnailUrlLifetime);
     }
 
     private const char CursorSeparator = '_';
@@ -129,6 +150,7 @@ public static class ClipsReadEndpoints
 
         var expiresAt = DateTimeOffset.UtcNow.Add(VideoUrlLifetime);
         var videoUrl = storage.GetPresignedGetUrl(minio.Value.ClipsBucket, clip.VideoKey, VideoUrlLifetime);
+        var thumbnailUrl = BuildThumbnailUrl(storage, minio.Value.ThumbnailsBucket, clip.ThumbnailKey);
 
         var likedByMe = false;
         if (TryGetUserId(principal, out var userId))
@@ -137,7 +159,7 @@ public static class ClipsReadEndpoints
                 .AnyAsync(l => l.ClipId == clip.Id && l.UserId == userId, ct);
         }
 
-        return Results.Ok(clip.ToDetail(videoUrl, expiresAt, likedByMe));
+        return Results.Ok(clip.ToDetail(videoUrl, expiresAt, thumbnailUrl, likedByMe));
     }
 
     internal static async Task<HashSet<Guid>> LoadLikedClipIdsAsync(
