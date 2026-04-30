@@ -58,12 +58,17 @@ public sealed class FfmpegRunner : IFfmpegRunner
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
         {
             TryKillTree(process);
+            // After Kill, await exit (no token) so the async stdout/stderr readers
+            // finish draining before `using` disposes the Process. Otherwise the
+            // Begin*ReadLine pipeline can race with disposal and lose data or throw.
+            await WaitForExitWithoutTokenAsync(process);
             throw new TimeoutException(
                 $"Process '{executable}' exceeded {timeout.TotalSeconds:F0}s timeout. Stderr: {stderr}");
         }
         catch (OperationCanceledException)
         {
             TryKillTree(process);
+            await WaitForExitWithoutTokenAsync(process);
             throw;
         }
 
@@ -105,6 +110,20 @@ public sealed class FfmpegRunner : IFfmpegRunner
             // Best-effort kill — the process may have already exited between the check
             // and the call, or the OS may refuse on a zombie. Either way we have nothing
             // useful to do here.
+        }
+    }
+
+    private static async Task WaitForExitWithoutTokenAsync(Process process)
+    {
+        // Best-effort drain. After Kill the OS reaps the process within milliseconds, so
+        // an unbounded wait here is fine in practice. Swallow exceptions so a disposed
+        // or already-exited Process doesn't replace the original cancellation/timeout.
+        try
+        {
+            await process.WaitForExitAsync();
+        }
+        catch
+        {
         }
     }
 }

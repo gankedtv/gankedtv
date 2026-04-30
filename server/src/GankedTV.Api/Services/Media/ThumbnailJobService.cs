@@ -48,7 +48,11 @@ public sealed class ThumbnailJobService : IThumbnailJobService
         // but the columns are already there and the worker has the data — populate them).
         var probe = await ProbeAsync(videoUrl, opts, ct);
 
-        var seekOffset = probe.DurationSecs is { } d && d <= opts.ThumbnailFrameOffset.TotalSeconds
+        // When ffprobe couldn't determine duration, fall back to seek=0 — seeking 1s
+        // into a sub-1s clip with unknown duration produces no frame, while seek=0 always
+        // yields the first decoded frame.
+        var seekOffset = probe.DurationSecs is null
+            || probe.DurationSecs.Value <= opts.ThumbnailFrameOffset.TotalSeconds
             ? TimeSpan.Zero
             : opts.ThumbnailFrameOffset;
 
