@@ -115,10 +115,12 @@ public static class ClipsMutateEndpoints
 
         var expiresAt = DateTimeOffset.UtcNow.Add(VideoUrlLifetime);
         var videoUrl = storage.GetPresignedGetUrl(minio.Value.ClipsBucket, clip.VideoKey, VideoUrlLifetime);
+        var thumbnailUrl = ClipsReadEndpoints.BuildThumbnailUrl(
+            storage, minio.Value.ThumbnailsBucket, clip.ThumbnailKey);
         var likedByMe = await db.Likes.AsNoTracking()
             .AnyAsync(l => l.ClipId == clip.Id && l.UserId == userId, ct);
 
-        return Results.Ok(clip.ToDetail(videoUrl, expiresAt, likedByMe));
+        return Results.Ok(clip.ToDetail(videoUrl, expiresAt, thumbnailUrl, likedByMe));
     }
 
     private static async Task<IResult> DeleteClip(

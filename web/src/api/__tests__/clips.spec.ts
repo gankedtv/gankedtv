@@ -61,7 +61,7 @@ describe('api/clips', () => {
         description: null,
         videoUrl: 'https://cdn.example.com/clips/abc.mp4?sig=xyz',
         videoUrlExpiresAt: '2026-04-26T13:00:00Z',
-        thumbnailKey: null,
+        thumbnailUrl: 'https://cdn.example.com/thumbs/abc.jpg?sig=xyz',
         durationSecs: 42,
         width: 1920,
         height: 1080,

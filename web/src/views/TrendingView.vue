@@ -158,8 +158,7 @@ const trendHold = `${trendBase} text-text-muted`
 
           <div class="relative rounded-[4px] overflow-hidden aspect-video bg-surface-sunken">
             <img
-              v-if="clip.thumbnailKey"
-              :src="clip.thumbnailKey"
+              :src="clip.thumbnailUrl"
               alt=""
               class="w-full h-full object-cover block"
             />

@@ -17,7 +17,9 @@ export interface ClipFeedItem {
   id: string
   title: string
   description: string | null
-  thumbnailKey: string | null
+  // Presigned GET URL for the thumbnail JPEG. Always set on ready clips (the only
+  // status the feed surfaces).
+  thumbnailUrl: string
   durationSecs: number | null
   viewCount: number
   likeCount: number
@@ -33,7 +35,7 @@ export interface ClipDetail {
   description: string | null
   videoUrl: string
   videoUrlExpiresAt: string
-  thumbnailKey: string | null
+  thumbnailUrl: string
   durationSecs: number | null
   width: number | null
   height: number | null

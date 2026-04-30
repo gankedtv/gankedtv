@@ -103,12 +103,10 @@ onMounted(loadMore)
           <!-- Left: thumbnail -->
           <div class="relative overflow-hidden">
             <img
-              v-if="hero.thumbnailKey"
-              :src="hero.thumbnailKey"
+              :src="hero.thumbnailUrl"
               alt=""
               class="block h-full w-full object-cover"
             />
-            <div v-else class="block h-full w-full bg-surface-sunken" />
             <div
               class="absolute inset-0 bg-[linear-gradient(90deg,transparent_50%,var(--color-surface-raised)_100%)]"
             ></div>

@@ -8,7 +8,7 @@ function makeClip(overrides: Partial<ClipFeedItem> = {}): ClipFeedItem {
     id: 'clp_01',
     title: 'Unreal 1v5 clutch on Bind',
     description: null,
-    thumbnailKey: null,
+    thumbnailUrl: 'https://cdn.test/thumb.jpg',
     durationSecs: 42,
     viewCount: 284_000,
     likeCount: 12_400,

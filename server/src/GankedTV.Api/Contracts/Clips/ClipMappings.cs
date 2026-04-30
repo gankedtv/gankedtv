@@ -21,12 +21,12 @@ public static class ClipMappings
     public static CompleteClipResponse ToCompleteClipResponse(this CompleteClipResult result) =>
         new(result.ClipId, result.FileSizeBytes);
 
-    public static ClipFeedItem ToFeedItem(this Clip clip, bool likedByMe) =>
+    public static ClipFeedItem ToFeedItem(this Clip clip, string thumbnailUrl, bool likedByMe) =>
         new(
             clip.Id,
             clip.Title,
             clip.Description,
-            clip.ThumbnailKey,
+            thumbnailUrl,
             clip.DurationSecs,
             clip.ViewCount,
             clip.LikeCount,
@@ -39,6 +39,7 @@ public static class ClipMappings
         this Clip clip,
         string videoUrl,
         DateTimeOffset videoUrlExpiresAt,
+        string thumbnailUrl,
         bool likedByMe) =>
         new(
             clip.Id,
@@ -46,7 +47,7 @@ public static class ClipMappings
             clip.Description,
             videoUrl,
             videoUrlExpiresAt,
-            clip.ThumbnailKey,
+            thumbnailUrl,
             clip.DurationSecs,
             clip.Width,
             clip.Height,

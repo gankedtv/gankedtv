@@ -31,12 +31,10 @@ function onKeydown(e: KeyboardEvent) {
     <!-- Thumbnail -->
     <div class="relative aspect-video overflow-hidden bg-surface-sunken">
       <img
-        v-if="props.clip.thumbnailKey"
-        :src="props.clip.thumbnailKey"
+        :src="props.clip.thumbnailUrl"
         alt=""
         class="h-full w-full object-cover transition-transform duration-400 group-hover:scale-104"
       />
-      <div v-else class="h-full w-full bg-surface-sunken" />
       <!-- Game tag — top-left -->
       <div v-if="props.clip.game" class="absolute left-2 top-2">
         <GameTag :tag="props.clip.game.tag" />
