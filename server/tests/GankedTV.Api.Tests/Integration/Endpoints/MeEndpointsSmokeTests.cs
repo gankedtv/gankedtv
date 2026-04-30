@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
@@ -32,34 +31,12 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
 
     private async Task<(Guid userId, string token, string username)> SeedUserAndIssueTokenAsync(string username = "smoketest")
     {
-        var now = DateTimeOffset.UtcNow;
-        Guid id;
-        await using (var db = _fx.CreateContext())
-        {
-            var user = new User
-            {
-                Username = username,
-                Email = $"{username}@example.com",
-                CreatedAt = now,
-                UpdatedAt = now,
-            };
-            db.Users.Add(user);
-            await db.SaveChangesAsync();
-            id = user.Id;
-        }
-
-        using var scope = _factory!.Services.CreateScope();
-        var jwt = scope.ServiceProvider.GetRequiredService<IJwtService>();
-        var token = jwt.Issue(new User { Id = id, Username = username, Email = $"{username}@example.com" });
+        var (id, token) = await AuthTestHelpers.SeedUserAndIssueTokenAsync(_fx, _factory!, username);
         return (id, token, username);
     }
 
-    private HttpClient ClientWithBearer(string token)
-    {
-        var client = _factory!.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        return client;
-    }
+    private HttpClient ClientWithBearer(string token) =>
+        AuthTestHelpers.CreateBearerClient(_factory!, token);
 
     [Fact]
     public async Task Get_NoBearer_Returns401()

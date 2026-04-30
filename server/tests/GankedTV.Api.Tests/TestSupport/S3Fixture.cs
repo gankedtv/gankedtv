@@ -61,7 +61,10 @@ public sealed class S3Fixture : IAsyncLifetime
             catch (AmazonS3Exception ex) when (
                 ex.ErrorCode == "BucketAlreadyOwnedByYou" || ex.ErrorCode == "BucketAlreadyExists")
             {
-                // Idempotent — fixture restart with a recycled volume hits this. Safe to ignore.
+                // Defense-in-depth: Testcontainers spins up a fresh container per fixture
+                // lifetime so this branch is unreachable in normal use, but treating an
+                // already-existing bucket as success keeps the fixture safe if anyone later
+                // wires up volume reuse or runs against an externally-managed S3 instance.
             }
         }
     }

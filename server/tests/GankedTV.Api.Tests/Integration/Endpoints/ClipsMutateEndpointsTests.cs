@@ -1,9 +1,7 @@
 using System.Net;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
-using GankedTV.Api.Auth.Jwt;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Tests.TestSupport;
@@ -36,36 +34,11 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
         if (_factory is not null) await _factory.DisposeAsync();
     }
 
-    private async Task<(Guid userId, string token)> SeedUserAndIssueTokenAsync(string username = "owner")
-    {
-        var now = DateTimeOffset.UtcNow;
-        Guid id;
-        await using (var db = _fx.CreateContext())
-        {
-            var user = new User
-            {
-                Username = username,
-                Email = $"{username}@example.com",
-                CreatedAt = now,
-                UpdatedAt = now,
-            };
-            db.Users.Add(user);
-            await db.SaveChangesAsync();
-            id = user.Id;
-        }
+    private Task<(Guid userId, string token)> SeedUserAndIssueTokenAsync(string username = "owner") =>
+        AuthTestHelpers.SeedUserAndIssueTokenAsync(_fx, _factory!, username);
 
-        using var scope = _factory!.Services.CreateScope();
-        var jwt = scope.ServiceProvider.GetRequiredService<IJwtService>();
-        var token = jwt.Issue(new User { Id = id, Username = username, Email = $"{username}@example.com" });
-        return (id, token);
-    }
-
-    private HttpClient ClientWithBearer(string token)
-    {
-        var client = _factory!.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        return client;
-    }
+    private HttpClient ClientWithBearer(string token) =>
+        AuthTestHelpers.CreateBearerClient(_factory!, token);
 
     // Sentinel so the helper can tell "thumbnailKey not specified — synthesize a
     // sensible default" apart from "explicitly passed null" (used by the cleanup

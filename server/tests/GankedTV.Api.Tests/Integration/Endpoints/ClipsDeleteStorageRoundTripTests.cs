@@ -1,14 +1,11 @@
 using System.IO;
 using System.Net;
-using System.Net.Http.Headers;
 using System.Text;
 using Amazon.S3;
 using FluentAssertions;
-using GankedTV.Api.Auth.Jwt;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Tests.TestSupport;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace GankedTV.Api.Tests.Integration.Endpoints;
 
@@ -47,7 +44,7 @@ public class ClipsDeleteStorageRoundTripTests : IAsyncLifetime
     [Fact]
     public async Task Delete_RemovesClipRowAndBothBlobs_RoundTrip()
     {
-        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var (userId, token) = await AuthTestHelpers.SeedUserAndIssueTokenAsync(_pg, _factory!);
 
         // Seed a Ready clip directly. We bypass the upload pipeline because the goal here
         // is to validate DELETE's S3 cleanup, not the upload path (the orphan-sweep test
@@ -84,7 +81,7 @@ public class ClipsDeleteStorageRoundTripTests : IAsyncLifetime
             .HttpStatusCode.Should().Be(HttpStatusCode.OK);
 
         // DELETE via the endpoint.
-        using var client = ClientWithBearer(token);
+        using var client = AuthTestHelpers.CreateBearerClient(_factory!, token);
         var resp = await client.DeleteAsync($"/clips/{clipId}");
         resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
@@ -119,34 +116,4 @@ public class ClipsDeleteStorageRoundTripTests : IAsyncLifetime
         ex.Which.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
-    private async Task<(Guid userId, string token)> SeedUserAndIssueTokenAsync(string username = "owner")
-    {
-        var now = DateTimeOffset.UtcNow;
-        Guid id;
-        await using (var db = _pg.CreateContext())
-        {
-            var user = new User
-            {
-                Username = username,
-                Email = $"{username}@example.com",
-                CreatedAt = now,
-                UpdatedAt = now,
-            };
-            db.Users.Add(user);
-            await db.SaveChangesAsync();
-            id = user.Id;
-        }
-
-        using var scope = _factory!.Services.CreateScope();
-        var jwt = scope.ServiceProvider.GetRequiredService<IJwtService>();
-        var token = jwt.Issue(new User { Id = id, Username = username, Email = $"{username}@example.com" });
-        return (id, token);
-    }
-
-    private HttpClient ClientWithBearer(string token)
-    {
-        var client = _factory!.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        return client;
-    }
 }

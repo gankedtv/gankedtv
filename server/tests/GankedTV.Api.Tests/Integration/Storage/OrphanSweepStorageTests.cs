@@ -4,10 +4,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Amazon.S3;
-using Amazon.S3.Model;
 using FluentAssertions;
-using GankedTV.Api.Auth.Jwt;
-using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Services.Maintenance;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Tests.TestSupport;
@@ -54,10 +51,10 @@ public class OrphanSweepStorageTests : IAsyncLifetime
     public async Task Sweep_DeletesDraftClipRowAndUploadedBlob_RoundTrip()
     {
         // 1. Seed user + token
-        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var (userId, token) = await AuthTestHelpers.SeedUserAndIssueTokenAsync(_pg, _factory!);
 
         // 2. POST /clips (draft, no game) — server picks the clip id and key layout.
-        using var client = ClientWithBearer(token);
+        using var client = AuthTestHelpers.CreateBearerClient(_factory!, token);
         var createResp = await client.PostAsJsonAsync("/clips", new
         {
             title = "orphan",
@@ -137,34 +134,4 @@ public class OrphanSweepStorageTests : IAsyncLifetime
         ex.Which.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
-    private async Task<(Guid userId, string token)> SeedUserAndIssueTokenAsync(string username = "owner")
-    {
-        var now = DateTimeOffset.UtcNow;
-        Guid id;
-        await using (var db = _pg.CreateContext())
-        {
-            var user = new User
-            {
-                Username = username,
-                Email = $"{username}@example.com",
-                CreatedAt = now,
-                UpdatedAt = now,
-            };
-            db.Users.Add(user);
-            await db.SaveChangesAsync();
-            id = user.Id;
-        }
-
-        using var scope = _factory!.Services.CreateScope();
-        var jwt = scope.ServiceProvider.GetRequiredService<IJwtService>();
-        var token = jwt.Issue(new User { Id = id, Username = username, Email = $"{username}@example.com" });
-        return (id, token);
-    }
-
-    private HttpClient ClientWithBearer(string token)
-    {
-        var client = _factory!.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        return client;
-    }
 }
