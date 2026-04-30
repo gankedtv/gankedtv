@@ -52,7 +52,11 @@ public sealed class ThumbnailJobService : IThumbnailJobService
             ? TimeSpan.Zero
             : opts.ThumbnailFrameOffset;
 
-        var thumbPath = Path.Combine(Path.GetTempPath(), $"gankedtv-thumb-{job.ClipId:N}.jpg");
+        // Include a per-attempt token so a re-claimed lease (e.g. after the original
+        // worker hung past LeaseDuration) can't collide on the same temp path.
+        var thumbPath = Path.Combine(
+            Path.GetTempPath(),
+            $"gankedtv-thumb-{job.ClipId:N}-{Guid.NewGuid():N}.jpg");
         try
         {
             await ExtractFrameAsync(videoUrl, thumbPath, seekOffset, opts, ct);
@@ -160,10 +164,11 @@ public sealed class ThumbnailJobService : IThumbnailJobService
         {
             if (File.Exists(path)) File.Delete(path);
         }
-        catch (IOException ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // Leaving a temp file behind is harmless; logging the path lets ops sweep
-            // /tmp manually if it ever becomes a problem.
+            // /tmp manually if it ever becomes a problem. Catch broadly so a cleanup
+            // failure (e.g. permissions) never masks the real processing exception.
             _logger.LogWarning(ex, "Failed to delete temp thumbnail file {Path}", path);
         }
     }

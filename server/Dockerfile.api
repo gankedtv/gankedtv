@@ -17,9 +17,12 @@ RUN dotnet publish src/GankedTV.Api/GankedTV.Api.csproj -c Release -o /app/publi
 FROM mcr.microsoft.com/dotnet/aspnet:${DOTNET_VERSION} AS runtime
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system --gid 1001 gankedtv \
+    && useradd --system --uid 1001 --gid gankedtv --home-dir /app --shell /usr/sbin/nologin gankedtv
 WORKDIR /app
-COPY --from=build /app/publish ./
+COPY --from=build --chown=gankedtv:gankedtv /app/publish ./
 ENV ASPNETCORE_URLS=http://+:5000
 EXPOSE 5000
+USER gankedtv
 ENTRYPOINT ["dotnet", "GankedTV.Api.dll"]

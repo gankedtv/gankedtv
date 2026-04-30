@@ -39,8 +39,8 @@ public interface IClipMediaJobStore
     // Clears the lease so the row is no longer counted as "in flight".
     Task MarkFailedAsync(Guid clipId, CancellationToken ct);
 
-    // Releases a lease without changing status, so the row drops out of "in flight"
-    // immediately and another worker can retry it once the lease window elapses
-    // naturally. Used after a transient failure that hasn't yet exhausted attempts.
+    // Releases a lease without changing status by clearing ProcessingStartedAt, so the
+    // row becomes immediately eligible for re-claim by any worker on the next tick.
+    // Used after a transient failure that hasn't yet exhausted attempts.
     Task ReleaseLeaseAsync(Guid clipId, CancellationToken ct);
 }

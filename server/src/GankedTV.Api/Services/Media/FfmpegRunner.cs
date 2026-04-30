@@ -5,6 +5,13 @@ namespace GankedTV.Api.Services.Media;
 
 public sealed class FfmpegRunner : IFfmpegRunner
 {
+    // Cap captured stdout/stderr to prevent OOM on a chatty ffmpeg run (a multi-hour
+    // verbose log can be hundreds of MB). 256 KB per stream is more than enough to
+    // keep the tail of any error trace; once we hit it we append a marker so callers
+    // can see in logs that the buffer was truncated.
+    private const int MaxCapturedChars = 256 * 1024;
+    private const string TruncationMarker = "...(truncated)";
+
     public async Task<FfmpegResult> RunAsync(
         string executable,
         IReadOnlyList<string> arguments,
@@ -28,8 +35,8 @@ public sealed class FfmpegRunner : IFfmpegRunner
 
         var stdout = new StringBuilder();
         var stderr = new StringBuilder();
-        process.OutputDataReceived += (_, e) => { if (e.Data is not null) stdout.AppendLine(e.Data); };
-        process.ErrorDataReceived += (_, e) => { if (e.Data is not null) stderr.AppendLine(e.Data); };
+        process.OutputDataReceived += (_, e) => AppendCapped(stdout, e.Data);
+        process.ErrorDataReceived += (_, e) => AppendCapped(stderr, e.Data);
 
         if (!process.Start())
         {
@@ -61,6 +68,27 @@ public sealed class FfmpegRunner : IFfmpegRunner
         }
 
         return new FfmpegResult(process.ExitCode, stdout.ToString(), stderr.ToString());
+    }
+
+    private static void AppendCapped(StringBuilder buffer, string? data)
+    {
+        if (data is null) return;
+        lock (buffer)
+        {
+            if (buffer.Length >= MaxCapturedChars) return;
+            var lineWithBreak = data.Length + Environment.NewLine.Length;
+            var remaining = MaxCapturedChars - buffer.Length;
+            if (lineWithBreak <= remaining)
+            {
+                buffer.AppendLine(data);
+                return;
+            }
+            // Append whatever fits, then a single truncation marker so callers know
+            // output was cut. Subsequent lines are dropped without further markers.
+            var slice = Math.Min(data.Length, Math.Max(0, remaining - TruncationMarker.Length));
+            if (slice > 0) buffer.Append(data, 0, slice);
+            buffer.Append(TruncationMarker);
+        }
     }
 
     private static void TryKillTree(Process process)

@@ -82,6 +82,25 @@ public class FfmpegRunnerTests
     }
 
     [Fact]
+    public async Task RunAsync_StdoutExceedsCap_TruncatesWithMarker()
+    {
+        if (!ShellAvailable) return;
+        var runner = new FfmpegRunner();
+
+        // 64k lines of ~6 bytes each = ~384 KB, comfortably past the 256 KB cap so we
+        // exercise both the boundary append and the trailing-line discard branches.
+        var result = await runner.RunAsync(
+            "/bin/sh",
+            new[] { "-c", "seq 1 64000" },
+            TimeSpan.FromSeconds(15),
+            CancellationToken.None);
+
+        result.ExitCode.Should().Be(0);
+        result.Stdout.Length.Should().BeLessThan(64000 * 8);
+        result.Stdout.Should().EndWith("...(truncated)");
+    }
+
+    [Fact]
     public async Task RunAsync_NonExistentBinary_ThrowsWin32Exception()
     {
         var runner = new FfmpegRunner();

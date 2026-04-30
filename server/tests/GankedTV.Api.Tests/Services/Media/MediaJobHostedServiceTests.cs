@@ -82,7 +82,9 @@ public class MediaJobHostedServiceTests
         var result = await svc.TryProcessOneAsync(CancellationToken.None);
 
         result.Should().BeTrue();
-        await store.Received(1).ReleaseLeaseAsync(clipId, Arg.Any<CancellationToken>());
+        // Asserts the locked invariant: shutdown-safe finalization uses CancellationToken.None
+        // so a transient retry release isn't lost when the host is stopping.
+        await store.Received(1).ReleaseLeaseAsync(clipId, CancellationToken.None);
         await store.DidNotReceive().MarkFailedAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
         await store.DidNotReceive().MarkReadyAsync(Arg.Any<Guid>(), Arg.Any<FinalizedMediaJob>(), Arg.Any<CancellationToken>());
     }
@@ -100,7 +102,9 @@ public class MediaJobHostedServiceTests
         var result = await svc.TryProcessOneAsync(CancellationToken.None);
 
         result.Should().BeTrue();
-        await store.Received(1).MarkFailedAsync(clipId, Arg.Any<CancellationToken>());
+        // Asserts the locked invariant: a final-attempt failure is recorded with
+        // CancellationToken.None so it isn't lost during shutdown.
+        await store.Received(1).MarkFailedAsync(clipId, CancellationToken.None);
         await store.DidNotReceive().ReleaseLeaseAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
     }
 

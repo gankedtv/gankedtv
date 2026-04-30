@@ -230,10 +230,17 @@ public class ClipMediaJobStoreIntegrationTests
     {
         await _fx.ResetAsync();
         await using var db = NewContext();
+
+        // Resolve the seeded id at runtime — don't pin to a hardcoded value, since
+        // seeding order can shift as new games are added.
+        var valorantId = await db.Games
+            .Where(g => g.Slug == "valorant")
+            .Select(g => g.Id)
+            .SingleAsync();
+
         var store = NewStore(DateTimeOffset.UtcNow, db);
 
-        // The seeded games table includes 'valorant' at id=2.
-        var slug = await store.GetGameSlugAsync(2, CancellationToken.None);
+        var slug = await store.GetGameSlugAsync(valorantId, CancellationToken.None);
         slug.Should().Be("valorant");
 
         (await store.GetGameSlugAsync(999_999, CancellationToken.None)).Should().BeNull();
