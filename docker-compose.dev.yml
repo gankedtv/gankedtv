@@ -10,6 +10,15 @@ services:
       # Pin PGDATA to a subdir so the data path is stable across major-version
       # bumps (the upstream default changes per major) and avoids PG's refusal
       # to init into a non-empty mount root.
+      #
+      # MIGRATION NOTE: existing developers upgrading from the pre-PG18 layout
+      # have data at the volume root (`/var/lib/postgresql/data`), not the new
+      # `/pgdata` subdir — Postgres will treat the new path as empty and re-init
+      # a fresh cluster, leaving the old files orphaned. Local seed data is
+      # throwaway, so the canonical fix is `make clean && make up && make
+      # migrate && make seed`. If you have local data worth keeping, exec into
+      # the running container and `mv /var/lib/postgresql/data/{base,pg_*,*}
+      # /var/lib/postgresql/data/pgdata/` before restarting.
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data

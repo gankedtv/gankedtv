@@ -422,7 +422,10 @@ namespace GankedTV.Api.Data.Migrations
                         .IsUnique()
                         .HasDatabaseName("idx_users_username");
 
-                    b.ToTable("users", (string)null);
+                    b.ToTable("users", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_users_password_hash_algo_paired", "(password_hash IS NULL AND password_algo IS NULL) OR (password_hash IS NOT NULL AND password_algo IS NOT NULL)");
+                        });
                 });
 
             modelBuilder.Entity("GankedTV.Api.Data.Entities.Clip", b =>

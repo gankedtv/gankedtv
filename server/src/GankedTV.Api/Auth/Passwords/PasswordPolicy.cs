@@ -23,8 +23,10 @@ public static class PasswordPolicy
 
     public static PasswordValidationResult Validate(string password, string? email, string? username)
     {
-        if (string.IsNullOrEmpty(password))
+        if (string.IsNullOrWhiteSpace(password))
         {
+            // Whitespace-only is treated as missing — a user typing 12 spaces should not
+            // sail past the length floor.
             return PasswordValidationResult.Invalid("Password is required.");
         }
 

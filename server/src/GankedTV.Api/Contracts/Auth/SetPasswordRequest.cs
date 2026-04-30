@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using GankedTV.Api.Auth.Passwords;
 
 namespace GankedTV.Api.Contracts.Auth;
 
@@ -8,5 +9,5 @@ public sealed record SetPasswordRequest(
     // without one (the OAuth login already proved control of the account).
     [property: StringLength(128)]
     string? CurrentPassword,
-    [property: Required, StringLength(128, MinimumLength = 1)]
+    [property: Required, StringLength(128, MinimumLength = PasswordPolicy.MinLength)]
     string NewPassword);

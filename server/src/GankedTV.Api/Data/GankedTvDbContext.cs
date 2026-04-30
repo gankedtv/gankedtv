@@ -25,6 +25,13 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             e.Property(u => u.GoogleId).HasMaxLength(50);
             e.Property(u => u.PasswordHash).HasMaxLength(255);
             e.Property(u => u.PasswordAlgo).HasMaxLength(32);
+            // Hash and algo must be set together. CredentialAuthService maintains this
+            // invariant by construction; the DB-level CHECK guards against manual UPDATEs
+            // or future bugs that would otherwise produce un-verifiable rows.
+            e.ToTable(t => t.HasCheckConstraint(
+                "ck_users_password_hash_algo_paired",
+                "(password_hash IS NULL AND password_algo IS NULL) "
+                + "OR (password_hash IS NOT NULL AND password_algo IS NOT NULL)"));
             e.Property(u => u.Bio).HasMaxLength(500);
             e.Property(u => u.CreatedAt).HasDefaultValueSql("now()");
             e.Property(u => u.UpdatedAt).HasDefaultValueSql("now()");

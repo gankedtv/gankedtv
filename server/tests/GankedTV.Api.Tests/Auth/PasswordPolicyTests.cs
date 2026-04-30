@@ -53,26 +53,26 @@ public class PasswordPolicyTests
     }
 
     [Theory]
-    [InlineData("password1234")]
-    [InlineData("passw0rdpass")] // bumped to >= 12
-    [InlineData("welcome12345")]
-    [InlineData("changeme123")]
-    public void Validate_CommonPassword_IsInvalid_WhenInList(string pw)
+    // All inputs are entries from PasswordPolicy.CommonPasswords AND >= 12 chars,
+    // so the length check passes and execution actually reaches the common-password
+    // branch. Shorter "common" entries (e.g. "password123" at 11 chars) are rejected
+    // by the length floor first and don't exercise this code path.
+    [InlineData("123456789012")]
+    [InlineData("111111111111")]
+    [InlineData("abc123abc123")]
+    [InlineData("test1234test")]
+    public void Validate_CommonPassword_IsInvalidWithCommonError(string pw)
     {
-        // Sample the known list — the actual common-password list is small and centralised
-        // in PasswordPolicy. Adding a few short canonical entries to that list catches the
-        // intent: easy passwords get rejected even when long enough.
-        var listed = new[] { "password123", "password1", "qwertyuiop", "welcome123", "changeme123" };
-        if (Array.Exists(listed, p => string.Equals(p, pw, StringComparison.OrdinalIgnoreCase)))
-        {
-            PasswordPolicy.Validate(pw, "u@e.com", "u").IsValid.Should().BeFalse();
-        }
+        var result = PasswordPolicy.Validate(pw, "u@e.com", "u");
+        result.IsValid.Should().BeFalse();
+        result.Error.Should().Contain("common");
     }
 
     [Fact]
-    public void Validate_KnownCommonPasswordExactMatch_IsInvalid()
+    public void Validate_WhitespaceOnly_IsInvalid()
     {
-        // Confirms the policy rejects an entry from the embedded list.
-        PasswordPolicy.Validate("changeme123", "u@e.com", "u").IsValid.Should().BeFalse();
+        // A 12-space password used to slip past IsNullOrEmpty + the length floor;
+        // the policy now uses IsNullOrWhiteSpace to treat blank input as missing.
+        PasswordPolicy.Validate("            ", "u@e.com", "u").IsValid.Should().BeFalse();
     }
 }

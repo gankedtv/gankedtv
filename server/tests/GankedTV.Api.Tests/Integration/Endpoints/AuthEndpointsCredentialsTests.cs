@@ -123,11 +123,15 @@ public class AuthEndpointsCredentialsTests : IAsyncLifetime
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
 
         await using var db = _fx.CreateContext();
-        var users = await db.Users.AsNoTracking().OrderBy(u => u.CreatedAt).ToListAsync();
+        // Order by Email (unique) rather than CreatedAt, which can tie at high-precision-clock
+        // resolution when two registrations happen back-to-back inside the same test.
+        var users = await db.Users.AsNoTracking().OrderBy(u => u.Email).ToListAsync();
         users.Should().HaveCount(2);
-        users[0].Username.Should().Be("bob");
-        users[1].Username.Should().NotBe("bob");
-        users[1].Username.Should().StartWith("bob-");
+        var first = users.Single(u => u.Email == "bob@example.com");
+        var second = users.Single(u => u.Email == "bob2@example.com");
+        first.Username.Should().Be("bob");
+        second.Username.Should().NotBe("bob");
+        second.Username.Should().StartWith("bob-");
     }
 
     [Fact]
@@ -136,11 +140,15 @@ public class AuthEndpointsCredentialsTests : IAsyncLifetime
         await _fx.ResetAsync();
         using var client = BuildClient();
 
+        // 12+ chars (so the DataAnnotation filter doesn't pre-empt) but on the
+        // policy's common-password list — exercises the endpoint's InvalidPasswordResult
+        // arm rather than the validation-filter short-circuit.
         var resp = await client.PostAsJsonAsync(
             "/auth/register",
-            new RegisterRequest("c@example.com", "carol", "tiny"));
+            new RegisterRequest("c@example.com", "carol", "abc123abc123"));
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("weak_password");
     }
 
     [Fact]

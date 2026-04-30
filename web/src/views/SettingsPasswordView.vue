@@ -32,6 +32,13 @@ async function submit(event: Event) {
     currentPassword.value = ''
     newPassword.value = ''
   } catch (err) {
+    if (err instanceof ApiError && err.status === 401) {
+      // Token rejected — bounce back to login. Do this in the catch (not in the
+      // pure mapError helper) so navigation/logout side effects stay co-located
+      // with the error-handling flow, matching the LoginView/RegisterView pattern.
+      auth.logout()
+      router.replace({ name: 'login' })
+    }
     formError.value = mapError(err)
   } finally {
     submitting.value = false
@@ -41,9 +48,6 @@ async function submit(event: Event) {
 function mapError(err: unknown): string {
   if (err instanceof ApiError) {
     if (err.status === 401) {
-      // Token rejected — bounce back to login.
-      auth.logout()
-      router.replace({ name: 'login' })
       return 'Session expired. Sign in again.'
     }
     if (err.status === 400) {
