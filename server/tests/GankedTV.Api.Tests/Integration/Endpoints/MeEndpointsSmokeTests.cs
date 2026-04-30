@@ -66,7 +66,7 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
     {
         using var client = _factory!.CreateClient();
 
-        var resp = await client.GetAsync("/me");
+        var resp = await client.GetAsync("/auth/me");
 
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
@@ -78,7 +78,7 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
         var (_, token, username) = await SeedUserAndIssueTokenAsync();
 
         using var client = ClientWithBearer(token);
-        var resp = await client.GetAsync("/me");
+        var resp = await client.GetAsync("/auth/me");
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         (await resp.Content.ReadAsStringAsync()).Should().Contain(username);
@@ -117,7 +117,7 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
         var token = jwt.Issue(new User { Id = userId, Username = username, Email = email });
 
         using var client = ClientWithBearer(token);
-        var resp = await client.GetAsync("/me");
+        var resp = await client.GetAsync("/auth/me");
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
@@ -139,7 +139,7 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
         var (userId, token, username) = await SeedUserAndIssueTokenAsync("sparse");
 
         using var client = ClientWithBearer(token);
-        var resp = await client.GetAsync("/me");
+        var resp = await client.GetAsync("/auth/me");
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
@@ -158,7 +158,7 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
         var (_, token, _) = await SeedUserAndIssueTokenAsync();
 
         using var client = ClientWithBearer(token);
-        var resp = await client.PatchAsJsonAsync("/me", new { bio = "Built different. Dies first." });
+        var resp = await client.PatchAsJsonAsync("/auth/me", new { bio = "Built different. Dies first." });
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         (await resp.Content.ReadAsStringAsync()).Should().Contain("Built different. Dies first.");
@@ -171,7 +171,7 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
         var (_, token, _) = await SeedUserAndIssueTokenAsync("original");
 
         using var client = ClientWithBearer(token);
-        var resp = await client.PatchAsJsonAsync("/me", new { username = "renamed" });
+        var resp = await client.PatchAsJsonAsync("/auth/me", new { username = "renamed" });
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         (await resp.Content.ReadAsStringAsync()).Should().Contain("renamed");
@@ -192,7 +192,7 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
         var (_, token, _) = await SeedUserAndIssueTokenAsync("myself");
 
         using var client = ClientWithBearer(token);
-        var resp = await client.PatchAsJsonAsync("/me", new { username = "taken" });
+        var resp = await client.PatchAsJsonAsync("/auth/me", new { username = "taken" });
 
         resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
@@ -204,7 +204,7 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
         var (_, token, _) = await SeedUserAndIssueTokenAsync();
 
         using var client = ClientWithBearer(token);
-        var resp = await client.PatchAsJsonAsync("/me", new { avatarUrl = "not a url" });
+        var resp = await client.PatchAsJsonAsync("/auth/me", new { avatarUrl = "not a url" });
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -216,7 +216,7 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
         var (_, token, _) = await SeedUserAndIssueTokenAsync();
 
         using var client = ClientWithBearer(token);
-        var resp = await client.PatchAsJsonAsync("/me", new { avatarUrl = "https://user:pass@example.com/a.png" });
+        var resp = await client.PatchAsJsonAsync("/auth/me", new { avatarUrl = "https://user:pass@example.com/a.png" });
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -228,7 +228,7 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
         var (_, token, _) = await SeedUserAndIssueTokenAsync();
 
         using var client = ClientWithBearer(token);
-        var resp = await client.PatchAsJsonAsync("/me", new { avatarUrl = "https://example.com/a.png#payload" });
+        var resp = await client.PatchAsJsonAsync("/auth/me", new { avatarUrl = "https://example.com/a.png#payload" });
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -241,7 +241,7 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
 
         var longPath = new string('a', 2100);
         using var client = ClientWithBearer(token);
-        var resp = await client.PatchAsJsonAsync("/me", new { avatarUrl = $"https://example.com/{longPath}.png" });
+        var resp = await client.PatchAsJsonAsync("/auth/me", new { avatarUrl = $"https://example.com/{longPath}.png" });
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -263,7 +263,7 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
 
         using var client = ClientWithBearer(token);
         // Re-send the same bio — after my no-op short-circuit, no mutation should occur.
-        var resp = await client.PatchAsJsonAsync("/me", new { bio = (string?)null });
+        var resp = await client.PatchAsJsonAsync("/auth/me", new { bio = (string?)null });
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
 
@@ -279,7 +279,7 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
         var (_, token, _) = await SeedUserAndIssueTokenAsync();
 
         using var client = ClientWithBearer(token);
-        var resp = await client.PatchAsJsonAsync("/me", new { bio = new string('a', 501) });
+        var resp = await client.PatchAsJsonAsync("/auth/me", new { bio = new string('a', 501) });
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -291,7 +291,7 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
         var (_, token, original) = await SeedUserAndIssueTokenAsync("keeper");
 
         using var client = ClientWithBearer(token);
-        var resp = await client.PatchAsJsonAsync("/me", new { username = "   " });
+        var resp = await client.PatchAsJsonAsync("/auth/me", new { username = "   " });
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
@@ -307,7 +307,7 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
         var (_, token, original) = await SeedUserAndIssueTokenAsync("holder");
 
         using var client = ClientWithBearer(token);
-        var resp = await client.PatchAsJsonAsync("/me", new { username = "!!!" });
+        var resp = await client.PatchAsJsonAsync("/auth/me", new { username = "!!!" });
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
@@ -323,7 +323,7 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
         var (userId, token, _) = await SeedUserAndIssueTokenAsync("starter");
 
         using var client = ClientWithBearer(token);
-        var resp = await client.PatchAsJsonAsync("/me", new { username = " My Mixed-Case Name " });
+        var resp = await client.PatchAsJsonAsync("/auth/me", new { username = " My Mixed-Case Name " });
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
 
@@ -346,7 +346,7 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
         }
 
         using var client = ClientWithBearer(token);
-        var resp = await client.PatchAsJsonAsync("/me", new { bio = "anything" });
+        var resp = await client.PatchAsJsonAsync("/auth/me", new { bio = "anything" });
 
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
@@ -364,7 +364,7 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
         }
 
         using var client = ClientWithBearer(token);
-        var resp = await client.PatchAsJsonAsync("/me", new { bio = "" });
+        var resp = await client.PatchAsJsonAsync("/auth/me", new { bio = "" });
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         await using var db2 = _fx.CreateContext();
@@ -379,7 +379,7 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
         var (userId, token, _) = await SeedUserAndIssueTokenAsync("avataruser");
 
         using var client = ClientWithBearer(token);
-        var set = await client.PatchAsJsonAsync("/me", new { avatarUrl = "https://cdn.example.com/a.png" });
+        var set = await client.PatchAsJsonAsync("/auth/me", new { avatarUrl = "https://cdn.example.com/a.png" });
         set.StatusCode.Should().Be(HttpStatusCode.OK);
 
         await using (var db = _fx.CreateContext())
@@ -389,7 +389,7 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
         }
 
         // An empty string is the canonical "remove avatar" signal — ValidateAvatarUrl maps "" to (ok, null).
-        var cleared = await client.PatchAsJsonAsync("/me", new { avatarUrl = "" });
+        var cleared = await client.PatchAsJsonAsync("/auth/me", new { avatarUrl = "" });
         cleared.StatusCode.Should().Be(HttpStatusCode.OK);
 
         await using var verify = _fx.CreateContext();
@@ -416,7 +416,7 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
         await Task.Delay(20);
 
         using var client = ClientWithBearer(token);
-        var resp = await client.PatchAsJsonAsync("/me", new { avatarUrl = avatar });
+        var resp = await client.PatchAsJsonAsync("/auth/me", new { avatarUrl = avatar });
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
 
         await using var verify = _fx.CreateContext();
@@ -433,7 +433,7 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
         using var client = ClientWithBearer(token);
         // Literal "player" is explicitly allowed even though it's the generator's fallback
         // value — otherwise nobody could ever take the obvious name.
-        var resp = await client.PatchAsJsonAsync("/me", new { username = "player" });
+        var resp = await client.PatchAsJsonAsync("/auth/me", new { username = "player" });
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         (await resp.Content.ReadAsStringAsync()).Should().Contain("player");
@@ -454,7 +454,7 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
         }
 
         using var client = ClientWithBearer(token);
-        var resp = await client.GetAsync("/me");
+        var resp = await client.GetAsync("/auth/me");
 
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }

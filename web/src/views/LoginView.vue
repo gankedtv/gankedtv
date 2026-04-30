@@ -124,10 +124,7 @@ async function devSignIn(username = 'seeduser') {
         >
           {{ devLoading ? 'Signing in…' : 'Sign in as seeduser' }}
         </button>
-        <p
-          v-if="devError"
-          class="m-0 mt-2 text-center font-mono text-[10px] text-error"
-        >
+        <p v-if="devError" class="m-0 mt-2 text-center font-mono text-[10px] text-error">
           {{ devError }}
         </p>
       </div>

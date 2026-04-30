@@ -81,7 +81,7 @@ public sealed class ClipUploadService : IClipUploadService
             GameId = input.GameId,
             Title = title,
             Description = string.IsNullOrEmpty(input.Description) ? null : input.Description,
-            // Namespace by user id (immutable — username can change via PATCH /me)
+            // Namespace by user id (immutable — username can change via PATCH /auth/me)
             // and by game slug so listing the bucket groups one user's clips per title.
             // No-game uploads omit the slug segment (no `null/` placeholder).
             VideoKey = BuildVideoKey(userId, id, gameSlug),

@@ -17,7 +17,7 @@ afterEach(() => {
 
 describe('api/auth', () => {
   describe('me()', () => {
-    it('issues GET /me against BASE_URL and returns the parsed profile', async () => {
+    it('issues GET /auth/me against BASE_URL and returns the parsed profile', async () => {
       const profile = {
         id: '1',
         username: 'zoe',
@@ -41,7 +41,7 @@ describe('api/auth', () => {
 
       expect(result).toEqual(profile)
       const [url] = vi.mocked(fetch).mock.calls[0] as [string]
-      expect(url).toBe(`${BASE_URL}/me`)
+      expect(url).toBe(`${BASE_URL}/auth/me`)
     })
   })
 

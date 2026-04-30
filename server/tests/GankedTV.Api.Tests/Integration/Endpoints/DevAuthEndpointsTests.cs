@@ -104,7 +104,7 @@ public class DevAuthEndpointsTests : IAsyncLifetime
         client.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
 
-        var meResp = await client.GetAsync("/me");
+        var meResp = await client.GetAsync("/auth/me");
 
         meResp.StatusCode.Should().Be(HttpStatusCode.OK);
         (await meResp.Content.ReadAsStringAsync()).Should().Contain("carol");

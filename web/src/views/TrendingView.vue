@@ -157,11 +157,7 @@ const trendHold = `${trendBase} text-text-muted`
           </div>
 
           <div class="relative rounded-[4px] overflow-hidden aspect-video bg-surface-sunken">
-            <img
-              :src="clip.thumbnailUrl"
-              alt=""
-              class="w-full h-full object-cover block"
-            />
+            <img :src="clip.thumbnailUrl" alt="" class="w-full h-full object-cover block" />
             <DurationBadge :seconds="clip.durationSecs" class="absolute bottom-1 right-1" />
           </div>
 

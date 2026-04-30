@@ -16,7 +16,9 @@ export interface RefreshResponse {
 }
 
 export async function me(): Promise<MeResponse> {
-  return api<MeResponse>('/me')
+  // /auth/me — not bare /me — to avoid tripping tracker blockers (Brave, uBlock,
+  // Arc, corporate DLP) that pattern-match analytics endpoints on "/me".
+  return api<MeResponse>('/auth/me')
 }
 
 export function oauthStartUrl(provider: 'discord' | 'google', returnTo?: string): string {

@@ -308,18 +308,20 @@ const authorAvatarUrl = computed(() => safeImageUrl(clip.value?.author.avatarUrl
         <p class="text-sm leading-[1.6] text-text-secondary">{{ clip.description }}</p>
       </div>
     </div>
-  </div>
 
-  <!-- Toast -->
-  <Transition
-    enter-active-class="animate-[slideUp_0.22s_ease-out_forwards]"
-    leave-active-class="animate-[slideDown_0.2s_ease-in_forwards]"
-  >
-    <div
-      v-if="showToast"
-      class="fixed bottom-6 left-1/2 z-9999 flex -translate-x-1/2 items-center gap-2 rounded-md border border-brand bg-surface-overlay px-4 py-3 font-mono text-[13px] tracking-[0.04em] whitespace-nowrap text-text-primary shadow-[0_0_20px_var(--color-brand-glow)]"
+    <!-- Toast — kept inside the page's single root so the route-level
+         <Transition mode="out-in"> can animate the leave cleanly. The toast itself
+         is position:fixed, so DOM nesting doesn't affect where it renders. -->
+    <Transition
+      enter-active-class="animate-[slideUp_0.22s_ease-out_forwards]"
+      leave-active-class="animate-[slideDown_0.2s_ease-in_forwards]"
     >
-      {{ toastText }}
-    </div>
-  </Transition>
+      <div
+        v-if="showToast"
+        class="fixed bottom-6 left-1/2 z-9999 flex -translate-x-1/2 items-center gap-2 rounded-md border border-brand bg-surface-overlay px-4 py-3 font-mono text-[13px] tracking-[0.04em] whitespace-nowrap text-text-primary shadow-[0_0_20px_var(--color-brand-glow)]"
+      >
+        {{ toastText }}
+      </div>
+    </Transition>
+  </div>
 </template>
