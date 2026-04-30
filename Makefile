@@ -1,4 +1,4 @@
-.PHONY: up down clean logs server server-build server-test web web-install web-build web-test web-lint dev-all hooks
+.PHONY: up down clean logs server server-build server-test migrate migrate-add web web-install web-build web-test web-lint dev-all hooks
 
 # Infrastructure
 up:
@@ -22,6 +22,18 @@ server-build:
 
 server-test:
 	dotnet test server
+
+# Apply EF migrations to the local DB. Restores the dotnet-ef local tool on
+# first run so you don't need to remember `dotnet tool restore`.
+migrate:
+	cd server && dotnet tool restore
+	cd server && dotnet ef database update --project src/GankedTV.Api
+
+# Create a new migration: `make migrate-add NAME=AddSomething`.
+migrate-add:
+	@if [ -z "$(NAME)" ]; then echo "usage: make migrate-add NAME=<MigrationName>"; exit 1; fi
+	cd server && dotnet tool restore
+	cd server && dotnet ef migrations add $(NAME) --project src/GankedTV.Api
 
 # Web
 web-install:
