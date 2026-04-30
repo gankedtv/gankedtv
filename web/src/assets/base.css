@@ -38,6 +38,10 @@
   /* Vendor brand colors (theme-agnostic — locked to provider identity) */
   --color-discord: #5865f2;
   --color-discord-hover: #4752c4;
+  /* Google's official dark-button colors (2023 brand refresh). Required by
+     Google's identity guidelines — we can't substitute with project palette. */
+  --color-google: #131314;
+  --color-google-hover: #1f2024;
 
   /* Radius */
   --radius-sm: 0.375rem;
