@@ -18,7 +18,7 @@ public class ThumbnailJobServiceTests
         ThumbnailFrameOffset = TimeSpan.FromSeconds(1),
     };
 
-    private static readonly MinioOptions DefaultMinio = new()
+    private static readonly S3Options DefaultS3Options = new()
     {
         ClipsBucket = "clips",
         ThumbnailsBucket = "thumbnails",
@@ -31,12 +31,12 @@ public class ThumbnailJobServiceTests
         var ffmpeg = Substitute.For<IFfmpegRunner>();
         var jobOpts = Substitute.For<IOptionsMonitor<MediaJobOptions>>();
         jobOpts.CurrentValue.Returns(options ?? DefaultJobOptions);
-        var minioOpts = Substitute.For<IOptionsMonitor<MinioOptions>>();
-        minioOpts.CurrentValue.Returns(DefaultMinio);
+        var s3Opts = Substitute.For<IOptionsMonitor<S3Options>>();
+        s3Opts.CurrentValue.Returns(DefaultS3Options);
         storage.GetPresignedGetUrl(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan?>())
             .Returns("http://signed/video.mp4");
 
-        var svc = new ThumbnailJobService(storage, ffmpeg, jobOpts, minioOpts, NullLogger<ThumbnailJobService>.Instance);
+        var svc = new ThumbnailJobService(storage, ffmpeg, jobOpts, s3Opts, NullLogger<ThumbnailJobService>.Instance);
         return (svc, ffmpeg, storage);
     }
 

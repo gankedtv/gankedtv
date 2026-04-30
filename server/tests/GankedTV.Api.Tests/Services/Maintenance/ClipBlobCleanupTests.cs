@@ -10,7 +10,7 @@ namespace GankedTV.Api.Tests.Services.Maintenance;
 
 public class ClipBlobCleanupTests
 {
-    private static readonly MinioOptions Buckets = new()
+    private static readonly S3Options Buckets = new()
     {
         ClipsBucket = "clips",
         ThumbnailsBucket = "thumbnails",

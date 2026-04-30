@@ -37,7 +37,7 @@ public static class ClipsMutateEndpoints
         ClaimsPrincipal principal,
         GankedTvDbContext db,
         IObjectStorageService storage,
-        IOptions<MinioOptions> minio,
+        IOptions<S3Options> s3,
         IOptions<ClipValidationOptions> validation,
         CancellationToken ct)
     {
@@ -124,9 +124,9 @@ public static class ClipsMutateEndpoints
         await db.SaveChangesAsync(ct);
 
         var expiresAt = DateTimeOffset.UtcNow.Add(VideoUrlLifetime);
-        var videoUrl = storage.GetPresignedGetUrl(minio.Value.ClipsBucket, clip.VideoKey, VideoUrlLifetime);
+        var videoUrl = storage.GetPresignedGetUrl(s3.Value.ClipsBucket, clip.VideoKey, VideoUrlLifetime);
         var thumbnailUrl = ClipsReadEndpoints.BuildThumbnailUrl(
-            storage, minio.Value.ThumbnailsBucket, clip.ThumbnailKey);
+            storage, s3.Value.ThumbnailsBucket, clip.ThumbnailKey);
         var likedByMe = await db.Likes.AsNoTracking()
             .AnyAsync(l => l.ClipId == clip.Id && l.UserId == userId, ct);
 
@@ -138,7 +138,7 @@ public static class ClipsMutateEndpoints
         ClaimsPrincipal principal,
         GankedTvDbContext db,
         IObjectStorageService storage,
-        IOptions<MinioOptions> minio,
+        IOptions<S3Options> s3,
         ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
@@ -165,7 +165,7 @@ public static class ClipsMutateEndpoints
         // surface as 500 (that would mislead the client into retrying a non-existent row).
         await ClipBlobCleanup.TryDeleteAsync(
             storage,
-            minio.Value,
+            s3.Value,
             clip,
             loggerFactory.CreateLogger(LogCategory),
             ct);

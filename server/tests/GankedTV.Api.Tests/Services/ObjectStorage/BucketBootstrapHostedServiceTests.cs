@@ -10,7 +10,7 @@ public class BucketBootstrapHostedServiceTests
 {
     private static BucketBootstrapHostedService Build(IObjectStorageService storage)
     {
-        var opts = Options.Create(new MinioOptions
+        var opts = Options.Create(new S3Options
         {
             Endpoint = "http://minio:9000",
             AccessKey = "k",

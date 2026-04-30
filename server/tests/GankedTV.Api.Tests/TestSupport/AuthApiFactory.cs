@@ -24,7 +24,7 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
     // the real providers untouched.
     //
     // `s3Fixture`, when non-null, points the production object-storage service at the test
-    // S3 container by overriding MinioOptions. This is the end-to-end path used by
+    // S3 container by overriding S3Options. This is the end-to-end path used by
     // [Collection("PostgresAndS3")] tests — IObjectStorageService is NOT replaced.
     // Mutually exclusive with `storageOverride` (which substitutes the service wholesale).
     public AuthApiFactory(
@@ -88,7 +88,7 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
                 // RewriteHost becomes a pass-through (its non-trivial branches are pinned
                 // by ObjectStorageTests.RewriteHost*).
                 var fx = _s3Fixture;
-                services.Configure<MinioOptions>(opts =>
+                services.Configure<S3Options>(opts =>
                 {
                     opts.Endpoint = fx.Endpoint;
                     opts.AccessKey = fx.AccessKey;

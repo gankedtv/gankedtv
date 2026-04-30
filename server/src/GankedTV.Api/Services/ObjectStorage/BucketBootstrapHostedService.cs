@@ -5,12 +5,12 @@ namespace GankedTV.Api.Services.ObjectStorage;
 public sealed class BucketBootstrapHostedService : IHostedService
 {
     private readonly IObjectStorageService _storage;
-    private readonly MinioOptions _options;
+    private readonly S3Options _options;
     private readonly ILogger<BucketBootstrapHostedService> _logger;
 
     public BucketBootstrapHostedService(
         IObjectStorageService storage,
-        IOptions<MinioOptions> options,
+        IOptions<S3Options> options,
         ILogger<BucketBootstrapHostedService> logger)
     {
         _storage = storage;

@@ -10,20 +10,20 @@ public sealed class MaintenanceHostedService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IOptionsMonitor<MaintenanceOptions> _options;
-    private readonly IOptionsMonitor<MinioOptions> _minio;
+    private readonly IOptionsMonitor<S3Options> _s3;
     private readonly TimeProvider _clock;
     private readonly ILogger<MaintenanceHostedService> _logger;
 
     public MaintenanceHostedService(
         IServiceScopeFactory scopeFactory,
         IOptionsMonitor<MaintenanceOptions> options,
-        IOptionsMonitor<MinioOptions> minio,
+        IOptionsMonitor<S3Options> s3,
         TimeProvider clock,
         ILogger<MaintenanceHostedService> logger)
     {
         _scopeFactory = scopeFactory;
         _options = options;
-        _minio = minio;
+        _s3 = s3;
         _clock = clock;
         _logger = logger;
     }
@@ -97,7 +97,7 @@ public sealed class MaintenanceHostedService : BackgroundService
     {
         var db = scope.ServiceProvider.GetRequiredService<GankedTvDbContext>();
         var storage = scope.ServiceProvider.GetRequiredService<IObjectStorageService>();
-        var buckets = _minio.CurrentValue;
+        var buckets = _s3.CurrentValue;
         var opts = _options.CurrentValue;
         var threshold = opts.ClipStaleThreshold;
         var cutoff = _clock.GetUtcNow() - threshold;

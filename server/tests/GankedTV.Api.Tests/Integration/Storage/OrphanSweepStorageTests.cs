@@ -114,7 +114,7 @@ public class OrphanSweepStorageTests : IAsyncLifetime
         var maintenance = new MaintenanceHostedService(
             sp.GetRequiredService<IServiceScopeFactory>(),
             sp.GetRequiredService<IOptionsMonitor<MaintenanceOptions>>(),
-            sp.GetRequiredService<IOptionsMonitor<MinioOptions>>(),
+            sp.GetRequiredService<IOptionsMonitor<S3Options>>(),
             clock,
             NullLogger<MaintenanceHostedService>.Instance);
 

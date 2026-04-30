@@ -25,7 +25,7 @@ public static class UsersEndpoints
         ClaimsPrincipal principal,
         GankedTvDbContext db,
         IObjectStorageService storage,
-        IOptions<MinioOptions> minio,
+        IOptions<S3Options> s3,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(username))
@@ -55,7 +55,7 @@ public static class UsersEndpoints
         var likedIds = await ClipsReadEndpoints.LoadLikedClipIdsAsync(
             db, principal, clips.Select(c => c.Id), ct);
 
-        var thumbnailsBucket = minio.Value.ThumbnailsBucket;
+        var thumbnailsBucket = s3.Value.ThumbnailsBucket;
         var clipDtos = clips
             .Select(c => c.ToFeedItem(
                 ClipsReadEndpoints.BuildThumbnailUrl(storage, thumbnailsBucket, c.ThumbnailKey),

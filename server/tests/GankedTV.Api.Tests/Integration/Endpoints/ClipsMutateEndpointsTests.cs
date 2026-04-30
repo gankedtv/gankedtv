@@ -513,8 +513,8 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
         var clipId = await SeedClipAsync(ownerId, thumbnailKey: "thumbs/x.jpg");
 
         using var scope = _factory!.Services.CreateScope();
-        var minio = scope.ServiceProvider
-            .GetRequiredService<Microsoft.Extensions.Options.IOptions<MinioOptions>>()
+        var s3 = scope.ServiceProvider
+            .GetRequiredService<Microsoft.Extensions.Options.IOptions<S3Options>>()
             .Value;
 
         using var client = ClientWithBearer(token);
@@ -528,11 +528,11 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
         // Video goes to ClipsBucket, thumbnail goes to ThumbnailsBucket — a swap would leak the
         // video key into the thumbnails bucket (and vice versa), silently breaking cleanup.
         await _storage.Received(1).DeleteObjectAsync(
-            minio.ClipsBucket,
+            s3.ClipsBucket,
             $"clips/{ownerId}/{clipId}.mp4",
             Arg.Any<CancellationToken>());
         await _storage.Received(1).DeleteObjectAsync(
-            minio.ThumbnailsBucket,
+            s3.ThumbnailsBucket,
             "thumbs/x.jpg",
             Arg.Any<CancellationToken>());
     }

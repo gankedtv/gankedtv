@@ -4,18 +4,18 @@ using Microsoft.Extensions.Options;
 
 namespace GankedTV.Api.Services.ObjectStorage;
 
-public sealed class MinioObjectStorageService : IObjectStorageService
+public sealed class S3ObjectStorageService : IObjectStorageService
 {
     private static readonly TimeSpan DefaultExpiry = TimeSpan.FromMinutes(15);
 
     private readonly IAmazonS3 _s3;
-    private readonly MinioOptions _options;
-    private readonly ILogger<MinioObjectStorageService> _logger;
+    private readonly S3Options _options;
+    private readonly ILogger<S3ObjectStorageService> _logger;
 
-    public MinioObjectStorageService(
+    public S3ObjectStorageService(
         IAmazonS3 s3,
-        IOptions<MinioOptions> options,
-        ILogger<MinioObjectStorageService> logger)
+        IOptions<S3Options> options,
+        ILogger<S3ObjectStorageService> logger)
     {
         _s3 = s3;
         _options = options.Value;

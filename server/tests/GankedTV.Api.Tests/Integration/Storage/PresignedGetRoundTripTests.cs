@@ -8,7 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace GankedTV.Api.Tests.Integration.Storage;
 
 // End-to-end presigned-GET round trip against a real S3-compatible storage container.
-// Locks MinioObjectStorageService.GetPresignedGetUrl + ResolveProtocol against real signing
+// Locks S3ObjectStorageService.GetPresignedGetUrl + ResolveProtocol against real signing
 // — if anyone breaks SigV4 query construction (e.g. flips the Verb, drops the protocol
 // override and ends up signing https://) the GET below will return 403/SignatureMismatch
 // and the test fails. RewriteHost is exercised as a pass-through here (PublicUrl is null
@@ -59,7 +59,7 @@ public class PresignedGetRoundTripTests : IAsyncLifetime
         }
 
         // Resolve the production storage service from the API host — it's wired to the
-        // fixture's endpoint via AuthApiFactory's Configure<MinioOptions> override.
+        // fixture's endpoint via AuthApiFactory's Configure<S3Options> override.
         var storage = _factory!.Services.GetRequiredService<IObjectStorageService>();
         var presignedGet = storage.GetPresignedGetUrl(S3Fixture.ClipsBucket, key);
 

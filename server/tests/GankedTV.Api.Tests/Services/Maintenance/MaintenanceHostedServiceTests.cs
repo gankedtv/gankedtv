@@ -16,8 +16,8 @@ public class MaintenanceHostedServiceTests
     {
         var optsMonitor = Substitute.For<IOptionsMonitor<MaintenanceOptions>>();
         optsMonitor.CurrentValue.Returns(options);
-        var minioMonitor = Substitute.For<IOptionsMonitor<MinioOptions>>();
-        minioMonitor.CurrentValue.Returns(new MinioOptions { ClipsBucket = "clips", ThumbnailsBucket = "thumbnails" });
+        var minioMonitor = Substitute.For<IOptionsMonitor<S3Options>>();
+        minioMonitor.CurrentValue.Returns(new S3Options { ClipsBucket = "clips", ThumbnailsBucket = "thumbnails" });
 
         return new MaintenanceHostedService(
             scopeFactory,

@@ -47,8 +47,8 @@ public class MaintenanceHostedServiceIntegrationTests
 
         var optsMonitor = Substitute.For<IOptionsMonitor<MaintenanceOptions>>();
         optsMonitor.CurrentValue.Returns(options);
-        var minioMonitor = Substitute.For<IOptionsMonitor<MinioOptions>>();
-        minioMonitor.CurrentValue.Returns(new MinioOptions { ClipsBucket = "clips", ThumbnailsBucket = "thumbnails" });
+        var minioMonitor = Substitute.For<IOptionsMonitor<S3Options>>();
+        minioMonitor.CurrentValue.Returns(new S3Options { ClipsBucket = "clips", ThumbnailsBucket = "thumbnails" });
 
         var svc = new MaintenanceHostedService(
             sp.GetRequiredService<IServiceScopeFactory>(),
@@ -222,8 +222,8 @@ public class MaintenanceHostedServiceIntegrationTests
             RefreshTokenRetention = TimeSpan.FromDays(30),
             ClipBatchSize = 1000,
         });
-        var minioMonitor = Substitute.For<IOptionsMonitor<MinioOptions>>();
-        minioMonitor.CurrentValue.Returns(new MinioOptions { ClipsBucket = "clips", ThumbnailsBucket = "thumbnails" });
+        var minioMonitor = Substitute.For<IOptionsMonitor<S3Options>>();
+        minioMonitor.CurrentValue.Returns(new S3Options { ClipsBucket = "clips", ThumbnailsBucket = "thumbnails" });
 
         var svc = new MaintenanceHostedService(
             sp.GetRequiredService<IServiceScopeFactory>(),
