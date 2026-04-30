@@ -1,13 +1,10 @@
 using System.Net;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
-using GankedTV.Api.Auth.Jwt;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Tests.TestSupport;
-using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 
 namespace GankedTV.Api.Tests.Integration.Endpoints;
@@ -33,41 +30,15 @@ public class UsersEndpointsTests : IAsyncLifetime
         if (_factory is not null) await _factory.DisposeAsync();
     }
 
-    private async Task<(Guid userId, string token)> SeedUserAndIssueTokenAsync(
+    private Task<(Guid userId, string token)> SeedUserAndIssueTokenAsync(
         string username = "owner",
         string? bio = null,
-        string? avatarUrl = null)
-    {
-        var now = DateTimeOffset.UtcNow;
-        Guid id;
-        await using (var db = _fx.CreateContext())
-        {
-            var user = new User
-            {
-                Username = username,
-                Email = $"{username}@example.com",
-                Bio = bio,
-                AvatarUrl = avatarUrl,
-                CreatedAt = now,
-                UpdatedAt = now,
-            };
-            db.Users.Add(user);
-            await db.SaveChangesAsync();
-            id = user.Id;
-        }
+        string? avatarUrl = null) =>
+        AuthTestHelpers.SeedUserAndIssueTokenAsync(_fx, _factory!, username,
+            configure: u => { u.Bio = bio; u.AvatarUrl = avatarUrl; });
 
-        using var scope = _factory!.Services.CreateScope();
-        var jwt = scope.ServiceProvider.GetRequiredService<IJwtService>();
-        var token = jwt.Issue(new User { Id = id, Username = username, Email = $"{username}@example.com" });
-        return (id, token);
-    }
-
-    private HttpClient ClientWithBearer(string token)
-    {
-        var client = _factory!.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        return client;
-    }
+    private HttpClient ClientWithBearer(string token) =>
+        AuthTestHelpers.CreateBearerClient(_factory!, token);
 
     private async Task<Guid> SeedClipAsync(
         Guid userId,

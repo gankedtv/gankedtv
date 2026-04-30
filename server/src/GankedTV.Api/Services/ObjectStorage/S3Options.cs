@@ -1,6 +1,6 @@
 namespace GankedTV.Api.Services.ObjectStorage;
 
-public sealed class MinioOptions
+public sealed class S3Options
 {
     public string Endpoint { get; set; } = "";
     public string AccessKey { get; set; } = "";

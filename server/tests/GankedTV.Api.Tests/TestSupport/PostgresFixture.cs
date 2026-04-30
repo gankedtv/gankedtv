@@ -8,8 +8,7 @@ namespace GankedTV.Api.Tests.TestSupport;
 
 public sealed class PostgresFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder()
-        .WithImage("postgres:16-alpine")
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:16-alpine")
         .WithDatabase("gankedtv_test")
         .WithUsername("gankedtv")
         .WithPassword("gankedtv_test")

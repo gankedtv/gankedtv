@@ -10,11 +10,11 @@ namespace GankedTV.Api.Tests;
 
 public class ObjectStorageTests
 {
-    private static MinioObjectStorageService BuildService(
+    private static S3ObjectStorageService BuildService(
         IAmazonS3 s3,
         string? publicUrl = null)
     {
-        var options = Options.Create(new MinioOptions
+        var options = Options.Create(new S3Options
         {
             Endpoint = "http://minio:9000",
             AccessKey = "key",
@@ -23,7 +23,7 @@ public class ObjectStorageTests
             ClipsBucket = "clips",
             ThumbnailsBucket = "thumbnails",
         });
-        return new MinioObjectStorageService(s3, options, NullLogger<MinioObjectStorageService>.Instance);
+        return new S3ObjectStorageService(s3, options, NullLogger<S3ObjectStorageService>.Instance);
     }
 
     [Fact]
@@ -245,7 +245,7 @@ public class ObjectStorageTests
         s3.GetPreSignedURL(Arg.Do<GetPreSignedUrlRequest>(r => captured = r))
             .Returns("https://prod.example/clips/key?sig=abc");
 
-        var opts = Options.Create(new MinioOptions
+        var opts = Options.Create(new S3Options
         {
             Endpoint = "https://prod.example",
             AccessKey = "k",
@@ -253,7 +253,7 @@ public class ObjectStorageTests
             ClipsBucket = "clips",
             ThumbnailsBucket = "thumbnails",
         });
-        new MinioObjectStorageService(s3, opts, NullLogger<MinioObjectStorageService>.Instance)
+        new S3ObjectStorageService(s3, opts, NullLogger<S3ObjectStorageService>.Instance)
             .GetPresignedPutUrl("clips", "key", "video/mp4");
 
         captured!.Protocol.Should().Be(Protocol.HTTPS);

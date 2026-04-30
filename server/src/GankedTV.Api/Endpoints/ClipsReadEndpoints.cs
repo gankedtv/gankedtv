@@ -36,7 +36,7 @@ public static class ClipsReadEndpoints
         ClaimsPrincipal principal,
         GankedTvDbContext db,
         IObjectStorageService storage,
-        IOptions<MinioOptions> minio,
+        IOptions<S3Options> s3,
         CancellationToken ct)
     {
         var clampedLimit = Math.Clamp(limit ?? DefaultLimit, 1, MaxLimit);
@@ -71,7 +71,7 @@ public static class ClipsReadEndpoints
 
         var likedIds = await LoadLikedClipIdsAsync(db, principal, page.Select(c => c.Id), ct);
 
-        var thumbnailsBucket = minio.Value.ThumbnailsBucket;
+        var thumbnailsBucket = s3.Value.ThumbnailsBucket;
         var items = page
             .Select(c => c.ToFeedItem(
                 BuildThumbnailUrl(storage, thumbnailsBucket, c.ThumbnailKey),
@@ -133,7 +133,7 @@ public static class ClipsReadEndpoints
         ClaimsPrincipal principal,
         GankedTvDbContext db,
         IObjectStorageService storage,
-        IOptions<MinioOptions> minio,
+        IOptions<S3Options> s3,
         CancellationToken ct)
     {
         var clip = await db.Clips.AsNoTracking()
@@ -149,8 +149,8 @@ public static class ClipsReadEndpoints
         }
 
         var expiresAt = DateTimeOffset.UtcNow.Add(VideoUrlLifetime);
-        var videoUrl = storage.GetPresignedGetUrl(minio.Value.ClipsBucket, clip.VideoKey, VideoUrlLifetime);
-        var thumbnailUrl = BuildThumbnailUrl(storage, minio.Value.ThumbnailsBucket, clip.ThumbnailKey);
+        var videoUrl = storage.GetPresignedGetUrl(s3.Value.ClipsBucket, clip.VideoKey, VideoUrlLifetime);
+        var thumbnailUrl = BuildThumbnailUrl(storage, s3.Value.ThumbnailsBucket, clip.ThumbnailKey);
 
         var likedByMe = false;
         if (TryGetUserId(principal, out var userId))

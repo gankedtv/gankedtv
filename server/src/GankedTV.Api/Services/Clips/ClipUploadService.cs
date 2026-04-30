@@ -14,20 +14,20 @@ public sealed class ClipUploadService : IClipUploadService
     private readonly GankedTvDbContext _db;
     private readonly IObjectStorageService _storage;
     private readonly ClipValidationOptions _validation;
-    private readonly MinioOptions _minio;
+    private readonly S3Options _s3;
     private readonly TimeProvider _clock;
 
     public ClipUploadService(
         GankedTvDbContext db,
         IObjectStorageService storage,
         IOptions<ClipValidationOptions> validation,
-        IOptions<MinioOptions> minio,
+        IOptions<S3Options> s3,
         TimeProvider clock)
     {
         _db = db;
         _storage = storage;
         _validation = validation.Value;
-        _minio = minio.Value;
+        _s3 = s3.Value;
         _clock = clock;
     }
 
@@ -118,7 +118,7 @@ public sealed class ClipUploadService : IClipUploadService
 
         var contentType = PrimaryContentType;
         var url = _storage.GetPresignedPutUrl(
-            _minio.ClipsBucket,
+            _s3.ClipsBucket,
             clip.VideoKey,
             contentType,
             UploadUrlExpiry);
@@ -148,7 +148,7 @@ public sealed class ClipUploadService : IClipUploadService
             return ClipResult<CompleteClipResult>.Fail(ClipUploadError.InvalidState);
         }
 
-        var meta = await _storage.GetObjectMetadataAsync(_minio.ClipsBucket, clip.VideoKey, ct);
+        var meta = await _storage.GetObjectMetadataAsync(_s3.ClipsBucket, clip.VideoKey, ct);
         if (meta is null || meta.SizeBytes <= 0)
         {
             // Treat a zero-byte object the same as missing — MinIO can accept an empty PUT,

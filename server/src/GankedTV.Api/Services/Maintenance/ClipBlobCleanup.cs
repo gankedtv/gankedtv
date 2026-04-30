@@ -11,7 +11,7 @@ public static class ClipBlobCleanup
     // orphaned rows pointing at missing blobs would surface as 404s on every read attempt.
     public static async Task TryDeleteAsync(
         IObjectStorageService storage,
-        MinioOptions buckets,
+        S3Options buckets,
         Clip clip,
         ILogger logger,
         CancellationToken ct)

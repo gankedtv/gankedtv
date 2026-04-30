@@ -14,20 +14,20 @@ public sealed class ThumbnailJobService : IThumbnailJobService
     private readonly IObjectStorageService _storage;
     private readonly IFfmpegRunner _ffmpeg;
     private readonly IOptionsMonitor<MediaJobOptions> _jobOptions;
-    private readonly IOptionsMonitor<MinioOptions> _minio;
+    private readonly IOptionsMonitor<S3Options> _s3;
     private readonly ILogger<ThumbnailJobService> _logger;
 
     public ThumbnailJobService(
         IObjectStorageService storage,
         IFfmpegRunner ffmpeg,
         IOptionsMonitor<MediaJobOptions> jobOptions,
-        IOptionsMonitor<MinioOptions> minio,
+        IOptionsMonitor<S3Options> s3,
         ILogger<ThumbnailJobService> logger)
     {
         _storage = storage;
         _ffmpeg = ffmpeg;
         _jobOptions = jobOptions;
-        _minio = minio;
+        _s3 = s3;
         _logger = logger;
     }
 
@@ -37,11 +37,11 @@ public sealed class ThumbnailJobService : IThumbnailJobService
         CancellationToken ct)
     {
         var opts = _jobOptions.CurrentValue;
-        var buckets = _minio.CurrentValue;
+        var buckets = _s3.CurrentValue;
 
         // Presign a GET against the internal endpoint. ffmpeg in dev resolves the MinIO
         // hostname inside the docker network; in prod (4060 host), the URL gets rewritten
-        // by MinioObjectStorageService.RewriteHost to the public endpoint already.
+        // by S3ObjectStorageService.RewriteHost to the public endpoint already.
         var videoUrl = _storage.GetPresignedGetUrl(buckets.ClipsBucket, job.VideoKey, DownloadUrlLifetime);
 
         // Probe first so we know the duration before deciding the seek offset, plus we
