@@ -181,6 +181,9 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
         var resp = await client.PatchAsJsonAsync($"/clips/{clipId}", new { title = "edited" });
 
         resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        // Pin the problem code so a future regression that returns 409 for a different
+        // reason (e.g. the username-conflict path leaking through) doesn't pass silently.
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("invalid_state");
     }
 
     [Fact]
