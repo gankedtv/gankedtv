@@ -88,7 +88,7 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
         // Ready and never marks Ready without one). Synthesize a placeholder when the
         // caller didn't specify so the strict ToDetail mapping doesn't blow up.
         var resolvedThumbKey = thumbnailKey == DefaultThumbnailKey
-            ? (status == "ready" ? $"thumbs/{id}.jpg" : null)
+            ? (status == ClipStatuses.Ready ? $"thumbs/{id}.jpg" : null)
             : thumbnailKey;
         await using var db = _fx.CreateContext();
         db.Clips.Add(new Clip
@@ -163,6 +163,24 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
         var resp = await client.PatchAsJsonAsync($"/clips/{clipId}", new { visibility = "bogus" });
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Theory]
+    [InlineData("draft")]
+    [InlineData("processing")]
+    [InlineData("failed")]
+    public async Task Patch_NonReadyClip_Returns409InvalidState(string status)
+    {
+        // PATCH only operates on Ready clips — matches GET /clips/{id}'s Ready filter so
+        // the response shape (ClipDetailResponse with non-null ThumbnailUrl) stays valid.
+        await _fx.ResetAsync();
+        var (ownerId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(ownerId, status: status);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PatchAsJsonAsync($"/clips/{clipId}", new { title = "edited" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 
     [Fact]
