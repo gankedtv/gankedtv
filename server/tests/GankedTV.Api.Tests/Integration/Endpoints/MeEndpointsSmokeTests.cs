@@ -107,6 +107,9 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
         // so a round-trip rounds by up to 1 microsecond. 1ms tolerance comfortably absorbs that.
         body.GetProperty("createdAt").GetDateTimeOffset()
             .Should().BeCloseTo(createdAt, TimeSpan.FromMilliseconds(1));
+        // OAuth-only / no-credential user — hasPassword is false. Pinned here so the web
+        // SettingsPasswordView's "Set password" vs "Change password" copy stays correct.
+        body.GetProperty("hasPassword").GetBoolean().Should().BeFalse();
     }
 
     [Fact]

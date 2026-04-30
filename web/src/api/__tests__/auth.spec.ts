@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { me, oauthStartUrl } from '../auth'
+import { login, me, oauthStartUrl, register, setPassword } from '../auth'
 import { configureAuth, BASE_URL } from '../client'
 
 beforeEach(() => {
@@ -62,6 +62,110 @@ describe('api/auth', () => {
       // Empty string is falsy — the guard skips the returnTo path, otherwise we'd produce
       // the ugly `.../start?returnTo=` which some gateways reject as a malformed query.
       expect(oauthStartUrl('discord', '')).toBe(`${BASE_URL}/auth/discord/start`)
+    })
+  })
+
+  describe('register()', () => {
+    it('POSTs the credentials body to /auth/register and returns the token response', async () => {
+      const tokens = { token: 'jwt', refresh: 'r1', expiresIn: 600 }
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () =>
+            new Response(JSON.stringify(tokens), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            }),
+        ),
+      )
+
+      const result = await register({
+        email: 'a@b.dev',
+        username: 'a',
+        password: 'long-strong-password',
+      })
+
+      expect(result).toEqual(tokens)
+      // vi.mocked(fetch) (not the local mock var) preserves the global fetch's
+      // `[input, init?]` call signature so the [url, init] tuple destructure type-checks.
+      const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(url).toBe(`${BASE_URL}/auth/register`)
+      expect(init.method).toBe('POST')
+      expect(JSON.parse(init.body as string)).toEqual({
+        email: 'a@b.dev',
+        username: 'a',
+        password: 'long-strong-password',
+      })
+    })
+  })
+
+  describe('login()', () => {
+    it('POSTs the credentials body to /auth/login and returns the token response', async () => {
+      const tokens = { token: 'jwt', refresh: 'r1', expiresIn: 600 }
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () =>
+            new Response(JSON.stringify(tokens), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            }),
+        ),
+      )
+
+      const result = await login({ email: 'a@b.dev', password: 'long-strong-password' })
+
+      expect(result).toEqual(tokens)
+      const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(url).toBe(`${BASE_URL}/auth/login`)
+      expect(init.method).toBe('POST')
+    })
+  })
+
+  describe('setPassword()', () => {
+    it('POSTs both currentPassword and newPassword when current is provided', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () =>
+            new Response(null, {
+              status: 204,
+              headers: { 'content-length': '0' },
+            }),
+        ),
+      )
+
+      await setPassword('old-password', 'new-strong-password')
+
+      const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(url).toBe(`${BASE_URL}/auth/password`)
+      expect(JSON.parse(init.body as string)).toEqual({
+        currentPassword: 'old-password',
+        newPassword: 'new-strong-password',
+      })
+    })
+
+    it('passes currentPassword:null when caller has no existing password', async () => {
+      // OAuth-only users attaching a password for the first time — server treats
+      // the OAuth login that minted the token as proof of account control.
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () =>
+            new Response(null, {
+              status: 204,
+              headers: { 'content-length': '0' },
+            }),
+        ),
+      )
+
+      await setPassword(null, 'new-strong-password')
+
+      const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(JSON.parse(init.body as string)).toEqual({
+        currentPassword: null,
+        newPassword: 'new-strong-password',
+      })
     })
   })
 })

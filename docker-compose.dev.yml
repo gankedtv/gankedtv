@@ -1,12 +1,16 @@
 services:
   postgres:
-    image: postgres:16
+    image: postgres:18
     ports:
       - "5435:5432"
     environment:
       POSTGRES_DB: gankedtv
       POSTGRES_USER: gankedtv
       POSTGRES_PASSWORD: gankedtv_dev
+      # Pin PGDATA to a subdir so the data path is stable across major-version
+      # bumps (the upstream default changes per major) and avoids PG's refusal
+      # to init into a non-empty mount root.
+      PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

@@ -2,8 +2,8 @@
 import { ref, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { oauthStartUrl } from '@/api/auth'
-import { api } from '@/api/client'
+import { login, oauthStartUrl } from '@/api/auth'
+import { api, ApiError } from '@/api/client'
 import IconDiscord from '@/components/icons/IconDiscord.vue'
 import IconGoogle from '@/components/icons/IconGoogle.vue'
 
@@ -27,9 +27,46 @@ watchEffect(() => {
   }
 })
 
+const email = ref('')
+const password = ref('')
+const submitting = ref(false)
+const formError = ref<string | null>(null)
+
+async function submitLogin(event: Event) {
+  event.preventDefault()
+  formError.value = null
+  submitting.value = true
+  try {
+    const tokens = await login({ email: email.value, password: password.value })
+    auth.setSession(tokens.token, tokens.refresh)
+    await auth.fetchMe()
+    router.replace(returnTo || '/')
+  } catch (err) {
+    formError.value = mapLoginError(err)
+  } finally {
+    submitting.value = false
+  }
+}
+
+function mapLoginError(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 401) {
+      return 'Email or password is incorrect. If you signed up with Discord or Google, use those buttons instead.'
+    }
+    if (err.status === 429) {
+      return 'Too many sign-in attempts. Wait a minute and try again.'
+    }
+    if (err.status === 400) {
+      return 'Please enter a valid email address.'
+    }
+  }
+  return 'Sign-in failed. Try again.'
+}
+
 // Dev-only sign-in: hits the /dev/token endpoint (mounted only when the API is in
-// Development mode) and drops the resulting JWT into the auth store. This is the
-// stand-in until manual email/password registration lands (issue #62).
+// Development mode) and drops the resulting JWT into the auth store. Kept alongside
+// the email/password form because it bypasses password auth — useful for tests where
+// the seeded password might have been rotated.
 const isDev = import.meta.env.DEV
 const devLoading = ref(false)
 const devError = ref<string | null>(null)
@@ -80,8 +117,58 @@ async function devSignIn(username = 'seeduser') {
           Sign In
         </h1>
         <p class="m-0 font-body text-sm text-text-secondary">
-          Connect with your gaming account to continue
+          Sign in with your email or a connected account
         </p>
+      </div>
+
+      <!-- Email/password form -->
+      <form class="flex flex-col gap-3" @submit="submitLogin">
+        <label class="flex flex-col gap-1.5">
+          <span class="font-mono text-[10px] uppercase tracking-widest text-text-muted">Email</span>
+          <input
+            v-model="email"
+            type="email"
+            autocomplete="email"
+            required
+            class="rounded-md border border-border-strong bg-surface-overlay px-3 py-2 font-body text-sm text-text-primary outline-none focus:border-border-hover"
+          />
+        </label>
+        <label class="flex flex-col gap-1.5">
+          <span class="font-mono text-[10px] uppercase tracking-widest text-text-muted">
+            Password
+          </span>
+          <input
+            v-model="password"
+            type="password"
+            autocomplete="current-password"
+            required
+            class="rounded-md border border-border-strong bg-surface-overlay px-3 py-2 font-body text-sm text-text-primary outline-none focus:border-border-hover"
+          />
+        </label>
+        <button
+          type="submit"
+          :disabled="submitting"
+          class="flex items-center justify-center gap-2 rounded-md bg-brand px-5 py-3 font-heading text-[15px] font-bold uppercase tracking-[0.06em] text-white transition-colors duration-150 hover:bg-brand-light disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {{ submitting ? 'Signing in…' : 'Sign in' }}
+        </button>
+        <p v-if="formError" class="m-0 font-mono text-[11px] tracking-wide text-error" role="alert">
+          {{ formError }}
+        </p>
+        <p class="m-0 mt-1 text-center font-body text-xs text-text-secondary">
+          New to GankedTV?
+          <RouterLink
+            :to="{ name: 'register', query: returnTo ? { redirect: returnTo } : {} }"
+            class="font-heading uppercase tracking-[0.04em] text-text-primary no-underline hover:text-brand"
+            >Create an account</RouterLink
+          >
+        </p>
+      </form>
+
+      <div class="my-4 flex items-center gap-3">
+        <div class="h-px flex-1 bg-border"></div>
+        <span class="font-mono text-[10px] uppercase tracking-widest text-text-muted"> or </span>
+        <div class="h-px flex-1 bg-border"></div>
       </div>
 
       <div class="flex flex-col gap-3">
@@ -93,13 +180,6 @@ async function devSignIn(username = 'seeduser') {
           <IconDiscord :size="20" class="shrink-0" />
           Continue with Discord
         </a>
-
-        <!-- Divider -->
-        <div class="flex items-center gap-3">
-          <div class="h-px flex-1 bg-border"></div>
-          <span class="font-mono text-[10px] uppercase tracking-widest text-text-muted"> or </span>
-          <div class="h-px flex-1 bg-border"></div>
-        </div>
 
         <!-- Google button -->
         <a

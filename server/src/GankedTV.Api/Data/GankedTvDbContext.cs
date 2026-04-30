@@ -23,6 +23,8 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             e.Property(u => u.Email).HasMaxLength(255);
             e.Property(u => u.DiscordId).HasMaxLength(50);
             e.Property(u => u.GoogleId).HasMaxLength(50);
+            e.Property(u => u.PasswordHash).HasMaxLength(255);
+            e.Property(u => u.PasswordAlgo).HasMaxLength(32);
             e.Property(u => u.Bio).HasMaxLength(500);
             e.Property(u => u.CreatedAt).HasDefaultValueSql("now()");
             e.Property(u => u.UpdatedAt).HasDefaultValueSql("now()");

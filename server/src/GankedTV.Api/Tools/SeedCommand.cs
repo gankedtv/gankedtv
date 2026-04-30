@@ -1,3 +1,4 @@
+using GankedTV.Api.Auth.Passwords;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -13,12 +14,16 @@ public sealed class SeedCommand(
     GankedTvDbContext db,
     ILogger<SeedCommand> logger,
     TimeProvider clock,
-    IHostEnvironment env)
+    IHostEnvironment env,
+    IPasswordHasher hasher)
 {
     public const string FlagName = "--seed";
 
     public static readonly Guid SeedUserId = new("00000000-0000-0000-0000-00000000CAFE");
     public const string SeedUsername = "seeduser";
+    public const string SeedUserEmail = $"{SeedUsername}@dev.local";
+    // Documented in the README so contributors can hit /auth/login directly after `make seed`.
+    public const string SeedUserPassword = "testpass123!";
     public const int SeedClipCount = 10;
     private const int GameRotationCount = 5;
 
@@ -46,14 +51,26 @@ public sealed class SeedCommand(
             {
                 Id = SeedUserId,
                 Username = SeedUsername,
-                Email = $"{SeedUsername}@dev.local",
+                Email = SeedUserEmail,
                 Bio = "Seeded dev user.",
+                PasswordHash = hasher.Hash(SeedUserPassword),
+                PasswordAlgo = hasher.Algorithm,
                 CreatedAt = now,
                 UpdatedAt = now,
             };
             db.Users.Add(user);
             await db.SaveChangesAsync(ct);
             logger.LogInformation("Seed: created user {Username}", user.Username);
+        }
+        else if (string.IsNullOrEmpty(user.PasswordHash))
+        {
+            // Migrate older seed runs that created the user before passwords existed.
+            // Don't overwrite an existing password — a contributor may have rotated it via /auth/password.
+            user.PasswordHash = hasher.Hash(SeedUserPassword);
+            user.PasswordAlgo = hasher.Algorithm;
+            user.UpdatedAt = now;
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Seed: attached default password to existing user {Username}", user.Username);
         }
 
         // Rotate seeded clips across the seeded games (Ids 1..GameRotationCount) so the

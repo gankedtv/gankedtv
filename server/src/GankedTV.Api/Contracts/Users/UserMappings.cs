@@ -9,5 +9,6 @@ public static class UserMappings
         new(user.Id, user.Username, user.Bio, user.AvatarUrl, user.CreatedAt, clips);
 
     public static MeResponse ToMe(this User user) =>
-        new(user.Id, user.Username, user.Email, user.Bio, user.AvatarUrl, user.CreatedAt);
+        new(user.Id, user.Username, user.Email, user.Bio, user.AvatarUrl, user.CreatedAt,
+            HasPassword: !string.IsNullOrEmpty(user.PasswordHash));
 }
