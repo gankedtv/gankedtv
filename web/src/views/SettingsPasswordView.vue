@@ -28,6 +28,13 @@ async function submit(event: Event) {
   try {
     const current = currentPassword.value.length > 0 ? currentPassword.value : null
     await setPassword(current, newPassword.value)
+    // Sync the local user state so the heading flips from "Set password" to
+    // "Change password" without waiting for the next /auth/me poll. The server
+    // just confirmed the write (204), so we know the new state is correct —
+    // skip the extra roundtrip that fetchMe() would cost.
+    if (auth.user) {
+      auth.user.hasPassword = true
+    }
     successMessage.value = 'Password updated.'
     currentPassword.value = ''
     newPassword.value = ''
