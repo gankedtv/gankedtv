@@ -18,6 +18,11 @@ public sealed class S3Fixture : IAsyncLifetime
     public const string ClipsBucket = "clips";
     public const string ThumbnailsBucket = "thumbnails";
 
+    // Single source of truth for the buckets the fixture creates / resets. Adding a third
+    // bucket means updating just this list — the InitializeAsync and ResetAsync loops pick
+    // it up automatically.
+    private static readonly string[] Buckets = [ClipsBucket, ThumbnailsBucket];
+
     // The container backend is MinIO — Testcontainers.Minio is currently the only
     // lightweight S3-compatible module. Swapping to a different S3 server (LocalStack,
     // SeaweedFS, Garage, ...) would replace this builder and the port constant; the rest
@@ -52,7 +57,7 @@ public sealed class S3Fixture : IAsyncLifetime
             ForcePathStyle = true,
         });
 
-        foreach (var bucket in new[] { ClipsBucket, ThumbnailsBucket })
+        foreach (var bucket in Buckets)
         {
             try
             {
@@ -79,7 +84,7 @@ public sealed class S3Fixture : IAsyncLifetime
     // is the safe lowest-common-denominator.)
     public async Task ResetAsync(CancellationToken ct = default)
     {
-        foreach (var bucket in new[] { ClipsBucket, ThumbnailsBucket })
+        foreach (var bucket in Buckets)
         {
             string? continuation = null;
             do

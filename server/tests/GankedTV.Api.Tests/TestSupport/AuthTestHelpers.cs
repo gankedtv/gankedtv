@@ -38,7 +38,10 @@ internal static class AuthTestHelpers
 
         using var scope = factory.Services.CreateScope();
         var jwt = scope.ServiceProvider.GetRequiredService<IJwtService>();
-        var token = jwt.Issue(new User { Id = id, Username = username, Email = $"{username}@example.com" });
+        // Issue the token from the persisted entity, not a fresh struct rebuilt from local
+        // vars — `configure` could have mutated Username / Email, and the JWT claims must
+        // reflect the row that's actually in the DB.
+        var token = jwt.Issue(user);
         return (id, token);
     }
 
