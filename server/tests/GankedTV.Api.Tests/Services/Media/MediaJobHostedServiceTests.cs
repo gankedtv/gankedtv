@@ -64,9 +64,11 @@ public class MediaJobHostedServiceTests
         var result = await svc.TryProcessOneAsync(CancellationToken.None);
 
         result.Should().BeTrue();
-        await store.Received(1).MarkReadyAsync(clipId, finalized, Arg.Any<CancellationToken>());
-        await store.DidNotReceive().MarkFailedAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
-        await store.DidNotReceive().ReleaseLeaseAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        // Pass AttemptNumber so MarkReady's predicate guards against another worker that
+        // re-claimed the row after our lease elapsed.
+        await store.Received(1).MarkReadyAsync(clipId, 1, finalized, Arg.Any<CancellationToken>());
+        await store.DidNotReceive().MarkFailedAsync(Arg.Any<Guid>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+        await store.DidNotReceive().ReleaseLeaseAsync(Arg.Any<Guid>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -83,10 +85,12 @@ public class MediaJobHostedServiceTests
 
         result.Should().BeTrue();
         // Asserts the locked invariant: shutdown-safe finalization uses CancellationToken.None
-        // so a transient retry release isn't lost when the host is stopping.
-        await store.Received(1).ReleaseLeaseAsync(clipId, CancellationToken.None);
-        await store.DidNotReceive().MarkFailedAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
-        await store.DidNotReceive().MarkReadyAsync(Arg.Any<Guid>(), Arg.Any<FinalizedMediaJob>(), Arg.Any<CancellationToken>());
+        // so a transient retry release isn't lost when the host is stopping. AttemptNumber=1
+        // is passed so the release only fires for our own claim, not a re-claim by another
+        // worker after our lease elapsed.
+        await store.Received(1).ReleaseLeaseAsync(clipId, 1, CancellationToken.None);
+        await store.DidNotReceive().MarkFailedAsync(Arg.Any<Guid>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+        await store.DidNotReceive().MarkReadyAsync(Arg.Any<Guid>(), Arg.Any<int>(), Arg.Any<FinalizedMediaJob>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -103,9 +107,10 @@ public class MediaJobHostedServiceTests
 
         result.Should().BeTrue();
         // Asserts the locked invariant: a final-attempt failure is recorded with
-        // CancellationToken.None so it isn't lost during shutdown.
-        await store.Received(1).MarkFailedAsync(clipId, CancellationToken.None);
-        await store.DidNotReceive().ReleaseLeaseAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        // CancellationToken.None so it isn't lost during shutdown. AttemptNumber=3
+        // is passed so the kill only fires if the row is still on our claim.
+        await store.Received(1).MarkFailedAsync(clipId, 3, CancellationToken.None);
+        await store.DidNotReceive().ReleaseLeaseAsync(Arg.Any<Guid>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -182,7 +187,7 @@ public class MediaJobHostedServiceTests
         }
         await svc.StopAsync(CancellationToken.None);
 
-        await store.Received(3).MarkReadyAsync(Arg.Any<Guid>(), Arg.Any<FinalizedMediaJob>(), Arg.Any<CancellationToken>());
+        await store.Received(3).MarkReadyAsync(Arg.Any<Guid>(), Arg.Any<int>(), Arg.Any<FinalizedMediaJob>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

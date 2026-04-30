@@ -29,6 +29,10 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
         // both proceed.
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
+        // AsNoTracking on a FOR UPDATE query is safe: the row lock is held by the
+        // surrounding transaction, not by EF's change tracker. Untracked materialization
+        // just avoids a tracker entry we don't need (the follow-up write goes through
+        // ExecuteUpdateAsync, which bypasses the tracker anyway).
         var rows = await _db.Clips
             .FromSqlInterpolated($@"
                 SELECT *
@@ -77,12 +81,15 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
 
     public async Task MarkReadyAsync(
         Guid clipId,
+        int expectedAttempt,
         FinalizedMediaJob result,
         CancellationToken ct)
     {
         var now = _clock.GetUtcNow();
         await _db.Clips
-            .Where(c => c.Id == clipId && c.Status == ClipStatuses.Processing)
+            .Where(c => c.Id == clipId
+                && c.Status == ClipStatuses.Processing
+                && c.ProcessingAttempts == expectedAttempt)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(c => c.Status, ClipStatuses.Ready)
                 .SetProperty(c => c.ThumbnailKey, result.ThumbnailKey)
@@ -93,22 +100,26 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
                 .SetProperty(c => c.UpdatedAt, now), ct);
     }
 
-    public async Task MarkFailedAsync(Guid clipId, CancellationToken ct)
+    public async Task MarkFailedAsync(Guid clipId, int expectedAttempt, CancellationToken ct)
     {
         var now = _clock.GetUtcNow();
         await _db.Clips
-            .Where(c => c.Id == clipId && c.Status == ClipStatuses.Processing)
+            .Where(c => c.Id == clipId
+                && c.Status == ClipStatuses.Processing
+                && c.ProcessingAttempts == expectedAttempt)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(c => c.Status, ClipStatuses.Failed)
                 .SetProperty(c => c.ProcessingStartedAt, (DateTimeOffset?)null)
                 .SetProperty(c => c.UpdatedAt, now), ct);
     }
 
-    public async Task ReleaseLeaseAsync(Guid clipId, CancellationToken ct)
+    public async Task ReleaseLeaseAsync(Guid clipId, int expectedAttempt, CancellationToken ct)
     {
         var now = _clock.GetUtcNow();
         await _db.Clips
-            .Where(c => c.Id == clipId && c.Status == ClipStatuses.Processing)
+            .Where(c => c.Id == clipId
+                && c.Status == ClipStatuses.Processing
+                && c.ProcessingAttempts == expectedAttempt)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(c => c.ProcessingStartedAt, (DateTimeOffset?)null)
                 .SetProperty(c => c.UpdatedAt, now), ct);

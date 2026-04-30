@@ -261,6 +261,7 @@ public class ClipMediaJobStoreIntegrationTests
         var store = NewStore(now, db);
 
         await store.MarkReadyAsync(clipId,
+            expectedAttempt: 1,
             new FinalizedMediaJob("k.jpg", DurationSecs: 12, Width: 1920, Height: 1080),
             CancellationToken.None);
 
@@ -288,6 +289,7 @@ public class ClipMediaJobStoreIntegrationTests
         var store = NewStore(now, db);
 
         await store.MarkReadyAsync(clipId,
+            expectedAttempt: 0,
             new FinalizedMediaJob("k.jpg", 1, 1, 1),
             CancellationToken.None);
 
@@ -295,6 +297,36 @@ public class ClipMediaJobStoreIntegrationTests
         var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
         clip.Status.Should().Be(ClipStatuses.Failed);
         clip.ThumbnailKey.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task MarkReadyAsync_NoOpsWhenAttemptMismatch()
+    {
+        // Race regression: this worker's lease elapsed mid-extraction; another worker
+        // re-claimed and bumped processing_attempts. The original worker's late MarkReady
+        // arrives with the stale attempt number and must NOT clobber the new claim.
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("liam");
+        var now = DateTimeOffset.UtcNow;
+        var clipId = await SeedClipAsync(userId, ClipStatuses.Processing, now,
+            processingStartedAt: now,
+            processingAttempts: 2);
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+
+        // Original worker thinks it owns attempt 1 — but the store is on attempt 2.
+        await store.MarkReadyAsync(clipId,
+            expectedAttempt: 1,
+            new FinalizedMediaJob("stale.jpg", 99, 99, 99),
+            CancellationToken.None);
+
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.Status.Should().Be(ClipStatuses.Processing);
+        clip.ThumbnailKey.Should().BeNull();
+        clip.ProcessingAttempts.Should().Be(2);
+        clip.ProcessingStartedAt.Should().NotBeNull();
     }
 
     [Fact]
@@ -310,7 +342,7 @@ public class ClipMediaJobStoreIntegrationTests
         await using var db = NewContext();
         var store = NewStore(now, db);
 
-        await store.MarkFailedAsync(clipId, CancellationToken.None);
+        await store.MarkFailedAsync(clipId, expectedAttempt: 3, CancellationToken.None);
 
         await using var verify = NewContext();
         var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
@@ -318,6 +350,30 @@ public class ClipMediaJobStoreIntegrationTests
         clip.ProcessingStartedAt.Should().BeNull();
         // ProcessingAttempts is preserved so audit/forensics can see how many tries it took.
         clip.ProcessingAttempts.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task MarkFailedAsync_NoOpsWhenAttemptMismatch()
+    {
+        // Same race shape as MarkReady: a stale final-attempt failure must not kill a
+        // row that another worker has since re-claimed for a fresh attempt.
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("mira");
+        var now = DateTimeOffset.UtcNow;
+        var clipId = await SeedClipAsync(userId, ClipStatuses.Processing, now,
+            processingStartedAt: now,
+            processingAttempts: 4);
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+
+        await store.MarkFailedAsync(clipId, expectedAttempt: 3, CancellationToken.None);
+
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.Status.Should().Be(ClipStatuses.Processing);
+        clip.ProcessingStartedAt.Should().NotBeNull();
+        clip.ProcessingAttempts.Should().Be(4);
     }
 
     [Fact]
@@ -333,12 +389,38 @@ public class ClipMediaJobStoreIntegrationTests
         await using var db = NewContext();
         var store = NewStore(now, db);
 
-        await store.ReleaseLeaseAsync(clipId, CancellationToken.None);
+        await store.ReleaseLeaseAsync(clipId, expectedAttempt: 1, CancellationToken.None);
 
         await using var verify = NewContext();
         var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
         clip.Status.Should().Be(ClipStatuses.Processing);
         clip.ProcessingStartedAt.Should().BeNull();
         clip.ProcessingAttempts.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ReleaseLeaseAsync_NoOpsWhenAttemptMismatch()
+    {
+        // The race the review flagged: worker A's transient release must not free a
+        // lease that worker B has since acquired (with a higher attempt count) and is
+        // currently using.
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("noah");
+        var now = DateTimeOffset.UtcNow;
+        var bLeaseStart = now.AddSeconds(-5);
+        var clipId = await SeedClipAsync(userId, ClipStatuses.Processing, now,
+            processingStartedAt: bLeaseStart,
+            processingAttempts: 3);
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+
+        // Worker A wakes up holding stale attempt=2; release must be a no-op.
+        await store.ReleaseLeaseAsync(clipId, expectedAttempt: 2, CancellationToken.None);
+
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.ProcessingStartedAt.Should().Be(bLeaseStart);
+        clip.ProcessingAttempts.Should().Be(3);
     }
 }

@@ -138,7 +138,7 @@ public sealed class MediaJobHostedService : BackgroundService
             {
                 var slug = await store.GetGameSlugAsync(job.GameId, ct);
                 var result = await thumbnailer.ExtractAsync(job, slug, ct);
-                await store.MarkReadyAsync(job.ClipId, result, ct);
+                await store.MarkReadyAsync(job.ClipId, job.AttemptNumber, result, ct);
                 _logger.LogInformation(
                     "Thumbnail ready clip={ClipId} key={Key} duration={Duration}s",
                     job.ClipId, result.ThumbnailKey, result.DurationSecs);
@@ -156,15 +156,16 @@ public sealed class MediaJobHostedService : BackgroundService
                         job.ClipId, job.AttemptNumber);
                     // Use a fresh non-cancellable token so the failure is recorded even
                     // when shutdown is in flight; without this a crash on the final attempt
-                    // could leave the row leased and stuck.
-                    await store.MarkFailedAsync(job.ClipId, CancellationToken.None);
+                    // could leave the row leased and stuck. Pass AttemptNumber so a stale
+                    // late-arriving call can't kill a row another worker has re-claimed.
+                    await store.MarkFailedAsync(job.ClipId, job.AttemptNumber, CancellationToken.None);
                 }
                 else
                 {
                     _logger.LogWarning(ex,
                         "Thumbnail extraction failed for clip={ClipId} on attempt {Attempt}; releasing for retry.",
                         job.ClipId, job.AttemptNumber);
-                    await store.ReleaseLeaseAsync(job.ClipId, CancellationToken.None);
+                    await store.ReleaseLeaseAsync(job.ClipId, job.AttemptNumber, CancellationToken.None);
                 }
             }
 
