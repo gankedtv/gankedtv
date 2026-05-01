@@ -300,6 +300,47 @@ public class UserUpsertServiceTests
     }
 
     [Fact]
+    public async Task UpsertFromOAuthAsync_AgainstExistingPasswordOnlyUser_LinksProviderIdWithoutDroppingPassword()
+    {
+        // Regression test for the OAuth→password-account merge direction (issue #62 spec).
+        // The OAuth provider asserts a verified email matching an existing password-only
+        // account: the provider id should attach to the existing row, and the password
+        // hash must NOT be wiped. Without email verification on the password side, this
+        // is the only direction where an automatic merge is safe.
+        await _fx.ResetAsync();
+        var now = DateTimeOffset.UtcNow;
+        Guid id;
+        const string PreservedHash = "$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+        await using (var db = _fx.CreateContext())
+        {
+            db.Users.Add(new User
+            {
+                Username = "merge-target",
+                Email = "merge@example.com",
+                PasswordHash = PreservedHash,
+                PasswordAlgo = "argon2id",
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            await db.SaveChangesAsync();
+            id = (await db.Users.SingleAsync()).Id;
+        }
+
+        await using (var db = _fx.CreateContext())
+        {
+            await new UserUpsertService(db).UpsertFromOAuthAsync(
+                DiscordOAuthProvider.ProviderName,
+                new OAuthUserInfo("d-merge", "merge@example.com", "Whatever", null, EmailVerified: true));
+        }
+
+        await using var verify = _fx.CreateContext();
+        var user = await verify.Users.SingleAsync(u => u.Id == id);
+        user.DiscordId.Should().Be("d-merge");
+        user.PasswordHash.Should().Be(PreservedHash);
+        user.PasswordAlgo.Should().Be("argon2id");
+    }
+
+    [Fact]
     public async Task UpsertFromOAuthAsync_UsernameCollision_AppendsSuffix()
     {
         await _fx.ResetAsync();

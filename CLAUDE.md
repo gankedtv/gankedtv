@@ -42,6 +42,14 @@ make hooks                    # One-time: install pre-push hook via core.hooksPa
 ```
 Hook lives at `.githooks/pre-push` and mirrors CI, scoped to changed top-level dirs (`server/` or `web/`). Bypass with `PREPUSH_SKIP=1 git push` or `git push --no-verify`.
 
+### CI mirror (run all CI checks locally)
+```bash
+make ci                       # Runs server + web CI checks (format, build, test+coverage)
+make ci-server                # Server-only subset
+make ci-web                   # Web-only subset
+```
+Mirrors `.github/workflows/server.yml` and `.github/workflows/web.yml` step-for-step. Pre-push hook stays separate — it scopes to changed dirs; `make ci` is the full matrix.
+
 ### Server (from repository root)
 ```bash
 dotnet build server           # Build

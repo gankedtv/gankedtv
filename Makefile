@@ -1,4 +1,4 @@
-.PHONY: up down clean logs server server-build server-test migrate migrate-add seed web web-install web-build web-test web-lint dev-all hooks
+.PHONY: up down clean logs server server-build server-test migrate migrate-add seed web web-install web-build web-test web-lint dev-all hooks ci ci-server ci-web
 
 # Infrastructure
 up:
@@ -64,6 +64,26 @@ dev-all: up
 	@trap 'kill 0' EXIT; \
 	dotnet watch --project server/src/GankedTV.Api & \
 	cd web && bun dev
+
+# CI mirror: runs the same checks the GitHub workflows run, in verify-only mode.
+# Mirrors `.github/workflows/server.yml` and `.github/workflows/web.yml` step-for-step
+# so contributors can reproduce CI locally with one command.
+#
+# Pre-push hook is intentionally NOT wired through here — it scopes to changed dirs
+# (server/ vs web/), `make ci` runs the full matrix. Use sub-targets for partial runs.
+ci: ci-server ci-web
+
+ci-server:
+	cd server && dotnet format --verify-no-changes
+	cd server && dotnet build --configuration Release
+	cd server && dotnet test --configuration Release /p:CollectCoverage=true /p:Threshold=85%2C85
+
+ci-web:
+	cd web && bun install --frozen-lockfile
+	cd web && bun run format:check
+	cd web && bun run lint:check
+	cd web && bun run build
+	cd web && bun run test:coverage
 
 # Git hooks — point git at the tracked .githooks/ directory.
 hooks:

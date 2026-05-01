@@ -1,3 +1,5 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using GankedTV.Api.Auth;
 using GankedTV.Api.Auth.Jwt;
 using GankedTV.Api.Auth.Providers;
@@ -26,6 +28,29 @@ public static class AuthEndpoints
             .Produces<TokenResponse>(StatusCodes.Status200OK)
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status401Unauthorized);
+
+        app.MapPost("/auth/register", Register)
+            .WithValidation<RegisterRequest>()
+            .RequireRateLimiting(AuthRateLimiting.CredentialsPolicy)
+            .Produces<TokenResponse>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        app.MapPost("/auth/login", Login)
+            .WithValidation<LoginRequest>()
+            .RequireRateLimiting(AuthRateLimiting.CredentialsPolicy)
+            .Produces<TokenResponse>(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status401Unauthorized);
+
+        app.MapPost("/auth/password", SetPassword)
+            .RequireAuthorization()
+            .WithValidation<SetPasswordRequest>()
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized);
+
         return app;
     }
 
@@ -113,6 +138,99 @@ public static class AuthEndpoints
             location += $"&returnTo={Uri.EscapeDataString(returnTo)}";
         }
         return Results.Redirect(location);
+    }
+
+    // The `[FromBody]` parameters are nullable so a literal JSON `null` reaches the
+    // ValidationEndpointFilter (matching the Refresh handler's convention). The filter
+    // returns 400 InvalidBody for both nulls and validation failures, so the handler
+    // body can treat the request as effectively non-null.
+    private static async Task<IResult> Register(
+        [FromBody] RegisterRequest? req,
+        CredentialAuthService credentials,
+        IJwtService jwt,
+        IRefreshTokenService refreshTokens,
+        IOptions<JwtOptions> jwtOptions,
+        CancellationToken ct)
+    {
+        var result = await credentials.TryRegisterAsync(req!.Email, req.Username, req.Password, ct);
+        return result switch
+        {
+            RegisterResult.SuccessResult ok => await IssueTokenResponseAsync(ok.User, jwt, refreshTokens, jwtOptions, ct),
+            // 409 with a code the SPA can branch on to nudge users into the OAuth-then-attach
+            // flow. Account-takeover on a verified-email OAuth account would otherwise be
+            // possible without an email-verification step (deliberately deferred).
+            RegisterResult.EmailTakenResult => ProblemResults.Conflict(
+                "email_taken",
+                "An account with this email already exists. Sign in with your existing method, then attach a password from your profile."),
+            RegisterResult.InvalidPasswordResult bad => ProblemResults.BadRequest("weak_password", bad.Error),
+            // [EmailAddress] on the DTO catches malformed emails before the handler runs.
+            // Any non-success result that isn't email-taken / weak-password is therefore an
+            // invalid email — collapse into the same 400 instead of a separate switch arm.
+            _ => ProblemResults.BadRequest("invalid_email"),
+        };
+    }
+
+    private static async Task<IResult> Login(
+        [FromBody] LoginRequest? req,
+        CredentialAuthService credentials,
+        IJwtService jwt,
+        IRefreshTokenService refreshTokens,
+        IOptions<JwtOptions> jwtOptions,
+        CancellationToken ct)
+    {
+        var user = await credentials.TryLoginAsync(req!.Email, req.Password, ct);
+        if (user is null)
+        {
+            // Generic 401 so attackers can't distinguish "no such user", "no password set",
+            // and "wrong password". TryLoginAsync runs a constant-time-equivalent dummy
+            // verify in the missing-user / no-password paths to keep the timing flat.
+            return ProblemResults.Unauthorized("invalid_credentials");
+        }
+
+        return await IssueTokenResponseAsync(user, jwt, refreshTokens, jwtOptions, ct);
+    }
+
+    private static async Task<IResult> SetPassword(
+        [FromBody] SetPasswordRequest? req,
+        ClaimsPrincipal principal,
+        CredentialAuthService credentials,
+        CancellationToken ct)
+    {
+        if (!TryGetUserId(principal, out var userId))
+        {
+            return Results.Unauthorized();
+        }
+
+        var result = await credentials.SetPasswordAsync(userId, req!.CurrentPassword, req.NewPassword, ct);
+        return result switch
+        {
+            SetPasswordResult.OkResult => Results.NoContent(),
+            SetPasswordResult.WrongCurrentPasswordResult => ProblemResults.BadRequest("wrong_current_password"),
+            SetPasswordResult.InvalidPasswordResult bad => ProblemResults.BadRequest("weak_password", bad.Error),
+            // JWT sub points at a user that no longer exists — same shape MeEndpoints uses
+            // for the analogous case. Any unhandled subtype falls through to the same 401.
+            _ => Results.Unauthorized(),
+        };
+    }
+
+    private static async Task<IResult> IssueTokenResponseAsync(
+        Data.Entities.User user,
+        IJwtService jwt,
+        IRefreshTokenService refreshTokens,
+        IOptions<JwtOptions> jwtOptions,
+        CancellationToken ct)
+    {
+        var token = jwt.Issue(user);
+        var refresh = await refreshTokens.IssueAsync(user.Id, ct);
+        return Results.Ok(new TokenResponse(token, refresh, jwtOptions.Value.ExpiryMinutes * 60));
+    }
+
+    private static bool TryGetUserId(ClaimsPrincipal principal, out Guid userId)
+    {
+        userId = default;
+        var sub = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
+            ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        return Guid.TryParse(sub, out userId);
     }
 
     private static async Task<IResult> Refresh(

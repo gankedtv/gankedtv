@@ -55,6 +55,7 @@ describe('useAuthStore', () => {
       bio: null,
       avatarUrl: null,
       createdAt: '',
+      hasPassword: false,
     })
 
     const auth = useAuthStore()
@@ -105,6 +106,7 @@ describe('useAuthStore', () => {
       bio: null,
       avatarUrl: null,
       createdAt: '',
+      hasPassword: true,
     })
 
     expect(auth.user?.username).toBe('zoe')

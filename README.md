@@ -102,6 +102,25 @@ make hooks
 
 This points git at `.githooks/` (via `core.hooksPath`). On `git push`, the hook runs the same checks CI runs, scoped to whichever top-level area changed (`server/` or `web/`). Bypass with `PREPUSH_SKIP=1 git push` or `git push --no-verify` when truly needed.
 
+To run the full CI matrix manually (format + build + test + coverage on both halves):
+
+```bash
+make ci          # both halves
+make ci-server   # server only
+make ci-web      # web only
+```
+
+### Seeded test account
+
+`make seed` creates a known test user so contributors can sign in immediately on a fresh DB without configuring OAuth credentials:
+
+| Field    | Value                  |
+|----------|------------------------|
+| Email    | `seeduser@dev.local`   |
+| Password | `testpass123!`         |
+
+Use these credentials at `http://localhost:5173/login` (or `POST /auth/login` with `{ email, password }`).
+
 ## Docker
 
 ### Start Infrastructure

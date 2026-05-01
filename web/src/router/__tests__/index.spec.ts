@@ -68,6 +68,7 @@ describe('router beforeEach guard', () => {
       bio: null,
       avatarUrl: null,
       createdAt: '',
+      hasPassword: false,
     })
 
     await router.push('/upload')

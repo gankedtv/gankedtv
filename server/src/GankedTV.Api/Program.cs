@@ -1,6 +1,7 @@
 using Amazon.S3;
 using GankedTV.Api.Auth;
 using GankedTV.Api.Auth.Jwt;
+using GankedTV.Api.Auth.Passwords;
 using GankedTV.Api.Auth.Providers;
 using GankedTV.Api.Auth.State;
 using GankedTV.Api.Auth.Tokens;
@@ -214,8 +215,12 @@ builder.Services.AddHttpClient(GoogleOAuthProvider.ProviderName, c =>
 builder.Services.AddSingleton<IJwtService, JwtService>();
 builder.Services.AddSingleton<IStateCookieService, StateCookieService>();
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
+builder.Services.AddSingleton<IPasswordHasher, Argon2idPasswordHasher>();
 builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
 builder.Services.AddScoped<UserUpsertService>();
+builder.Services.AddScoped<CredentialAuthService>();
+
+builder.Services.AddRateLimiter(opts => opts.AddCredentialsPolicy());
 
 builder.Services.AddSingleton<IOAuthProvider, DiscordOAuthProvider>();
 builder.Services.AddSingleton<IOAuthProvider, GoogleOAuthProvider>();
@@ -292,6 +297,7 @@ if (!app.Environment.IsDevelopment())
 app.UseCors(corsPolicy);
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapAuthEndpoints();
 app.MapMeEndpoints();

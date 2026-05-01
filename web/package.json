@@ -18,8 +18,8 @@
     "lint:check": "run-s lint:oxlint:check lint:eslint:check",
     "lint:oxlint:check": "oxlint .",
     "lint:eslint:check": "eslint . --cache",
-    "format": "prettier --write --experimental-cli --cache --cache-location ./node_modules/.cache/prettier/.prettier-cache src/",
-    "format:check": "prettier --check --experimental-cli --cache --cache-location ./node_modules/.cache/prettier/.prettier-cache src/"
+    "format": "prettier --write --cache --cache-location ./node_modules/.cache/prettier/.prettier-cache src/",
+    "format:check": "prettier --check --cache --cache-location ./node_modules/.cache/prettier/.prettier-cache src/"
   },
   "dependencies": {
     "pinia": "^3.0.4",
@@ -33,7 +33,7 @@
     "@types/jsdom": "^27.0.0",
     "@types/node": "^24.10.9",
     "@vitejs/plugin-vue": "^6.0.6",
-    "@vitest/coverage-v8": "^4.1.4",
+    "@vitest/coverage-istanbul": "^4.1.5",
     "@vitest/eslint-plugin": "^1.6.16",
     "@vue/eslint-config-typescript": "^14.7.0",
     "@vue/test-utils": "^2.4.6",
@@ -51,7 +51,7 @@
     "typescript": "~6.0.3",
     "vite": "^8.0.8",
     "vite-plugin-vue-devtools": "^8.1.1",
-    "vitest": "^4.1.4",
+    "vitest": "4.1.5",
     "vue-tsc": "^3.2.7"
   },
   "engines": {

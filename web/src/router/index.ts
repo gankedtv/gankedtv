@@ -15,9 +15,20 @@ const router = createRouter({
       component: () => import('@/views/LoginView.vue'),
     },
     {
+      path: '/register',
+      name: 'register',
+      component: () => import('@/views/RegisterView.vue'),
+    },
+    {
       path: '/upload',
       name: 'upload',
       component: () => import('@/views/UploadView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/settings/password',
+      name: 'settings-password',
+      component: () => import('@/views/SettingsPasswordView.vue'),
       meta: { requiresAuth: true },
     },
     {

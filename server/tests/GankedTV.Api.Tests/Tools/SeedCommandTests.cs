@@ -1,4 +1,5 @@
 using FluentAssertions;
+using GankedTV.Api.Auth.Passwords;
 using GankedTV.Api.Data;
 using GankedTV.Api.Tests.TestSupport;
 using GankedTV.Api.Tools;
@@ -86,7 +87,8 @@ public class SeedCommandTests : IAsyncLifetime
             db,
             NullLogger<SeedCommand>.Instance,
             TimeProvider.System,
-            new FakeHostEnvironment("Production"));
+            new FakeHostEnvironment("Production"),
+            new Argon2idPasswordHasher());
 
         await seed.RunAsync(CancellationToken.None);
 
@@ -95,8 +97,54 @@ public class SeedCommandTests : IAsyncLifetime
         (await verify.Clips.CountAsync()).Should().Be(0);
     }
 
+    [Fact]
+    public async Task FreshDb_AttachesDocumentedSeedPassword()
+    {
+        // The README documents seeduser@dev.local / testpass123! as the local-dev login;
+        // contributors should be able to call /auth/login with that pair after `make seed`.
+        await using var db = _fx.CreateContext();
+        await NewSeed(db).RunAsync(CancellationToken.None);
+
+        await using var verify = _fx.CreateContext();
+        var user = await verify.Users.SingleAsync();
+        user.PasswordHash.Should().NotBeNullOrEmpty();
+        user.PasswordAlgo.Should().Be("argon2id");
+        new Argon2idPasswordHasher().Verify(SeedCommand.SeedUserPassword, user.PasswordHash!).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RunTwice_DoesNotReplaceExistingPassword()
+    {
+        // Idempotency: a contributor who rotates the seed user's password via /auth/password
+        // should not have it stomped on by a second `make seed`.
+        await using (var db = _fx.CreateContext())
+        {
+            await NewSeed(db).RunAsync(CancellationToken.None);
+        }
+
+        // Manually rotate the password directly in the DB.
+        var hasher = new Argon2idPasswordHasher();
+        var rotated = hasher.Hash("rotated-password-1234");
+        await using (var db = _fx.CreateContext())
+        {
+            var user = await db.Users.SingleAsync();
+            user.PasswordHash = rotated;
+            await db.SaveChangesAsync();
+        }
+
+        // Second seed run should NOT overwrite the rotated password.
+        await using (var db = _fx.CreateContext())
+        {
+            await NewSeed(db).RunAsync(CancellationToken.None);
+        }
+
+        await using var verify = _fx.CreateContext();
+        var after = await verify.Users.SingleAsync();
+        after.PasswordHash.Should().Be(rotated);
+    }
+
     private SeedCommand NewSeed(GankedTvDbContext db) =>
-        new(db, NullLogger<SeedCommand>.Instance, TimeProvider.System, new FakeHostEnvironment("Development"));
+        new(db, NullLogger<SeedCommand>.Instance, TimeProvider.System, new FakeHostEnvironment("Development"), new Argon2idPasswordHasher());
 
     private sealed class FakeHostEnvironment(string name) : IHostEnvironment
     {

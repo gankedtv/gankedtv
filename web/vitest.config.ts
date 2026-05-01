@@ -12,7 +12,12 @@ export default mergeConfig(
       root: fileURLToPath(new URL('./', import.meta.url)),
       passWithNoTests: true,
       coverage: {
-        provider: 'v8',
+        // Istanbul (source instrumentation) instead of v8 (precise-coverage inspector
+        // API). v8 needs `node:inspector`'s `Profiler.startPreciseCoverage`, which
+        // bun's polyfill doesn't implement on 1.3.13+ — local `make ci-web` runs
+        // crash with "Coverage APIs are not supported" before any tests execute.
+        // Istanbul rewrites the source and works under any runtime; CI is unaffected.
+        provider: 'istanbul',
         include: ['src/api/**', 'src/router/**', 'src/stores/**'],
         exclude: ['**/__tests__/**', '**/*.spec.ts', '**/*.test.ts', '**/*.d.ts'],
         reporter: ['text', 'text-summary', 'json-summary'],

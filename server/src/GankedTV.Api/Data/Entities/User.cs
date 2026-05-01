@@ -9,6 +9,8 @@ public class User
     public string? Bio { get; set; }
     public string? DiscordId { get; set; }
     public string? GoogleId { get; set; }
+    public string? PasswordHash { get; set; }
+    public string? PasswordAlgo { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 
