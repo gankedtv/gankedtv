@@ -189,7 +189,10 @@ describe('api/clips', () => {
 
     it('PATCHes /clips/{id} and returns the updated ClipDetail', async () => {
       const updated = { ...baseDetail, title: 'Updated title', visibility: 'unlisted' as const }
-      vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(updated)))
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse(updated)),
+      )
 
       const result = await clips.update(CLIP_ID, { title: 'Updated title', visibility: 'unlisted' })
 
@@ -201,7 +204,10 @@ describe('api/clips', () => {
     })
 
     it('sends only the provided keys (sparse payload)', async () => {
-      vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(baseDetail)))
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse(baseDetail)),
+      )
 
       await clips.update(CLIP_ID, { title: 'New title' })
 
@@ -210,7 +216,10 @@ describe('api/clips', () => {
     })
 
     it('includes gameId: null when explicitly passed', async () => {
-      vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(baseDetail)))
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse(baseDetail)),
+      )
 
       await clips.update(CLIP_ID, { gameId: null })
 
@@ -225,7 +234,10 @@ describe('api/clips', () => {
         onTokenRefreshed: () => {},
         onRefreshFailed: () => {},
       })
-      vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(baseDetail)))
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse(baseDetail)),
+      )
 
       await clips.update(CLIP_ID, { visibility: 'unlisted' })
 

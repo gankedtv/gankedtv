@@ -171,9 +171,7 @@ const authorAvatarUrl = computed(() => safeImageUrl(clip.value?.author.avatarUrl
 const menuOpen = ref(false)
 const editOpen = ref(false)
 
-const isOwner = computed(
-  () => !!auth.user && !!clip.value && clip.value.author.id === auth.user.id,
-)
+const isOwner = computed(() => !!auth.user && !!clip.value && clip.value.author.id === auth.user.id)
 
 function openMenu() {
   menuOpen.value = true
@@ -329,7 +327,10 @@ function onEditError(message: string) {
                 <button
                   type="button"
                   class="w-full cursor-pointer rounded-md px-4 py-2.5 text-left font-body text-sm text-text-primary transition-colors duration-100 hover:bg-surface-raised"
-                  @click="closeMenu(); editOpen = true"
+                  @click="
+                    closeMenu()
+                    editOpen = true
+                  "
                 >
                   Edit
                 </button>

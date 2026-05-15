@@ -114,9 +114,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
           @click.stop
         >
           <!-- Header -->
-          <div
-            class="flex items-center justify-between border-b border-border px-5 py-4"
-          >
+          <div class="flex items-center justify-between border-b border-border px-5 py-4">
             <h2
               class="font-heading text-lg font-bold uppercase tracking-[0.04em] text-text-primary"
             >

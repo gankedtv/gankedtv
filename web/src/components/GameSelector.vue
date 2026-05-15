@@ -100,12 +100,7 @@ const inputClass =
 
     <!-- Popular chips -->
     <div v-if="!modelValue && popularGames.length" class="mb-2 flex flex-wrap gap-2">
-      <GameChipButton
-        v-for="g in popularGames"
-        :key="g.id"
-        :tag="g.tag"
-        @click="pickGame(g)"
-      />
+      <GameChipButton v-for="g in popularGames" :key="g.id" :tag="g.tag" @click="pickGame(g)" />
     </div>
 
     <!-- Typeahead -->
