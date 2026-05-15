@@ -110,6 +110,8 @@ function fireToast(text: string) {
 onBeforeUnmount(() => {
   teardownPlayer()
   if (toastTimer !== null) clearTimeout(toastTimer)
+  window.removeEventListener('keydown', onMenuKeydown)
+  window.removeEventListener('click', onMenuClickOutside, true)
 })
 
 async function toggleLike() {

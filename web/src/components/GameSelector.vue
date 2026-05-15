@@ -115,6 +115,8 @@ const inputClass =
       <ul
         v-if="showGameDropdown && gameResults.length"
         role="listbox"
+        aria-live="polite"
+        aria-atomic="true"
         class="absolute left-0 right-0 top-full z-10 mt-1 max-h-60 overflow-auto rounded-md border border-border-strong bg-surface-raised"
       >
         <GameSearchResult
