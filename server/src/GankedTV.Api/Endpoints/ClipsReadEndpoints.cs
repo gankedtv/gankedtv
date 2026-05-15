@@ -1,10 +1,12 @@
 using System.Buffers.Text;
 using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
+using System.Linq.Expressions;
 using System.Security.Claims;
 using System.Text;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Data;
+using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Problems;
 using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.EntityFrameworkCore;
@@ -27,6 +29,7 @@ public static class ClipsReadEndpoints
         var group = app.MapGroup("/clips");
         group.MapGet("/feed", GetFeed);
         group.MapGet("/{id:guid}", GetDetail);
+        app.MapGet("/c/{code:length(6,12)}", GetByShareCode);
         return app;
     }
 
@@ -128,22 +131,43 @@ public static class ClipsReadEndpoints
             && Guid.TryParse(decoded[(sep + 1)..], out id);
     }
 
-    private static async Task<IResult> GetDetail(
+    private static Task<IResult> GetDetail(
         Guid id,
+        ClaimsPrincipal principal,
+        GankedTvDbContext db,
+        IObjectStorageService storage,
+        IOptions<S3Options> s3,
+        CancellationToken ct) =>
+        ResolveClipByPredicateAsync(
+            c => c.Id == id && c.Status == "ready",
+            principal, db, storage, s3, ct);
+
+    private static Task<IResult> GetByShareCode(
+        string code,
+        ClaimsPrincipal principal,
+        GankedTvDbContext db,
+        IObjectStorageService storage,
+        IOptions<S3Options> s3,
+        CancellationToken ct) =>
+        ResolveClipByPredicateAsync(
+            c => c.ShareCode == code && c.Status == "ready",
+            principal, db, storage, s3, ct);
+
+    // Unlisted clips are accessible to anyone with the link or share code — only the
+    // feed is gated to public-only. Visibility is enforced at the listing layer, not
+    // the detail layer.
+    private static async Task<IResult> ResolveClipByPredicateAsync(
+        Expression<Func<Clip, bool>> predicate,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
         IObjectStorageService storage,
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
-        // Unlisted clips are accessible to anyone with the link — only the feed is gated
-        // to public-only. Visibility is enforced at the listing layer, not the detail layer.
         var clip = await db.Clips.AsNoTracking()
             .Include(c => c.User)
             .Include(c => c.Game)
-            .FirstOrDefaultAsync(
-                c => c.Id == id && c.Status == "ready",
-                ct);
+            .FirstOrDefaultAsync(predicate, ct);
 
         if (clip is null)
         {

@@ -37,7 +37,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
     private HttpClient ClientWithBearer(string token) =>
         AuthTestHelpers.CreateBearerClient(_factory!, token);
 
-    private async Task<Guid> SeedClipAsync(
+    private async Task<(Guid id, string shareCode)> SeedClipAsync(
         Guid userId,
         DateTimeOffset createdAt,
         string status = "ready",
@@ -46,6 +46,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         int? gameId = null)
     {
         var id = Guid.NewGuid();
+        var shareCode = ShareCodeGenerator.Next();
         await using var db = _fx.CreateContext();
         db.Clips.Add(new Clip
         {
@@ -55,7 +56,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
             Title = title ?? $"clip-{id:N}".Substring(0, 20),
             VideoKey = $"{userId}/{id}.mp4",
             ThumbnailKey = $"thumbs/{id}.jpg",
-            ShareCode = ShareCodeGenerator.Next(),
+            ShareCode = shareCode,
             Status = status,
             Visibility = visibility,
             DurationSecs = 30,
@@ -66,7 +67,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
             UpdatedAt = createdAt,
         });
         await db.SaveChangesAsync();
-        return id;
+        return (id, shareCode);
     }
 
     // ---- GET /clips/feed ----
@@ -91,9 +92,9 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         await _fx.ResetAsync();
         var (userId, _) = await SeedUserAndIssueTokenAsync();
         var now = DateTimeOffset.UtcNow;
-        var a = await SeedClipAsync(userId, now.AddMinutes(-3), title: "oldest-ready");
-        var b = await SeedClipAsync(userId, now.AddMinutes(-2), title: "middle-ready");
-        var c = await SeedClipAsync(userId, now.AddMinutes(-1), title: "newest-ready");
+        var (a, _) = await SeedClipAsync(userId, now.AddMinutes(-3), title: "oldest-ready");
+        var (b, _) = await SeedClipAsync(userId, now.AddMinutes(-2), title: "middle-ready");
+        var (c, _) = await SeedClipAsync(userId, now.AddMinutes(-1), title: "newest-ready");
         await SeedClipAsync(userId, now, status: "processing", title: "not-ready");
         await SeedClipAsync(userId, now, visibility: "unlisted", title: "unlisted");
 
@@ -117,7 +118,8 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         var seeded = new List<Guid>();
         for (var i = 0; i < 3; i++)
         {
-            seeded.Add(await SeedClipAsync(userId, now.AddSeconds(-i), title: $"clip-{i}"));
+            var (clipId_i, _) = await SeedClipAsync(userId, now.AddSeconds(-i), title: $"clip-{i}");
+            seeded.Add(clipId_i);
         }
 
         using var client = _factory!.CreateClient();
@@ -224,12 +226,10 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         await _fx.ResetAsync();
         var (userId, _) = await SeedUserAndIssueTokenAsync();
         var shared = DateTimeOffset.UtcNow;
-        var seeded = new[]
-        {
-            await SeedClipAsync(userId, shared, title: "tie-1"),
-            await SeedClipAsync(userId, shared, title: "tie-2"),
-            await SeedClipAsync(userId, shared, title: "tie-3"),
-        };
+        var (tie1, _) = await SeedClipAsync(userId, shared, title: "tie-1");
+        var (tie2, _) = await SeedClipAsync(userId, shared, title: "tie-2");
+        var (tie3, _) = await SeedClipAsync(userId, shared, title: "tie-3");
+        var seeded = new[] { tie1, tie2, tie3 };
 
         using var client = _factory!.CreateClient();
         var first = await client.GetAsync("/clips/feed?limit=2");
@@ -291,7 +291,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         // similar, "failed" clips would leak.
         await _fx.ResetAsync();
         var (userId, _) = await SeedUserAndIssueTokenAsync();
-        var ready = await SeedClipAsync(userId, DateTimeOffset.UtcNow.AddSeconds(-1), title: "ready");
+        var (ready, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow.AddSeconds(-1), title: "ready");
         await SeedClipAsync(userId, DateTimeOffset.UtcNow, status: "failed", title: "failed");
 
         using var client = _factory!.CreateClient();
@@ -308,7 +308,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
     {
         await _fx.ResetAsync();
         var (userId, _) = await SeedUserAndIssueTokenAsync();
-        var clipId = await SeedClipAsync(userId, DateTimeOffset.UtcNow);
+        var (clipId, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow);
         await using (var db = _fx.CreateContext())
         {
             db.Likes.Add(new Like { UserId = userId, ClipId = clipId, CreatedAt = DateTimeOffset.UtcNow });
@@ -331,7 +331,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         var (_, viewerToken) = await SeedUserAndIssueTokenAsync("viewer");
         var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
         var (strangerId, _) = await SeedUserAndIssueTokenAsync("stranger");
-        var clipId = await SeedClipAsync(authorId, DateTimeOffset.UtcNow);
+        var (clipId, _) = await SeedClipAsync(authorId, DateTimeOffset.UtcNow);
 
         await using (var db = _fx.CreateContext())
         {
@@ -355,8 +355,8 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         var (viewerId, viewerToken) = await SeedUserAndIssueTokenAsync("viewer");
         var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
         var now = DateTimeOffset.UtcNow;
-        var liked = await SeedClipAsync(authorId, now.AddSeconds(-1), title: "liked");
-        var notLiked = await SeedClipAsync(authorId, now.AddSeconds(-2), title: "not-liked");
+        var (liked, _) = await SeedClipAsync(authorId, now.AddSeconds(-1), title: "liked");
+        var (notLiked, _) = await SeedClipAsync(authorId, now.AddSeconds(-2), title: "not-liked");
 
         await using (var db = _fx.CreateContext())
         {
@@ -379,7 +379,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
     {
         await _fx.ResetAsync();
         var (userId, _) = await SeedUserAndIssueTokenAsync("shapely");
-        var clipId = await SeedClipAsync(userId, DateTimeOffset.UtcNow, title: "a clip");
+        var (clipId, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, title: "a clip");
 
         const string presignedThumb = "https://minio.local/thumbs/presigned?sig=t";
         _storage.GetPresignedGetUrl(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan?>())
@@ -392,6 +392,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
 
         item.GetProperty("id").GetGuid().Should().Be(clipId);
         item.GetProperty("title").GetString().Should().Be("a clip");
+        item.GetProperty("shareCode").GetString().Should().NotBeNullOrEmpty();
         // The feed exposes a presigned thumbnail URL, never the raw bucket key.
         item.GetProperty("thumbnailUrl").GetString().Should().Be(presignedThumb);
         item.TryGetProperty("thumbnailKey", out _).Should().BeFalse(
@@ -410,8 +411,8 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         await _fx.ResetAsync();
         var (userId, _) = await SeedUserAndIssueTokenAsync();
         var now = DateTimeOffset.UtcNow;
-        var withGame = await SeedClipAsync(userId, now.AddSeconds(-1), title: "with-game", gameId: 2);
-        var withoutGame = await SeedClipAsync(userId, now.AddSeconds(-2), title: "no-game");
+        var (withGame, _) = await SeedClipAsync(userId, now.AddSeconds(-1), title: "with-game", gameId: 2);
+        var (withoutGame, _) = await SeedClipAsync(userId, now.AddSeconds(-2), title: "no-game");
 
         using var client = _factory!.CreateClient();
         var resp = await client.GetAsync("/clips/feed");
@@ -447,7 +448,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
     {
         await _fx.ResetAsync();
         var (userId, _) = await SeedUserAndIssueTokenAsync();
-        var clipId = await SeedClipAsync(userId, DateTimeOffset.UtcNow, status: "processing");
+        var (clipId, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, status: "processing");
 
         using var client = _factory!.CreateClient();
         var resp = await client.GetAsync($"/clips/{clipId}");
@@ -461,7 +462,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         // Unlisted = accessible via direct link; visibility is only enforced at the feed layer.
         await _fx.ResetAsync();
         var (userId, _) = await SeedUserAndIssueTokenAsync();
-        var clipId = await SeedClipAsync(userId, DateTimeOffset.UtcNow, visibility: "unlisted");
+        var (clipId, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, visibility: "unlisted");
 
         using var client = _factory!.CreateClient();
         var resp = await client.GetAsync($"/clips/{clipId}");
@@ -474,7 +475,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
     {
         await _fx.ResetAsync();
         var (userId, _) = await SeedUserAndIssueTokenAsync("owner");
-        var clipId = await SeedClipAsync(userId, DateTimeOffset.UtcNow, title: "playback");
+        var (clipId, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, title: "playback");
 
         const string presigned = "https://minio.local/clips/presigned?sig=abc";
         _storage
@@ -490,6 +491,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         body.GetProperty("title").GetString().Should().Be("playback");
         body.GetProperty("videoUrl").GetString().Should().Be(presigned);
         body.GetProperty("likedByMe").GetBoolean().Should().BeFalse();
+        body.GetProperty("shareCode").GetString().Should().NotBeNullOrEmpty();
 
         var expiresAt = body.GetProperty("videoUrlExpiresAt").GetDateTimeOffset();
         expiresAt.Should().BeCloseTo(DateTimeOffset.UtcNow.AddHours(1), TimeSpan.FromMinutes(2));
@@ -508,8 +510,8 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         // regression in ToDetail() / `.Include(c => c.Game)` on detail is caught.
         await _fx.ResetAsync();
         var (userId, _) = await SeedUserAndIssueTokenAsync();
-        var withGame = await SeedClipAsync(userId, DateTimeOffset.UtcNow, title: "with-game", gameId: 2);
-        var withoutGame = await SeedClipAsync(userId, DateTimeOffset.UtcNow, title: "no-game");
+        var (withGame, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, title: "with-game", gameId: 2);
+        var (withoutGame, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, title: "no-game");
 
         _storage.GetPresignedGetUrl(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan?>())
             .Returns("https://example/url");
@@ -538,7 +540,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         await _fx.ResetAsync();
         var (_, viewerToken) = await SeedUserAndIssueTokenAsync("viewer");
         var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
-        var clipId = await SeedClipAsync(authorId, DateTimeOffset.UtcNow);
+        var (clipId, _) = await SeedClipAsync(authorId, DateTimeOffset.UtcNow);
 
         _storage.GetPresignedGetUrl(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan?>())
             .Returns("https://example/url");
@@ -612,7 +614,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         await _fx.ResetAsync();
         var (viewerId, viewerToken) = await SeedUserAndIssueTokenAsync("viewer");
         var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
-        var clipId = await SeedClipAsync(authorId, DateTimeOffset.UtcNow);
+        var (clipId, _) = await SeedClipAsync(authorId, DateTimeOffset.UtcNow);
 
         await using (var db = _fx.CreateContext())
         {
@@ -627,5 +629,72 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         var resp = await client.GetAsync($"/clips/{clipId}");
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         body.GetProperty("likedByMe").GetBoolean().Should().BeTrue();
+    }
+
+    // ---- GET /c/{code} ----
+
+    [Fact]
+    public async Task ShareCodeResolve_Found_ReturnsSameShapeAsDetail()
+    {
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var (id, shareCode) = await SeedClipAsync(userId, now);
+
+        _storage.GetPresignedGetUrl(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>())
+            .Returns("https://cdn.example.com/video.mp4");
+
+        using var client = _factory!.CreateClient();
+        var byCode = await client.GetAsync($"/c/{shareCode}");
+        var byId   = await client.GetAsync($"/clips/{id}");
+
+        byCode.StatusCode.Should().Be(HttpStatusCode.OK);
+        byId.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var codeJson = await byCode.Content.ReadFromJsonAsync<JsonElement>();
+        var idJson   = await byId.Content.ReadFromJsonAsync<JsonElement>();
+
+        // Both routes return the same DTO — compare fields that don't change between calls
+        codeJson.GetProperty("id").GetGuid().Should().Be(idJson.GetProperty("id").GetGuid());
+        codeJson.GetProperty("shareCode").GetString().Should().Be(shareCode);
+        codeJson.GetProperty("title").GetString().Should().Be(idJson.GetProperty("title").GetString());
+    }
+
+    [Fact]
+    public async Task ShareCodeResolve_NotFound_Returns404()
+    {
+        await _fx.ResetAsync();
+        using var client = _factory!.CreateClient();
+
+        var resp = await client.GetAsync("/c/notexist");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task ShareCodeResolve_NotReady_Returns404()
+    {
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var (_, shareCode) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, status: "processing");
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync($"/c/{shareCode}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task ShareCodeResolve_Unlisted_ReturnsOkForAnyone()
+    {
+        // Share code = direct link; visibility is only enforced at the feed layer.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var (_, shareCode) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, visibility: "unlisted");
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync($"/c/{shareCode}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 }
