@@ -19,9 +19,25 @@ namespace GankedTV.Api.Data.Migrations
                 maxLength: 12,
                 nullable: true);
 
+            // Backfill share_code using the same 62-char alphabet as ShareCodeGenerator.Next.
+            // A pg_temp VOLATILE function forces fresh evaluation per row — a plain subquery is
+            // collapsed to a single value by the planner. gen_random_bytes comes from pgcrypto.
             migrationBuilder.Sql(@"
+                CREATE OR REPLACE FUNCTION pg_temp.gen_share_code() RETURNS text
+                LANGUAGE sql VOLATILE AS $$
+                    SELECT string_agg(
+                        substr(
+                            'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
+                            (get_byte(gen_random_bytes(1), 0) % 62) + 1,
+                            1
+                        ),
+                        '' ORDER BY i
+                    )
+                    FROM generate_series(1, 8) AS i;
+                $$;
+
                 UPDATE clips
-                SET share_code = substr(encode(digest(id::text, 'sha256'), 'hex'), 1, 8)
+                SET share_code = pg_temp.gen_share_code()
                 WHERE share_code IS NULL;
             ");
 

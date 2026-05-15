@@ -654,6 +654,11 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         var codeJson = await byCode.Content.ReadFromJsonAsync<JsonElement>();
         var idJson = await byId.Content.ReadFromJsonAsync<JsonElement>();
 
+        // Guard against DTO shape drift: both routes must expose the exact same property set.
+        var codeProps = codeJson.EnumerateObject().Select(p => p.Name).ToHashSet();
+        var idProps = idJson.EnumerateObject().Select(p => p.Name).ToHashSet();
+        codeProps.Should().BeEquivalentTo(idProps);
+
         // Both routes return the same DTO — compare fields that don't change between calls
         codeJson.GetProperty("id").GetGuid().Should().Be(idJson.GetProperty("id").GetGuid());
         codeJson.GetProperty("shareCode").GetString().Should().Be(shareCode);
