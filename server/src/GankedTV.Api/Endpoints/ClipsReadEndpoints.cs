@@ -248,7 +248,9 @@ public static class ClipsReadEndpoints
     {
         var title = WebUtility.HtmlEncode(clip.Title);
         var desc = clip.Description is not null ? WebUtility.HtmlEncode(clip.Description) : null;
-        var canonicalUrl = $"{request.Scheme}://{request.Host}/c/{clip.ShareCode}";
+        var canonicalUrl = WebUtility.HtmlEncode($"{request.Scheme}://{request.Host}/c/{clip.ShareCode}");
+        var encodedVideoUrl = WebUtility.HtmlEncode(videoUrl);
+        var encodedThumbnailUrl = WebUtility.HtmlEncode(thumbnailUrl);
         // width/height fallback: Discord/Twitter require numeric values
         var width = clip.Width?.ToString() ?? "1280";
         var height = clip.Height?.ToString() ?? "720";
@@ -264,17 +266,17 @@ public static class ClipsReadEndpoints
             <meta property="og:url" content="{canonicalUrl}" />
             <meta property="og:title" content="{title}" />
             {(desc is not null ? $"""<meta property="og:description" content="{desc}" />""" : "")}
-            <meta property="og:image" content="{thumbnailUrl}" />
-            <meta property="og:video" content="{videoUrl}" />
-            <meta property="og:video:secure_url" content="{videoUrl}" />
+            <meta property="og:image" content="{encodedThumbnailUrl}" />
+            <meta property="og:video" content="{encodedVideoUrl}" />
+            <meta property="og:video:secure_url" content="{encodedVideoUrl}" />
             <meta property="og:video:type" content="video/mp4" />
             <meta property="og:video:width" content="{width}" />
             <meta property="og:video:height" content="{height}" />
             <meta name="twitter:card" content="player" />
-            <meta name="twitter:player" content="{videoUrl}" />
+            <meta name="twitter:player" content="{encodedVideoUrl}" />
             <meta name="twitter:player:width" content="{width}" />
             <meta name="twitter:player:height" content="{height}" />
-            <meta name="twitter:image" content="{thumbnailUrl}" />
+            <meta name="twitter:image" content="{encodedThumbnailUrl}" />
             </head>
             <body></body>
             </html>
