@@ -646,13 +646,13 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
 
         using var client = _factory!.CreateClient();
         var byCode = await client.GetAsync($"/c/{shareCode}");
-        var byId   = await client.GetAsync($"/clips/{id}");
+        var byId = await client.GetAsync($"/clips/{id}");
 
         byCode.StatusCode.Should().Be(HttpStatusCode.OK);
         byId.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var codeJson = await byCode.Content.ReadFromJsonAsync<JsonElement>();
-        var idJson   = await byId.Content.ReadFromJsonAsync<JsonElement>();
+        var idJson = await byId.Content.ReadFromJsonAsync<JsonElement>();
 
         // Both routes return the same DTO — compare fields that don't change between calls
         codeJson.GetProperty("id").GetGuid().Should().Be(idJson.GetProperty("id").GetGuid());
