@@ -13,12 +13,10 @@ public static class ShareCodeGenerator
 
     public static string Next()
     {
-        Span<byte> buf = stackalloc byte[CodeLength];
-        RandomNumberGenerator.Fill(buf);
-        return string.Create(CodeLength, buf.ToArray(), static (chars, bytes) =>
+        return string.Create(CodeLength, 0, static (chars, _) =>
         {
             for (var i = 0; i < CodeLength; i++)
-                chars[i] = Alphabet[bytes[i] % Alphabet.Length];
+                chars[i] = Alphabet[RandomNumberGenerator.GetInt32(Alphabet.Length)];
         });
     }
 
