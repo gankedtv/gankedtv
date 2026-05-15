@@ -100,7 +100,7 @@ gankedtv/
 
 | Service    | URL                    | Credentials              |
 |------------|------------------------|--------------------------|
-| API        | http://localhost:5000  | -                        |
+| API        | http://localhost:5050  | -                        |
 | Web        | http://localhost:5173  | -                        |
 | PostgreSQL | localhost:5435         | gankedtv / gankedtv_dev  |
 | MinIO API  | http://localhost:9000  | minioadmin / minioadmin  |

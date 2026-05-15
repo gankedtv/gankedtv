@@ -289,7 +289,7 @@ app.UseMiddleware<ErrorHandlingMiddleware>();
 // 404 for unmatched routes, 415 for unsupported media types) into ProblemDetails so every
 // error response from the API has the same JSON envelope regardless of origin.
 app.UseStatusCodePages();
-// Skip in dev — :5000 is plain HTTP and the redirect emits CORS-less 307s.
+// Skip in dev — :5050 is plain HTTP and the redirect emits CORS-less 307s.
 if (!app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();

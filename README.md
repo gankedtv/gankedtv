@@ -40,7 +40,7 @@ cd server
 dotnet run --project src/GankedTV.Api
 ```
 
-API available at `http://localhost:5000`
+API available at `http://localhost:5050`
 
 ### 3. Run the Web App
 
