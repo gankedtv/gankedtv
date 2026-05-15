@@ -70,6 +70,7 @@ describe('api/clips', () => {
         createdAt: '2026-04-26T12:00:00Z',
         author: { id: 'u', username: 'zoe', avatarUrl: null },
         likedByMe: false,
+        shareCode: 'abc123',
       }
       vi.stubGlobal(
         'fetch',
@@ -95,6 +96,38 @@ describe('api/clips', () => {
 
       const [url] = vi.mocked(fetch).mock.calls[0] as [string]
       expect(url).toBe(`${BASE_URL}/clips/${encodeURIComponent('weird id/with?chars')}`)
+    })
+  })
+
+  describe('getByShareCode()', () => {
+    it('issues GET /c/{code} and returns the parsed detail', async () => {
+      const detail = {
+        id: 'a4f1e2c0-0000-0000-0000-000000000002',
+        title: 'Share Sample',
+        description: null,
+        videoUrl: 'https://cdn.example.com/clips/def.mp4?sig=xyz',
+        videoUrlExpiresAt: '2026-04-26T13:00:00Z',
+        thumbnailUrl: 'https://cdn.example.com/thumbs/def.jpg?sig=xyz',
+        durationSecs: 30,
+        width: 1280,
+        height: 720,
+        viewCount: 5,
+        likeCount: 2,
+        createdAt: '2026-04-26T12:00:00Z',
+        author: { id: 'u2', username: 'alex', avatarUrl: null },
+        likedByMe: false,
+        shareCode: 'abc123',
+      }
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse(detail)),
+      )
+
+      const result = await clips.getByShareCode('abc123')
+
+      expect(result).toEqual(detail)
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+      expect(url).toBe(`${BASE_URL}/c/abc123`)
     })
   })
 

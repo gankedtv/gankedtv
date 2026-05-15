@@ -47,6 +47,11 @@ const router = createRouter({
       component: () => import('@/views/ClipView.vue'),
     },
     {
+      path: '/c/:code',
+      name: 'clip-share',
+      component: () => import('@/views/ClipView.vue'),
+    },
+    {
       path: '/user/:username',
       name: 'user',
       component: () => import('@/views/UserView.vue'),
