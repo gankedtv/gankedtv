@@ -645,6 +645,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
             .Returns("https://cdn.example.com/video.mp4");
 
         using var client = _factory!.CreateClient();
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
         var byCode = await client.GetAsync($"/c/{shareCode}");
         var byId = await client.GetAsync($"/clips/{id}");
 
@@ -701,5 +702,88 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         var resp = await client.GetAsync($"/c/{shareCode}");
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task ShareCodeResolve_CrawlerUA_ReturnsHtmlWithOgTags()
+    {
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var (_, shareCode) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, title: "My Awesome Clip");
+
+        _storage.GetPresignedGetUrl(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan?>())
+            .Returns("https://cdn.example.com/video.mp4");
+
+        using var client = _factory!.CreateClient();
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Discordbot/2.0");
+
+        var resp = await client.GetAsync($"/c/{shareCode}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        resp.Content.Headers.ContentType?.MediaType.Should().Be("text/html");
+        var body = await resp.Content.ReadAsStringAsync();
+        body.Should().Contain("og:title");
+        body.Should().Contain("og:image");
+        body.Should().Contain("og:video");
+        body.Should().Contain("twitter:card");
+        body.Should().Contain("My Awesome Clip");
+    }
+
+    [Fact]
+    public async Task ShareCodeResolve_NonCrawlerUA_Returns302ToWebOrigin()
+    {
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var (_, shareCode) = await SeedClipAsync(userId, DateTimeOffset.UtcNow);
+
+        _storage.GetPresignedGetUrl(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan?>())
+            .Returns("https://cdn.example.com/video.mp4");
+
+        using var client = _factory!.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (compatible)");
+
+        var resp = await client.GetAsync($"/c/{shareCode}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Found);
+        resp.Headers.Location.Should().NotBeNull();
+        resp.Headers.Location!.ToString().Should().StartWith("http://localhost:5173");
+        resp.Headers.Location!.ToString().Should().EndWith($"/c/{shareCode}");
+    }
+
+    [Fact]
+    public async Task ShareCodeResolve_CrawlerUA_NotFound_Returns404()
+    {
+        await _fx.ResetAsync();
+
+        using var client = _factory!.CreateClient();
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Discordbot/2.0");
+
+        var resp = await client.GetAsync("/c/unknowncode");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task ShareCodeResolve_CrawlerUA_HtmlEscapesTitle()
+    {
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var (_, shareCode) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, title: "<script>alert('xss')</script>");
+
+        _storage.GetPresignedGetUrl(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan?>())
+            .Returns("https://cdn.example.com/video.mp4");
+
+        using var client = _factory!.CreateClient();
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Discordbot/2.0");
+
+        var resp = await client.GetAsync($"/c/{shareCode}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadAsStringAsync();
+        body.Should().NotContain("<script>alert");
+        body.Should().Contain("&lt;script&gt;");
     }
 }

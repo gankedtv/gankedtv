@@ -2,8 +2,10 @@ using System.Buffers.Text;
 using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
 using System.Linq.Expressions;
+using System.Net;
 using System.Security.Claims;
 using System.Text;
+using GankedTV.Api.Auth;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
@@ -142,23 +144,50 @@ public static class ClipsReadEndpoints
             c => c.Id == id && c.Status == "ready",
             principal, db, storage, s3, ct);
 
-    private static Task<IResult> GetByShareCode(
+    private static async Task<IResult> GetByShareCode(
         string code,
+        HttpRequest request,
+        IOptions<OAuthOptions> oauthOptions,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
         IObjectStorageService storage,
         IOptions<S3Options> s3,
-        CancellationToken ct) =>
-        ResolveClipByPredicateAsync(
+        CancellationToken ct)
+    {
+        var result = await LoadClipWithUrlsAsync(
             c => c.ShareCode == code && c.Status == "ready",
-            principal, db, storage, s3, ct);
+            db, storage, s3, ct);
+
+        if (result is null)
+            return ProblemResults.NotFound("not_found");
+
+        var (clip, videoUrl, thumbnailUrl) = result.Value;
+        var userAgent = request.Headers.UserAgent.ToString();
+
+        if (IsCrawler(userAgent))
+            return Results.Content(BuildOgHtml(clip, videoUrl, thumbnailUrl, request), "text/html; charset=utf-8");
+
+        if (request.Headers.Accept.ToString().Contains("application/json"))
+        {
+            var likedByMe = false;
+            if (TryGetUserId(principal, out var userId))
+            {
+                likedByMe = await db.Likes.AsNoTracking()
+                    .AnyAsync(l => l.ClipId == clip.Id && l.UserId == userId, ct);
+            }
+            var expiresAt = DateTimeOffset.UtcNow.Add(VideoUrlLifetime);
+            return Results.Ok(clip.ToDetail(videoUrl, expiresAt, thumbnailUrl, likedByMe));
+        }
+
+        var webOrigin = oauthOptions.Value.WebOrigin.TrimEnd('/');
+        return Results.Redirect($"{webOrigin}/c/{code}", permanent: false);
+    }
 
     // Unlisted clips are accessible to anyone with the link or share code — only the
     // feed is gated to public-only. Visibility is enforced at the listing layer, not
     // the detail layer.
-    private static async Task<IResult> ResolveClipByPredicateAsync(
+    internal static async Task<(Clip clip, string videoUrl, string thumbnailUrl)?> LoadClipWithUrlsAsync(
         Expression<Func<Clip, bool>> predicate,
-        ClaimsPrincipal principal,
         GankedTvDbContext db,
         IObjectStorageService storage,
         IOptions<S3Options> s3,
@@ -170,13 +199,31 @@ public static class ClipsReadEndpoints
             .FirstOrDefaultAsync(predicate, ct);
 
         if (clip is null)
+            return null;
+
+        var videoUrl = storage.GetPresignedGetUrl(s3.Value.ClipsBucket, clip.VideoKey, VideoUrlLifetime);
+        var thumbnailUrl = BuildThumbnailUrl(storage, s3.Value.ThumbnailsBucket, clip.ThumbnailKey);
+
+        return (clip, videoUrl, thumbnailUrl);
+    }
+
+    private static async Task<IResult> ResolveClipByPredicateAsync(
+        Expression<Func<Clip, bool>> predicate,
+        ClaimsPrincipal principal,
+        GankedTvDbContext db,
+        IObjectStorageService storage,
+        IOptions<S3Options> s3,
+        CancellationToken ct)
+    {
+        var result = await LoadClipWithUrlsAsync(predicate, db, storage, s3, ct);
+
+        if (result is null)
         {
             return ProblemResults.NotFound("not_found");
         }
 
+        var (clip, videoUrl, thumbnailUrl) = result.Value;
         var expiresAt = DateTimeOffset.UtcNow.Add(VideoUrlLifetime);
-        var videoUrl = storage.GetPresignedGetUrl(s3.Value.ClipsBucket, clip.VideoKey, VideoUrlLifetime);
-        var thumbnailUrl = BuildThumbnailUrl(storage, s3.Value.ThumbnailsBucket, clip.ThumbnailKey);
 
         var likedByMe = false;
         if (TryGetUserId(principal, out var userId))
@@ -186,6 +233,52 @@ public static class ClipsReadEndpoints
         }
 
         return Results.Ok(clip.ToDetail(videoUrl, expiresAt, thumbnailUrl, likedByMe));
+    }
+
+    private static readonly string[] CrawlerSubstrings =
+    [
+        "Discordbot", "Twitterbot", "facebookexternalhit", "Slackbot",
+        "LinkedInBot", "TelegramBot", "WhatsApp", "redditbot"
+    ];
+
+    private static bool IsCrawler(string userAgent) =>
+        CrawlerSubstrings.Any(s => userAgent.Contains(s, StringComparison.OrdinalIgnoreCase));
+
+    private static string BuildOgHtml(Clip clip, string videoUrl, string thumbnailUrl, HttpRequest request)
+    {
+        var title = WebUtility.HtmlEncode(clip.Title);
+        var desc = clip.Description is not null ? WebUtility.HtmlEncode(clip.Description) : null;
+        var canonicalUrl = $"{request.Scheme}://{request.Host}/c/{clip.ShareCode}";
+        // width/height fallback: Discord/Twitter require numeric values
+        var width = clip.Width?.ToString() ?? "1280";
+        var height = clip.Height?.ToString() ?? "720";
+        // video/mp4 is hardcoded — it's the only content type allowed by ClipValidationOptions
+
+        return $"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+            <meta charset="utf-8" />
+            <title>{title}</title>
+            <meta property="og:type" content="video.other" />
+            <meta property="og:url" content="{canonicalUrl}" />
+            <meta property="og:title" content="{title}" />
+            {(desc is not null ? $"""<meta property="og:description" content="{desc}" />""" : "")}
+            <meta property="og:image" content="{thumbnailUrl}" />
+            <meta property="og:video" content="{videoUrl}" />
+            <meta property="og:video:secure_url" content="{videoUrl}" />
+            <meta property="og:video:type" content="video/mp4" />
+            <meta property="og:video:width" content="{width}" />
+            <meta property="og:video:height" content="{height}" />
+            <meta name="twitter:card" content="player" />
+            <meta name="twitter:player" content="{videoUrl}" />
+            <meta name="twitter:player:width" content="{width}" />
+            <meta name="twitter:player:height" content="{height}" />
+            <meta name="twitter:image" content="{thumbnailUrl}" />
+            </head>
+            <body></body>
+            </html>
+            """;
     }
 
     internal static async Task<HashSet<Guid>> LoadLikedClipIdsAsync(
