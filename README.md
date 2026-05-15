@@ -23,34 +23,31 @@ Social media platform to share your gaming clips.
 
 ## Getting Started
 
-### 1. Start Infrastructure
-
 ```bash
-docker-compose up -d
+make setup
+make dev-all
 ```
 
-This starts:
-- PostgreSQL on port `5432`
-- MinIO on port `9000` (API) and `9001` (Console)
+That's it. `make setup` wipes the local Postgres + MinIO volumes, verifies host prerequisites, pulls/starts both services, waits for them to be healthy, restores server (NuGet + dotnet-ef) and web (bun) packages, applies migrations, seeds a test user and ten playable clips with real video + thumbnails uploaded to MinIO, and installs the pre-push git hook. Re-running gives you the same known-good state every time.
 
-### 2. Run the Server
+> **Destructive.** Any users you registered, clips you uploaded, or other dev data will be lost on every `make setup`. Use the manual setup below if you want to keep local state.
 
-```bash
-cd server
-dotnet run --project src/GankedTV.Api
-```
+After it finishes:
+- API on `http://localhost:5050`
+- Web on `http://localhost:5173`
+- Sign in with `seeduser@dev.local` / `testpass123!`
 
-API available at `http://localhost:5050`
+### Manual setup (advanced)
 
-### 3. Run the Web App
+If you want to start pieces individually:
 
 ```bash
-cd web
-bun install
-bun dev
+make up                                   # postgres + minio
+cd server && dotnet run --project src/GankedTV.Api
+cd web && bun install && bun dev
 ```
 
-App available at `http://localhost:5173`
+Migrations and seed live behind `make migrate` / `make seed` — `make migrate` now blocks until Postgres is healthy.
 
 ## Development
 
