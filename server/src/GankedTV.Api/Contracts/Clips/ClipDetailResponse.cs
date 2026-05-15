@@ -20,4 +20,5 @@ public sealed record ClipDetailResponse(
     DateTimeOffset CreatedAt,
     AuthorSummary Author,
     GameSummary? Game,
-    bool LikedByMe);
+    bool LikedByMe,
+    string Visibility);

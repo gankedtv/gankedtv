@@ -166,6 +166,85 @@ describe('api/clips', () => {
     })
   })
 
+  describe('update()', () => {
+    const CLIP_ID = 'a4f1e2c0-0000-0000-0000-000000000001'
+    const baseDetail = {
+      id: CLIP_ID,
+      title: 'My clip',
+      description: null,
+      videoUrl: 'https://cdn.example.com/clips/abc.mp4?sig=xyz',
+      videoUrlExpiresAt: '2026-04-26T13:00:00Z',
+      thumbnailUrl: 'https://cdn.example.com/thumbs/abc.jpg?sig=xyz',
+      durationSecs: 42,
+      width: 1920,
+      height: 1080,
+      viewCount: 7,
+      likeCount: 3,
+      createdAt: '2026-04-26T12:00:00Z',
+      author: { id: 'u', username: 'zoe', avatarUrl: null },
+      game: null,
+      likedByMe: false,
+      visibility: 'public' as const,
+    }
+
+    it('PATCHes /clips/{id} and returns the updated ClipDetail', async () => {
+      const updated = { ...baseDetail, title: 'Updated title', visibility: 'unlisted' as const }
+      vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(updated)))
+
+      const result = await clips.update(CLIP_ID, { title: 'Updated title', visibility: 'unlisted' })
+
+      expect(result).toEqual(updated)
+      const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(url).toBe(`${BASE_URL}/clips/${CLIP_ID}`)
+      expect(init.method).toBe('PATCH')
+      expect(new Headers(init.headers).get('Content-Type')).toBe('application/json')
+    })
+
+    it('sends only the provided keys (sparse payload)', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(baseDetail)))
+
+      await clips.update(CLIP_ID, { title: 'New title' })
+
+      const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(JSON.parse(String(init.body))).toEqual({ title: 'New title' })
+    })
+
+    it('includes gameId: null when explicitly passed', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(baseDetail)))
+
+      await clips.update(CLIP_ID, { gameId: null })
+
+      const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(JSON.parse(String(init.body))).toEqual({ gameId: null })
+    })
+
+    it('sends the bearer token when one is configured', async () => {
+      configureAuth({
+        getAccessToken: () => 'tok-xyz',
+        getRefreshToken: () => null,
+        onTokenRefreshed: () => {},
+        onRefreshFailed: () => {},
+      })
+      vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(baseDetail)))
+
+      await clips.update(CLIP_ID, { visibility: 'unlisted' })
+
+      const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(new Headers(init.headers).get('Authorization')).toBe('Bearer tok-xyz')
+    })
+
+    it('throws ApiError on non-2xx with the response body', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ code: 'invalid_title' }, 400)),
+      )
+
+      await expect(clips.update(CLIP_ID, { title: '' })).rejects.toMatchObject({
+        status: 400,
+      })
+    })
+  })
+
   describe('like() / unlike()', () => {
     it('POSTs /clips/{id}/like and returns the new count + liked flag', async () => {
       vi.stubGlobal(

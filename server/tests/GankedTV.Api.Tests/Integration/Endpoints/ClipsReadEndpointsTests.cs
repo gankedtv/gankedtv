@@ -454,8 +454,9 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Detail_Unlisted_Returns404()
+    public async Task Detail_Unlisted_ReturnsOkForAnyone()
     {
+        // Unlisted = accessible via direct link; visibility is only enforced at the feed layer.
         await _fx.ResetAsync();
         var (userId, _) = await SeedUserAndIssueTokenAsync();
         var clipId = await SeedClipAsync(userId, DateTimeOffset.UtcNow, visibility: "unlisted");
@@ -463,7 +464,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         using var client = _factory!.CreateClient();
         var resp = await client.GetAsync($"/clips/{clipId}");
 
-        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     [Fact]
