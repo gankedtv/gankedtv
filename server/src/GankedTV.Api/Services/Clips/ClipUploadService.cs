@@ -75,6 +75,7 @@ public sealed class ClipUploadService : IClipUploadService
 
         var id = Guid.NewGuid();
         var now = _clock.GetUtcNow();
+        var shareCode = await ShareCodeGenerator.GenerateUniqueAsync(_db.Clips, ct);
         var clip = new Clip
         {
             Id = id,
@@ -86,8 +87,7 @@ public sealed class ClipUploadService : IClipUploadService
             // and by game slug so listing the bucket groups one user's clips per title.
             // No-game uploads omit the slug segment (no `null/` placeholder).
             VideoKey = BuildVideoKey(userId, id, gameSlug),
-            // TODO(Task 3): replace with GenerateUniqueAsync once share-code feature is wired up
-            ShareCode = ShareCodeGenerator.Next(),
+            ShareCode = shareCode,
             Status = ClipStatuses.Draft,
             Visibility = visibility,
             CreatedAt = now,
