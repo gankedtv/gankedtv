@@ -28,7 +28,9 @@ make setup
 make dev-all
 ```
 
-That's it. `make setup` verifies host prerequisites, pulls/starts Postgres and MinIO, waits for both to be healthy, installs web dependencies, applies migrations, seeds a test user and ten playable clips with real video + thumbnails uploaded to MinIO, and installs the pre-push git hook. It's idempotent — safe to re-run after pulling main to catch up on schema or seed changes.
+That's it. `make setup` wipes the local Postgres + MinIO volumes, verifies host prerequisites, pulls/starts both services, waits for them to be healthy, restores server (NuGet + dotnet-ef) and web (bun) packages, applies migrations, seeds a test user and ten playable clips with real video + thumbnails uploaded to MinIO, and installs the pre-push git hook. Re-running gives you the same known-good state every time.
+
+> **Destructive.** Any users you registered, clips you uploaded, or other dev data will be lost on every `make setup`. Use the manual setup below if you want to keep local state.
 
 After it finishes:
 - API on `http://localhost:5050`

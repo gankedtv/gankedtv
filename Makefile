@@ -1,18 +1,31 @@
-.PHONY: setup wait-postgres wait-minio up down clean logs server server-build server-test migrate migrate-add seed web web-install web-build web-test web-lint dev-all hooks ci ci-server ci-web
+.PHONY: setup server-install wait-postgres wait-minio up down clean logs server server-build server-test migrate migrate-add seed web web-install web-build web-test web-lint dev-all hooks ci ci-server ci-web
 
-# One-command dev bootstrap: prereqs → image pull → infra up + healthy → web deps
-# → migrations → seed → git hooks. Idempotent: safe to re-run on outdated checkouts.
+# One-command dev bootstrap. DESTRUCTIVE: wipes the local Postgres + MinIO volumes
+# so every run lands you on a known-good state from migrations + seed. Steps:
+# clean → prereqs → image pull → infra up + healthy → server + web deps →
+# migrations → seed → git hooks.
 setup:
+	@echo "⚠ make setup will wipe local postgres + minio volumes (dev data lost)."
+	$(MAKE) clean
 	@./scripts/check-prereqs.sh
 	docker-compose -f docker-compose.dev.yml pull
 	$(MAKE) up
 	$(MAKE) wait-minio
+	$(MAKE) server-install
 	$(MAKE) web-install
 	$(MAKE) migrate
 	$(MAKE) seed
 	$(MAKE) hooks
 	@echo
 	@echo "✓ setup complete. Next: 'make dev-all' to start the API + web."
+
+# Restore server-side packages: the dotnet-ef local tool plus all NuGet refs.
+# Separated from `migrate` so `make setup` has an explicit install step
+# symmetric with `web-install`. Safe to re-run — both restores are idempotent
+# and cached, so this only does network work when something changed.
+server-install:
+	cd server && dotnet tool restore
+	cd server && dotnet restore
 
 # Internal: block until the postgres service reports ready. `migrate` depends on this
 # so the EF tool can't silently no-op against a not-yet-healthy DB (a real footgun we
