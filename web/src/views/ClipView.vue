@@ -327,10 +327,7 @@ function onEditError(message: string) {
                 <button
                   type="button"
                   class="w-full cursor-pointer rounded-md px-4 py-2.5 text-left font-body text-sm text-text-primary transition-colors duration-100 hover:bg-surface-raised"
-                  @click="
-                    closeMenu()
-                    editOpen = true
-                  "
+                  @click="closeMenu(); editOpen = true"
                 >
                   Edit
                 </button>
