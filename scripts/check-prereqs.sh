@@ -31,6 +31,16 @@ hint_install() {
         Darwin) echo "  install Docker Desktop from https://docker.com or 'brew install --cask docker'" ;;
         *)      echo "  install Docker Engine: https://docs.docker.com/engine/install/" ;;
       esac ;;
+    curl)
+      case "$uname_s" in
+        Darwin) echo "  curl ships with macOS; reinstall Command Line Tools: xcode-select --install" ;;
+        Linux)
+          if command -v pacman >/dev/null 2>&1; then echo "  sudo pacman -S curl"
+          elif command -v apt-get >/dev/null 2>&1; then echo "  sudo apt install curl"
+          else echo "  install curl via your distro's package manager"
+          fi ;;
+        *) echo "  install curl from https://curl.se/download.html" ;;
+      esac ;;
     *) echo "  install $1" ;;
   esac
 }
@@ -51,6 +61,9 @@ check bun
 check docker
 check ffmpeg
 check ffprobe
+# Used by wait-minio's healthcheck poll. Universally present on macOS/Linux but
+# checking presence here keeps the Makefile honest.
+check curl
 
 # Docker Compose: prefer the v2 plugin (`docker compose`) but accept the legacy
 # `docker-compose` v1 binary that the Makefile currently invokes.

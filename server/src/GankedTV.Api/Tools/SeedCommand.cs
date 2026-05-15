@@ -200,46 +200,40 @@ public sealed class SeedCommand(
 
         try
         {
-            // Synthetic clip: testsrc2 video + 440Hz tone, 5 seconds, libx264 ultrafast.
-            // Output path is the LAST argument — the test fakes parse args[^1] to capture
-            // the destination, so don't reorder without updating the test seam.
-            var videoArgs = new[]
-            {
-                "-y",
-                "-f", "lavfi", "-i", $"testsrc2=duration={SyntheticDurationSecs}:size={SyntheticWidth}x{SyntheticHeight}:rate=30",
-                "-f", "lavfi", "-i", $"sine=frequency=440:duration={SyntheticDurationSecs}",
-                "-c:v", "libx264",
-                "-preset", "ultrafast",
-                "-pix_fmt", "yuv420p",
-                "-c:a", "aac",
-                "-shortest",
-                videoPath,
-            };
-            var videoResult = await ffmpeg.RunAsync(media.FfmpegPath, videoArgs, media.ProcessTimeout, ct);
-            if (videoResult.ExitCode != 0)
-            {
-                throw new InvalidOperationException(
-                    $"ffmpeg video generation failed (exit {videoResult.ExitCode}). stderr: {videoResult.Stderr}");
-            }
-
-            // Single-frame thumbnail at 2s. -q:v 5 is mid-quality JPEG; the output is ~10 KB.
-            var thumbArgs = new[]
-            {
-                "-y",
-                "-ss", "2",
-                "-i", videoPath,
-                "-frames:v", "1",
-                "-q:v", "5",
-                thumbPath,
-            };
-            var thumbResult = await ffmpeg.RunAsync(media.FfmpegPath, thumbArgs, media.ProcessTimeout, ct);
-            if (thumbResult.ExitCode != 0)
-            {
-                throw new InvalidOperationException(
-                    $"ffmpeg thumbnail generation failed (exit {thumbResult.ExitCode}). stderr: {thumbResult.Stderr}");
-            }
-
             long videoSize;
+            // Generate the video only when it's actually missing from MinIO. The thumbnail
+            // ffmpeg pass needs a local mp4 to extract a frame from, so if both are missing
+            // we have to produce the video locally anyway — but if only the thumbnail is
+            // gone we'd still need to re-download the existing object. Pragmatic choice:
+            // when the video is present but the thumbnail isn't, we DO regenerate the
+            // video locally rather than pull it back from MinIO — this stays a single
+            // ffmpeg run instead of an S3 GET + ffmpeg, and the seed flow is dev-only
+            // so a few seconds of extra encode work isn't worth a download path.
+            if (videoMeta is null || thumbMeta is null)
+            {
+                // Synthetic clip: testsrc2 video + 440Hz tone, 5 seconds, libx264 ultrafast.
+                // Output path is the LAST argument — the test fakes parse args[^1] to capture
+                // the destination, so don't reorder without updating the test seam.
+                var videoArgs = new[]
+                {
+                    "-y",
+                    "-f", "lavfi", "-i", $"testsrc2=duration={SyntheticDurationSecs}:size={SyntheticWidth}x{SyntheticHeight}:rate=30",
+                    "-f", "lavfi", "-i", $"sine=frequency=440:duration={SyntheticDurationSecs}",
+                    "-c:v", "libx264",
+                    "-preset", "ultrafast",
+                    "-pix_fmt", "yuv420p",
+                    "-c:a", "aac",
+                    "-shortest",
+                    videoPath,
+                };
+                var videoResult = await ffmpeg.RunAsync(media.FfmpegPath, videoArgs, media.ProcessTimeout, ct);
+                if (videoResult.ExitCode != 0)
+                {
+                    throw new InvalidOperationException(
+                        $"ffmpeg video generation failed (exit {videoResult.ExitCode}). stderr: {videoResult.Stderr}");
+                }
+            }
+
             if (videoMeta is null)
             {
                 await using var videoStream = File.OpenRead(videoPath);
@@ -254,6 +248,23 @@ public sealed class SeedCommand(
 
             if (thumbMeta is null)
             {
+                // Single-frame thumbnail at 2s. -q:v 5 is mid-quality JPEG; the output is ~10 KB.
+                var thumbArgs = new[]
+                {
+                    "-y",
+                    "-ss", "2",
+                    "-i", videoPath,
+                    "-frames:v", "1",
+                    "-q:v", "5",
+                    thumbPath,
+                };
+                var thumbResult = await ffmpeg.RunAsync(media.FfmpegPath, thumbArgs, media.ProcessTimeout, ct);
+                if (thumbResult.ExitCode != 0)
+                {
+                    throw new InvalidOperationException(
+                        $"ffmpeg thumbnail generation failed (exit {thumbResult.ExitCode}). stderr: {thumbResult.Stderr}");
+                }
+
                 await using var thumbStream = File.OpenRead(thumbPath);
                 await storage.PutObjectAsync(s3.ThumbnailsBucket, thumbnailKey, thumbStream, "image/jpeg", ct);
                 logger.LogInformation("Seed: uploaded thumbnail {Key} ({Bytes} bytes)", thumbnailKey, thumbStream.Length);

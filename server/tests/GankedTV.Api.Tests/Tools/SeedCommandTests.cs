@@ -225,6 +225,37 @@ public class SeedCommandTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task FfmpegFailure_BubblesUpAndLeavesNoClipsBehind()
+    {
+        // A non-zero ffmpeg exit code must surface as an exception so `make setup`
+        // fails loudly instead of silently inserting rows pointing at missing media.
+        await using var db = _fx.CreateContext();
+        var failingFfmpeg = new FakeFfmpegRunner { ExitCode = 1, Stderr = "lavfi: simulated failure" };
+        var storage = new FakeObjectStorage();
+        var seed = new SeedCommand(
+            db,
+            NullLogger<SeedCommand>.Instance,
+            TimeProvider.System,
+            new FakeHostEnvironment("Development"),
+            new Argon2idPasswordHasher(),
+            storage,
+            failingFfmpeg,
+            Options.Create(new S3Options()),
+            Options.Create(new MediaJobOptions()));
+
+        Func<Task> act = () => seed.RunAsync(CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .Where(e => e.Message.Contains("ffmpeg") && e.Message.Contains("simulated failure"));
+
+        await using var verify = _fx.CreateContext();
+        // The seed user is created before the clip loop, so it persists. But no clip rows
+        // should have been inserted — the exception fires inside the first iteration.
+        (await verify.Clips.CountAsync()).Should().Be(0);
+        storage.PutCalls.Should().BeEmpty("PutObject must not run when ffmpeg failed");
+    }
+
+    [Fact]
     public async Task ReSeed_SkipsFfmpegAndUploadWhenObjectsAlreadyExist()
     {
         // First run lays down rows + objects.
@@ -243,13 +274,6 @@ public class SeedCommandTests : IAsyncLifetime
         // MinIO carrying over from the first run). The runner should not be invoked at
         // all, and PutObject should never be called.
         var storage2 = new FakeObjectStorage();
-        foreach (var i in Enumerable.Range(1, SeedCommand.SeedClipCount))
-        {
-            var clipId = SeedCommand.SeedClipId(i);
-            // Use a placeholder userId — the seed will compute the real user id at runtime
-            // and look up under that key. Pre-populate AFTER we know the seed user id, so
-            // we read it from the previous run's DB state.
-        }
 
         await using (var db = _fx.CreateContext())
         {
@@ -315,6 +339,8 @@ public class SeedCommandTests : IAsyncLifetime
         public static readonly byte[] ThumbPayload = "FAKE_JPEG_PAYLOAD"u8.ToArray();
 
         public List<(string Executable, IReadOnlyList<string> Arguments)> Invocations { get; } = new();
+        public int ExitCode { get; set; }
+        public string Stderr { get; set; } = string.Empty;
 
         public Task<FfmpegResult> RunAsync(
             string executable,
@@ -323,14 +349,17 @@ public class SeedCommandTests : IAsyncLifetime
             CancellationToken ct)
         {
             Invocations.Add((executable, arguments));
-            // Seed's video and thumbnail invocations both place the output path as the
-            // last argument; sniff the extension to decide which payload to write.
-            var outputPath = arguments[^1];
-            var payload = outputPath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)
-                ? VideoPayload
-                : ThumbPayload;
-            File.WriteAllBytes(outputPath, payload);
-            return Task.FromResult(new FfmpegResult(0, string.Empty, string.Empty));
+            if (ExitCode == 0)
+            {
+                // Seed's video and thumbnail invocations both place the output path as the
+                // last argument; sniff the extension to decide which payload to write.
+                var outputPath = arguments[^1];
+                var payload = outputPath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)
+                    ? VideoPayload
+                    : ThumbPayload;
+                File.WriteAllBytes(outputPath, payload);
+            }
+            return Task.FromResult(new FfmpegResult(ExitCode, string.Empty, Stderr));
         }
     }
 

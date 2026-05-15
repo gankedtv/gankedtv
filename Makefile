@@ -6,7 +6,6 @@ setup:
 	@./scripts/check-prereqs.sh
 	docker-compose -f docker-compose.dev.yml pull
 	$(MAKE) up
-	$(MAKE) wait-postgres
 	$(MAKE) wait-minio
 	$(MAKE) web-install
 	$(MAKE) migrate
@@ -15,13 +14,14 @@ setup:
 	@echo
 	@echo "✓ setup complete. Next: 'make dev-all' to start the API + web."
 
-# Internal: block until the postgres container reports ready. Used by `migrate` so
-# the EF tool can't silently no-op against a not-yet-healthy DB (a real footgun we
-# hit when chaining `make up && make migrate`).
+# Internal: block until the postgres service reports ready. `migrate` depends on this
+# so the EF tool can't silently no-op against a not-yet-healthy DB (a real footgun we
+# hit when chaining `make up && make migrate`). Uses compose-resolved service names so
+# the wait works regardless of the user's directory name / compose project name.
 wait-postgres:
 	@printf "Waiting for postgres "
 	@for i in $$(seq 1 60); do \
-	  if docker exec gankedtv-postgres-1 pg_isready -U gankedtv -d gankedtv >/dev/null 2>&1; then echo " ready."; exit 0; fi; \
+	  if docker-compose -f docker-compose.dev.yml exec -T postgres pg_isready -U gankedtv -d gankedtv >/dev/null 2>&1; then echo " ready."; exit 0; fi; \
 	  printf "."; sleep 1; \
 	done; echo " timed out after 60s"; exit 1
 
