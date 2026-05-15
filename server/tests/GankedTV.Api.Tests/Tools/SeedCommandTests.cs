@@ -113,6 +113,43 @@ public class SeedCommandTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ExistingUserWithSeedEmail_UnderRandomId_IsReusedNotDuplicated()
+    {
+        // Regression for the 23505 we hit when /auth/register had already claimed the
+        // seed's documented email under a random GUID. The seed used to id-lookup-then-
+        // INSERT, crashing on idx_users_email; now it broadens the lookup to email or
+        // username and reuses the existing row.
+        var preExistingId = Guid.NewGuid();
+        await using (var db = _fx.CreateContext())
+        {
+            db.Users.Add(new GankedTV.Api.Data.Entities.User
+            {
+                Id = preExistingId,
+                Username = SeedCommand.SeedUsername,
+                Email = SeedCommand.SeedUserEmail,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = _fx.CreateContext())
+        {
+            await NewSeed(db).RunAsync(CancellationToken.None);
+        }
+
+        await using var verify = _fx.CreateContext();
+        (await verify.Users.CountAsync()).Should().Be(1);
+        var user = await verify.Users.SingleAsync();
+        user.Id.Should().Be(preExistingId, "the existing row is reused, not replaced");
+        // Seed should have attached the documented password to the reused row so /auth/login still works.
+        user.PasswordHash.Should().NotBeNullOrEmpty();
+        new Argon2idPasswordHasher().Verify(SeedCommand.SeedUserPassword, user.PasswordHash!).Should().BeTrue();
+        // Clips were seeded against the reused row, not orphaned by id mismatch.
+        (await verify.Clips.CountAsync(c => c.UserId == preExistingId)).Should().Be(SeedCommand.SeedClipCount);
+    }
+
+    [Fact]
     public async Task RunTwice_DoesNotReplaceExistingPassword()
     {
         // Idempotency: a contributor who rotates the seed user's password via /auth/password

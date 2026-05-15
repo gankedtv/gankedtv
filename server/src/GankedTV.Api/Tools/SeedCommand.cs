@@ -44,7 +44,14 @@ public sealed class SeedCommand(
 
         var now = clock.GetUtcNow();
 
-        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == SeedUserId, ct);
+        // Match by id first, then fall back to email/username. The columns have unique
+        // indexes (idx_users_email, idx_users_username), so an id-only lookup followed by
+        // an unconditional INSERT used to crash with 23505 when a non-canonical row
+        // already occupied the seed's email or username — e.g. someone registering via
+        // /auth/register with the documented seed credentials. Reuse that row instead.
+        var user = await db.Users.FirstOrDefaultAsync(
+            u => u.Id == SeedUserId || u.Email == SeedUserEmail || u.Username == SeedUsername,
+            ct);
         if (user is null)
         {
             user = new User
@@ -62,15 +69,24 @@ public sealed class SeedCommand(
             await db.SaveChangesAsync(ct);
             logger.LogInformation("Seed: created user {Username}", user.Username);
         }
-        else if (string.IsNullOrEmpty(user.PasswordHash))
+        else
         {
-            // Migrate older seed runs that created the user before passwords existed.
-            // Don't overwrite an existing password — a contributor may have rotated it via /auth/password.
-            user.PasswordHash = hasher.Hash(SeedUserPassword);
-            user.PasswordAlgo = hasher.Algorithm;
-            user.UpdatedAt = now;
-            await db.SaveChangesAsync(ct);
-            logger.LogInformation("Seed: attached default password to existing user {Username}", user.Username);
+            if (user.Id != SeedUserId)
+            {
+                logger.LogWarning(
+                    "Seed: existing user matches by email/username under id {Id} (expected {Expected}). Reusing existing row.",
+                    user.Id, SeedUserId);
+            }
+            if (string.IsNullOrEmpty(user.PasswordHash))
+            {
+                // Migrate older seed runs that created the user before passwords existed.
+                // Don't overwrite an existing password — a contributor may have rotated it via /auth/password.
+                user.PasswordHash = hasher.Hash(SeedUserPassword);
+                user.PasswordAlgo = hasher.Algorithm;
+                user.UpdatedAt = now;
+                await db.SaveChangesAsync(ct);
+                logger.LogInformation("Seed: attached default password to existing user {Username}", user.Username);
+            }
         }
 
         // Rotate seeded clips across the seeded games (Ids 1..GameRotationCount) so the
