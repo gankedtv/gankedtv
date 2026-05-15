@@ -641,7 +641,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         var now = DateTimeOffset.UtcNow;
         var (id, shareCode) = await SeedClipAsync(userId, now);
 
-        _storage.GetPresignedGetUrl(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>())
+        _storage.GetPresignedGetUrl(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan?>())
             .Returns("https://cdn.example.com/video.mp4");
 
         using var client = _factory!.CreateClient();
