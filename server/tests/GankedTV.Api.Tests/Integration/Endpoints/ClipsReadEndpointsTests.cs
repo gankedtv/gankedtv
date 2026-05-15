@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
+using GankedTV.Api.Clips;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Tests.TestSupport;
@@ -54,6 +55,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
             Title = title ?? $"clip-{id:N}".Substring(0, 20),
             VideoKey = $"{userId}/{id}.mp4",
             ThumbnailKey = $"thumbs/{id}.jpg",
+            ShareCode = ShareCodeGenerator.Next(),
             Status = status,
             Visibility = visibility,
             DurationSecs = 30,

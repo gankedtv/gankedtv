@@ -9,6 +9,7 @@ public class Clip
     public string? Description { get; set; }
     public required string VideoKey { get; set; }
     public string? ThumbnailKey { get; set; }
+    public required string ShareCode { get; set; }
     public short? DurationSecs { get; set; }
     public short? Width { get; set; }
     public short? Height { get; set; }

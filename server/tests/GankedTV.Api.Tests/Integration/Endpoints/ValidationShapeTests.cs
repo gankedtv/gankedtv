@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
+using GankedTV.Api.Clips;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Problems;
 using GankedTV.Api.Services.ObjectStorage;
@@ -192,6 +193,7 @@ public class ValidationShapeTests : IAsyncLifetime
             UserId = userId,
             Title = title,
             VideoKey = $"clips/{userId}/{id}.mp4",
+            ShareCode = ShareCodeGenerator.Next(),
             Status = "ready",
             Visibility = "public",
             CreatedAt = now,

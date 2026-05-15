@@ -1,4 +1,5 @@
 using FluentAssertions;
+using GankedTV.Api.Clips;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Services.Media;
@@ -50,6 +51,7 @@ public class ClipMediaJobStoreIntegrationTests
             UserId = userId,
             Title = "t",
             VideoKey = $"{userId}/v.mp4",
+            ShareCode = ShareCodeGenerator.Next(),
             Status = status,
             CreatedAt = updatedAt,
             UpdatedAt = updatedAt,

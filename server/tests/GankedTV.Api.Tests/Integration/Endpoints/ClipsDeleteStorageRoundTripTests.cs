@@ -3,6 +3,7 @@ using System.Net;
 using System.Text;
 using Amazon.S3;
 using FluentAssertions;
+using GankedTV.Api.Clips;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Tests.TestSupport;
 using Microsoft.EntityFrameworkCore;
@@ -62,6 +63,7 @@ public class ClipsDeleteStorageRoundTripTests : IAsyncLifetime
                 Title = "delete-me",
                 VideoKey = videoKey,
                 ThumbnailKey = thumbnailKey,
+                ShareCode = ShareCodeGenerator.Next(),
                 Status = ClipStatuses.Ready,
                 Visibility = "public",
                 CreatedAt = now,

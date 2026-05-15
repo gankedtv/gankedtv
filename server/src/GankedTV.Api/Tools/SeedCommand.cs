@@ -1,4 +1,5 @@
 using GankedTV.Api.Auth.Passwords;
+using GankedTV.Api.Clips;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Services.Media;
@@ -144,6 +145,7 @@ public sealed class SeedCommand(
                 Description = $"Seeded sample clip #{i:D2}.",
                 VideoKey = videoKey,
                 ThumbnailKey = thumbnailKey,
+                ShareCode = await ShareCodeGenerator.GenerateUniqueAsync(db.Clips, ct),
                 Status = "ready",
                 Visibility = "public",
                 FileSizeBytes = videoSize,
