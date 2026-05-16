@@ -136,11 +136,13 @@ public static class ClipsReadEndpoints
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
+        // Unlisted clips are accessible to anyone with the link — only the feed is gated
+        // to public-only. Visibility is enforced at the listing layer, not the detail layer.
         var clip = await db.Clips.AsNoTracking()
             .Include(c => c.User)
             .Include(c => c.Game)
             .FirstOrDefaultAsync(
-                c => c.Id == id && c.Visibility == "public" && c.Status == "ready",
+                c => c.Id == id && c.Status == "ready",
                 ct);
 
         if (clip is null)

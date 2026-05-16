@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ApiError } from '@/api/client'
 import { clips } from '@/api/clips'
-import { games as gamesApi, type GameListItem } from '@/api/games'
-import GameChipButton from '@/components/GameChipButton.vue'
-import GameSearchResult from '@/components/GameSearchResult.vue'
+import type { GameSummary } from '@/api/clips'
+import GameSelector from '@/components/GameSelector.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import IconUploadCloud from '@/components/icons/IconUploadCloud.vue'
 import IconFile from '@/components/icons/IconFile.vue'
@@ -33,73 +32,7 @@ const desc = ref('')
 const visibility = ref<'public' | 'unlisted'>('public')
 const dragging = ref(false)
 
-// Game picker (step 2). Popular chips come from `GET /games` (limit=6); typing
-// triggers `GET /games?search=` after a short debounce so we don't fire one
-// request per keystroke.
-const popularGames = ref<GameListItem[]>([])
-const gameSearch = ref('')
-const gameResults = ref<GameListItem[]>([])
-const selectedGame = ref<GameListItem | null>(null)
-const showGameDropdown = ref(false)
-let gameSearchTimer: ReturnType<typeof setTimeout> | null = null
-let gameBlurTimer: ReturnType<typeof setTimeout> | null = null
-
-onMounted(async () => {
-  try {
-    popularGames.value = await gamesApi.list(6)
-  } catch {
-    // Picker degrades to typeahead-only if the popular list fails — not worth
-    // surfacing an error since the user can still type a game name.
-    popularGames.value = []
-  }
-})
-
-watch(gameSearch, (q) => {
-  if (gameSearchTimer) clearTimeout(gameSearchTimer)
-  const trimmed = q.trim()
-  if (!trimmed) {
-    gameResults.value = []
-    showGameDropdown.value = false
-    return
-  }
-  gameSearchTimer = setTimeout(async () => {
-    // Capture the query at scheduling time. If the user types more characters
-    // before the slow request resolves, the still-in-flight stale response would
-    // otherwise overwrite the newer results — drop it instead.
-    const queryAtCall = trimmed
-    try {
-      const results = await gamesApi.search(queryAtCall, 8)
-      if (gameSearch.value.trim() !== queryAtCall) return
-      gameResults.value = results
-      showGameDropdown.value = true
-    } catch {
-      if (gameSearch.value.trim() !== queryAtCall) return
-      gameResults.value = []
-    }
-  }, 200)
-})
-
-function pickGame(g: GameListItem) {
-  selectedGame.value = g
-  gameSearch.value = ''
-  gameResults.value = []
-  showGameDropdown.value = false
-}
-
-function clearGame() {
-  selectedGame.value = null
-}
-
-function onGameInputBlur() {
-  // Delay so a click on a dropdown item is registered before we hide it.
-  // mousedown.prevent on the <li> handles the timing in most cases, but iOS
-  // taps don't always trigger mousedown — keep this as a belt-and-suspenders.
-  if (gameBlurTimer) clearTimeout(gameBlurTimer)
-  gameBlurTimer = setTimeout(() => {
-    showGameDropdown.value = false
-    gameBlurTimer = null
-  }, 150)
-}
+const selectedGame = ref<GameSummary | null>(null)
 
 // Upload state — granular so the checklist can light up step-by-step.
 type UploadStage = 'idle' | 'creating' | 'uploading' | 'completing' | 'done' | 'error'
@@ -111,8 +44,6 @@ let activeXhr: XMLHttpRequest | null = null
 
 onUnmounted(() => {
   if (activeXhr) activeXhr.abort()
-  if (gameSearchTimer) clearTimeout(gameSearchTimer)
-  if (gameBlurTimer) clearTimeout(gameBlurTimer)
 })
 
 function pickFile(f: File | null) {
@@ -386,59 +317,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
             <label :class="labelClass"
               >Game <span class="text-[9px] text-text-muted">(optional)</span></label
             >
-
-            <!-- Selected pill -->
-            <div
-              v-if="selectedGame"
-              class="mb-2 inline-flex items-center gap-2 rounded-md border border-brand-light bg-brand-glow px-3 py-1.5"
-            >
-              <span class="font-mono text-[10px] uppercase tracking-[0.06em] text-text-primary">
-                {{ selectedGame.tag }}
-              </span>
-              <span class="font-body text-xs text-text-secondary">{{ selectedGame.name }}</span>
-              <button
-                type="button"
-                @click="clearGame"
-                aria-label="Clear selected game"
-                class="cursor-pointer font-mono text-[11px] leading-none text-text-muted transition-colors duration-150 hover:text-text-primary"
-              >
-                ×
-              </button>
-            </div>
-
-            <!-- Popular chips -->
-            <div v-if="!selectedGame && popularGames.length" class="mb-2 flex flex-wrap gap-2">
-              <GameChipButton
-                v-for="g in popularGames"
-                :key="g.id"
-                :tag="g.tag"
-                @click="pickGame(g)"
-              />
-            </div>
-
-            <!-- Typeahead -->
-            <div v-if="!selectedGame" class="relative">
-              <input
-                v-model="gameSearch"
-                placeholder="Search games…"
-                :class="inputClass"
-                @focus="showGameDropdown = gameResults.length > 0"
-                @blur="onGameInputBlur"
-              />
-              <ul
-                v-if="showGameDropdown && gameResults.length"
-                role="listbox"
-                class="absolute left-0 right-0 top-full z-10 mt-1 max-h-60 overflow-auto rounded-md border border-border-strong bg-surface-raised"
-              >
-                <GameSearchResult
-                  v-for="g in gameResults"
-                  :key="g.id"
-                  :tag="g.tag"
-                  :name="g.name"
-                  @select="pickGame(g)"
-                />
-              </ul>
-            </div>
+            <GameSelector v-model="selectedGame" />
           </div>
 
           <div>

@@ -11,6 +11,7 @@ import { safeImageUrl } from '@/lib/url'
 import GameTag from '@/components/GameTag.vue'
 import AuthorHandle from '@/components/AuthorHandle.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
+import ClipEditDialog from '@/components/ClipEditDialog.vue'
 import IconHeart from '@/components/icons/IconHeart.vue'
 import IconShare from '@/components/icons/IconShare.vue'
 import IconMoreVertical from '@/components/icons/IconMoreVertical.vue'
@@ -109,6 +110,8 @@ function fireToast(text: string) {
 onBeforeUnmount(() => {
   teardownPlayer()
   if (toastTimer !== null) clearTimeout(toastTimer)
+  window.removeEventListener('keydown', onMenuKeydown)
+  window.removeEventListener('click', onMenuClickOutside, true)
 })
 
 async function toggleLike() {
@@ -166,6 +169,53 @@ const authorColor = computed(() => {
 
 // Hoisted so the template doesn't re-parse the URL on every render.
 const authorAvatarUrl = computed(() => safeImageUrl(clip.value?.author.avatarUrl))
+
+const menuOpen = ref(false)
+const editOpen = ref(false)
+
+const isOwner = computed(() => !!auth.user && !!clip.value && clip.value.author.id === auth.user.id)
+
+function openMenu() {
+  menuOpen.value = true
+}
+
+function closeMenu() {
+  menuOpen.value = false
+}
+
+function onMenuKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') closeMenu()
+}
+
+function onMenuClickOutside(e: MouseEvent) {
+  const target = e.target as Node | null
+  const menuEl = document.getElementById('clip-more-menu')
+  if (menuEl && !menuEl.contains(target)) closeMenu()
+}
+
+watch(menuOpen, (open) => {
+  if (open) {
+    window.addEventListener('keydown', onMenuKeydown)
+    window.addEventListener('click', onMenuClickOutside, true)
+  } else {
+    window.removeEventListener('keydown', onMenuKeydown)
+    window.removeEventListener('click', onMenuClickOutside, true)
+  }
+})
+
+function onSaved(updated: ClipDetail) {
+  clip.value = updated
+  fireToast('Clip updated')
+}
+
+function onEditError(message: string) {
+  fireToast(message)
+}
+
+function openEdit() {
+  closeMenu()
+  editOpen.value = true
+}
 </script>
 
 <template>
@@ -267,12 +317,29 @@ const authorAvatarUrl = computed(() => safeImageUrl(clip.value?.author.avatarUrl
               <span>Share</span>
             </button>
 
-            <button
-              class="flex h-7 w-7 items-center justify-center rounded text-text-secondary transition-colors hover:bg-surface-raised"
-              aria-label="More"
-            >
-              <IconMoreVertical :size="16" />
-            </button>
+            <div v-if="isOwner" id="clip-more-menu" class="relative">
+              <button
+                class="flex h-7 w-7 items-center justify-center rounded text-text-secondary transition-colors hover:bg-surface-raised"
+                aria-label="More options"
+                aria-haspopup="true"
+                :aria-expanded="menuOpen"
+                @click.stop="menuOpen ? closeMenu() : openMenu()"
+              >
+                <IconMoreVertical :size="16" />
+              </button>
+              <div
+                v-if="menuOpen"
+                class="absolute right-0 top-full z-20 mt-1 min-w-32 rounded-md border border-border-strong bg-surface-overlay shadow-[0_4px_20px_rgba(0,0,0,0.4)]"
+              >
+                <button
+                  type="button"
+                  class="w-full cursor-pointer rounded-md px-4 py-2.5 text-left font-body text-sm text-text-primary transition-colors duration-100 hover:bg-surface-raised"
+                  @click="openEdit"
+                >
+                  Edit
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -308,6 +375,15 @@ const authorAvatarUrl = computed(() => safeImageUrl(clip.value?.author.avatarUrl
         <p class="text-sm leading-[1.6] text-text-secondary">{{ clip.description }}</p>
       </div>
     </div>
+
+    <ClipEditDialog
+      v-if="clip"
+      :clip="clip"
+      :open="editOpen"
+      @close="editOpen = false"
+      @saved="onSaved"
+      @error="onEditError"
+    />
 
     <!-- Toast — kept inside the page's single root so the route-level
          <Transition mode="out-in"> can animate the leave cleanly. The toast itself

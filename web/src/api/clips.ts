@@ -45,6 +45,14 @@ export interface ClipDetail {
   author: AuthorSummary
   game: GameSummary | null
   likedByMe: boolean
+  visibility: 'public' | 'unlisted'
+}
+
+export interface UpdateClipBody {
+  title?: string
+  description?: string
+  gameId?: number | null
+  visibility?: 'public' | 'unlisted'
 }
 
 export interface ClipFeedPage {
@@ -106,6 +114,10 @@ export const clips = {
 
   complete(id: string): Promise<CompleteClipResult> {
     return api<CompleteClipResult>(`/clips/${encodeURIComponent(id)}/complete`, { method: 'POST' })
+  },
+
+  update(id: string, body: UpdateClipBody): Promise<ClipDetail> {
+    return api<ClipDetail>(`/clips/${encodeURIComponent(id)}`, { method: 'PATCH', body })
   },
 
   like(id: string): Promise<LikeResult> {

@@ -56,5 +56,6 @@ public static class ClipMappings
             clip.CreatedAt,
             clip.User.ToAuthorSummary(),
             clip.Game?.ToGameSummary(),
-            likedByMe);
+            likedByMe,
+            clip.Visibility);
 }
