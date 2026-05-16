@@ -126,8 +126,25 @@ describe('api/clips', () => {
       const result = await clips.getByShareCode('abc123')
 
       expect(result).toEqual(detail)
-      const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+      const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
       expect(url).toBe(`${BASE_URL}/c/abc123`)
+      // Server does Accept-based content negotiation on /c/{code} — without this
+      // header the JS app would receive the crawler HTML page instead of JSON.
+      expect(new Headers(init.headers).get('Accept')).toBe('application/json')
+    })
+
+    it('URI-encodes reserved characters in the share code', async () => {
+      // Codes today are server-generated alphanumeric, but encoding is cheap
+      // insurance against future schemes that may include reserved characters.
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({})),
+      )
+
+      await clips.getByShareCode('/?&=%')
+
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+      expect(url).toBe(`${BASE_URL}/c/${encodeURIComponent('/?&=%')}`)
     })
   })
 
