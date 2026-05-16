@@ -34,27 +34,32 @@ public static class ClipsRateLimiting
                 .ExecuteAsync(ctx.HttpContext));
 
         options.AddPolicy<string>(ClipsWritePolicy, ctx =>
-        {
-            // RequireAuthorization() on every /clips write group ensures HttpContext.User is
-            // populated before the limiter runs (UseAuthentication is wired before
-            // UseRateLimiter in Program.cs). We still fall through to IP / "unknown" so the
-            // partition function is total — a misconfiguration that drops the auth middleware
-            // must not collapse every caller into a single bucket and bypass the limit.
-            var sub = ctx.User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
-                ?? ctx.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            var key = !string.IsNullOrEmpty(sub)
-                ? $"u:{sub}"
-                : $"ip:{ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown"}";
-
-            return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
+            RateLimitPartition.GetFixedWindowLimiter(ResolvePartitionKey(ctx), _ => new FixedWindowRateLimiterOptions
             {
                 AutoReplenishment = true,
                 PermitLimit = WritePermitLimit,
                 Window = WriteWindow,
                 QueueLimit = 0,
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-            });
-        });
+            }));
         return options;
+    }
+
+    // Internal so unit tests can exercise the fallback branches that the HTTP-level integration
+    // tests can't reach (RequireAuthorization rejects pre-limiter, so the per-IP and
+    // NameIdentifier paths are unreachable through real requests).
+    //
+    // RequireAuthorization() on every /clips write group ensures HttpContext.User is populated
+    // before the limiter runs (UseAuthentication is wired before UseRateLimiter in Program.cs).
+    // The IP / "unknown" fallbacks remain so the partition function is total — a misconfiguration
+    // that drops the auth middleware must not collapse every caller into a single bucket and
+    // bypass the limit.
+    internal static string ResolvePartitionKey(HttpContext ctx)
+    {
+        var sub = ctx.User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
+            ?? ctx.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        return !string.IsNullOrEmpty(sub)
+            ? $"u:{sub}"
+            : $"ip:{ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown"}";
     }
 }
