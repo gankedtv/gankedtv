@@ -12,6 +12,7 @@ import GameTag from '@/components/GameTag.vue'
 import AuthorHandle from '@/components/AuthorHandle.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
 import ClipEditDialog from '@/components/ClipEditDialog.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import IconHeart from '@/components/icons/IconHeart.vue'
 import IconShare from '@/components/icons/IconShare.vue'
 import IconMoreVertical from '@/components/icons/IconMoreVertical.vue'
@@ -172,6 +173,8 @@ const authorAvatarUrl = computed(() => safeImageUrl(clip.value?.author.avatarUrl
 
 const menuOpen = ref(false)
 const editOpen = ref(false)
+const deleteOpen = ref(false)
+const deleting = ref(false)
 
 const isOwner = computed(() => !!auth.user && !!clip.value && clip.value.author.id === auth.user.id)
 
@@ -215,6 +218,37 @@ function onEditError(message: string) {
 function openEdit() {
   closeMenu()
   editOpen.value = true
+}
+
+function openDelete() {
+  closeMenu()
+  deleteOpen.value = true
+}
+
+const DELETE_ERROR_CODES: Record<string, string> = {
+  forbidden: "You don't have permission to delete this clip",
+  not_found: 'Clip not found',
+  unauthorized: 'You need to be logged in to delete this clip',
+}
+
+async function onConfirmDelete() {
+  if (!clip.value || !auth.user) return
+  deleting.value = true
+  try {
+    await clips.delete(clip.value.id)
+    fireToast('Clip deleted')
+    await router.push({ name: 'user', params: { username: auth.user.username } })
+  } catch (err) {
+    let message = 'Failed to delete clip'
+    if (err instanceof ApiError) {
+      const code = (err.body as { code?: string } | null)?.code
+      if (code && DELETE_ERROR_CODES[code]) message = DELETE_ERROR_CODES[code]
+    }
+    fireToast(message)
+  } finally {
+    deleting.value = false
+    deleteOpen.value = false
+  }
 }
 </script>
 
@@ -338,6 +372,13 @@ function openEdit() {
                 >
                   Edit
                 </button>
+                <button
+                  type="button"
+                  class="w-full cursor-pointer rounded-md px-4 py-2.5 text-left font-body text-sm text-error transition-colors duration-100 hover:bg-surface-raised"
+                  @click="openDelete"
+                >
+                  Delete
+                </button>
               </div>
             </div>
           </div>
@@ -383,6 +424,17 @@ function openEdit() {
       @close="editOpen = false"
       @saved="onSaved"
       @error="onEditError"
+    />
+
+    <ConfirmDialog
+      :open="deleteOpen"
+      title="Delete clip?"
+      body="This permanently removes the clip and its video file. This can't be undone."
+      confirm-label="Delete"
+      variant="danger"
+      :busy="deleting"
+      @cancel="deleteOpen = false"
+      @confirm="onConfirmDelete"
     />
 
     <!-- Toast — kept inside the page's single root so the route-level

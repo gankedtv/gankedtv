@@ -6,7 +6,7 @@ import GameChipButton from '@/components/GameChipButton.vue'
 import GameSearchResult from '@/components/GameSearchResult.vue'
 
 defineProps<{ modelValue: GameSummary | null }>()
-const emit = defineEmits<{ 'update:modelValue': [value: GameListItem | null] }>()
+const emit = defineEmits<{ 'update:modelValue': [value: GameSummary | null] }>()
 
 const popularGames = ref<GameListItem[]>([])
 const gameSearch = ref('')
@@ -48,7 +48,8 @@ watch(gameSearch, (q) => {
 })
 
 function pickGame(g: GameListItem) {
-  emit('update:modelValue', g)
+  const { id, name, slug, tag } = g
+  emit('update:modelValue', { id, name, slug, tag })
   gameSearch.value = ''
   gameResults.value = []
   showGameDropdown.value = false

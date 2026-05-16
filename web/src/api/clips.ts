@@ -120,6 +120,10 @@ export const clips = {
     return api<ClipDetail>(`/clips/${encodeURIComponent(id)}`, { method: 'PATCH', body })
   },
 
+  delete(id: string): Promise<void> {
+    return api<void>(`/clips/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+
   like(id: string): Promise<LikeResult> {
     return api<LikeResult>(`/clips/${encodeURIComponent(id)}/like`, { method: 'POST' })
   },

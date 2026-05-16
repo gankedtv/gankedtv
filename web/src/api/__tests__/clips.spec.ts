@@ -257,6 +257,54 @@ describe('api/clips', () => {
     })
   })
 
+  describe('delete()', () => {
+    const CLIP_ID = 'a4f1e2c0-0000-0000-0000-000000000001'
+
+    it('DELETEs /clips/{id} and resolves to undefined on 204 No Content', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response(null, { status: 204 })),
+      )
+
+      const result = await clips.delete(CLIP_ID)
+
+      expect(result).toBeUndefined()
+      const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(url).toBe(`${BASE_URL}/clips/${CLIP_ID}`)
+      expect(init.method).toBe('DELETE')
+    })
+
+    it('sends the bearer token when one is configured', async () => {
+      configureAuth({
+        getAccessToken: () => 'tok-xyz',
+        getRefreshToken: () => null,
+        onTokenRefreshed: () => {},
+        onRefreshFailed: () => {},
+      })
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response(null, { status: 204 })),
+      )
+
+      await clips.delete(CLIP_ID)
+
+      const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(new Headers(init.headers).get('Authorization')).toBe('Bearer tok-xyz')
+    })
+
+    it('throws ApiError on non-2xx with the response body', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ code: 'CLIP_NOT_OWNER' }, 403)),
+      )
+
+      await expect(clips.delete(CLIP_ID)).rejects.toMatchObject({
+        status: 403,
+        body: { code: 'CLIP_NOT_OWNER' },
+      })
+    })
+  })
+
   describe('like() / unlike()', () => {
     it('POSTs /clips/{id}/like and returns the new count + liked flag', async () => {
       vi.stubGlobal(
