@@ -100,6 +100,8 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             e.HasIndex(c => new { c.Status, c.UpdatedAt })
                 .HasFilter("status = 'processing'")
                 .HasDatabaseName("idx_clips_processing_updated_at");
+            e.HasIndex(c => c.ShareCode).IsUnique().HasDatabaseName("idx_clips_share_code");
+            e.Property(c => c.ShareCode).HasMaxLength(12);
         });
 
         modelBuilder.Entity<Like>(e =>

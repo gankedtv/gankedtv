@@ -24,6 +24,7 @@ public static class ClipMappings
     public static ClipFeedItem ToFeedItem(this Clip clip, string thumbnailUrl, bool likedByMe) =>
         new(
             clip.Id,
+            clip.ShareCode,
             clip.Title,
             clip.Description,
             thumbnailUrl,
@@ -43,6 +44,7 @@ public static class ClipMappings
         bool likedByMe) =>
         new(
             clip.Id,
+            clip.ShareCode,
             clip.Title,
             clip.Description,
             videoUrl,

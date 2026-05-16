@@ -4,6 +4,7 @@ namespace GankedTV.Api.Contracts.Clips;
 
 public sealed record ClipDetailResponse(
     Guid Id,
+    string ShareCode,
     string Title,
     string? Description,
     string VideoUrl,

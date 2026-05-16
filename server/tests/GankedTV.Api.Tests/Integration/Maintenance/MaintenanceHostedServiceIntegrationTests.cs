@@ -1,4 +1,5 @@
 using FluentAssertions;
+using GankedTV.Api.Clips;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Services.Maintenance;
@@ -98,6 +99,7 @@ public class MaintenanceHostedServiceIntegrationTests
                     Title = "stale-draft",
                     VideoKey = "user/stale.mp4",
                     ThumbnailKey = "user/stale.jpg",
+                    ShareCode = ShareCodeGenerator.Next(),
                     Status = ClipStatuses.Draft,
                     CreatedAt = now.AddHours(-2),
                     UpdatedAt = now.AddHours(-2),
@@ -107,6 +109,7 @@ public class MaintenanceHostedServiceIntegrationTests
                     UserId = userId,
                     Title = "fresh-draft",
                     VideoKey = "user/fresh.mp4",
+                    ShareCode = ShareCodeGenerator.Next(),
                     Status = ClipStatuses.Draft,
                     CreatedAt = now.AddMinutes(-5),
                     UpdatedAt = now.AddMinutes(-5),
@@ -116,6 +119,7 @@ public class MaintenanceHostedServiceIntegrationTests
                     UserId = userId,
                     Title = "old-ready",
                     VideoKey = "user/ready.mp4",
+                    ShareCode = ShareCodeGenerator.Next(),
                     Status = ClipStatuses.Ready,
                     CreatedAt = now.AddHours(-2),
                     UpdatedAt = now.AddHours(-2),
@@ -153,6 +157,7 @@ public class MaintenanceHostedServiceIntegrationTests
                 UserId = userId,
                 Title = "fresh",
                 VideoKey = "u/v.mp4",
+                ShareCode = ShareCodeGenerator.Next(),
                 Status = ClipStatuses.Draft,
                 CreatedAt = now,
                 UpdatedAt = now,
@@ -206,6 +211,7 @@ public class MaintenanceHostedServiceIntegrationTests
                 UserId = userId,
                 Title = "stale",
                 VideoKey = "k.mp4",
+                ShareCode = ShareCodeGenerator.Next(),
                 Status = ClipStatuses.Draft,
                 CreatedAt = now.AddHours(-2),
                 UpdatedAt = now.AddHours(-2),

@@ -4,6 +4,7 @@ namespace GankedTV.Api.Contracts.Clips;
 
 public sealed record ClipFeedItem(
     Guid Id,
+    string ShareCode,
     string Title,
     string? Description,
     // Presigned GET URL for the thumbnail JPEG. Always set on Ready clips — the worker

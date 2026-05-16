@@ -1,4 +1,5 @@
 using FluentAssertions;
+using GankedTV.Api.Clips;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Services.Maintenance;
 using GankedTV.Api.Services.ObjectStorage;
@@ -21,6 +22,7 @@ public class ClipBlobCleanupTests
         Id = Guid.NewGuid(),
         Title = "title",
         VideoKey = videoKey,
+        ShareCode = ShareCodeGenerator.Next(),
         ThumbnailKey = thumbnailKey,
     };
 

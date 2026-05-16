@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
+using GankedTV.Api.Clips;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Tests.TestSupport;
@@ -48,6 +49,7 @@ public class LikesEndpointsTests : IAsyncLifetime
             UserId = userId,
             Title = "likable",
             VideoKey = $"clips/{userId}/{id}.mp4",
+            ShareCode = ShareCodeGenerator.Next(),
             Status = "ready",
             Visibility = "public",
             LikeCount = initialLikeCount,

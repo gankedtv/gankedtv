@@ -1,3 +1,4 @@
+using GankedTV.Api.Clips;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Services.ObjectStorage;
@@ -74,6 +75,7 @@ public sealed class ClipUploadService : IClipUploadService
 
         var id = Guid.NewGuid();
         var now = _clock.GetUtcNow();
+        var shareCode = await ShareCodeGenerator.GenerateUniqueAsync(_db.Clips, ct);
         var clip = new Clip
         {
             Id = id,
@@ -85,6 +87,7 @@ public sealed class ClipUploadService : IClipUploadService
             // and by game slug so listing the bucket groups one user's clips per title.
             // No-game uploads omit the slug segment (no `null/` placeholder).
             VideoKey = BuildVideoKey(userId, id, gameSlug),
+            ShareCode = shareCode,
             Status = ClipStatuses.Draft,
             Visibility = visibility,
             CreatedAt = now,
