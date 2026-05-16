@@ -116,6 +116,12 @@ public class ClipsRateLimitTests : IAsyncLifetime
 
         var blocked = await client.PostAsync($"/clips/{clipId}/like", content: null);
         blocked.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        // OnRejected is global on RateLimiterOptions, so the envelope fires regardless of which
+        // policy or endpoint group rejected — assert it here too so the contract is pinned for
+        // the likes path on its own, not just transitively via the create test.
+        blocked.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
+        var body = await blocked.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty(ProblemResults.CodeKey).GetString().Should().Be(ClipsRateLimiting.RateLimitedCode);
     }
 
     [Fact]
