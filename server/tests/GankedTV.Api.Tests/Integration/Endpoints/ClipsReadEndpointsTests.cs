@@ -699,6 +699,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         var (_, shareCode) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, visibility: "unlisted");
 
         using var client = _factory!.CreateClient();
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
         var resp = await client.GetAsync($"/c/{shareCode}");
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
