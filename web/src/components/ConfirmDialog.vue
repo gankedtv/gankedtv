@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, watch, nextTick, onMounted, onUnmounted, useId } from 'vue'
 
 const props = defineProps<{
   open: boolean
@@ -16,6 +16,7 @@ const emit = defineEmits<{
   cancel: []
 }>()
 
+const titleId = useId()
 const cancelBtn = ref<HTMLButtonElement | null>(null)
 
 watch(
@@ -46,7 +47,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
         class="fixed inset-0 z-50 flex items-center justify-center px-4"
         role="dialog"
         aria-modal="true"
-        :aria-labelledby="`confirm-dialog-title-${title}`"
+        :aria-labelledby="titleId"
       >
         <!-- Backdrop -->
         <div class="absolute inset-0 bg-black/70" @click="!busy && emit('cancel')" />
@@ -59,7 +60,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
           <!-- Header -->
           <div class="flex items-center justify-between border-b border-border px-5 py-4">
             <h2
-              :id="`confirm-dialog-title-${title}`"
+              :id="titleId"
               class="font-heading text-lg font-bold uppercase tracking-[0.04em] text-text-primary"
             >
               {{ title }}

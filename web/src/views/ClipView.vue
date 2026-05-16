@@ -225,6 +225,12 @@ function openDelete() {
   deleteOpen.value = true
 }
 
+const DELETE_ERROR_CODES: Record<string, string> = {
+  forbidden: "You don't have permission to delete this clip",
+  not_found: 'Clip not found',
+  unauthorized: 'You need to be logged in to delete this clip',
+}
+
 async function onConfirmDelete() {
   if (!clip.value || !auth.user) return
   deleting.value = true
@@ -233,10 +239,11 @@ async function onConfirmDelete() {
     fireToast('Clip deleted')
     await router.push({ name: 'user', params: { username: auth.user.username } })
   } catch (err) {
-    const message =
-      err instanceof ApiError
-        ? ((err.body as { code?: string } | null)?.code ?? 'Failed to delete clip')
-        : 'Failed to delete clip'
+    let message = 'Failed to delete clip'
+    if (err instanceof ApiError) {
+      const code = (err.body as { code?: string } | null)?.code
+      if (code && DELETE_ERROR_CODES[code]) message = DELETE_ERROR_CODES[code]
+    }
     fireToast(message)
   } finally {
     deleting.value = false

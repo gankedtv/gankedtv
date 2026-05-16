@@ -45,9 +45,10 @@ const diff = computed((): UpdateClipBody => {
   const trimmedTitle = localTitle.value.trim()
   if (trimmedTitle !== props.clip.title) body.title = trimmedTitle
   // Normalize empty string ↔ null when comparing, but send "" to the server to clear.
-  const localDescNorm = localDesc.value === '' ? null : localDesc.value
+  const trimmedDesc = localDesc.value.trim()
+  const localDescNorm = trimmedDesc === '' ? null : trimmedDesc
   const originalDescNorm = props.clip.description || null
-  if (localDescNorm !== originalDescNorm) body.description = localDesc.value
+  if (localDescNorm !== originalDescNorm) body.description = trimmedDesc
   if ((localGame.value?.id ?? null) !== (props.clip.game?.id ?? null))
     body.gameId = localGame.value?.id ?? null
   if (localVisibility.value !== props.clip.visibility) body.visibility = localVisibility.value
