@@ -27,6 +27,9 @@ public static class ProblemResults
     public static IResult UnsupportedMediaType(string code, string? detail = null) =>
         Build(StatusCodes.Status415UnsupportedMediaType, code, detail);
 
+    public static IResult TooManyRequests(string code, string? detail = null) =>
+        Build(StatusCodes.Status429TooManyRequests, code, detail);
+
     public static IResult Internal(string code, string? detail = null) =>
         Build(StatusCodes.Status500InternalServerError, code, detail);
 
