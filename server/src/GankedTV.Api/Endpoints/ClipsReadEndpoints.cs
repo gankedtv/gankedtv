@@ -163,30 +163,41 @@ public static class ClipsReadEndpoints
 
         var (clip, videoUrl, thumbnailUrl) = result.Value;
         var userAgent = request.Headers.UserAgent.ToString();
+        var webOrigin = oauthOptions.Value.WebOrigin.TrimEnd('/');
 
+        // Crawler UA wins over Accept negotiation: a bot advertising application/json
+        // (rare but possible) still needs the OG HTML so previews render.
         if (IsCrawler(userAgent))
-            return Results.Content(BuildOgHtml(clip, videoUrl, thumbnailUrl, request), "text/html; charset=utf-8");
+            return Results.Content(BuildOgHtml(clip, videoUrl, thumbnailUrl, webOrigin), "text/html; charset=utf-8");
 
         if (request.Headers.Accept.ToString().Contains("application/json"))
-        {
-            var likedByMe = false;
-            if (TryGetUserId(principal, out var userId))
-            {
-                likedByMe = await db.Likes.AsNoTracking()
-                    .AnyAsync(l => l.ClipId == clip.Id && l.UserId == userId, ct);
-            }
-            var expiresAt = DateTimeOffset.UtcNow.Add(VideoUrlLifetime);
-            return Results.Ok(clip.ToDetail(videoUrl, expiresAt, thumbnailUrl, likedByMe));
-        }
+            return await BuildDetailResultAsync(clip, videoUrl, thumbnailUrl, principal, db, ct);
 
-        var webOrigin = oauthOptions.Value.WebOrigin.TrimEnd('/');
         return Results.Redirect($"{webOrigin}/c/{code}", permanent: false);
+    }
+
+    private static async Task<IResult> BuildDetailResultAsync(
+        Clip clip,
+        string videoUrl,
+        string thumbnailUrl,
+        ClaimsPrincipal principal,
+        GankedTvDbContext db,
+        CancellationToken ct)
+    {
+        var likedByMe = false;
+        if (TryGetUserId(principal, out var userId))
+        {
+            likedByMe = await db.Likes.AsNoTracking()
+                .AnyAsync(l => l.ClipId == clip.Id && l.UserId == userId, ct);
+        }
+        var expiresAt = DateTimeOffset.UtcNow.Add(VideoUrlLifetime);
+        return Results.Ok(clip.ToDetail(videoUrl, expiresAt, thumbnailUrl, likedByMe));
     }
 
     // Unlisted clips are accessible to anyone with the link or share code — only the
     // feed is gated to public-only. Visibility is enforced at the listing layer, not
     // the detail layer.
-    internal static async Task<(Clip clip, string videoUrl, string thumbnailUrl)?> LoadClipWithUrlsAsync(
+    private static async Task<(Clip clip, string videoUrl, string thumbnailUrl)?> LoadClipWithUrlsAsync(
         Expression<Func<Clip, bool>> predicate,
         GankedTvDbContext db,
         IObjectStorageService storage,
@@ -223,16 +234,7 @@ public static class ClipsReadEndpoints
         }
 
         var (clip, videoUrl, thumbnailUrl) = result.Value;
-        var expiresAt = DateTimeOffset.UtcNow.Add(VideoUrlLifetime);
-
-        var likedByMe = false;
-        if (TryGetUserId(principal, out var userId))
-        {
-            likedByMe = await db.Likes.AsNoTracking()
-                .AnyAsync(l => l.ClipId == clip.Id && l.UserId == userId, ct);
-        }
-
-        return Results.Ok(clip.ToDetail(videoUrl, expiresAt, thumbnailUrl, likedByMe));
+        return await BuildDetailResultAsync(clip, videoUrl, thumbnailUrl, principal, db, ct);
     }
 
     private static readonly string[] CrawlerSubstrings =
@@ -244,11 +246,15 @@ public static class ClipsReadEndpoints
     private static bool IsCrawler(string userAgent) =>
         CrawlerSubstrings.Any(s => userAgent.Contains(s, StringComparison.OrdinalIgnoreCase));
 
-    private static string BuildOgHtml(Clip clip, string videoUrl, string thumbnailUrl, HttpRequest request)
+    private static string BuildOgHtml(Clip clip, string videoUrl, string thumbnailUrl, string webOrigin)
     {
         var title = WebUtility.HtmlEncode(clip.Title);
-        var desc = clip.Description is not null ? WebUtility.HtmlEncode(clip.Description) : null;
-        var canonicalUrl = WebUtility.HtmlEncode($"{request.Scheme}://{request.Host}/c/{clip.ShareCode}");
+        // IsNullOrWhiteSpace, not just null: an empty Description still emits an empty
+        // <meta og:description> which crawlers (notably Slack) render as a blank line.
+        var desc = !string.IsNullOrWhiteSpace(clip.Description) ? WebUtility.HtmlEncode(clip.Description) : null;
+        // webOrigin is the public, config-driven origin (not request.Scheme/Host, which
+        // behind a reverse proxy without UseForwardedHeaders surfaces the internal URL).
+        var canonicalUrl = WebUtility.HtmlEncode($"{webOrigin}/c/{clip.ShareCode}");
         var encodedVideoUrl = WebUtility.HtmlEncode(videoUrl);
         var encodedThumbnailUrl = WebUtility.HtmlEncode(thumbnailUrl);
         // width/height fallback: Discord/Twitter require numeric values
@@ -256,6 +262,10 @@ public static class ClipsReadEndpoints
         var height = clip.Height?.ToString() ?? "720";
         // video/mp4 is hardcoded — it's the only content type allowed by ClipValidationOptions
 
+        // Twitter card: summary_large_image rather than `player`. `player` requires an
+        // HTTPS iframe HTML page (not a raw mp4) plus Twitter app approval; pointing
+        // it at the presigned mp4 falls back to summary anyway. summary_large_image
+        // renders the thumbnail + title/description directly.
         return $"""
             <!DOCTYPE html>
             <html>
@@ -272,10 +282,9 @@ public static class ClipsReadEndpoints
             <meta property="og:video:type" content="video/mp4" />
             <meta property="og:video:width" content="{width}" />
             <meta property="og:video:height" content="{height}" />
-            <meta name="twitter:card" content="player" />
-            <meta name="twitter:player" content="{encodedVideoUrl}" />
-            <meta name="twitter:player:width" content="{width}" />
-            <meta name="twitter:player:height" content="{height}" />
+            <meta name="twitter:card" content="summary_large_image" />
+            <meta name="twitter:title" content="{title}" />
+            {(desc is not null ? $"""<meta name="twitter:description" content="{desc}" />""" : "")}
             <meta name="twitter:image" content="{encodedThumbnailUrl}" />
             </head>
             <body></body>
