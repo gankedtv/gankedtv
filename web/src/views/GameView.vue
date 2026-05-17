@@ -33,12 +33,24 @@ const paginationErrored = ref(false)
 const sentinel = ref<HTMLElement | null>(null)
 let observer: IntersectionObserver | null = null
 
+// Monotonic request token. Bumped at the start of every loadAll (i.e. on mount
+// and every slug change). Each in-flight fetch captures the token at entry and
+// bails when it resolves if a newer loadAll has superseded it — otherwise a
+// stale response for slug A would stomp state belonging to slug B after a fast
+// nav. Also gates loading.value clear-down so a stale finally doesn't flip
+// loading off mid-load for the current request.
+let requestId = 0
+
 async function loadGame() {
   const s = slug.value
   if (!s) return
+  const token = requestId
   try {
-    game.value = await games.getBySlug(s)
+    const result = await games.getBySlug(s)
+    if (token !== requestId) return
+    game.value = result
   } catch (err) {
+    if (token !== requestId) return
     if (err instanceof ApiError && err.status === 404) {
       notFound.value = true
     } else {
@@ -51,14 +63,17 @@ async function loadGame() {
 async function loadMore() {
   const s = slug.value
   if (!s || loading.value || reachedEnd.value || notFound.value) return
+  const token = requestId
   loading.value = true
   paginationErrored.value = false
   try {
     const page = await games.clips(s, { cursor: cursor.value, limit: 20 })
+    if (token !== requestId) return
     items.value.push(...page.items)
     cursor.value = page.nextCursor
     if (page.nextCursor === null) reachedEnd.value = true
   } catch (err) {
+    if (token !== requestId) return
     if (items.value.length === 0) {
       // First-page failure (game lookup may have succeeded). Treat 404 here as
       // the same "game does not exist" branch so we don't render a broken header.
@@ -72,7 +87,7 @@ async function loadMore() {
     }
     console.error('game-detail: load failed', err)
   } finally {
-    loading.value = false
+    if (token === requestId) loading.value = false
   }
 }
 
@@ -95,6 +110,7 @@ function detachObserver() {
 }
 
 async function loadAll() {
+  const token = ++requestId
   errored.value = false
   notFound.value = false
   paginationErrored.value = false
@@ -111,16 +127,20 @@ async function loadAll() {
     // a 500 on /games/{slug} can set errored=true while /games/{slug}/clips
     // succeeds and silently populates items behind the error panel.
     await loadGame()
+    if (token !== requestId) return
     if (notFound.value || errored.value) return
     await loadMore()
   } catch {
     // individual handlers already set the right flag
   } finally {
-    initialLoading.value = false
-    // Defer observer attachment to next tick so the sentinel is in the DOM
-    // (it's only rendered when game is loaded and !errored).
-    if (!notFound.value && !errored.value && !reachedEnd.value) {
-      requestAnimationFrame(attachObserver)
+    // Bare `return` in finally is unsafe (masks throws), so gate via if-block.
+    if (token === requestId) {
+      initialLoading.value = false
+      // Defer observer attachment to next tick so the sentinel is in the DOM
+      // (it's only rendered when game is loaded and !errored).
+      if (!notFound.value && !errored.value && !reachedEnd.value) {
+        requestAnimationFrame(attachObserver)
+      }
     }
   }
 }
