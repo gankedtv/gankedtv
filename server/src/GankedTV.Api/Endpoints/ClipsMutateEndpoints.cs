@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using GankedTV.Api.Clips;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
@@ -22,7 +23,9 @@ public static class ClipsMutateEndpoints
 
     public static IEndpointRouteBuilder MapClipsMutateEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/clips").RequireAuthorization();
+        var group = app.MapGroup("/clips")
+            .RequireAuthorization()
+            .RequireRateLimiting(ClipsRateLimiting.ClipsWritePolicy);
         group.MapPatch("/{id:guid}", PatchClip).WithValidation<UpdateClipRequest>();
         group.MapDelete("/{id:guid}", DeleteClip);
         return app;

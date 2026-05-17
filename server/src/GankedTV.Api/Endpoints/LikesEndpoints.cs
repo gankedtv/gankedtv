@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using GankedTV.Api.Clips;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Data;
 using GankedTV.Api.Problems;
@@ -11,7 +12,9 @@ public static class LikesEndpoints
 {
     public static IEndpointRouteBuilder MapLikesEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/clips").RequireAuthorization();
+        var group = app.MapGroup("/clips")
+            .RequireAuthorization()
+            .RequireRateLimiting(ClipsRateLimiting.ClipsWritePolicy);
         group.MapPost("/{id:guid}/like", LikeClip);
         group.MapDelete("/{id:guid}/like", UnlikeClip);
         return app;

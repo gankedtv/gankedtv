@@ -5,6 +5,7 @@ using GankedTV.Api.Auth.Passwords;
 using GankedTV.Api.Auth.Providers;
 using GankedTV.Api.Auth.State;
 using GankedTV.Api.Auth.Tokens;
+using GankedTV.Api.Clips;
 using GankedTV.Api.Configuration;
 using GankedTV.Api.Data;
 using GankedTV.Api.Endpoints;
@@ -220,7 +221,9 @@ builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
 builder.Services.AddScoped<UserUpsertService>();
 builder.Services.AddScoped<CredentialAuthService>();
 
-builder.Services.AddRateLimiter(opts => opts.AddCredentialsPolicy());
+builder.Services.AddRateLimiter(opts => opts
+    .AddCredentialsPolicy()
+    .AddClipsWritePolicy());
 
 builder.Services.AddSingleton<IOAuthProvider, DiscordOAuthProvider>();
 builder.Services.AddSingleton<IOAuthProvider, GoogleOAuthProvider>();
