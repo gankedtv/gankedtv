@@ -16,6 +16,7 @@ function makeClip(overrides: Partial<ClipFeedItem> = {}): ClipFeedItem {
     author: { id: 'u1', username: 'phantomveil', avatarUrl: null },
     game: { id: 1, name: 'Valorant', slug: 'valorant', tag: 'VALORANT' },
     likedByMe: false,
+    shareCode: 'testcode',
     ...overrides,
   }
 }

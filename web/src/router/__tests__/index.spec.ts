@@ -80,3 +80,11 @@ describe('router beforeEach guard', () => {
     expect(router.currentRoute.value.name).toBe('not-found')
   })
 })
+
+describe('share-code route', () => {
+  it('resolves /c/:code to the clip-share route and exposes the code param', async () => {
+    await router.push('/c/abc123')
+    expect(router.currentRoute.value.name).toBe('clip-share')
+    expect(router.currentRoute.value.params.code).toBe('abc123')
+  })
+})

@@ -27,6 +27,7 @@ export interface ClipFeedItem {
   author: AuthorSummary
   game: GameSummary | null
   likedByMe: boolean
+  shareCode: string
 }
 
 export interface ClipDetail {
@@ -46,6 +47,7 @@ export interface ClipDetail {
   game: GameSummary | null
   likedByMe: boolean
   visibility: 'public' | 'unlisted'
+  shareCode: string
 }
 
 export interface UpdateClipBody {
@@ -102,6 +104,10 @@ export const clips = {
 
   getDetail(id: string): Promise<ClipDetail> {
     return api<ClipDetail>(`/clips/${encodeURIComponent(id)}`)
+  },
+
+  getByShareCode(code: string): Promise<ClipDetail> {
+    return api<ClipDetail>(`/c/${encodeURIComponent(code)}`)
   },
 
   create(body: CreateClipBody): Promise<{ id: string }> {

@@ -40,21 +40,27 @@ let latestLoadId = 0
 
 const clipId = computed(() => {
   const id = route.params.id
-  return Array.isArray(id) ? id[0] : id
+  return Array.isArray(id) ? id[0] : (id as string | undefined)
+})
+const shareCode = computed(() => {
+  const code = route.params.code
+  return Array.isArray(code) ? code[0] : (code as string | undefined)
 })
 
-async function loadClip(id: string) {
+async function loadClip() {
   const myLoadId = ++latestLoadId
   loading.value = true
   errored.value = false
   clip.value = null
   teardownPlayer()
   try {
-    const detail = await clips.getDetail(id)
+    const fetched = shareCode.value
+      ? await clips.getByShareCode(shareCode.value)
+      : await clips.getDetail(clipId.value!)
     if (myLoadId !== latestLoadId) return
-    clip.value = detail
-    liked.value = detail.likedByMe
-    likeCount.value = detail.likeCount
+    clip.value = fetched
+    liked.value = fetched.likedByMe
+    likeCount.value = fetched.likeCount
   } catch (err) {
     if (myLoadId !== latestLoadId) return
     if (err instanceof ApiError && err.status === 404) {
@@ -68,10 +74,10 @@ async function loadClip(id: string) {
 }
 
 watch(
-  clipId,
-  (id) => {
-    if (!id) return
-    loadClip(id)
+  [clipId, shareCode],
+  ([id, code]) => {
+    if (!id && !code) return
+    loadClip()
   },
   { immediate: true },
 )
@@ -148,7 +154,10 @@ async function toggleLike() {
 
 async function handleShare() {
   try {
-    await navigator.clipboard.writeText(window.location.href)
+    const url = clip.value?.shareCode
+      ? `${window.location.origin}/c/${clip.value.shareCode}`
+      : window.location.href
+    await navigator.clipboard.writeText(url)
     fireToast('🔗 Link copied to clipboard')
   } catch {
     fireToast('Copy failed')
@@ -261,7 +270,7 @@ async function onConfirmDelete() {
     <StatusPanel v-else-if="errored" kind="error" message="Couldn't load this clip.">
       <button
         class="cursor-pointer rounded-sm border border-border bg-surface-raised px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
-        @click="clipId && loadClip(clipId)"
+        @click="(clipId || shareCode) && loadClip()"
       >
         Retry
       </button>
