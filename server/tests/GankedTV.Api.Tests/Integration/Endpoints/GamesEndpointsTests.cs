@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
+using GankedTV.Api.Clips;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Tests.TestSupport;
@@ -151,6 +152,240 @@ public class GamesEndpointsTests : IAsyncLifetime
         // Verify both that auth isn't required AND that the endpoint is healthy —
         // a 5xx would also `NotBe(Unauthorized)` and silently pass.
         resp.IsSuccessStatusCode.Should().BeTrue($"got {(int)resp.StatusCode}");
+    }
+
+    // ---- GET /games/{slug} ----
+
+    [Fact]
+    public async Task GetGameBySlug_Returns200WithDetailAndClipCount()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync();
+        var gameId = await GetGameIdBySlugAsync("valorant");
+
+        // 3 public/ready clips count; non-public + non-ready do not.
+        await SeedClipAsync(userId, DateTimeOffset.UtcNow.AddMinutes(-1), gameId);
+        await SeedClipAsync(userId, DateTimeOffset.UtcNow.AddMinutes(-2), gameId);
+        await SeedClipAsync(userId, DateTimeOffset.UtcNow.AddMinutes(-3), gameId);
+        await SeedClipAsync(userId, DateTimeOffset.UtcNow, gameId, status: "processing");
+        await SeedClipAsync(userId, DateTimeOffset.UtcNow, gameId, visibility: "unlisted");
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/games/valorant");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("id").GetInt32().Should().Be(gameId);
+        body.GetProperty("slug").GetString().Should().Be("valorant");
+        body.GetProperty("name").GetString().Should().Be("Valorant");
+        body.GetProperty("tag").GetString().Should().NotBeNullOrEmpty();
+        body.GetProperty("clipCount").GetInt32().Should().Be(3);
+    }
+
+    [Fact]
+    public async Task GetGameBySlug_NoClips_ReturnsZeroCount()
+    {
+        await _fx.ResetAsync();
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/games/valorant");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("clipCount").GetInt32().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task GetGameBySlug_UnknownSlug_Returns404()
+    {
+        await _fx.ResetAsync();
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/games/does-not-exist");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    // ---- GET /games/{slug}/clips ----
+
+    [Fact]
+    public async Task GetClipsForGame_FiltersByGameAndVisibility()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync();
+        var targetGameId = await GetGameIdBySlugAsync("valorant");
+        var otherGameId = await GetGameIdBySlugAsync("apex-legends");
+
+        var now = DateTimeOffset.UtcNow;
+        var (target1, _) = await SeedClipAsync(userId, now.AddMinutes(-1), targetGameId);
+        var (target2, _) = await SeedClipAsync(userId, now.AddMinutes(-2), targetGameId);
+        await SeedClipAsync(userId, now, otherGameId); // wrong game
+        await SeedClipAsync(userId, now, targetGameId, status: "processing"); // not ready
+        await SeedClipAsync(userId, now, targetGameId, visibility: "unlisted"); // not public
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/games/valorant/clips");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var ids = body.GetProperty("items").EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid()).ToList();
+        ids.Should().Equal(target1, target2);
+        body.GetProperty("nextCursor").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task GetClipsForGame_CursorPagination_NoDuplicatesAtBoundary()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync();
+        var gameId = await GetGameIdBySlugAsync("valorant");
+
+        // Seed 4 clips; the middle two share the exact CreatedAt to exercise the
+        // composite (CreatedAt, Id) keyset across the page boundary.
+        var now = DateTimeOffset.UtcNow;
+        var shared = now.AddMinutes(-2);
+        var seeded = new List<Guid>();
+        var (a, _) = await SeedClipAsync(userId, now.AddMinutes(-1), gameId);
+        seeded.Add(a);
+        var (b, _) = await SeedClipAsync(userId, shared, gameId);
+        seeded.Add(b);
+        var (c, _) = await SeedClipAsync(userId, shared, gameId);
+        seeded.Add(c);
+        var (d, _) = await SeedClipAsync(userId, now.AddMinutes(-3), gameId);
+        seeded.Add(d);
+
+        using var client = _factory!.CreateClient();
+
+        var first = await client.GetAsync("/games/valorant/clips?limit=2");
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+        var firstBody = await first.Content.ReadFromJsonAsync<JsonElement>();
+        firstBody.GetProperty("items").GetArrayLength().Should().Be(2);
+        var nextCursor = firstBody.GetProperty("nextCursor").GetString();
+        nextCursor.Should().NotBeNullOrEmpty();
+
+        var second = await client.GetAsync(
+            $"/games/valorant/clips?limit=2&cursor={Uri.EscapeDataString(nextCursor!)}");
+        second.StatusCode.Should().Be(HttpStatusCode.OK);
+        var secondBody = await second.Content.ReadFromJsonAsync<JsonElement>();
+
+        var returned = firstBody.GetProperty("items").EnumerateArray()
+            .Concat(secondBody.GetProperty("items").EnumerateArray())
+            .Select(e => e.GetProperty("id").GetGuid())
+            .ToList();
+        returned.Should().BeEquivalentTo(seeded);
+        returned.Should().OnlyHaveUniqueItems();
+    }
+
+    [Fact]
+    public async Task GetClipsForGame_UnknownSlug_Returns404()
+    {
+        await _fx.ResetAsync();
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/games/does-not-exist/clips");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task GetClipsForGame_EmptyGame_Returns200WithEmptyItemsAndNullCursor()
+    {
+        await _fx.ResetAsync();
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/games/valorant/clips");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("items").GetArrayLength().Should().Be(0);
+        body.GetProperty("nextCursor").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task GetClipsForGame_LimitClampedToMax()
+    {
+        // BuildFeedPageAsync owns the clamp (FeedMaxLimit=100), but the per-game
+        // route also routes through it — pin the behaviour here so a future
+        // tweak to the helper or the route doesn't silently uncap the page size.
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync();
+        var gameId = await GetGameIdBySlugAsync("valorant");
+
+        var now = DateTimeOffset.UtcNow;
+        for (var i = 0; i < 5; i++)
+        {
+            await SeedClipAsync(userId, now.AddSeconds(-i), gameId);
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/games/valorant/clips?limit=999999");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("items").GetArrayLength().Should().Be(5);
+    }
+
+    [Fact]
+    public async Task GetClipsForGame_InvalidCursor_FallsBackToFirstPage()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync();
+        var gameId = await GetGameIdBySlugAsync("valorant");
+        await SeedClipAsync(userId, DateTimeOffset.UtcNow, gameId);
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/games/valorant/clips?cursor=not-a-real-cursor");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("items").GetArrayLength().Should().Be(1);
+    }
+
+    // ---- helpers ----
+
+    private async Task<Guid> SeedUserAsync(string username = "games-test-user")
+    {
+        var (userId, _) = await AuthTestHelpers.SeedUserAndIssueTokenAsync(_fx, _factory!, username);
+        return userId;
+    }
+
+    private async Task<int> GetGameIdBySlugAsync(string slug)
+    {
+        await using var db = _fx.CreateContext();
+        return await db.Games.Where(g => g.Slug == slug).Select(g => g.Id).FirstAsync();
+    }
+
+    private async Task<(Guid id, string shareCode)> SeedClipAsync(
+        Guid userId,
+        DateTimeOffset createdAt,
+        int? gameId,
+        string status = "ready",
+        string visibility = "public")
+    {
+        var id = Guid.NewGuid();
+        var shareCode = ShareCodeGenerator.Next();
+        await using var db = _fx.CreateContext();
+        db.Clips.Add(new Clip
+        {
+            Id = id,
+            UserId = userId,
+            GameId = gameId,
+            Title = $"clip-{id:N}".Substring(0, 20),
+            VideoKey = $"{userId}/{id}.mp4",
+            ThumbnailKey = $"thumbs/{id}.jpg",
+            ShareCode = shareCode,
+            Status = status,
+            Visibility = visibility,
+            DurationSecs = 30,
+            Width = 1920,
+            Height = 1080,
+            FileSizeBytes = 1_000_000,
+            CreatedAt = createdAt,
+            UpdatedAt = createdAt,
+        });
+        await db.SaveChangesAsync();
+        return (id, shareCode);
     }
 
     [Fact]

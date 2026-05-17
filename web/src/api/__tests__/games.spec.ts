@@ -61,6 +61,87 @@ describe('api/games', () => {
     })
   })
 
+  describe('getBySlug()', () => {
+    it('GETs /games/{slug} with the slug URL-encoded', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () =>
+          jsonResponse({
+            id: 1,
+            name: 'Valorant',
+            slug: 'valorant',
+            tag: 'VALORANT',
+            coverUrl: null,
+            clipCount: 0,
+          }),
+        ),
+      )
+
+      await games.getBySlug('rocket league')
+
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+      expect(url).toBe(`${BASE_URL}/games/rocket%20league`)
+    })
+
+    it('returns the parsed detail', async () => {
+      const body = {
+        id: 7,
+        name: 'Rocket League',
+        slug: 'rocket-league',
+        tag: 'RL',
+        coverUrl: 'https://cdn.test/rl.jpg',
+        clipCount: 42,
+      }
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse(body)),
+      )
+
+      const result = await games.getBySlug('rocket-league')
+
+      expect(result).toEqual(body)
+    })
+  })
+
+  describe('clips()', () => {
+    it('GETs /games/{slug}/clips with no query when no cursor/limit', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ items: [], nextCursor: null })),
+      )
+
+      await games.clips('valorant')
+
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+      expect(url).toBe(`${BASE_URL}/games/valorant/clips`)
+    })
+
+    it('passes cursor and limit through as query params', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ items: [], nextCursor: null })),
+      )
+
+      await games.clips('valorant', { cursor: 'abc=', limit: 20 })
+
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+      // URLSearchParams encodes '=' as '%3D'.
+      expect(url).toBe(`${BASE_URL}/games/valorant/clips?cursor=abc%3D&limit=20`)
+    })
+
+    it('skips cursor when null', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ items: [], nextCursor: null })),
+      )
+
+      await games.clips('valorant', { cursor: null, limit: 10 })
+
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+      expect(url).toBe(`${BASE_URL}/games/valorant/clips?limit=10`)
+    })
+  })
+
   describe('search()', () => {
     it('URL-encodes the search term', async () => {
       vi.stubGlobal(

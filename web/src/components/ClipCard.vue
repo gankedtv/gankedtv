@@ -35,10 +35,22 @@ function onKeydown(e: KeyboardEvent) {
         alt=""
         class="h-full w-full object-cover transition-transform duration-400 group-hover:scale-104"
       />
-      <!-- Game tag — top-left -->
-      <div v-if="props.clip.game" class="absolute left-2 top-2">
+      <!-- Game tag — top-left. Links to /game/:slug. The handlers stop both
+           pointer and keyboard activation from bubbling to the parent article,
+           whose @click + @keydown otherwise route to the clip detail instead.
+           Enter fires the link's native synthetic click; Space we preventDefault
+           so it doesn't scroll the page on top of the navigation. -->
+      <RouterLink
+        v-if="props.clip.game"
+        :to="{ name: 'game-detail', params: { slug: props.clip.game.slug } }"
+        :aria-label="`Browse ${props.clip.game.name} clips`"
+        class="absolute left-2 top-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-brand"
+        @click.stop
+        @keydown.enter.stop
+        @keydown.space.prevent.stop
+      >
         <GameTag :tag="props.clip.game.tag" />
-      </div>
+      </RouterLink>
       <!-- Duration — bottom-right -->
       <DurationBadge :seconds="props.clip.durationSecs" class="absolute bottom-2 right-2" />
     </div>

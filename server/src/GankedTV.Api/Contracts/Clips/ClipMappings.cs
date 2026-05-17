@@ -9,9 +9,6 @@ public static class ClipMappings
     public static AuthorSummary ToAuthorSummary(this User user) =>
         new(user.Id, user.Username, user.AvatarUrl);
 
-    public static GameSummary ToGameSummary(this Game game) =>
-        new(game.Id, game.Name, game.Slug, game.Tag);
-
     public static CreateClipResponse ToCreateClipResponse(this CreateClipResult result) =>
         new(result.ClipId);
 
