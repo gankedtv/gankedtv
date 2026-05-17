@@ -91,6 +91,11 @@ public class ClipsRateLimitTests : IAsyncLifetime
         blocked.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
         var body = await blocked.Content.ReadFromJsonAsync<JsonElement>();
         body.GetProperty(ProblemResults.CodeKey).GetString().Should().Be(ClipsRateLimiting.RateLimitedCode);
+
+        // Retry-After is set from the lease metadata (fixed window + AutoReplenishment emits it).
+        // Asserted here rather than in every 429 test — pinning it once proves the OnRejected
+        // header path runs.
+        blocked.Headers.RetryAfter.Should().NotBeNull();
     }
 
     [Fact]
@@ -122,6 +127,41 @@ public class ClipsRateLimitTests : IAsyncLifetime
         blocked.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
         var body = await blocked.Content.ReadFromJsonAsync<JsonElement>();
         body.GetProperty(ProblemResults.CodeKey).GetString().Should().Be(ClipsRateLimiting.RateLimitedCode);
+    }
+
+    [Fact]
+    public async Task MixedWrites_ShareBucket_AcrossEndpointGroups()
+    {
+        // The three /clips write groups (Upload, Mutate, Likes) all attach ClipsWritePolicy by
+        // name, so one user shares one bucket across the entire write surface. Pin that as an
+        // intentional contract: a developer attaching the policy to a fourth group later can't
+        // accidentally widen the per-user budget without breaking this test.
+        await _fx.ResetAsync();
+        var (authorId, _) = await SeedUserAndIssueTokenAsync("rl-author");
+        var (_, fanToken) = await SeedUserAndIssueTokenAsync("rl-fan");
+        var clipId = await SeedClipAsync(authorId);
+        using var client = ClientWithBearer(fanToken);
+
+        // Split the permit between two endpoint groups (POST /clips → Upload group,
+        // POST/DELETE /{id}/like → Likes group). Sum stays at WritePermitLimit.
+        var half = ClipsRateLimiting.WritePermitLimit / 2;
+        for (var i = 0; i < half; i++)
+        {
+            var create = await client.PostAsJsonAsync("/clips", new { title = $"mix-{i}" });
+            create.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        for (var i = 0; i < ClipsRateLimiting.WritePermitLimit - half; i++)
+        {
+            var like = (i % 2 == 0)
+                ? await client.PostAsync($"/clips/{clipId}/like", content: null)
+                : await client.DeleteAsync($"/clips/{clipId}/like");
+            like.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        // One more request — from EITHER group — must 429. Picking the like path here proves
+        // the bucket carries state across groups, not just within the group the budget was spent in.
+        var blocked = await client.PostAsync($"/clips/{clipId}/like", content: null);
+        blocked.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
     }
 
     [Fact]
