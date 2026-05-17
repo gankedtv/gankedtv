@@ -1,7 +1,23 @@
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { createRouter, createMemoryHistory } from 'vue-router'
+import { defineComponent, h } from 'vue'
 import ClipCard from '../ClipCard.vue'
 import type { ClipFeedItem } from '@/api/clips'
+
+function makeRouter() {
+  return createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/', name: 'home', component: defineComponent({ render: () => h('div') }) },
+      {
+        path: '/game/:slug',
+        name: 'game-detail',
+        component: defineComponent({ render: () => h('div') }),
+      },
+    ],
+  })
+}
 
 function makeClip(overrides: Partial<ClipFeedItem> = {}): ClipFeedItem {
   return {
@@ -24,33 +40,67 @@ function makeClip(overrides: Partial<ClipFeedItem> = {}): ClipFeedItem {
 describe('ClipCard', () => {
   it('renders the clip title', () => {
     const clip = makeClip()
-    const wrapper = mount(ClipCard, { props: { clip } })
+    const wrapper = mount(ClipCard, { props: { clip }, global: { plugins: [makeRouter()] } })
     expect(wrapper.text()).toContain(clip.title)
   })
 
   it('renders the game tag when game is set', () => {
-    const wrapper = mount(ClipCard, { props: { clip: makeClip() } })
+    const wrapper = mount(ClipCard, {
+      props: { clip: makeClip() },
+      global: { plugins: [makeRouter()] },
+    })
     expect(wrapper.text()).toContain('VALORANT')
   })
 
   it('omits the game tag when game is null', () => {
-    const wrapper = mount(ClipCard, { props: { clip: makeClip({ game: null }) } })
+    const wrapper = mount(ClipCard, {
+      props: { clip: makeClip({ game: null }) },
+      global: { plugins: [makeRouter()] },
+    })
     expect(wrapper.text()).not.toContain('VALORANT')
   })
 
   it('renders the formatted duration', () => {
-    const wrapper = mount(ClipCard, { props: { clip: makeClip() } })
+    const wrapper = mount(ClipCard, {
+      props: { clip: makeClip() },
+      global: { plugins: [makeRouter()] },
+    })
     expect(wrapper.text()).toContain('0:42')
   })
 
   it('renders the @username in neon', () => {
-    const wrapper = mount(ClipCard, { props: { clip: makeClip() } })
+    const wrapper = mount(ClipCard, {
+      props: { clip: makeClip() },
+      global: { plugins: [makeRouter()] },
+    })
     expect(wrapper.text()).toContain('@phantomveil')
   })
 
   it('emits click when the article is clicked', async () => {
-    const wrapper = mount(ClipCard, { props: { clip: makeClip() } })
+    const wrapper = mount(ClipCard, {
+      props: { clip: makeClip() },
+      global: { plugins: [makeRouter()] },
+    })
     await wrapper.find('article').trigger('click')
     expect(wrapper.emitted('click')).toBeTruthy()
+  })
+
+  it('renders the game tag as a link to /game/:slug', () => {
+    const wrapper = mount(ClipCard, {
+      props: { clip: makeClip() },
+      global: { plugins: [makeRouter()] },
+    })
+    const link = wrapper.find('a')
+    expect(link.exists()).toBe(true)
+    expect(link.attributes('href')).toBe('/game/valorant')
+  })
+
+  it('does not emit card click when the game-tag link is clicked', async () => {
+    const wrapper = mount(ClipCard, {
+      props: { clip: makeClip() },
+      global: { plugins: [makeRouter()] },
+    })
+    await wrapper.find('a').trigger('click')
+    expect(wrapper.emitted('click')).toBeFalsy()
   })
 })

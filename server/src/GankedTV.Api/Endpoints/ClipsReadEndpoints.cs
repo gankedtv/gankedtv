@@ -18,8 +18,11 @@ namespace GankedTV.Api.Endpoints;
 
 public static class ClipsReadEndpoints
 {
-    private const int DefaultLimit = 20;
-    private const int MaxLimit = 100;
+    // Feed-prefixed because BuildFeedPageAsync is called from GamesEndpoints too;
+    // a generic DefaultLimit/MaxLimit would collide with the same-named (different
+    // value) constants there. Internal so the helper is callable cross-class.
+    internal const int FeedDefaultLimit = 20;
+    internal const int FeedMaxLimit = 100;
     private static readonly TimeSpan VideoUrlLifetime = TimeSpan.FromHours(1);
     // Thumbnail URLs ride the same 1-hour signed window as video URLs — keeping the
     // two lifetimes aligned means a feed page that's still fresh enough to play the
@@ -44,14 +47,32 @@ public static class ClipsReadEndpoints
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
-        var clampedLimit = Math.Clamp(limit ?? DefaultLimit, 1, MaxLimit);
+        var baseQuery = db.Clips.AsNoTracking()
+            .Where(c => c.Visibility == "public" && c.Status == "ready");
+        var response = await BuildFeedPageAsync(baseQuery, cursor, limit, principal, db, storage, s3, ct);
+        return Results.Ok(response);
+    }
+
+    // Shared cursor-paginated feed builder. Callers pass a pre-filtered IQueryable<Clip>
+    // (e.g. global feed, per-game feed) and this owns ordering, keyset cursoring,
+    // includes, likedByMe lookup, thumbnail signing, and nextCursor minting.
+    internal static async Task<ClipFeedResponse> BuildFeedPageAsync(
+        IQueryable<Clip> baseQuery,
+        string? cursor,
+        int? limit,
+        ClaimsPrincipal principal,
+        GankedTvDbContext db,
+        IObjectStorageService storage,
+        IOptions<S3Options> s3,
+        CancellationToken ct)
+    {
+        var clampedLimit = Math.Clamp(limit ?? FeedDefaultLimit, 1, FeedMaxLimit);
 
         // Invalid cursor values silently fall back to "no cursor" rather than 400-ing; the
         // client's next-page fetch shouldn't be broken by a corrupted query string.
         var hasCursor = TryParseCursor(cursor, out var cursorCreatedAt, out var cursorId);
 
-        var query = db.Clips.AsNoTracking()
-            .Where(c => c.Visibility == "public" && c.Status == "ready");
+        var query = baseQuery;
         if (hasCursor)
         {
             // Composite (CreatedAt, Id) keyset: two clips sharing the same created_at (bulk imports,
@@ -84,7 +105,7 @@ public static class ClipsReadEndpoints
             .ToList();
         var nextCursor = hasMore ? BuildCursor(page[^1].CreatedAt, page[^1].Id) : null;
 
-        return Results.Ok(new ClipFeedResponse(items, nextCursor));
+        return new ClipFeedResponse(items, nextCursor);
     }
 
     // Public Ready clips always have a thumbnail (the worker is the only path to Ready

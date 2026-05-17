@@ -37,6 +37,11 @@ const router = createRouter({
       component: () => import('@/views/GamesView.vue'),
     },
     {
+      path: '/game/:slug',
+      name: 'game-detail',
+      component: () => import('@/views/GameView.vue'),
+    },
+    {
       path: '/trending',
       name: 'trending',
       component: () => import('@/views/TrendingView.vue'),
