@@ -303,6 +303,30 @@ public class GamesEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetClipsForGame_LimitClampedToMax()
+    {
+        // BuildFeedPageAsync owns the clamp (FeedMaxLimit=100), but the per-game
+        // route also routes through it — pin the behaviour here so a future
+        // tweak to the helper or the route doesn't silently uncap the page size.
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync();
+        var gameId = await GetGameIdBySlugAsync("valorant");
+
+        var now = DateTimeOffset.UtcNow;
+        for (var i = 0; i < 5; i++)
+        {
+            await SeedClipAsync(userId, now.AddSeconds(-i), gameId);
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/games/valorant/clips?limit=999999");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("items").GetArrayLength().Should().Be(5);
+    }
+
+    [Fact]
     public async Task GetClipsForGame_InvalidCursor_FallsBackToFirstPage()
     {
         await _fx.ResetAsync();

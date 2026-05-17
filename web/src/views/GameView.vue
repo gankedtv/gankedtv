@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { games, type GameDetail } from '@/api/games'
 import type { ClipFeedItem } from '@/api/clips'
 import { ApiError } from '@/api/client'
+import { useAuthStore } from '@/stores/auth'
 import ClipCard from '@/components/ClipCard.vue'
 import GameTag from '@/components/GameTag.vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -11,6 +12,7 @@ import StatusPanel from '@/components/StatusPanel.vue'
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 
 const slug = computed(() => {
   const raw = route.params.slug
@@ -67,7 +69,9 @@ async function loadMore() {
   loading.value = true
   paginationErrored.value = false
   try {
-    const page = await games.clips(s, { cursor: cursor.value, limit: 20 })
+    // No explicit limit — server defaults match the global feed (FeedDefaultLimit=20)
+    // so we don't fork the value across client + server.
+    const page = await games.clips(s, { cursor: cursor.value })
     if (token !== requestId) return
     items.value.push(...page.items)
     cursor.value = page.nextCursor
@@ -83,11 +87,22 @@ async function loadMore() {
         errored.value = true
       }
     } else {
+      // Detach the observer so micro-scrolls past the sentinel don't silently
+      // hammer the failing endpoint. The Retry button is the only way out — it
+      // clears paginationErrored and re-attaches the observer.
       paginationErrored.value = true
+      detachObserver()
     }
     console.error('game-detail: load failed', err)
   } finally {
     if (token === requestId) loading.value = false
+  }
+}
+
+async function retryLoadMore() {
+  await loadMore()
+  if (!paginationErrored.value && !reachedEnd.value) {
+    attachObserver()
   }
 }
 
@@ -119,6 +134,11 @@ async function loadAll() {
   game.value = null
   items.value = []
   cursor.value = null
+  // Clear here too: an in-flight loadMore for the previous slug may still own
+  // loading=true, and its finally won't clear it (token mismatch). Without this
+  // reset, the new slug's loadMore would early-return on `loading.value` and
+  // wedge the page in a permanent loading state.
+  loading.value = false
   detachObserver()
 
   try {
@@ -190,12 +210,16 @@ watch(slug, () => {
       <section
         class="relative mb-10 overflow-hidden rounded-lg border border-border bg-surface-raised"
       >
-        <div
+        <!-- Cover rendered as <img> rather than background-image so the URL
+             can't break out of a CSS string (a coverUrl containing `");
+             content:url("` would otherwise escape the url() value). -->
+        <img
           v-if="game.coverUrl"
-          class="absolute inset-0 bg-cover bg-center opacity-30"
-          :style="{ backgroundImage: `url(${game.coverUrl})` }"
+          :src="game.coverUrl"
+          alt=""
+          class="absolute inset-0 h-full w-full object-cover opacity-30"
           aria-hidden="true"
-        ></div>
+        />
         <div
           class="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,var(--color-surface-raised)_100%)]"
           aria-hidden="true"
@@ -225,9 +249,11 @@ watch(slug, () => {
         />
       </div>
 
-      <!-- Empty -->
+      <!-- Empty. CTA only shown to authenticated users — /upload requires auth
+           and would otherwise bounce visitors through login. -->
       <StatusPanel v-else-if="reachedEnd" kind="empty" message="No clips for this game yet.">
         <RouterLink
+          v-if="auth.isAuthenticated"
           to="/upload"
           class="rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
         >
@@ -235,26 +261,28 @@ watch(slug, () => {
         </RouterLink>
       </StatusPanel>
 
-      <!-- Sentinel (only when there's more to load) -->
+      <!-- Sentinel: an empty observation target. aria-hidden so screen readers
+           skip the layout div; the live-region below carries the loading text. -->
+      <div v-if="!reachedEnd" ref="sentinel" class="mt-8 py-6" aria-hidden="true"></div>
       <div
-        v-if="!reachedEnd"
-        ref="sentinel"
-        class="mt-8 flex items-center justify-center py-6"
-        aria-hidden="true"
+        v-if="loading && !reachedEnd"
+        role="status"
+        aria-live="polite"
+        class="-mt-6 flex items-center justify-center py-3 font-mono text-[11px] uppercase tracking-widest text-text-muted"
       >
-        <span v-if="loading" class="font-mono text-[11px] uppercase tracking-widest text-text-muted"
-          >Loading more…</span
-        >
+        Loading more…
       </div>
 
-      <!-- Pagination error (inline retry, keep loaded clips on screen) -->
+      <!-- Pagination error (inline retry, keep loaded clips on screen). The
+           observer is detached when paginationErrored flips, so the only way
+           back to loading is this button — retryLoadMore re-attaches on success. -->
       <div v-if="paginationErrored" class="mt-2 flex flex-col items-center gap-2">
         <span class="font-mono text-[11px] uppercase tracking-widest text-text-muted">
           Couldn't load more — try again.
         </span>
         <button
           :disabled="loading"
-          @click="loadMore"
+          @click="retryLoadMore"
           class="cursor-pointer rounded-sm border border-border bg-surface-raised px-6 py-2.5 font-mono text-[11px] uppercase tracking-[0.08em] text-text-primary transition-colors duration-150 hover:border-brand-light disabled:opacity-50"
         >
           Retry
