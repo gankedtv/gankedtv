@@ -10,12 +10,13 @@ MINIO_CONSOLE_HOST_PORT ?= 9001
 ASPNETCORE_URLS ?= http://localhost:5050
 VITE_PORT ?= 5173
 
-# Explicit export — only the vars that need to reach dotnet/bun subshells get
-# exported (DATABASE_URL, S3_*, VITE_API_BASE_URL come from .env.worktree.local
-# itself, so `export` here picks them up too via the include above).
-export POSTGRES_HOST_PORT MINIO_API_HOST_PORT MINIO_CONSOLE_HOST_PORT
-export ASPNETCORE_URLS VITE_PORT
-export DATABASE_URL S3_ENDPOINT S3_ACCESS_KEY S3_SECRET_KEY S3_PUBLIC_URL VITE_API_BASE_URL
+# Bare `export` exports every variable DEFINED in this Makefile (or via the
+# include above) into recipe subshells — that includes the ?= defaults and
+# anything pulled in from .env.worktree.local. Crucially, vars that are NOT
+# defined here (DATABASE_URL, S3_ACCESS_KEY, etc. in the main checkout) are
+# left alone, so dotnet/bun still see "unset" and fall back to
+# appsettings.Development.json defaults instead of inheriting an empty string.
+export
 
 # docker compose only auto-reads `.env`; pass our worktree env file explicitly
 # when it exists so port vars + COMPOSE_PROJECT_NAME resolve identically across

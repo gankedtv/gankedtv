@@ -20,6 +20,10 @@ if ! [[ "$issue" =~ ^[0-9]+$ ]]; then
   echo "error: issue must be numeric (got '$issue')" >&2
   exit 1
 fi
+# Canonicalize to match scripts/new-worktree.sh: collapse "042" → "42" so the
+# constructed path matches whichever form was used at create time. 10# forces
+# base-10 interpretation (avoids bash treating leading-zero strings as octal).
+issue=$((10#$issue))
 shift
 
 dir="../gankedtv-issue-${issue}"

@@ -27,6 +27,10 @@ if ! [[ "$issue" =~ ^[0-9]+$ ]]; then
   echo "error: issue must be numeric (got '$issue')" >&2
   exit 1
 fi
+# Canonicalize so /worktree 042 and /worktree 42 produce the same branch, dir,
+# and port offset. 10# forces base-10 interpretation (bash treats leading-zero
+# strings as octal otherwise — "08" would error).
+issue=$((10#$issue))
 
 # Derive branch slug to match .claude/commands/issue.md convention exactly:
 # lowercase, non-alphanumerics collapsed to single '-', trimmed, capped at 60.
