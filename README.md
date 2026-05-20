@@ -107,6 +107,17 @@ make ci-server   # server only
 make ci-web      # web only
 ```
 
+### Parallel worktrees
+
+Run multiple issues in parallel, each with its own isolated dev stack:
+
+```bash
+./scripts/new-worktree.sh 92      # create + bootstrap
+./scripts/remove-worktree.sh 92   # tear down
+```
+
+Creates `../gankedtv-issue-92/` with a gitignored `.env.worktree.local` containing deterministic per-issue port offsets (`offset = (sha1(<issue>) mod 50) * 10`, applied to all five host ports), then runs compose up + migrate + seed. After it finishes: `cd ../gankedtv-issue-92 && make dev-all`. The main checkout's defaults are unchanged.
+
 ### Seeded test account
 
 `make seed` creates a known test user so contributors can sign in immediately on a fresh DB without configuring OAuth credentials:

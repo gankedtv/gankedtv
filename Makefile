@@ -1,3 +1,28 @@
+# Per-worktree env file (see scripts/new-worktree.sh and README "Parallel
+# worktrees"). The leading `-` makes -include a no-op when the file is missing,
+# so the main checkout with no .env.worktree.local behaves identically to today.
+-include .env.worktree.local
+
+# Defaults match the historical hardcoded values. Override via .env.worktree.local.
+POSTGRES_HOST_PORT ?= 5435
+MINIO_API_HOST_PORT ?= 9000
+MINIO_CONSOLE_HOST_PORT ?= 9001
+ASPNETCORE_URLS ?= http://localhost:5050
+VITE_PORT ?= 5173
+
+# Explicit export — only the vars that need to reach dotnet/bun subshells get
+# exported (DATABASE_URL, S3_*, VITE_API_BASE_URL come from .env.worktree.local
+# itself, so `export` here picks them up too via the include above).
+export POSTGRES_HOST_PORT MINIO_API_HOST_PORT MINIO_CONSOLE_HOST_PORT
+export ASPNETCORE_URLS VITE_PORT
+export DATABASE_URL S3_ENDPOINT S3_ACCESS_KEY S3_SECRET_KEY S3_PUBLIC_URL VITE_API_BASE_URL
+
+# docker compose only auto-reads `.env`; pass our worktree env file explicitly
+# when it exists so port vars + COMPOSE_PROJECT_NAME resolve identically across
+# up/down/clean. Wildcard returns empty when the file is absent → flag drops out.
+COMPOSE_ENV_FILE := $(if $(wildcard .env.worktree.local),--env-file .env.worktree.local,)
+COMPOSE := docker-compose -f docker-compose.dev.yml $(COMPOSE_ENV_FILE)
+
 .PHONY: setup server-install wait-postgres wait-minio up down clean logs server server-build server-test migrate migrate-add seed web web-install web-build web-test web-lint dev-all hooks ci ci-server ci-web
 
 # One-command dev bootstrap. DESTRUCTIVE: wipes the local Postgres + MinIO volumes
@@ -8,7 +33,7 @@ setup:
 	@echo "⚠ make setup will wipe local postgres + minio volumes (dev data lost)."
 	$(MAKE) clean
 	@./scripts/check-prereqs.sh
-	docker-compose -f docker-compose.dev.yml pull
+	$(COMPOSE) pull
 	$(MAKE) up
 	$(MAKE) wait-minio
 	$(MAKE) server-install
@@ -34,7 +59,7 @@ server-install:
 wait-postgres:
 	@printf "Waiting for postgres "
 	@for i in $$(seq 1 60); do \
-	  if docker-compose -f docker-compose.dev.yml exec -T postgres pg_isready -U gankedtv -d gankedtv >/dev/null 2>&1; then echo " ready."; exit 0; fi; \
+	  if $(COMPOSE) exec -T postgres pg_isready -U gankedtv -d gankedtv >/dev/null 2>&1; then echo " ready."; exit 0; fi; \
 	  printf "."; sleep 1; \
 	done; echo " timed out after 60s"; exit 1
 
@@ -43,26 +68,30 @@ wait-postgres:
 wait-minio:
 	@printf "Waiting for minio "
 	@for i in $$(seq 1 60); do \
-	  if curl -fsS http://localhost:9000/minio/health/live >/dev/null 2>&1; then echo " ready."; exit 0; fi; \
+	  if curl -fsS http://localhost:$(MINIO_API_HOST_PORT)/minio/health/live >/dev/null 2>&1; then echo " ready."; exit 0; fi; \
 	  printf "."; sleep 1; \
 	done; echo " timed out after 60s"; exit 1
 
 # Infrastructure
 up:
-	docker-compose -f docker-compose.dev.yml up -d
+	$(COMPOSE) up -d
 
 down:
-	docker-compose -f docker-compose.dev.yml down
+	$(COMPOSE) down
 
 clean:
-	docker-compose -f docker-compose.dev.yml down -v
+	$(COMPOSE) down -v
 
 logs:
-	docker-compose -f docker-compose.dev.yml logs -f
+	$(COMPOSE) logs -f
 
 # Server
+# ASPNETCORE_URLS is passed inline rather than relying on env-inheritance through
+# dotnet watch's launch-profile machinery — env precedence between launchSettings
+# and parent env is inconsistent across .NET versions, and inline assignment is
+# unambiguous.
 server:
-	dotnet watch --project server/src/GankedTV.Api
+	ASPNETCORE_URLS=$(ASPNETCORE_URLS) dotnet watch --project server/src/GankedTV.Api
 
 server-build:
 	dotnet build server
@@ -95,7 +124,7 @@ web-install:
 	cd web && bun install
 
 web:
-	cd web && bun dev
+	cd web && bun dev --port $(VITE_PORT)
 
 web-build:
 	cd web && bun run build
@@ -109,8 +138,8 @@ web-lint:
 # Combined (Ctrl+C stops both server and web)
 dev-all: up
 	@trap 'kill 0' EXIT; \
-	dotnet watch --project server/src/GankedTV.Api & \
-	cd web && bun dev
+	ASPNETCORE_URLS=$(ASPNETCORE_URLS) dotnet watch --project server/src/GankedTV.Api & \
+	cd web && bun dev --port $(VITE_PORT)
 
 # CI mirror: runs the same checks the GitHub workflows run, in verify-only mode.
 # Mirrors `.github/workflows/server.yml` and `.github/workflows/web.yml` step-for-step

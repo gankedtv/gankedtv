@@ -2,7 +2,7 @@ services:
   postgres:
     image: postgres:18
     ports:
-      - "5435:5432"
+      - "${POSTGRES_HOST_PORT:-5435}:5432"
     environment:
       POSTGRES_DB: gankedtv
       POSTGRES_USER: gankedtv
@@ -31,8 +31,8 @@ services:
   minio:
     image: minio/minio
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${MINIO_API_HOST_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_HOST_PORT:-9001}:9001"
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minioadmin

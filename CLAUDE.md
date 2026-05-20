@@ -36,6 +36,10 @@ The dev workflow runs `dotnet watch` on the host, which means the API process �
 
 [server/Dockerfile.api](server/Dockerfile.api) ships an API image with ffmpeg pre-installed — it's there for production / CI parity builds, not used by the dev compose stack.
 
+### Parallel worktrees
+
+For working on multiple issues in parallel, `./scripts/new-worktree.sh <issue>` (also exposed as `/worktree <n>`) creates `../gankedtv-issue-<n>/` with its own dev stack on offset ports — deterministic per-issue, derived from a SHA1 of the issue number. The script writes a gitignored `.env.worktree.local` (auto-loaded by the Makefile and passed through to `docker compose` via `--env-file`) and then runs the equivalent of `make setup` minus the destructive clean. Tear down with `./scripts/remove-worktree.sh <issue>` (or `/worktree-remove <n>`). The main checkout with no `.env.worktree.local` is unchanged — defaults still resolve to 5435 / 9000 / 9001 / 5050 / 5173.
+
 ### Git hooks
 ```bash
 make hooks                    # One-time: install pre-push hook via core.hooksPath
