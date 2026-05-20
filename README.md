@@ -116,7 +116,7 @@ Run multiple issues in parallel, each with its own isolated dev stack:
 ./scripts/remove-worktree.sh 92   # tear down
 ```
 
-Creates `../gankedtv-issue-92/` with a gitignored `.env.worktree.local` containing deterministic per-issue port offsets (`offset = (sha1(<issue>) mod 50) * 10`, applied to all five host ports), then runs compose up + migrate + seed. After it finishes: `cd ../gankedtv-issue-92 && make dev-all`. The main checkout's defaults are unchanged.
+Creates `.worktrees/issue-92/` (gitignored) with a `.env.worktree.local` containing deterministic per-issue port offsets (`offset = (sha1(<issue>) mod 50) * 10`, applied to all five host ports), then runs compose up + migrate + seed. After it finishes: `cd .worktrees/issue-92 && make dev-all`. If the `code` CLI is on `$PATH`, a new VS Code window opens on the worktree automatically — set `WORKTREE_EDITOR=cursor` (or any VS Code-family CLI) to use a different editor, or `WORKTREE_NO_OPEN=1` to skip. Forgotten which port a worktree is on? `make ports` from inside the worktree prints the summary. Teardown also deletes the local branch (safely, via `git branch -d`; pass `--force` to escalate to `-D`). The main checkout's defaults are unchanged.
 
 ### Seeded test account
 
