@@ -24,7 +24,7 @@ export
 COMPOSE_ENV_FILE := $(if $(wildcard .env.worktree.local),--env-file .env.worktree.local,)
 COMPOSE := docker-compose -f docker-compose.dev.yml $(COMPOSE_ENV_FILE)
 
-.PHONY: setup server-install wait-postgres wait-minio up down clean logs server server-build server-test migrate migrate-add seed web web-install web-build web-test web-lint dev-all hooks ci ci-server ci-web ports
+.PHONY: setup server-install wait-postgres wait-minio up down clean logs server server-build server-test migrate migrate-add seed import-games web web-install web-build web-test web-lint dev-all hooks ci ci-server ci-web ports
 
 # One-command dev bootstrap. DESTRUCTIVE: wipes the local Postgres + MinIO volumes
 # so every run lands you on a known-good state from migrations + seed. Steps:

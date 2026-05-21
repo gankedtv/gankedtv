@@ -107,6 +107,11 @@ public class ObjectStorageTests
 
         await s3.DidNotReceive().PutBucketPolicyAsync(
             Arg.Any<PutBucketPolicyRequest>(), Arg.Any<CancellationToken>());
+        // …and the aliased name is created exactly once (deduplicated), not twice.
+        await s3.Received(1).PutBucketAsync(
+            Arg.Is<PutBucketRequest>(r => r.BucketName == "clips"), Arg.Any<CancellationToken>());
+        await s3.Received(1).PutBucketAsync(
+            Arg.Is<PutBucketRequest>(r => r.BucketName == "thumbnails"), Arg.Any<CancellationToken>());
     }
 
     [Fact]

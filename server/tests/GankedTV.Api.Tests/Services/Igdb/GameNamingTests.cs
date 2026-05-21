@@ -40,6 +40,7 @@ public class GameNamingTests
     [InlineData("Counter-Strike 2", "CS2")]
     [InlineData("Valorant", "VALORANT")]
     [InlineData("Dota 2", "D2")]
+    [InlineData("Of The", "OT")]              // all-stopword title → fallback keeps every initial
     public void Tag_DerivesShortUpperTag(string name, string expected)
     {
         GameNaming.Tag(name).Should().Be(expected);

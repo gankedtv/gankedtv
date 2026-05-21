@@ -29,7 +29,11 @@ public sealed class S3ObjectStorageService : IObjectStorageService
             listResponse.Buckets?.Select(b => b.BucketName) ?? Enumerable.Empty<string>(),
             StringComparer.Ordinal);
 
-        var required = new[] { _options.ClipsBucket, _options.ThumbnailsBucket, _options.GameCoversBucket };
+        // Deduplicate so an aliased config (e.g. GameCoversBucket == ClipsBucket) doesn't issue
+        // a duplicate PutBucketAsync for the same name.
+        var required = new HashSet<string>(
+            new[] { _options.ClipsBucket, _options.ThumbnailsBucket, _options.GameCoversBucket },
+            StringComparer.Ordinal);
 
         foreach (var name in required)
         {
