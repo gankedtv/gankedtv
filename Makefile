@@ -131,6 +131,11 @@ migrate-add:
 seed:
 	ASPNETCORE_ENVIRONMENT=Development dotnet run --project server/src/GankedTV.Api -- --seed
 
+# Backfill the games catalog + cover art from IGDB. Idempotent / resumable. Requires
+# IGDB_CLIENT_ID and IGDB_CLIENT_SECRET (Twitch app client-credentials) in the environment.
+import-games:
+	dotnet run --project server/src/GankedTV.Api -- --import-games
+
 # Web
 web-install:
 	cd web && bun install

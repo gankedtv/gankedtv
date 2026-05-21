@@ -16,11 +16,28 @@ namespace GankedTV.Api.Tests.Tools;
 [Collection("Postgres")]
 public class SeedCommandTests : IAsyncLifetime
 {
+    private static readonly string[] SeedSlugs =
+    [
+        "league-of-legends", "valorant", "cs2", "fortnite", "apex-legends",
+        "rocket-league", "overwatch-2", "dota-2", "marvel-rivals",
+    ];
+
     private readonly PostgresFixture _fx;
 
     public SeedCommandTests(PostgresFixture fx) => _fx = fx;
 
-    public async Task InitializeAsync() => await _fx.ResetAsync();
+    // Reset to a clean 9-game baseline: the games table survives Respawn, so strip any rows /
+    // cover metadata other tests left behind so the seed's cover step is deterministic here.
+    public async Task InitializeAsync()
+    {
+        await _fx.ResetAsync();
+        await using var db = _fx.CreateContext();
+        await db.Games.Where(g => !SeedSlugs.Contains(g.Slug)).ExecuteDeleteAsync();
+        await db.Games.ExecuteUpdateAsync(s => s
+            .SetProperty(g => g.CoverUrl, (string?)null)
+            .SetProperty(g => g.IgdbId, (int?)null));
+    }
+
     public Task DisposeAsync() => Task.CompletedTask;
 
     [Theory]
@@ -198,15 +215,18 @@ public class SeedCommandTests : IAsyncLifetime
         // Bucket bootstrap runs exactly once per seed call.
         storage.EnsureBucketsCallCount.Should().Be(1);
 
-        // Two ffmpeg invocations per clip (video + thumbnail).
-        ffmpeg.Invocations.Should().HaveCount(SeedCommand.SeedClipCount * 2);
+        var gameCount = await db.Games.CountAsync();
+        // Two ffmpeg invocations per clip (video + thumbnail) plus one per game (cover).
+        ffmpeg.Invocations.Should().HaveCount(SeedCommand.SeedClipCount * 2 + gameCount);
 
         // Each clip yields a PutObject in the clips bucket (video/mp4) and the thumbnails
         // bucket (image/jpeg). Keys follow the prod {userId}/{clipId}.ext convention.
-        storage.PutCalls.Where(p => p.ContentType == "video/mp4").Should()
+        storage.PutCalls.Where(p => p.Bucket == "clips").Should()
             .HaveCount(SeedCommand.SeedClipCount);
-        storage.PutCalls.Where(p => p.ContentType == "image/jpeg").Should()
+        storage.PutCalls.Where(p => p.Bucket == "thumbnails").Should()
             .HaveCount(SeedCommand.SeedClipCount);
+        // Plus one placeholder cover per game in the game-covers bucket.
+        storage.PutCalls.Where(p => p.Bucket == "game-covers").Should().HaveCount(gameCount);
 
         var seedUserId = (await db.Users.SingleAsync()).Id;
         foreach (var i in Enumerable.Range(1, SeedCommand.SeedClipCount))
@@ -222,6 +242,33 @@ public class SeedCommandTests : IAsyncLifetime
         // not the old hard-coded 1MiB*i placeholder.
         var sizes = await db.Clips.Select(c => c.FileSizeBytes).ToListAsync();
         sizes.Should().AllSatisfy(s => s.Should().Be(FakeFfmpegRunner.VideoPayload.Length));
+    }
+
+    [Fact]
+    public async Task FreshSeed_GeneratesPlaceholderCoverPerGame_AndSetsCoverUrl()
+    {
+        await using var db = _fx.CreateContext();
+        var seed = NewSeed(db, out _, out var storage);
+
+        await seed.RunAsync(CancellationToken.None);
+
+        var games = await db.Games.AsNoTracking().ToListAsync();
+        games.Should().NotBeEmpty();
+        foreach (var g in games)
+        {
+            storage.PutCalls.Should().ContainSingle(p =>
+                p.Bucket == "game-covers" && p.Key == $"{g.Slug}.jpg" && p.ContentType == "image/jpeg");
+            g.CoverUrl.Should().EndWith($"/game-covers/{g.Slug}.jpg");
+        }
+    }
+
+    [Fact]
+    public void PlaceholderColor_IsDeterministicAndWellFormed()
+    {
+        var first = SeedCommand.PlaceholderColor("valorant");
+        SeedCommand.PlaceholderColor("valorant").Should().Be(first, "the colour is derived from the slug");
+        SeedCommand.PlaceholderColor("fortnite").Should().NotBe(first);
+        first.Should().MatchRegex("^0x[0-9A-F]{6}$");
     }
 
     [Fact]
@@ -267,8 +314,13 @@ public class SeedCommandTests : IAsyncLifetime
             await seed.RunAsync(CancellationToken.None);
         }
 
-        ffmpeg1.Invocations.Should().HaveCount(SeedCommand.SeedClipCount * 2);
-        storage1.PutCalls.Should().HaveCount(SeedCommand.SeedClipCount * 2);
+        int gameCount;
+        await using (var db = _fx.CreateContext())
+        {
+            gameCount = await db.Games.CountAsync();
+        }
+        ffmpeg1.Invocations.Should().HaveCount(SeedCommand.SeedClipCount * 2 + gameCount);
+        storage1.PutCalls.Should().HaveCount(SeedCommand.SeedClipCount * 2 + gameCount);
 
         // Second run with a FRESH ffmpeg/storage but pre-populated objects (simulating
         // MinIO carrying over from the first run). The runner should not be invoked at
@@ -283,6 +335,12 @@ public class SeedCommandTests : IAsyncLifetime
                 var clipId = SeedCommand.SeedClipId(i);
                 storage2.Objects[("clips", $"{seedUserId}/{clipId}.mp4")] = new byte[42];
                 storage2.Objects[("thumbnails", $"{seedUserId}/{clipId}.jpg")] = new byte[7];
+            }
+            // Pre-seed cover objects too (cover_url was persisted on the first run), so the
+            // cover step is also a no-op on re-run.
+            foreach (var slug in await db.Games.Select(g => g.Slug).ToListAsync())
+            {
+                storage2.Objects[("game-covers", $"{slug}.jpg")] = new byte[5];
             }
 
             var ffmpeg2 = new FakeFfmpegRunner();

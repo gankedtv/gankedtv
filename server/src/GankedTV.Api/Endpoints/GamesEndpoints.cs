@@ -25,12 +25,21 @@ public static class GamesEndpoints
     private static async Task<IResult> GetGames(
         string? search,
         int? limit,
+        bool? hasClips,
         GankedTvDbContext db,
         CancellationToken ct)
     {
         var clampedLimit = Math.Clamp(limit ?? DefaultLimit, 1, MaxLimit);
 
         var query = db.Games.AsNoTracking().AsQueryable();
+
+        // The games *page* (GamesView) passes hasClips=true so it only lists games people can
+        // actually watch; the upload picker (GameSelector) omits it to search the full catalog.
+        if (hasClips == true)
+        {
+            query = query.Where(g => db.Clips.Any(c =>
+                c.GameId == g.Id && c.Visibility == "public" && c.Status == "ready"));
+        }
 
         if (!string.IsNullOrWhiteSpace(search))
         {

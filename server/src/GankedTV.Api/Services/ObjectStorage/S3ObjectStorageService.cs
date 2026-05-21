@@ -29,7 +29,7 @@ public sealed class S3ObjectStorageService : IObjectStorageService
             listResponse.Buckets?.Select(b => b.BucketName) ?? Enumerable.Empty<string>(),
             StringComparer.Ordinal);
 
-        var required = new[] { _options.ClipsBucket, _options.ThumbnailsBucket };
+        var required = new[] { _options.ClipsBucket, _options.ThumbnailsBucket, _options.GameCoversBucket };
 
         foreach (var name in required)
         {
@@ -41,7 +41,21 @@ public sealed class S3ObjectStorageService : IObjectStorageService
             _logger.LogInformation("Creating missing bucket {Bucket}", name);
             await _s3.PutBucketAsync(new PutBucketRequest { BucketName = name }, ct);
         }
+
+        // Game covers are public art served as stable cover_url values (no presigning), so the
+        // bucket gets an anonymous s3:GetObject policy. Applied unconditionally — PutBucketPolicy
+        // is idempotent. Clips/thumbnails stay private (presigned access only).
+        await _s3.PutBucketPolicyAsync(new PutBucketPolicyRequest
+        {
+            BucketName = _options.GameCoversBucket,
+            Policy = BuildPublicReadPolicy(_options.GameCoversBucket),
+        }, ct);
     }
+
+    internal static string BuildPublicReadPolicy(string bucket) =>
+        $$"""
+        {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":"*","Action":["s3:GetObject"],"Resource":["arn:aws:s3:::{{bucket}}/*"]}]}
+        """;
 
     public string GetPresignedPutUrl(
         string bucket,

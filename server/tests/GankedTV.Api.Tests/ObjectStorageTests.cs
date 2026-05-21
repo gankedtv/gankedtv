@@ -22,6 +22,7 @@ public class ObjectStorageTests
             PublicUrl = publicUrl,
             ClipsBucket = "clips",
             ThumbnailsBucket = "thumbnails",
+            GameCoversBucket = "game-covers",
         });
         return new S3ObjectStorageService(s3, options, NullLogger<S3ObjectStorageService>.Instance);
     }
@@ -54,6 +55,7 @@ public class ObjectStorageTests
                 {
                     new() { BucketName = "clips" },
                     new() { BucketName = "thumbnails" },
+                    new() { BucketName = "game-covers" },
                 },
             });
 
@@ -62,6 +64,34 @@ public class ObjectStorageTests
         await s3.DidNotReceive().PutBucketAsync(
             Arg.Any<PutBucketRequest>(),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task EnsureBucketsAsync_AppliesPublicReadPolicyToCoversBucket()
+    {
+        var s3 = Substitute.For<IAmazonS3>();
+        s3.ListBucketsAsync(Arg.Any<CancellationToken>())
+            .Returns(new ListBucketsResponse { Buckets = new List<S3Bucket>() });
+
+        await BuildService(s3).EnsureBucketsAsync();
+
+        await s3.Received(1).PutBucketAsync(
+            Arg.Is<PutBucketRequest>(r => r.BucketName == "game-covers"),
+            Arg.Any<CancellationToken>());
+        await s3.Received(1).PutBucketPolicyAsync(
+            Arg.Is<PutBucketPolicyRequest>(r =>
+                r.BucketName == "game-covers" && r.Policy.Contains("s3:GetObject")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void BuildPublicReadPolicy_GrantsAnonymousGetObjectOnBucket()
+    {
+        var policy = S3ObjectStorageService.BuildPublicReadPolicy("game-covers");
+
+        policy.Should().Contain("\"Principal\":\"*\"");
+        policy.Should().Contain("s3:GetObject");
+        policy.Should().Contain("arn:aws:s3:::game-covers/*");
     }
 
     [Fact]

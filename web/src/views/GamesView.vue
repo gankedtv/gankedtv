@@ -32,7 +32,10 @@ async function load() {
   loading.value = true
   errored.value = false
   try {
-    const [gs, feed] = await Promise.all([gamesApi.list(50), clips.feed({ limit: 100 })])
+    const [gs, feed] = await Promise.all([
+      gamesApi.list(50, { hasClips: true }),
+      clips.feed({ limit: 100 }),
+    ])
     allGames.value = gs
     allClips.value = feed.items
   } catch {
