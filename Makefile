@@ -1,4 +1,30 @@
-.PHONY: setup server-install wait-postgres wait-minio up down clean logs server server-build server-test migrate migrate-add seed web web-install web-build web-test web-lint dev-all hooks ci ci-server ci-web
+# Per-worktree env file (see scripts/new-worktree.sh and README "Parallel
+# worktrees"). The leading `-` makes -include a no-op when the file is missing,
+# so the main checkout with no .env.worktree.local behaves identically to today.
+-include .env.worktree.local
+
+# Defaults match the historical hardcoded values. Override via .env.worktree.local.
+POSTGRES_HOST_PORT ?= 5435
+MINIO_API_HOST_PORT ?= 9000
+MINIO_CONSOLE_HOST_PORT ?= 9001
+ASPNETCORE_URLS ?= http://localhost:5050
+VITE_PORT ?= 5173
+
+# Bare `export` exports every variable DEFINED in this Makefile (or via the
+# include above) into recipe subshells — that includes the ?= defaults and
+# anything pulled in from .env.worktree.local. Crucially, vars that are NOT
+# defined here (DATABASE_URL, S3_ACCESS_KEY, etc. in the main checkout) are
+# left alone, so dotnet/bun still see "unset" and fall back to
+# appsettings.Development.json defaults instead of inheriting an empty string.
+export
+
+# docker compose only auto-reads `.env`; pass our worktree env file explicitly
+# when it exists so port vars + COMPOSE_PROJECT_NAME resolve identically across
+# up/down/clean. Wildcard returns empty when the file is absent → flag drops out.
+COMPOSE_ENV_FILE := $(if $(wildcard .env.worktree.local),--env-file .env.worktree.local,)
+COMPOSE := docker-compose -f docker-compose.dev.yml $(COMPOSE_ENV_FILE)
+
+.PHONY: setup server-install wait-postgres wait-minio up down clean logs server server-build server-test migrate migrate-add seed web web-install web-build web-test web-lint dev-all hooks ci ci-server ci-web ports
 
 # One-command dev bootstrap. DESTRUCTIVE: wipes the local Postgres + MinIO volumes
 # so every run lands you on a known-good state from migrations + seed. Steps:
@@ -8,7 +34,7 @@ setup:
 	@echo "⚠ make setup will wipe local postgres + minio volumes (dev data lost)."
 	$(MAKE) clean
 	@./scripts/check-prereqs.sh
-	docker-compose -f docker-compose.dev.yml pull
+	$(COMPOSE) pull
 	$(MAKE) up
 	$(MAKE) wait-minio
 	$(MAKE) server-install
@@ -34,7 +60,7 @@ server-install:
 wait-postgres:
 	@printf "Waiting for postgres "
 	@for i in $$(seq 1 60); do \
-	  if docker-compose -f docker-compose.dev.yml exec -T postgres pg_isready -U gankedtv -d gankedtv >/dev/null 2>&1; then echo " ready."; exit 0; fi; \
+	  if $(COMPOSE) exec -T postgres pg_isready -U gankedtv -d gankedtv >/dev/null 2>&1; then echo " ready."; exit 0; fi; \
 	  printf "."; sleep 1; \
 	done; echo " timed out after 60s"; exit 1
 
@@ -43,26 +69,41 @@ wait-postgres:
 wait-minio:
 	@printf "Waiting for minio "
 	@for i in $$(seq 1 60); do \
-	  if curl -fsS http://localhost:9000/minio/health/live >/dev/null 2>&1; then echo " ready."; exit 0; fi; \
+	  if curl -fsS http://localhost:$(MINIO_API_HOST_PORT)/minio/health/live >/dev/null 2>&1; then echo " ready."; exit 0; fi; \
 	  printf "."; sleep 1; \
 	done; echo " timed out after 60s"; exit 1
 
+# Print the current stack's URLs. In the main checkout this shows the defaults;
+# inside a worktree (where .env.worktree.local is loaded) it shows the offsets.
+# Useful when the bootstrap output has scrolled past and you've forgotten which
+# stack lives where.
+ports:
+	@printf "postgres   localhost:%s\n" "$(POSTGRES_HOST_PORT)"
+	@printf "minio      localhost:%s  (console: localhost:%s)\n" "$(MINIO_API_HOST_PORT)" "$(MINIO_CONSOLE_HOST_PORT)"
+	@printf "api        %s\n" "$(ASPNETCORE_URLS)"
+	@printf "web        http://localhost:%s\n" "$(VITE_PORT)"
+	@test -z "$(COMPOSE_PROJECT_NAME)" || printf "project    %s\n" "$(COMPOSE_PROJECT_NAME)"
+
 # Infrastructure
 up:
-	docker-compose -f docker-compose.dev.yml up -d
+	$(COMPOSE) up -d
 
 down:
-	docker-compose -f docker-compose.dev.yml down
+	$(COMPOSE) down
 
 clean:
-	docker-compose -f docker-compose.dev.yml down -v
+	$(COMPOSE) down -v
 
 logs:
-	docker-compose -f docker-compose.dev.yml logs -f
+	$(COMPOSE) logs -f
 
 # Server
+# ASPNETCORE_URLS is passed inline rather than relying on env-inheritance through
+# dotnet watch's launch-profile machinery — env precedence between launchSettings
+# and parent env is inconsistent across .NET versions, and inline assignment is
+# unambiguous.
 server:
-	dotnet watch --project server/src/GankedTV.Api
+	ASPNETCORE_URLS=$(ASPNETCORE_URLS) dotnet watch --project server/src/GankedTV.Api
 
 server-build:
 	dotnet build server
@@ -95,7 +136,7 @@ web-install:
 	cd web && bun install
 
 web:
-	cd web && bun dev
+	cd web && bun dev --port $(VITE_PORT)
 
 web-build:
 	cd web && bun run build
@@ -109,8 +150,8 @@ web-lint:
 # Combined (Ctrl+C stops both server and web)
 dev-all: up
 	@trap 'kill 0' EXIT; \
-	dotnet watch --project server/src/GankedTV.Api & \
-	cd web && bun dev
+	ASPNETCORE_URLS=$(ASPNETCORE_URLS) dotnet watch --project server/src/GankedTV.Api & \
+	cd web && bun dev --port $(VITE_PORT)
 
 # CI mirror: runs the same checks the GitHub workflows run, in verify-only mode.
 # Mirrors `.github/workflows/server.yml` and `.github/workflows/web.yml` step-for-step

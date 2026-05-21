@@ -43,6 +43,9 @@ logs/
 # Docker
 docker-compose.override.yml
 
+# Per-issue dev worktrees (see scripts/new-worktree.sh)
+.worktrees/
+
 # Test results
 server/**/TestResults/
 
