@@ -227,11 +227,12 @@ watch(slug, () => {
         <div
           class="relative flex items-end gap-6 px-8 py-8 max-[899px]:flex-col max-[899px]:items-start max-[899px]:gap-4 max-[899px]:px-5 max-[899px]:py-7"
         >
-          <!-- Crisp portrait cover (real box-art aspect, no crop). -->
+          <!-- Crisp portrait cover (real box-art aspect, no crop). alt="" — decorative: the game
+               name is the visible <h1> right beside it, so a bound alt would re-announce it. -->
           <img
             v-if="game.coverUrl"
             :src="game.coverUrl"
-            :alt="game.name"
+            alt=""
             class="aspect-3/4 w-32 shrink-0 rounded-md border border-border-strong object-cover shadow-[0_12px_30px_-14px_var(--color-brand-glow)] max-[899px]:w-24"
           />
           <PageHeader :title="game.name" pulse>

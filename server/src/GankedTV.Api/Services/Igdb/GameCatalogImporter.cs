@@ -157,9 +157,14 @@ public sealed class GameCatalogImporter(
             return baseSlug;
         }
 
-        // Deterministic disambiguation — IGDB ids are unique, so this always terminates.
+        // Deterministic disambiguation. {slug}-{igdbId} is unique in practice, but loop
+        // defensively so the returned slug is always one we actually reserved in `used` —
+        // never a duplicate that would trip the unique index on insert.
         var candidate = $"{baseSlug}-{igdbId}";
-        used.Add(candidate);
+        for (var n = 2; !used.Add(candidate); n++)
+        {
+            candidate = $"{baseSlug}-{igdbId}-{n}";
+        }
         return candidate;
     }
 }

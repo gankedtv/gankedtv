@@ -65,7 +65,9 @@ public sealed class TestHttpMessageHandler : HttpMessageHandler
 
 public static class FakeHttpClientFactory
 {
-    public static IHttpClientFactory Create(TestHttpMessageHandler handler) =>
+    // Accepts any HttpMessageHandler (not just TestHttpMessageHandler) so stateful test handlers
+    // can reuse it. disposeHandler:false — the test owns the handler's lifetime.
+    public static IHttpClientFactory Create(HttpMessageHandler handler) =>
         new SingleClientFactory(() => new HttpClient(handler, disposeHandler: false));
 
     private sealed class SingleClientFactory : IHttpClientFactory

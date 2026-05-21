@@ -44,6 +44,7 @@ setup:
 	$(MAKE) hooks
 	@echo
 	@echo "✓ setup complete. Next: 'make dev-all' to start the API + web."
+	@echo "  (For real game cover art, set IGDB_CLIENT_ID/SECRET and run 'make import-games'.)"
 
 # Restore server-side packages: the dotnet-ef local tool plus all NuGet refs.
 # Separated from `migrate` so `make setup` has an explicit install step

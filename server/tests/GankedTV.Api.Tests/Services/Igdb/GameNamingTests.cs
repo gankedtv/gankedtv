@@ -35,7 +35,8 @@ public class GameNamingTests
     }
 
     [Theory]
-    [InlineData("League of Legends", "LL")]   // "of" dropped as a 2-char connector
+    [InlineData("League of Legends", "LL")]   // "of" dropped as a connector
+    [InlineData("The Last of Us", "LU")]      // leading "The" and inner "of" both dropped
     [InlineData("Counter-Strike 2", "CS2")]
     [InlineData("Valorant", "VALORANT")]
     [InlineData("Dota 2", "D2")]

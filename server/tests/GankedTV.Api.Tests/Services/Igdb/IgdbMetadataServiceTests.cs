@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Net;
 using FluentAssertions;
 using GankedTV.Api.Services.Igdb;
@@ -23,8 +24,7 @@ public class IgdbMetadataServiceTests
             ClientSecret = "secret",
             MaxRequestsPerSecond = rate,
         });
-        var factory = FakeHttpClientFactory.Create(handler as TestHttpMessageHandler
-            ?? throw new InvalidOperationException("expected TestHttpMessageHandler"));
+        var factory = FakeHttpClientFactory.Create(handler);
         return new IgdbMetadataService(factory, opts, NullLogger<IgdbMetadataService>.Instance, TimeProvider.System);
     }
 
@@ -108,9 +108,7 @@ public class IgdbMetadataServiceTests
     {
         var handler = new SequencedGamesHandler(TokenJson, "[]");
 
-        var opts = Options.Create(new IgdbOptions { ClientId = "cid", ClientSecret = "s", MaxRequestsPerSecond = 1000 });
-        var svc = new IgdbMetadataService(
-            FakeHttpClientFactory2.Create(handler), opts, NullLogger<IgdbMetadataService>.Instance, TimeProvider.System);
+        var svc = Build(handler);
 
         var games = await svc.GetPopularGamesAsync(2);
 
@@ -158,19 +156,21 @@ public class IgdbMetadataServiceTests
     [Fact]
     public async Task GetPopularGamesAsync_ThrottlesBetweenRequests()
     {
-        // Two pages worth of work at 20 req/s ⇒ a ≥50ms gap is enforced before the 2nd query.
-        const string fullPage = """[{"id":1,"name":"A","cover":{"id":1,"image_id":"x"}}]"""; // 1 row < pageSize ⇒ second page won't fire
+        // A full page (== MaxPageSize 500 rows) forces a second /games request; at 20 req/s the
+        // throttle must space the two requests by ≥50ms.
+        var rows = string.Join(",", Enumerable.Range(1, 500)
+            .Select(i => $"{{\"id\":{i},\"name\":\"G{i}\",\"cover\":{{\"id\":{i},\"image_id\":\"x{i}\"}}}}"));
         var handler = new TestHttpMessageHandler()
             .OnPost(TokenUrl, HttpStatusCode.OK, TokenJson)
-            .OnPost(GamesUrl, HttpStatusCode.OK, fullPage);
+            .OnPost(GamesUrl, HttpStatusCode.OK, $"[{rows}]");
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        await Build(handler, rate: 20).GetPopularGamesAsync(1);
+        await Build(handler, rate: 20).GetPopularGamesAsync(600);
         sw.Stop();
 
-        // Single page so no inter-request wait is required, but the throttle gate still runs;
-        // this exercises the throttle path without asserting brittle wall-clock timing.
-        sw.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(5));
+        handler.Requests.Count(r => r.RequestUri!.ToString().StartsWith(GamesUrl, StringComparison.Ordinal))
+            .Should().Be(2, "600 wanted > 500 per page ⇒ a second page is fetched");
+        sw.Elapsed.Should().BeGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(40));
     }
 
     // Stateful handler for the 401-retry path: first /games call → 401, subsequent → 200.
@@ -196,15 +196,5 @@ public class IgdbMetadataServiceTests
 
         private static HttpResponseMessage Json(HttpStatusCode status, string body) =>
             new(status) { Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json") };
-    }
-
-    private static class FakeHttpClientFactory2
-    {
-        public static IHttpClientFactory Create(HttpMessageHandler handler) => new Factory(handler);
-
-        private sealed class Factory(HttpMessageHandler handler) : IHttpClientFactory
-        {
-            public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
-        }
     }
 }

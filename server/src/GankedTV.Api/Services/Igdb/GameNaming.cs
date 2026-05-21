@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 using System.Text;
 
 namespace GankedTV.Api.Services.Igdb;
@@ -95,12 +96,14 @@ public static class GameNaming
         }
         else
         {
-            // Acronym from each word's first character; ignore very short connector words
-            // (of, the, &) unless that would leave nothing.
+            // Acronym from each word's first character, dropping connector words (of, the, …) —
+            // including leading ones ("The Last of Us" → "LU"), but only when at least one
+            // non-stopword remains so an all-stopword title still yields a tag.
+            var hasNonStopword = words.Any(w => !Stopwords.Contains(w));
             var initials = new StringBuilder(words.Length);
             foreach (var w in words)
             {
-                if (Stopwords.Contains(w) && initials.Length > 0)
+                if (Stopwords.Contains(w) && hasNonStopword)
                 {
                     continue;
                 }

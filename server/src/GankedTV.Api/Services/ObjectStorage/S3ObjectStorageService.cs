@@ -43,8 +43,18 @@ public sealed class S3ObjectStorageService : IObjectStorageService
         }
 
         // Game covers are public art served as stable cover_url values (no presigning), so the
-        // bucket gets an anonymous s3:GetObject policy. Applied unconditionally — PutBucketPolicy
-        // is idempotent. Clips/thumbnails stay private (presigned access only).
+        // bucket gets an anonymous s3:GetObject policy (idempotent). Guard against a misconfig
+        // that aliases the covers bucket onto clips/thumbnails — applying the policy there would
+        // silently expose private media to anonymous reads.
+        if (_options.GameCoversBucket == _options.ClipsBucket
+            || _options.GameCoversBucket == _options.ThumbnailsBucket)
+        {
+            _logger.LogWarning(
+                "GameCoversBucket '{Bucket}' aliases a private bucket; skipping the anonymous-read "
+                + "policy to avoid exposing clips/thumbnails.", _options.GameCoversBucket);
+            return;
+        }
+
         await _s3.PutBucketPolicyAsync(new PutBucketPolicyRequest
         {
             BucketName = _options.GameCoversBucket,

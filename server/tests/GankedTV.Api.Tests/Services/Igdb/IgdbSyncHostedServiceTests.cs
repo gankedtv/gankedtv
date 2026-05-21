@@ -15,6 +15,8 @@ public class IgdbSyncHostedServiceTests
         var (svc, importer) = Build(enabled: false, configured: true);
 
         await svc.StartAsync(CancellationToken.None);
+        // Give a scheduled run a window to fire — the assertion must hold even if it would have.
+        await Task.Delay(75);
         await svc.StopAsync(CancellationToken.None);
 
         await importer.DidNotReceive().RunAsync(Arg.Any<CancellationToken>());
@@ -26,6 +28,8 @@ public class IgdbSyncHostedServiceTests
         var (svc, importer) = Build(enabled: true, configured: false);
 
         await svc.StartAsync(CancellationToken.None);
+        // Give a scheduled run a window to fire — the assertion must hold even if it would have.
+        await Task.Delay(75);
         await svc.StopAsync(CancellationToken.None);
 
         await importer.DidNotReceive().RunAsync(Arg.Any<CancellationToken>());

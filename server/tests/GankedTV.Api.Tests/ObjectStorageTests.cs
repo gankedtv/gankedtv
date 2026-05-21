@@ -85,6 +85,31 @@ public class ObjectStorageTests
     }
 
     [Fact]
+    public async Task EnsureBucketsAsync_CoversBucketAliasesPrivateBucket_SkipsPublicPolicy()
+    {
+        // Misconfig guard: if GameCoversBucket points at clips/thumbnails, the anonymous-read
+        // policy must NOT be applied — that would expose private media.
+        var s3 = Substitute.For<IAmazonS3>();
+        s3.ListBucketsAsync(Arg.Any<CancellationToken>())
+            .Returns(new ListBucketsResponse { Buckets = new List<S3Bucket>() });
+        var options = Options.Create(new S3Options
+        {
+            Endpoint = "http://minio:9000",
+            AccessKey = "k",
+            SecretKey = "s",
+            ClipsBucket = "clips",
+            ThumbnailsBucket = "thumbnails",
+            GameCoversBucket = "clips", // aliased onto a private bucket
+        });
+
+        await new S3ObjectStorageService(s3, options, NullLogger<S3ObjectStorageService>.Instance)
+            .EnsureBucketsAsync();
+
+        await s3.DidNotReceive().PutBucketPolicyAsync(
+            Arg.Any<PutBucketPolicyRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public void BuildPublicReadPolicy_GrantsAnonymousGetObjectOnBucket()
     {
         var policy = S3ObjectStorageService.BuildPublicReadPolicy("game-covers");
