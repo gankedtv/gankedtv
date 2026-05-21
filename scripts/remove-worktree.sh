@@ -24,6 +24,10 @@ fi
 # constructed path matches whichever form was used at create time. 10# forces
 # base-10 interpretation (avoids bash treating leading-zero strings as octal).
 issue=$((10#$issue))
+if (( issue < 1 )); then
+  echo "error: issue number must be positive (got '$issue')" >&2
+  exit 1
+fi
 shift
 
 # Anchor to repo root so the script works regardless of cwd, matching the path

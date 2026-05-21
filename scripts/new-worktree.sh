@@ -31,6 +31,10 @@ fi
 # and port offset. 10# forces base-10 interpretation (bash treats leading-zero
 # strings as octal otherwise — "08" would error).
 issue=$((10#$issue))
+if (( issue < 1 )); then
+  echo "error: issue number must be positive (got '$issue')" >&2
+  exit 1
+fi
 
 # Derive branch slug to match .claude/commands/issue.md convention exactly:
 # lowercase, non-alphanumerics collapsed to single '-', trimmed, capped at 60.
