@@ -80,6 +80,22 @@ const tileBase =
           :to="{ name: 'game-detail', params: { slug: g.slug } }"
           :class="[tileBase, 'relative overflow-hidden']"
         >
+          <!-- Cover rendered as <img> (not background-image) so the URL can't break out of a
+               CSS url() string — same treatment as the GameView header. Lazy-loaded because the
+               catalog can grow to hundreds of tiles. -->
+          <img
+            v-if="g.coverUrl"
+            :src="g.coverUrl"
+            alt=""
+            loading="lazy"
+            decoding="async"
+            class="absolute inset-0 h-full w-full object-cover opacity-25"
+            aria-hidden="true"
+          />
+          <div
+            class="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,var(--color-surface-raised)_100%)]"
+            aria-hidden="true"
+          ></div>
           <div class="relative flex h-full flex-col justify-between gap-2">
             <span class="font-heading text-xl font-bold leading-none uppercase text-text-primary">
               {{ g.name }}
