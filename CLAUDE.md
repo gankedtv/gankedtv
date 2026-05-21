@@ -31,6 +31,12 @@ and resumable, and requires `IGDB_CLIENT_ID` / `IGDB_CLIENT_SECRET` (a Twitch ap
 client-credentials pair). A fresh dev DB renders ffmpeg-generated placeholder covers via
 `make seed`, so IGDB credentials are not needed for local development.
 
+An optional background re-sync (`IgdbSyncHostedService`) keeps the catalog current — it re-runs
+the same importer on a timer, re-downloading a cover only when IGDB's `image_id` changed and
+renaming importer-managed games (curated seeds are never renamed). It's **off by default**;
+enable per-environment with `IGDB_SYNC_ENABLED=true` (interval via `IGDB_SYNC_INTERVAL_DAYS`,
+default 7). No-op without credentials.
+
 ### Host requirements
 
 The dev workflow runs `dotnet watch` on the host, which means the API process — including the thumbnail-generation worker (issue #57) — runs on your host directly. Install these locally:

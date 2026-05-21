@@ -225,9 +225,14 @@ builder.Services.AddOptions<IgdbOptions>()
         opts.ClientSecret = Environment.GetEnvironmentVariable("IGDB_CLIENT_SECRET") ?? opts.ClientSecret;
         var count = Environment.GetEnvironmentVariable("IGDB_IMPORT_COUNT");
         if (int.TryParse(count, out var c) && c > 0) opts.PopularImportCount = c;
+        var syncEnabled = Environment.GetEnvironmentVariable("IGDB_SYNC_ENABLED");
+        if (bool.TryParse(syncEnabled, out var se)) opts.SyncEnabled = se;
+        var syncDays = Environment.GetEnvironmentVariable("IGDB_SYNC_INTERVAL_DAYS");
+        if (int.TryParse(syncDays, out var sd) && sd > 0) opts.SyncInterval = TimeSpan.FromDays(sd);
     })
     .Validate(o => o.PopularImportCount > 0, "Igdb.PopularImportCount must be positive.")
     .Validate(o => o.MaxRequestsPerSecond > 0, "Igdb.MaxRequestsPerSecond must be positive.")
+    .Validate(o => o.SyncInterval > TimeSpan.Zero, "Igdb.SyncInterval must be positive.")
     .ValidateOnStart();
 
 // api.igdb.com responses (game metadata) are small JSON; cap at 8 MB to bound a large
@@ -243,7 +248,9 @@ builder.Services.AddHttpClient(IgdbMetadataService.ImageClientName, c =>
     c.MaxResponseContentBufferSize = 4 * 1024 * 1024;
 });
 builder.Services.AddSingleton<IIgdbMetadataService, IgdbMetadataService>();
+builder.Services.AddScoped<IGameCatalogImporter, GameCatalogImporter>();
 builder.Services.AddScoped<ImportGamesCommand>();
+builder.Services.AddHostedService<IgdbSyncHostedService>();
 
 builder.Services.AddSingleton<IJwtService, JwtService>();
 builder.Services.AddSingleton<IStateCookieService, StateCookieService>();

@@ -47,6 +47,8 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             e.Property(g => g.Name).HasMaxLength(255);
             e.Property(g => g.Slug).HasMaxLength(255);
             e.Property(g => g.Tag).HasMaxLength(16);
+            e.Property(g => g.CoverImageId).HasMaxLength(64);
+            e.Property(g => g.IgdbManaged).HasDefaultValue(false);
             e.HasIndex(g => g.Slug).IsUnique().HasDatabaseName("idx_games_slug");
             e.HasIndex(g => g.Name).HasDatabaseName("idx_games_name");
             e.HasData(

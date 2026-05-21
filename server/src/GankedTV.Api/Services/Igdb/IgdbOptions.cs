@@ -23,6 +23,15 @@ public sealed class IgdbOptions
     /// <summary>IGDB image size token. t_cover_big = 264×374.</summary>
     public string CoverSize { get; set; } = "t_cover_big";
 
+    /// <summary>
+    /// Whether the periodic background re-sync (<see cref="IgdbSyncHostedService"/>) runs.
+    /// Off by default — opt in per environment (and only effective when credentials are set).
+    /// </summary>
+    public bool SyncEnabled { get; set; }
+
+    /// <summary>How often the background re-sync runs (also runs once on startup when enabled).</summary>
+    public TimeSpan SyncInterval { get; set; } = TimeSpan.FromDays(7);
+
     /// <summary>Whether IGDB-backed features (the import command) are usable.</summary>
     public bool IsConfigured =>
         !string.IsNullOrWhiteSpace(ClientId) && !string.IsNullOrWhiteSpace(ClientSecret);
