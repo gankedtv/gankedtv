@@ -132,6 +132,19 @@ public class IgdbMetadataServiceTests
     }
 
     [Fact]
+    public async Task DownloadCoverAsync_RequestsConfiguredSizeAndImageId()
+    {
+        var handler = new TestHttpMessageHandler()
+            .OnGet(ImageUrl, HttpStatusCode.OK, "JPEGBYTES");
+
+        await Build(handler).DownloadCoverAsync("img42");
+
+        var req = handler.Requests.Single();
+        req.RequestUri!.ToString().Should().Be(
+            "https://images.igdb.com/igdb/image/upload/t_cover_big_2x/img42.jpg");
+    }
+
+    [Fact]
     public async Task DownloadCoverAsync_ReturnsNullOn404()
     {
         var handler = new TestHttpMessageHandler()

@@ -82,10 +82,12 @@ onMounted(load)
         >
           <!-- Cover as <img> (not background-image) so a hostile coverUrl can't break out of a
                CSS url() string. Lazy-loaded — the catalog can grow to hundreds of tiles. -->
+          <!-- alt="" — decorative: the game name is rendered as visible text in this same link,
+               so a non-empty alt would make screen readers announce it twice. -->
           <img
             v-if="g.coverUrl"
             :src="g.coverUrl"
-            :alt="g.name"
+            alt=""
             loading="lazy"
             decoding="async"
             class="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
