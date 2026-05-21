@@ -142,6 +142,35 @@ public class ImportGamesCommandTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AdoptingSeed_ReplacesPlaceholderCover_WithRealArt()
+    {
+        // Simulate the dev state: the seeded Valorant row already has a placeholder cover
+        // (cover_url set + object present). Adoption must force a real re-download, not skip.
+        const string key = "valorant.jpg";
+        var storage = new InMemoryObjectStorage();
+        storage.Objects[("game-covers", key)] = "PLACEHOLDER"u8.ToArray();
+        await using (var setup = _fx.CreateContext())
+        {
+            await setup.Games.Where(g => g.Slug == "valorant").ExecuteUpdateAsync(s =>
+                s.SetProperty(g => g.CoverUrl, "http://minio:9000/game-covers/valorant.jpg"));
+        }
+
+        var igdb = Substitute.For<IIgdbMetadataService>();
+        igdb.GetPopularGamesAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new List<IgdbGame> { new(126459, "Valorant", "realImg") });
+        igdb.DownloadCoverAsync("realImg", Arg.Any<CancellationToken>())
+            .Returns(_ => "REAL_ART_BYTES"u8.ToArray());
+
+        await using var db = _fx.CreateContext();
+        await Build(db, igdb, storage).RunAsync(CancellationToken.None);
+
+        await igdb.Received(1).DownloadCoverAsync("realImg", Arg.Any<CancellationToken>());
+        System.Text.Encoding.UTF8.GetString(storage.Objects[("game-covers", key)])
+            .Should().Be("REAL_ART_BYTES", "the placeholder object is overwritten with real art");
+        (await db.Games.SingleAsync(g => g.Slug == "valorant")).IgdbId.Should().Be(126459);
+    }
+
+    [Fact]
     public async Task CoverDownloadFailure_KeepsGameRow_AndContinues()
     {
         var igdb = Substitute.For<IIgdbMetadataService>();

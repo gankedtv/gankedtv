@@ -54,11 +54,11 @@ public sealed class IgdbMetadataService : IIgdbMetadataService
         // overshoot and skip a window of games. Over-fetch is trimmed to `count` at the end.
         for (var offset = 0; results.Count < count; offset += MaxPageSize)
         {
-            // category = 0 → main games (exclude DLC/bundles/mods); version_parent = null →
-            // exclude alternate editions. Most-rated first so the catalog leads with titles
-            // people actually clip.
+            // game_type = 0 → main games (excludes DLC/bundles/mods; replaces the deprecated
+            // `category` field); version_parent = null → exclude alternate editions. Most-rated
+            // first so the catalog leads with titles people actually clip.
             var query =
-                $"fields name, cover.image_id; where cover != null & category = 0 & version_parent = null; " +
+                $"fields name, cover.image_id; where cover != null & game_type = 0 & version_parent = null; " +
                 $"sort total_rating_count desc; limit {MaxPageSize}; offset {offset};";
 
             var page = await PostGamesQueryAsync(query, ct);

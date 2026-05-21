@@ -64,17 +64,22 @@ public sealed class ImportGamesCommand(
         {
             ct.ThrowIfCancellationRequested();
 
+            // forceCover: replace whatever cover is there (e.g. a seeded placeholder) with real
+            // IGDB art. Only rows already linked to IGDB on a prior run keep the idempotent skip,
+            // so re-runs don't re-download the whole catalog.
+            bool forceCover;
             if (byIgdbId.TryGetValue(meta.Id, out var game))
             {
-                // already linked
+                forceCover = false; // already linked on a previous run → idempotent
             }
             else if (byName.TryGetValue(meta.Name, out game))
             {
-                game.IgdbId = meta.Id; // adopt the curated seed row
+                game.IgdbId = meta.Id; // adopt the curated seed row…
                 byIgdbId[meta.Id] = game;
                 // Don't let a second IGDB game with the same name re-adopt this row — it should
                 // become a new (slug-disambiguated) row instead.
                 byName.Remove(meta.Name);
+                forceCover = true; // …and replace its placeholder cover with real art
             }
             else
             {
@@ -87,6 +92,7 @@ public sealed class ImportGamesCommand(
                 };
                 db.Games.Add(game);
                 byIgdbId[meta.Id] = game;
+                forceCover = true;
             }
 
             // A single flaky cover download (transient network, a 5xx from the image CDN)
@@ -95,7 +101,7 @@ public sealed class ImportGamesCommand(
             // (cover_url stays null ⇒ not skipped next time).
             try
             {
-                if (await EnsureCoverAsync(s3, game, meta, ct))
+                if (await EnsureCoverAsync(s3, game, meta, forceCover, ct))
                 {
                     coversWritten++;
                 }
@@ -121,9 +127,11 @@ public sealed class ImportGamesCommand(
 
     /// <summary>
     /// Ensures the game has a mirrored cover. Returns true if a cover was downloaded+uploaded
-    /// this run. Skips work when cover_url is set and the object is already in the bucket.
+    /// this run. When <paramref name="force"/> is false, skips work if cover_url is set and the
+    /// object already exists (idempotent re-runs). When true, always (re)downloads — used to
+    /// replace a seeded placeholder with real art on first adoption.
     /// </summary>
-    private async Task<bool> EnsureCoverAsync(S3Options s3, Game game, IgdbGame meta, CancellationToken ct)
+    private async Task<bool> EnsureCoverAsync(S3Options s3, Game game, IgdbGame meta, bool force, CancellationToken ct)
     {
         if (meta.CoverImageId is not { Length: > 0 } imageId)
         {
@@ -131,7 +139,8 @@ public sealed class ImportGamesCommand(
         }
 
         var key = GameCovers.BuildCoverKey(game.Slug);
-        if (game.CoverUrl is { Length: > 0 }
+        if (!force
+            && game.CoverUrl is { Length: > 0 }
             && await storage.GetObjectMetadataAsync(s3.GameCoversBucket, key, ct) is not null)
         {
             return false;
