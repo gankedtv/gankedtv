@@ -210,21 +210,30 @@ watch(slug, () => {
       <section
         class="relative mb-10 overflow-hidden rounded-lg border border-border bg-surface-raised"
       >
-        <!-- Cover rendered as <img> rather than background-image so the URL
-             can't break out of a CSS string (a coverUrl containing `");
-             content:url("` would otherwise escape the url() value). -->
+        <!-- Covers are <img> not background-image so a hostile coverUrl can't break out of a CSS
+             url() string. Backdrop: the same art blurred + dimmed to fill the wide banner without
+             showing a hard crop of the portrait source. -->
         <img
           v-if="game.coverUrl"
           :src="game.coverUrl"
           alt=""
-          class="absolute inset-0 h-full w-full object-cover opacity-30"
           aria-hidden="true"
+          class="absolute inset-0 h-full w-full scale-110 object-cover opacity-25 blur-2xl"
         />
         <div
-          class="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,var(--color-surface-raised)_100%)]"
+          class="absolute inset-0 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--color-surface-raised)_55%,transparent)_0%,var(--color-surface-raised)_100%)]"
           aria-hidden="true"
         ></div>
-        <div class="relative px-8 py-10 max-[899px]:px-5 max-[899px]:py-7">
+        <div
+          class="relative flex items-end gap-6 px-8 py-8 max-[899px]:flex-col max-[899px]:items-start max-[899px]:gap-4 max-[899px]:px-5 max-[899px]:py-7"
+        >
+          <!-- Crisp portrait cover (real box-art aspect, no crop). -->
+          <img
+            v-if="game.coverUrl"
+            :src="game.coverUrl"
+            :alt="game.name"
+            class="aspect-3/4 w-32 shrink-0 rounded-md border border-border-strong object-cover shadow-[0_12px_30px_-14px_var(--color-brand-glow)] max-[899px]:w-24"
+          />
           <PageHeader :title="game.name" pulse>
             <template #caption>
               Game · {{ game.clipCount }} clip{{ game.clipCount === 1 ? '' : 's' }}

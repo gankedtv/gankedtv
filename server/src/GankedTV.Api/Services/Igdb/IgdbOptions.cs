@@ -20,8 +20,8 @@ public sealed class IgdbOptions
     public string TokenUrl { get; set; } = "https://id.twitch.tv/oauth2/token";
     public string ImageBaseUrl { get; set; } = "https://images.igdb.com/igdb/image/upload/";
 
-    /// <summary>IGDB image size token. t_cover_big = 264×374.</summary>
-    public string CoverSize { get; set; } = "t_cover_big";
+    /// <summary>IGDB image size token. t_cover_big_2x = 528×748 — retina-crisp portrait box art.</summary>
+    public string CoverSize { get; set; } = "t_cover_big_2x";
 
     /// <summary>
     /// Whether the periodic background re-sync (<see cref="IgdbSyncHostedService"/>) runs.

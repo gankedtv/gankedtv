@@ -46,9 +46,6 @@ async function load() {
 }
 
 onMounted(load)
-
-const tileBase =
-  'min-h-27.5 block rounded-md border border-border bg-surface-raised p-4 text-left no-underline transition-[border-color,box-shadow] duration-150 hover:border-brand hover:shadow-[0_14px_40px_-14px_var(--color-brand-glow)]'
 </script>
 
 <template>
@@ -72,37 +69,39 @@ const tileBase =
     </StatusPanel>
 
     <template v-else>
-      <!-- Game tiles — each links to /game/:slug -->
-      <div class="mt-8 grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3.5">
+      <!-- Box-art wall — portrait (3:4) game covers, each links to /game/:slug. Covers are
+           native portrait art, so we show them full-bleed instead of cropping to a landscape band. -->
+      <div
+        class="mt-8 grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-4 max-[640px]:grid-cols-[repeat(auto-fill,minmax(8rem,1fr))] max-[640px]:gap-3"
+      >
         <RouterLink
           v-for="g in allGames"
           :key="g.id"
           :to="{ name: 'game-detail', params: { slug: g.slug } }"
-          :class="[tileBase, 'relative overflow-hidden']"
+          class="group relative block aspect-3/4 overflow-hidden rounded-md border border-border bg-surface-raised no-underline transition-[border-color,box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:border-brand hover:shadow-[0_14px_40px_-14px_var(--color-brand-glow)]"
         >
-          <!-- Cover rendered as <img> (not background-image) so the URL can't break out of a
-               CSS url() string — same treatment as the GameView header. Lazy-loaded because the
-               catalog can grow to hundreds of tiles. -->
+          <!-- Cover as <img> (not background-image) so a hostile coverUrl can't break out of a
+               CSS url() string. Lazy-loaded — the catalog can grow to hundreds of tiles. -->
           <img
             v-if="g.coverUrl"
             :src="g.coverUrl"
-            alt=""
+            :alt="g.name"
             loading="lazy"
             decoding="async"
-            class="absolute inset-0 h-full w-full object-cover opacity-25"
-            aria-hidden="true"
+            class="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
           />
+          <!-- Bottom scrim: fade to near-solid surface so the label stays legible over any art. -->
           <div
-            class="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,var(--color-surface-raised)_100%)]"
+            class="absolute inset-x-0 bottom-0 top-1/3 bg-[linear-gradient(180deg,transparent_0%,color-mix(in_srgb,var(--color-surface-sunken)_85%,transparent)_60%,var(--color-surface-sunken)_100%)]"
             aria-hidden="true"
           ></div>
-          <div class="relative flex h-full flex-col justify-between gap-2">
-            <span class="font-heading text-xl font-bold leading-none uppercase text-text-primary">
+          <div class="absolute inset-x-0 bottom-0 flex flex-col gap-1.5 p-3">
+            <span class="font-heading text-lg font-bold uppercase leading-none text-text-primary">
               {{ g.name }}
             </span>
             <div class="flex items-center gap-2">
               <GameTag :tag="g.tag" tone="subtle" />
-              <span class="font-mono text-[10px] tracking-[0.08em] text-text-muted">
+              <span class="font-mono text-[10px] tracking-[0.08em] text-text-secondary">
                 {{ clipCountByGame.get(g.slug) ?? 0 }} clips
               </span>
             </div>
