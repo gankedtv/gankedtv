@@ -29,7 +29,11 @@ public sealed class S3ObjectStorageService : IObjectStorageService
             listResponse.Buckets?.Select(b => b.BucketName) ?? Enumerable.Empty<string>(),
             StringComparer.Ordinal);
 
-        var required = new[] { _options.ClipsBucket, _options.ThumbnailsBucket };
+        // Deduplicate so an aliased config (e.g. GameCoversBucket == ClipsBucket) doesn't issue
+        // a duplicate PutBucketAsync for the same name.
+        var required = new HashSet<string>(
+            new[] { _options.ClipsBucket, _options.ThumbnailsBucket, _options.GameCoversBucket },
+            StringComparer.Ordinal);
 
         foreach (var name in required)
         {
@@ -41,7 +45,31 @@ public sealed class S3ObjectStorageService : IObjectStorageService
             _logger.LogInformation("Creating missing bucket {Bucket}", name);
             await _s3.PutBucketAsync(new PutBucketRequest { BucketName = name }, ct);
         }
+
+        // Game covers are public art served as stable cover_url values (no presigning), so the
+        // bucket gets an anonymous s3:GetObject policy (idempotent). Guard against a misconfig
+        // that aliases the covers bucket onto clips/thumbnails — applying the policy there would
+        // silently expose private media to anonymous reads.
+        if (_options.GameCoversBucket == _options.ClipsBucket
+            || _options.GameCoversBucket == _options.ThumbnailsBucket)
+        {
+            _logger.LogWarning(
+                "GameCoversBucket '{Bucket}' aliases a private bucket; skipping the anonymous-read "
+                + "policy to avoid exposing clips/thumbnails.", _options.GameCoversBucket);
+            return;
+        }
+
+        await _s3.PutBucketPolicyAsync(new PutBucketPolicyRequest
+        {
+            BucketName = _options.GameCoversBucket,
+            Policy = BuildPublicReadPolicy(_options.GameCoversBucket),
+        }, ct);
     }
+
+    internal static string BuildPublicReadPolicy(string bucket) =>
+        $$"""
+        {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":"*","Action":["s3:GetObject"],"Resource":["arn:aws:s3:::{{bucket}}/*"]}]}
+        """;
 
     public string GetPresignedPutUrl(
         string bucket,

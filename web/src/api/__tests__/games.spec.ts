@@ -48,6 +48,30 @@ describe('api/games', () => {
       expect(url).toBe(`${BASE_URL}/games?limit=6`)
     })
 
+    it('appends hasClips=true when requested', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse([])),
+      )
+
+      await games.list(50, { hasClips: true })
+
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+      expect(url).toBe(`${BASE_URL}/games?limit=50&hasClips=true`)
+    })
+
+    it('omits hasClips when false', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse([])),
+      )
+
+      await games.list(6, { hasClips: false })
+
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+      expect(url).toBe(`${BASE_URL}/games?limit=6`)
+    })
+
     it('returns the parsed list', async () => {
       const body = [{ id: 1, name: 'Valorant', slug: 'valorant', tag: 'VALORANT', coverUrl: null }]
       vi.stubGlobal(

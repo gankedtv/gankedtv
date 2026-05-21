@@ -11,6 +11,7 @@ using GankedTV.Api.Data;
 using GankedTV.Api.Endpoints;
 using GankedTV.Api.Middleware;
 using GankedTV.Api.Services.Clips;
+using GankedTV.Api.Services.Igdb;
 using GankedTV.Api.Services.Maintenance;
 using GankedTV.Api.Services.Media;
 using GankedTV.Api.Services.ObjectStorage;
@@ -63,8 +64,10 @@ builder.Services.Configure<S3Options>(opts =>
     opts.PublicUrl = !string.IsNullOrWhiteSpace(envPublic) ? envPublic : builder.Configuration["S3:PublicUrl"];
     var clips = builder.Configuration["S3:ClipsBucket"];
     var thumbs = builder.Configuration["S3:ThumbnailsBucket"];
+    var covers = builder.Configuration["S3:GameCoversBucket"];
     if (!string.IsNullOrWhiteSpace(clips)) opts.ClipsBucket = clips;
     if (!string.IsNullOrWhiteSpace(thumbs)) opts.ThumbnailsBucket = thumbs;
+    if (!string.IsNullOrWhiteSpace(covers)) opts.GameCoversBucket = covers;
 });
 
 builder.Services.AddSingleton<IAmazonS3>(sp =>
@@ -213,6 +216,42 @@ builder.Services.AddHttpClient(GoogleOAuthProvider.ProviderName, c =>
     c.MaxResponseContentBufferSize = OAuthMaxResponseBytes;
 });
 
+// ---- IGDB metadata (game covers) ----
+builder.Services.AddOptions<IgdbOptions>()
+    .Configure(opts =>
+    {
+        builder.Configuration.GetSection("Igdb").Bind(opts);
+        opts.ClientId = Environment.GetEnvironmentVariable("IGDB_CLIENT_ID") ?? opts.ClientId;
+        opts.ClientSecret = Environment.GetEnvironmentVariable("IGDB_CLIENT_SECRET") ?? opts.ClientSecret;
+        var count = Environment.GetEnvironmentVariable("IGDB_IMPORT_COUNT");
+        if (int.TryParse(count, out var c) && c > 0) opts.PopularImportCount = c;
+        var syncEnabled = Environment.GetEnvironmentVariable("IGDB_SYNC_ENABLED");
+        if (bool.TryParse(syncEnabled, out var se)) opts.SyncEnabled = se;
+        var syncDays = Environment.GetEnvironmentVariable("IGDB_SYNC_INTERVAL_DAYS");
+        if (int.TryParse(syncDays, out var sd) && sd > 0) opts.SyncInterval = TimeSpan.FromDays(sd);
+    })
+    .Validate(o => o.PopularImportCount > 0, "Igdb.PopularImportCount must be positive.")
+    .Validate(o => o.MaxRequestsPerSecond > 0, "Igdb.MaxRequestsPerSecond must be positive.")
+    .Validate(o => o.SyncInterval > TimeSpan.Zero, "Igdb.SyncInterval must be positive.")
+    .ValidateOnStart();
+
+// api.igdb.com responses (game metadata) are small JSON; cap at 8 MB to bound a large
+// popular-games page. Cover image downloads hit images.igdb.com — a separate buffer cap.
+builder.Services.AddHttpClient(IgdbMetadataService.ApiClientName, c =>
+{
+    c.Timeout = TimeSpan.FromSeconds(30);
+    c.MaxResponseContentBufferSize = 8 * 1024 * 1024;
+});
+builder.Services.AddHttpClient(IgdbMetadataService.ImageClientName, c =>
+{
+    c.Timeout = TimeSpan.FromSeconds(30);
+    c.MaxResponseContentBufferSize = 4 * 1024 * 1024;
+});
+builder.Services.AddSingleton<IIgdbMetadataService, IgdbMetadataService>();
+builder.Services.AddScoped<IGameCatalogImporter, GameCatalogImporter>();
+builder.Services.AddScoped<ImportGamesCommand>();
+builder.Services.AddHostedService<IgdbSyncHostedService>();
+
 builder.Services.AddSingleton<IJwtService, JwtService>();
 builder.Services.AddSingleton<IStateCookieService, StateCookieService>();
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
@@ -278,6 +317,17 @@ if (SeedCommand.ShouldRun(args))
     using var scope = app.Services.CreateScope();
     var seed = scope.ServiceProvider.GetRequiredService<SeedCommand>();
     await seed.RunAsync(CancellationToken.None);
+    return;
+}
+
+// --import-games short-circuit: backfills the games catalog + cover art from IGDB and exits.
+// Idempotent / resumable; requires IGDB_CLIENT_ID / IGDB_CLIENT_SECRET (the command exits
+// cleanly with a log line if they're absent).
+if (ImportGamesCommand.ShouldRun(args))
+{
+    using var scope = app.Services.CreateScope();
+    var import = scope.ServiceProvider.GetRequiredService<ImportGamesCommand>();
+    await import.RunAsync(CancellationToken.None);
     return;
 }
 

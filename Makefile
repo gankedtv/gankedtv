@@ -24,7 +24,7 @@ export
 COMPOSE_ENV_FILE := $(if $(wildcard .env.worktree.local),--env-file .env.worktree.local,)
 COMPOSE := docker-compose -f docker-compose.dev.yml $(COMPOSE_ENV_FILE)
 
-.PHONY: setup server-install wait-postgres wait-minio up down clean logs server server-build server-test migrate migrate-add seed web web-install web-build web-test web-lint dev-all hooks ci ci-server ci-web ports
+.PHONY: setup server-install wait-postgres wait-minio up down clean logs server server-build server-test migrate migrate-add seed import-games web web-install web-build web-test web-lint dev-all hooks ci ci-server ci-web ports
 
 # One-command dev bootstrap. DESTRUCTIVE: wipes the local Postgres + MinIO volumes
 # so every run lands you on a known-good state from migrations + seed. Steps:
@@ -44,6 +44,7 @@ setup:
 	$(MAKE) hooks
 	@echo
 	@echo "✓ setup complete. Next: 'make dev-all' to start the API + web."
+	@echo "  (For real game cover art, set IGDB_CLIENT_ID/SECRET and run 'make import-games'.)"
 
 # Restore server-side packages: the dotnet-ef local tool plus all NuGet refs.
 # Separated from `migrate` so `make setup` has an explicit install step
@@ -130,6 +131,11 @@ migrate-add:
 # is Development, which is the default for the dev compose stack.
 seed:
 	ASPNETCORE_ENVIRONMENT=Development dotnet run --project server/src/GankedTV.Api -- --seed
+
+# Backfill the games catalog + cover art from IGDB. Idempotent / resumable. Requires
+# IGDB_CLIENT_ID and IGDB_CLIENT_SECRET (Twitch app client-credentials) in the environment.
+import-games:
+	dotnet run --project server/src/GankedTV.Api -- --import-games
 
 # Web
 web-install:

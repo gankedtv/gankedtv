@@ -11,4 +11,13 @@ public class Game
     // External ID from IGDB (igdb.com) — lets us fetch cover art, release
     // date, genres, etc. from their API without owning that metadata.
     public int? IgdbId { get; set; }
+
+    // The IGDB image_id of the cover we last mirrored. Lets the catalog sync re-download a
+    // cover only when it actually changed (and tells a placeholder — which has null here —
+    // apart from real art). Null for seeded placeholders and games never linked to IGDB.
+    public string? CoverImageId { get; set; }
+
+    // True only for rows the IGDB importer created. Gates display-name refresh so the curated
+    // seed rows (incl. ones the importer adopted by name) are never renamed by an upstream change.
+    public bool IgdbManaged { get; set; }
 }

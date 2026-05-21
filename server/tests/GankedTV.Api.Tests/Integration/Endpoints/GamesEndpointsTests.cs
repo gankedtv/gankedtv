@@ -52,6 +52,27 @@ public class GamesEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetGames_HasClipsTrue_ReturnsOnlyGamesWithPublicReadyClips()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync();
+        var valorantId = await GetGameIdBySlugAsync("valorant");
+        var apexId = await GetGameIdBySlugAsync("apex-legends");
+
+        await SeedClipAsync(userId, DateTimeOffset.UtcNow, valorantId); // public + ready ⇒ counts
+        await SeedClipAsync(userId, DateTimeOffset.UtcNow, apexId, status: "processing"); // not ready ⇒ excluded
+        await SeedClipAsync(userId, DateTimeOffset.UtcNow, apexId, visibility: "unlisted"); // not public ⇒ excluded
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/games?hasClips=true");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var games = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var slugs = games.EnumerateArray().Select(g => g.GetProperty("slug").GetString()).ToArray();
+        slugs.Should().Equal("valorant");
+    }
+
+    [Fact]
     public async Task GetGames_SearchByName_FiltersCaseInsensitive()
     {
         await _fx.ResetAsync();

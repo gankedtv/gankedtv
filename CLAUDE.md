@@ -20,7 +20,22 @@ make up                       # Start PostgreSQL and MinIO
 make down                     # Stop infrastructure
 make clean                    # Stop and remove volumes
 make logs                     # View infrastructure logs
+make seed                     # Dev seed: test user + sample clips + placeholder game covers
+make import-games             # Backfill games catalog + cover art from IGDB (needs IGDB creds)
 ```
+
+`make import-games` pulls the most popular games from IGDB, mirrors each cover into the
+`game-covers` MinIO bucket (anonymous-read; `cover_url` holds a stable public URL), and upserts
+rows keyed by `igdb_id` (curated seed rows are adopted by name, not duplicated). It's idempotent
+and resumable, and requires `IGDB_CLIENT_ID` / `IGDB_CLIENT_SECRET` (a Twitch app's
+client-credentials pair). A fresh dev DB renders ffmpeg-generated placeholder covers via
+`make seed`, so IGDB credentials are not needed for local development.
+
+An optional background re-sync (`IgdbSyncHostedService`) keeps the catalog current — it re-runs
+the same importer on a timer, re-downloading a cover only when IGDB's `image_id` changed and
+renaming importer-managed games (curated seeds are never renamed). It's **off by default**;
+enable per-environment with `IGDB_SYNC_ENABLED=true` (interval via `IGDB_SYNC_INTERVAL_DAYS`,
+default 7). No-op without credentials.
 
 ### Host requirements
 

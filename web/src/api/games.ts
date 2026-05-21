@@ -19,9 +19,14 @@ export interface GameDetail {
 }
 
 export const games = {
-  list(limit?: number): Promise<GameListItem[]> {
-    const qs = limit !== undefined ? `?limit=${limit}` : ''
-    return api<GameListItem[]>(`/games${qs}`)
+  list(limit?: number, opts?: { hasClips?: boolean }): Promise<GameListItem[]> {
+    const params = new URLSearchParams()
+    if (limit !== undefined) params.set('limit', String(limit))
+    // The games page passes hasClips so it only lists watchable games; the upload
+    // picker omits it to search the full catalog.
+    if (opts?.hasClips) params.set('hasClips', 'true')
+    const qs = params.toString()
+    return api<GameListItem[]>(`/games${qs ? `?${qs}` : ''}`)
   },
 
   search(query: string, limit?: number): Promise<GameListItem[]> {

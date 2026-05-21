@@ -2,6 +2,7 @@ using GankedTV.Api.Auth.Passwords;
 using GankedTV.Api.Clips;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
+using GankedTV.Api.Services.Igdb;
 using GankedTV.Api.Services.Media;
 using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.EntityFrameworkCore;
@@ -110,6 +111,11 @@ public sealed class SeedCommand(
         // EnsureBucketsAsync is a no-op when the buckets already exist.
         await storage.EnsureBucketsAsync(ct);
 
+        // Give the seeded games placeholder cover art so /games and /game/:slug render with
+        // covers on a fresh dev DB — no IGDB credentials required. Real art replaces these
+        // when `make import-games` runs in an environment with IGDB creds.
+        await SeedGameCoversAsync(ct);
+
         // Rotate seeded clips across the seeded games (Ids 1..GameRotationCount) so the
         // dev feed always shows clips with game tags rendered, without needing manual setup.
         var gameIds = await db.Games
@@ -166,6 +172,98 @@ public sealed class SeedCommand(
         {
             logger.LogInformation("Seed: already present, no changes.");
         }
+    }
+
+    /// <summary>
+    /// Ensures every seeded game has a placeholder cover object + cover_url. Idempotent: skips
+    /// games whose cover_url is set and whose object already exists. Covers are keyed by slug
+    /// (the same key the IGDB import writes) so a later real import overwrites the placeholder
+    /// in place.
+    /// </summary>
+    private async Task SeedGameCoversAsync(CancellationToken ct)
+    {
+        var s3 = s3Options.Value;
+        var games = await db.Games.ToListAsync(ct);
+        var changed = false;
+
+        foreach (var game in games)
+        {
+            var key = GameCovers.BuildCoverKey(game.Slug);
+            var hasObject = await storage.GetObjectMetadataAsync(s3.GameCoversBucket, key, ct) is not null;
+            if (game.CoverUrl is { Length: > 0 } && hasObject)
+            {
+                continue;
+            }
+
+            if (!hasObject)
+            {
+                await GeneratePlaceholderCoverAsync(s3, game, key, ct);
+            }
+
+            var url = GameCovers.BuildCoverUrl(s3, key);
+            if (game.CoverUrl != url)
+            {
+                game.CoverUrl = url;
+                changed = true;
+            }
+        }
+
+        if (changed)
+        {
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Seed: set cover_url on {Count} game(s).", games.Count);
+        }
+    }
+
+    // A solid-colour 264×374 (IGDB t_cover_big aspect) JPEG, colour derived from the slug so
+    // each game tile is visually distinct. Uses lavfi's colour source — no font/drawtext
+    // dependency, works on any ffmpeg build.
+    private async Task GeneratePlaceholderCoverAsync(S3Options s3, Game game, string key, CancellationToken ct)
+    {
+        var media = mediaOptions.Value;
+        var tempDir = Path.Combine(Path.GetTempPath(), $"gankedtv-cover-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        var coverPath = Path.Combine(tempDir, "cover.jpg");
+        try
+        {
+            var color = PlaceholderColor(game.Slug);
+            var args = new[]
+            {
+                "-y",
+                "-f", "lavfi", "-i", $"color=c={color}:s=264x374",
+                "-frames:v", "1",
+                "-q:v", "5",
+                coverPath,
+            };
+            var result = await ffmpeg.RunAsync(media.FfmpegPath, args, media.ProcessTimeout, ct);
+            if (result.ExitCode != 0)
+            {
+                throw new InvalidOperationException(
+                    $"ffmpeg cover generation failed (exit {result.ExitCode}). stderr: {result.Stderr}");
+            }
+
+            await using var stream = File.OpenRead(coverPath);
+            await storage.PutObjectAsync(s3.GameCoversBucket, key, stream, GameCovers.ContentType, ct);
+            logger.LogInformation("Seed: uploaded placeholder cover {Key} for {Slug}", key, game.Slug);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, recursive: true); } catch { /* ignore */ }
+        }
+    }
+
+    // Deterministic 0xRRGGBB from the slug, biased mid-bright so text/tiles stay legible.
+    internal static string PlaceholderColor(string slug)
+    {
+        var hash = 0;
+        foreach (var ch in slug)
+        {
+            hash = unchecked((hash * 31) + ch);
+        }
+        var r = 0x40 + ((hash >> 16) & 0x7F);
+        var g = 0x40 + ((hash >> 8) & 0x7F);
+        var b = 0x40 + (hash & 0x7F);
+        return $"0x{r:X2}{g:X2}{b:X2}";
     }
 
     // Deterministic ids so re-runs find the existing row via equality — no title-based lookup
