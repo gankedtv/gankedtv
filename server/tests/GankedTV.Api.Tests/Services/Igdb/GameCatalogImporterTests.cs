@@ -13,12 +13,6 @@ namespace GankedTV.Api.Tests.Services.Igdb;
 [Collection("Postgres")]
 public class GameCatalogImporterTests : IAsyncLifetime
 {
-    private static readonly string[] SeedSlugs =
-    [
-        "league-of-legends", "valorant", "cs2", "fortnite", "apex-legends",
-        "rocket-league", "overwatch-2", "dota-2", "marvel-rivals",
-    ];
-
     private readonly PostgresFixture _fx;
 
     public GameCatalogImporterTests(PostgresFixture fx) => _fx = fx;
@@ -36,12 +30,7 @@ public class GameCatalogImporterTests : IAsyncLifetime
     private async Task RestoreGamesBaselineAsync()
     {
         await using var db = _fx.CreateContext();
-        await db.Games.Where(g => !SeedSlugs.Contains(g.Slug)).ExecuteDeleteAsync();
-        await db.Games.ExecuteUpdateAsync(s => s
-            .SetProperty(g => g.CoverUrl, (string?)null)
-            .SetProperty(g => g.CoverImageId, (string?)null)
-            .SetProperty(g => g.IgdbId, (int?)null)
-            .SetProperty(g => g.IgdbManaged, false));
+        await SeededGames.ResetBaselineAsync(db);
     }
 
     [Fact]

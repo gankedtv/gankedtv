@@ -16,12 +16,6 @@ namespace GankedTV.Api.Tests.Tools;
 [Collection("Postgres")]
 public class SeedCommandTests : IAsyncLifetime
 {
-    private static readonly string[] SeedSlugs =
-    [
-        "league-of-legends", "valorant", "cs2", "fortnite", "apex-legends",
-        "rocket-league", "overwatch-2", "dota-2", "marvel-rivals",
-    ];
-
     private readonly PostgresFixture _fx;
 
     public SeedCommandTests(PostgresFixture fx) => _fx = fx;
@@ -32,10 +26,7 @@ public class SeedCommandTests : IAsyncLifetime
     {
         await _fx.ResetAsync();
         await using var db = _fx.CreateContext();
-        await db.Games.Where(g => !SeedSlugs.Contains(g.Slug)).ExecuteDeleteAsync();
-        await db.Games.ExecuteUpdateAsync(s => s
-            .SetProperty(g => g.CoverUrl, (string?)null)
-            .SetProperty(g => g.IgdbId, (int?)null));
+        await SeededGames.ResetBaselineAsync(db);
     }
 
     public Task DisposeAsync() => Task.CompletedTask;
