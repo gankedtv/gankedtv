@@ -133,9 +133,9 @@ public static class CommentsEndpoints
 
         var items = page.Select(c =>
         {
-            var replies = repliesByParent.GetValueOrDefault(c.Id) ?? [];
-            var preview = replies.Take(ReplyPreviewCount).Select(r => r.ToItem()).ToList();
-            return c.ToItem(replyCount: replies.Count, replies: preview);
+            var entry = repliesByParent.GetValueOrDefault(c.Id);
+            var preview = (entry.Preview ?? []).Select(r => r.ToItem()).ToList();
+            return c.ToItem(replyCount: entry.Count, replies: preview);
         }).ToList();
 
         var nextCursor = hasMore ? KeysetCursor.Build(page[^1].CreatedAt, page[^1].Id) : null;
@@ -214,10 +214,11 @@ public static class CommentsEndpoints
         return Results.NoContent();
     }
 
-    // Loads all live replies for the given top-level comment ids in one query, grouped by parent.
-    // Ordered oldest-first so the inline preview shows the start of each thread; the full list is
-    // small enough to group in memory (parents are bounded by the page limit).
-    private static async Task<Dictionary<Guid, List<Comment>>> LoadRepliesForParentsAsync(
+    // For each top-level comment id, returns the total live-reply count plus the oldest few replies
+    // for the inline preview — never the full reply set, which is unbounded for a popular comment.
+    // Two targeted queries (a grouped count, and a top-N-per-parent slice) keep both bounded
+    // regardless of how many replies a thread has accumulated.
+    private static async Task<Dictionary<Guid, (int Count, List<Comment> Preview)>> LoadRepliesForParentsAsync(
         GankedTvDbContext db,
         IEnumerable<Guid> parentIds,
         CancellationToken ct)
@@ -228,15 +229,35 @@ public static class CommentsEndpoints
             return [];
         }
 
-        var replies = await db.Comments.AsNoTracking()
+        var counts = await db.Comments.AsNoTracking()
             .Where(r => r.ParentId != null && ids.Contains(r.ParentId.Value) && r.DeletedAt == null)
+            .GroupBy(r => r.ParentId!.Value)
+            .Select(g => new { ParentId = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        // Top-N-per-parent: keep a reply only if its id is among the oldest ReplyPreviewCount for
+        // its parent. The correlated subquery translates to a per-parent lateral slice in Postgres,
+        // so we materialize at most ReplyPreviewCount rows per parent instead of every reply.
+        var previews = await db.Comments.AsNoTracking()
+            .Where(r => r.ParentId != null && ids.Contains(r.ParentId.Value) && r.DeletedAt == null)
+            .Where(r => db.Comments
+                .Where(x => x.ParentId == r.ParentId && x.DeletedAt == null)
+                .OrderBy(x => x.CreatedAt)
+                .ThenBy(x => x.Id)
+                .Select(x => x.Id)
+                .Take(ReplyPreviewCount)
+                .Contains(r.Id))
             .OrderBy(r => r.CreatedAt)
             .ThenBy(r => r.Id)
             .Include(r => r.User)
             .ToListAsync(ct);
 
-        return replies
+        var previewsByParent = previews
             .GroupBy(r => r.ParentId!.Value)
             .ToDictionary(g => g.Key, g => g.ToList());
+
+        return counts.ToDictionary(
+            c => c.ParentId,
+            c => (c.Count, previewsByParent.GetValueOrDefault(c.ParentId) ?? []));
     }
 }

@@ -1,4 +1,5 @@
 using GankedTV.Api.Data.Entities;
+using GankedTV.Api.Validation;
 using Microsoft.EntityFrameworkCore;
 
 namespace GankedTV.Api.Data;
@@ -213,7 +214,7 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
         {
             e.HasKey(c => c.Id);
             e.Property(c => c.Id).HasDefaultValueSql("gen_random_uuid()");
-            e.Property(c => c.Body).HasMaxLength(2000);
+            e.Property(c => c.Body).HasMaxLength(CommentValidationLimits.MaxBodyLength);
             e.Property(c => c.CreatedAt).HasDefaultValueSql("now()");
             e.Property(c => c.UpdatedAt).HasDefaultValueSql("now()");
 

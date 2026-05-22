@@ -32,6 +32,8 @@ const replyBody = ref('')
 const replyPosting = ref(false)
 // Cursor for paging additional replies on a thread ("Show more replies").
 const replyCursors = ref<Record<string, string | null>>({})
+// Per-thread in-flight guard so rapid "Show more" clicks can't fire overlapping requests.
+const replyLoading = ref<Record<string, boolean>>({})
 
 // Delete confirmation
 const pendingDelete = ref<string | null>(null)
@@ -50,6 +52,7 @@ async function load() {
   loading.value = true
   errored.value = false
   threads.value = []
+  nextCursor.value = null
   try {
     const page = await comments.list(props.clipId)
     threads.value = page.items
@@ -142,6 +145,8 @@ async function postReply(parentId: string) {
 }
 
 async function showMoreReplies(thread: CommentItem) {
+  if (replyLoading.value[thread.id]) return
+  replyLoading.value[thread.id] = true
   try {
     const page = await comments.listReplies(thread.id, {
       cursor: replyCursors.value[thread.id] ?? undefined,
@@ -153,6 +158,8 @@ async function showMoreReplies(thread: CommentItem) {
     replyCursors.value[thread.id] = page.nextCursor
   } catch {
     actionError.value = 'Could not load replies — try again.'
+  } finally {
+    replyLoading.value[thread.id] = false
   }
 }
 

@@ -6,6 +6,7 @@ using GankedTV.Api.Clips;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Tests.TestSupport;
+using GankedTV.Api.Validation;
 using NSubstitute;
 
 namespace GankedTV.Api.Tests.Integration.Endpoints;
@@ -134,6 +135,34 @@ public class CommentsEndpointsTests : IAsyncLifetime
         // [Required] trims before validating, so a whitespace-only body is rejected as a
         // validation problem (400) the same as an empty one.
         var resp = await client.PostAsJsonAsync($"/clips/{clipId}/comments", new { body = "   " });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Create_MaxBodyLength_Returns201()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId);
+        using var client = ClientWithBearer(token);
+
+        var body = new string('x', CommentValidationLimits.MaxBodyLength);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/comments", new { body });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
+    [Fact]
+    public async Task Create_ExceedsMaxBodyLength_Returns400()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId);
+        using var client = ClientWithBearer(token);
+
+        var body = new string('x', CommentValidationLimits.MaxBodyLength + 1);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/comments", new { body });
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
