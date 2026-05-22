@@ -62,6 +62,15 @@ public class TagNormalizationTests
     [InlineData(null, null)]
     [InlineData("!!!", null)]
     [InlineData("ABCdef-09", "abcdef-09")]
+    // Whitespace and underscores map to '-' so the prefix matches the stored slug
+    // shape — "league of" finds rows with slug "league-of" instead of looking for
+    // the impossible "leagueof".
+    [InlineData("league of", "league-of")]
+    [InlineData("league_of", "league-of")]
+    [InlineData("League Of", "league-of")]
+    [InlineData("  spaced  ", "spaced")]
+    [InlineData("a--b", "a-b")]
+    [InlineData("-clutch-", "clutch")]
     public void NormalizePrefix_LowercasesAndStripsInvalid(string? raw, string? expected)
     {
         TagNormalization.NormalizePrefix(raw).Should().Be(expected);

@@ -56,25 +56,42 @@ public static class TagNormalization
     }
 
     /// <summary>
-    /// Normalize a prefix for autocomplete LIKE queries. Lowercases and strips disallowed
-    /// characters but does NOT enforce min length (so a one-character prefix like "c" is
-    /// still queryable). Returns <c>null</c> if the prefix is empty or only invalid chars.
+    /// Normalize a prefix for autocomplete LIKE queries. Mirrors <see cref="TryNormalize"/>'s
+    /// slug transformation (lowercase, whitespace/underscore → hyphen, repeated hyphens
+    /// collapsed, edge hyphens trimmed) but does NOT enforce min length — a one-character
+    /// prefix like <c>c</c> is still queryable. Returns <c>null</c> if the prefix is empty
+    /// or contains only invalid characters.
     /// </summary>
+    /// <remarks>
+    /// Must apply the same whitespace-to-hyphen mapping as <see cref="TryNormalize"/>, or a
+    /// user typing <c>"league of"</c> in autocomplete would search for <c>"leagueof"</c>
+    /// and never match the stored slug <c>"league-of"</c>.
+    /// </remarks>
     public static string? NormalizePrefix(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;
         var sb = new StringBuilder(raw.Length);
+        var lastWasHyphen = false;
         foreach (var ch in raw)
         {
-            if (ch is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '-')
+            if (ch is (>= 'a' and <= 'z') or (>= '0' and <= '9'))
             {
                 sb.Append(ch);
+                lastWasHyphen = false;
             }
             else if (ch is >= 'A' and <= 'Z')
             {
                 sb.Append((char)(ch + ('a' - 'A')));
+                lastWasHyphen = false;
+            }
+            else if (ch == '-' || ch == '_' || char.IsWhiteSpace(ch))
+            {
+                if (sb.Length == 0 || lastWasHyphen) continue;
+                sb.Append('-');
+                lastWasHyphen = true;
             }
         }
+        if (sb.Length > 0 && sb[^1] == '-') sb.Length--;
         return sb.Length == 0 ? null : sb.ToString();
     }
 }

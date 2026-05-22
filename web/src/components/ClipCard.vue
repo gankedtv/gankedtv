@@ -75,12 +75,16 @@ function onKeydown(e: KeyboardEvent) {
       <!-- Tag row: up to 3 chips + "+N" overflow indicator. Hidden when the
            clip has no tags so cards without tags don't grow a blank row. The
            overflow chip is a plain span — it isn't a link to any tag in
-           particular, just a visual cue that more exist on the detail page. -->
+           particular, just a visual cue that more exist on the detail page.
+           Both elements .stop the click so the chip area doesn't double as a
+           card-click target (TagChip's internal RouterLink also .stops, but
+           the redundancy makes the contract obvious from this template). -->
       <div v-if="clip.tags.length" class="flex flex-wrap gap-1.5">
-        <TagChip v-for="t in visibleTags" :key="t.id" :slug="t.slug" :name="t.name" />
+        <TagChip v-for="t in visibleTags" :key="t.id" :slug="t.slug" :name="t.name" @click.stop />
         <span
           v-if="overflowCount > 0"
           class="rounded-[3px] border border-border-strong bg-surface-base px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-text-muted"
+          @click.stop
         >
           +{{ overflowCount }}
         </span>

@@ -142,6 +142,10 @@ watch(draft, (q) => {
   if (searchTimer) clearTimeout(searchTimer)
   const trimmed = q.trim()
   if (!trimmed) {
+    // Invalidate lastQuery so any in-flight autocomplete response that started
+    // before this clear can't pass the `lastQuery !== queryAtCall` guard below
+    // and re-open the dropdown after the user has emptied the draft.
+    lastQuery = ''
     results.value = []
     showDropdown.value = false
     highlightedIndex.value = -1

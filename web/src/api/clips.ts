@@ -58,8 +58,8 @@ export interface UpdateClipBody {
   description?: string
   gameId?: number | null
   visibility?: 'public' | 'unlisted'
-  // null/omitted = "leave tags alone". Empty array = "clear all tags".
-  // Otherwise = "replace the tag set with this exact list (post-normalization server-side)".
+  // Omitted = leave tags unchanged. Empty array = clear all tags. Otherwise =
+  // replace the tag set with this exact list (post-normalization server-side).
   tags?: string[]
 }
 

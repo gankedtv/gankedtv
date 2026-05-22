@@ -99,6 +99,44 @@ describe('TagInput', () => {
     expect(events[events.length - 1][0]).toEqual(['clutch'])
   })
 
+  it('does not repopulate the dropdown after the draft is cleared mid-fetch', async () => {
+    // Regression: lastQuery must be invalidated when the user clears the input
+    // while an autocomplete is in flight, otherwise the stale response can pass
+    // the `lastQuery !== queryAtCall` guard and reopen the dropdown.
+    let resolveFetch: (resp: Response) => void = () => {}
+    const fetchPromise = new Promise<Response>((resolve) => {
+      resolveFetch = resolve
+    })
+    const fetchStub = vi.fn(() => fetchPromise)
+    vi.stubGlobal('fetch', fetchStub)
+
+    const wrapper = mount(TagInput, {
+      props: { modelValue: [], 'onUpdate:modelValue': () => {} },
+    })
+    const input = wrapper.find('input')
+    await input.setValue('clu')
+    // Let the debounce timer fire so the fetch starts (but stays unresolved).
+    await vi.advanceTimersByTimeAsync(200)
+    expect(fetchStub).toHaveBeenCalledTimes(1)
+
+    // User clears the input before the response arrives.
+    await input.setValue('')
+    await nextTick()
+
+    // Stale response arrives now — must be discarded.
+    resolveFetch(
+      new Response(JSON.stringify([{ id: 1, slug: 'clutch', name: 'clutch', clipCount: 7 }]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+    await fetchPromise
+    await nextTick()
+
+    expect(wrapper.find('ul[role="listbox"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('clutch')
+  })
+
   it('debounces the autocomplete fetch', async () => {
     const fetchStub = vi.fn(async () => jsonResponse([]))
     vi.stubGlobal('fetch', fetchStub)
