@@ -3,7 +3,7 @@ import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { search, type SearchResponse } from '@/api/search'
 import ClipCard from '@/components/ClipCard.vue'
-import GameTag from '@/components/GameTag.vue'
+import GameCoverTile from '@/components/GameCoverTile.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
 import PageHeader from '@/components/PageHeader.vue'
 
@@ -78,23 +78,18 @@ const hasQuery = () => typeof route.query.q === 'string' && route.query.q.trim()
     />
 
     <template v-else-if="hasQuery()">
-      <!-- Games -->
+      <!-- Games — same portrait box-art tiles as the catalog (GameCoverTile). -->
       <section class="mt-10">
         <h2
           class="section-title-bar m-0 mb-5 inline-flex items-center gap-3.5 font-heading text-2xl font-bold uppercase tracking-[0.02em] text-text-primary"
         >
           Games
         </h2>
-        <div v-if="results.games.length" class="flex flex-wrap gap-3">
-          <RouterLink
-            v-for="g in results.games"
-            :key="g.id"
-            :to="{ name: 'game-detail', params: { slug: g.slug } }"
-            class="inline-flex items-center gap-3 rounded-md border border-border bg-surface-raised px-3.5 py-2.5 no-underline transition-colors duration-150 hover:border-brand"
-          >
-            <GameTag :tag="g.tag" />
-            <span class="font-body text-sm text-text-primary">{{ g.name }}</span>
-          </RouterLink>
+        <div
+          v-if="results.games.length"
+          class="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-4 max-[640px]:grid-cols-[repeat(auto-fill,minmax(8rem,1fr))] max-[640px]:gap-3"
+        >
+          <GameCoverTile v-for="g in results.games" :key="g.id" :game="g" />
         </div>
         <StatusPanel v-else kind="empty" message="No games match." />
       </section>
