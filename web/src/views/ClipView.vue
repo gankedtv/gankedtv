@@ -307,13 +307,7 @@ async function onConfirmDelete() {
         </h1>
 
         <div v-if="clip.tags.length" class="mt-3 flex flex-wrap gap-2">
-          <TagChip
-            v-for="t in clip.tags"
-            :key="t.id"
-            :slug="t.slug"
-            :name="t.name"
-            size="md"
-          />
+          <TagChip v-for="t in clip.tags" :key="t.id" :slug="t.slug" :name="t.name" size="md" />
         </div>
 
         <div class="mt-4 flex flex-wrap items-center gap-3">
