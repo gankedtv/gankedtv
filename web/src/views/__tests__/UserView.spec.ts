@@ -16,7 +16,11 @@ function makeRouter(): Router {
       { path: '/', name: 'home', component: defineComponent({ render: () => h('div') }) },
       { path: '/user/:username', name: 'user', component: UserView },
       { path: '/clip/:id', name: 'clip', component: defineComponent({ render: () => h('div') }) },
-      { path: '/:pathMatch(.*)*', name: 'not-found', component: defineComponent({ render: () => h('div') }) },
+      {
+        path: '/:pathMatch(.*)*',
+        name: 'not-found',
+        component: defineComponent({ render: () => h('div') }),
+      },
     ],
   })
 }
