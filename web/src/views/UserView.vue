@@ -41,6 +41,10 @@ async function loadProfile(name: string) {
   loading.value = true
   errored.value = false
   profile.value = null
+  // Reset the follow-button busy state alongside the profile so a stale toggle
+  // (whose response gets dropped by the load-id fence below) can't leave the
+  // button disabled on the freshly-loaded profile.
+  followBusy.value = false
   try {
     const result = await users.getByUsername(name)
     if (myLoadId !== latestLoadId) return
@@ -117,6 +121,10 @@ async function toggleFollow() {
   }
 
   const targetUsername = profile.value.username
+  // Capture the profile-load generation so A→B→A navigation (same username,
+  // different profile object) can't apply this toggle's response to a freshly
+  // loaded profile. A username-only check would falsely accept it.
+  const requestLoadId = latestLoadId
   const wasFollowing = profile.value.followedByMe === true
   // Optimistic flip — same pattern as ClipView's like toggle. The +/- 1 can drift
   // out of sync with reality if the same user toggles follow state in another tab
@@ -132,15 +140,17 @@ async function toggleFollow() {
     } else {
       await follows.follow(targetUsername)
     }
-    // Guard against route navigation mid-request.
-    if (profile.value?.username !== targetUsername) return
+    if (latestLoadId !== requestLoadId) return
   } catch {
-    if (profile.value?.username !== targetUsername) return
+    if (latestLoadId !== requestLoadId) return
     // Roll back.
     profile.value.followedByMe = wasFollowing
     profile.value.followerCount += wasFollowing ? 1 : -1
   } finally {
-    followBusy.value = false
+    // Only clear busy when this invocation is still the latest. If the profile
+    // has been reloaded since, loadProfile already cleared followBusy and the
+    // new profile may have its own toggle in flight — don't stomp it.
+    if (latestLoadId === requestLoadId) followBusy.value = false
   }
 }
 

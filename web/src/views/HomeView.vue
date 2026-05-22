@@ -96,6 +96,14 @@ function selectTab(next: FeedSource) {
   cursor.value = null
   errored.value = false
   paginationErrored.value = false
+  // Release ownership of the loading flag before triggering the new fetch.
+  // Without this, the loadMore() call below would early-return at its
+  // `if (loading.value) return` guard (a prior in-flight fetch for the old
+  // source has loading=true). That prior fetch's drift-detected early-return
+  // then never clears loading, leaving the UI stuck in a loading state forever.
+  // The in-flight request will discard its response via the source check, so
+  // dropping the flag here is safe.
+  loading.value = false
   loadMore()
 }
 

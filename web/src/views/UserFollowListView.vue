@@ -37,10 +37,15 @@ const heading = computed(() => {
 })
 
 async function loadMore() {
-  if (loading.value || !username.value) return
+  if (!username.value) return
   const name = username.value
   const k = kind.value
   const key = `${name}|${k}`
+  // Allow re-entry when the route key changes (tab toggle or username change)
+  // even if a previous fetch is still in flight. The stale fetch's drift check
+  // will discard its response. Without this carve-out, the watcher's loadMore()
+  // would be blocked here and the UI would stay on the previous list.
+  if (loading.value && key === latestLoadKey) return
   const isFirstPage = key !== latestLoadKey || items.value.length === 0
   if (isFirstPage) {
     latestLoadKey = key

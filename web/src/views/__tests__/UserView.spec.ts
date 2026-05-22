@@ -15,17 +15,19 @@ vi.mock('@/api/follows', () => ({ follows: { follow: vi.fn(), unfollow: vi.fn() 
 import UserView from '../UserView.vue'
 
 function makeRouter(): Router {
+  const stub = defineComponent({ render: () => h('div') })
   return createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: '/', name: 'home', component: defineComponent({ render: () => h('div') }) },
+      { path: '/', name: 'home', component: stub },
       { path: '/user/:username', name: 'user', component: UserView },
-      { path: '/clip/:id', name: 'clip', component: defineComponent({ render: () => h('div') }) },
-      {
-        path: '/:pathMatch(.*)*',
-        name: 'not-found',
-        component: defineComponent({ render: () => h('div') }),
-      },
+      // Registered so RouterLink resolutions inside UserView's stat cells don't
+      // emit "No match for route" warnings when followerCount/followingCount > 0
+      // in fixtures that exercise the linked path.
+      { path: '/user/:username/followers', name: 'user-followers', component: stub },
+      { path: '/user/:username/following', name: 'user-following', component: stub },
+      { path: '/clip/:id', name: 'clip', component: stub },
+      { path: '/:pathMatch(.*)*', name: 'not-found', component: stub },
     ],
   })
 }
@@ -61,6 +63,12 @@ describe('UserView (issue #92 regression)', () => {
       bio: 'Seeded dev user.',
       avatarUrl: null,
       createdAt: new Date().toISOString(),
+      // The follow-related fields are part of the UserProfile shape since #85.
+      // Including them here keeps the fixture in sync with the API contract even
+      // though this test doesn't assert against them.
+      followerCount: 0,
+      followingCount: 0,
+      followedByMe: null,
       clips: [
         {
           id: 'clp_01',
