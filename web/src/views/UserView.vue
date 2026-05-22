@@ -136,10 +136,11 @@ const TABS: { key: Tab; label: string }[] = [
   <div>
     <!-- Single root so the route-level <Transition mode="out-in"> can animate the leave
          cleanly. This comment lives INSIDE the root <div> on purpose: a comment placed
-         before the root element makes the component multi-root (comment + div), which
+         BEFORE the root element makes the component multi-root (comment + div), which
          <Transition> can't drive — its leave never resolves, so the next route's view
-         never mounts (issue #92). The v-if chain below also has no bare v-else for the
-         same reason — every branch is an element, never a fallthrough comment node. -->
+         never mounts (issue #92). A comment (or a v-if chain with no bare v-else falling
+         through to a comment) INSIDE the root is harmless — only nodes at the component
+         root matter. -->
     <main v-if="loading">
       <StatusPanel kind="loading" message="Loading…" />
     </main>

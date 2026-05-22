@@ -80,7 +80,7 @@ describe('UserView (issue #92 regression)', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Seed Clip 01')
-    // Bug #1 guard: the clip thumbnail renders.
-    expect(wrapper.find('img').exists()).toBe(true)
+    // Bug #1 guard: the clip thumbnail renders, bound to thumbnailUrl.
+    expect(wrapper.find('.feed-grid img').attributes('src')).toBe('https://cdn.test/thumb.jpg')
   })
 })
