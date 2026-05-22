@@ -110,7 +110,19 @@ elif git show-ref --verify --quiet "refs/remotes/origin/${branch}"; then
   git worktree add -b "$branch" "$dir" "origin/${branch}"
 else
   echo "→ creating new branch $branch from origin/main"
-  git worktree add -b "$branch" "$dir" origin/main
+  # Two-step (branch + worktree add) instead of `worktree add -b` so we can pass
+  # --no-track. Without it, git's default branch.autoSetupMerge=true sets the new
+  # branch's upstream to origin/main — and a subsequent bare `git push` from
+  # inside the worktree (with push.default=simple) then targets main instead of
+  # creating origin/<branch>. We lost commits to main this way once; never again.
+  git branch --no-track "$branch" origin/main
+  git worktree add "$dir" "$branch"
+  # Explicitly point the branch's upstream config at its own name on origin so
+  # the first `git push` (no args) creates `origin/<branch>` correctly. The
+  # remote ref doesn't exist yet — push creates it. push.default=simple is
+  # satisfied because branch and upstream names match.
+  git -C "$dir" config "branch.${branch}.remote" "origin"
+  git -C "$dir" config "branch.${branch}.merge" "refs/heads/${branch}"
 fi
 
 cat >"$dir/.env.worktree.local" <<EOF
