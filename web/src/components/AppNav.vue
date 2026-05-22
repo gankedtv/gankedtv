@@ -232,63 +232,63 @@ function onBlur() {
             class="fixed z-[60] overflow-hidden rounded-md border border-border-strong bg-surface-raised shadow-[0_18px_50px_-18px_rgba(0,0,0,0.6)]"
             @mousedown.prevent
           >
-          <div
-            v-if="loading && results.clips.length === 0 && results.games.length === 0"
-            class="px-3.5 py-3 font-mono text-[11px] uppercase tracking-widest text-text-muted"
-          >
-            Searching…
-          </div>
-          <template v-else>
-            <div v-if="results.games.length > 0">
-              <div
-                class="px-3.5 pt-2.5 pb-1 font-mono text-[10px] uppercase tracking-widest text-text-muted"
-              >
-                Games
-              </div>
-              <ul role="listbox" class="m-0 list-none p-0">
-                <GameSearchResult
-                  v-for="g in results.games.slice(0, DROPDOWN_GAME_LIMIT)"
-                  :key="g.id"
-                  :tag="g.tag"
-                  :name="g.name"
-                  @select="onResultClick({ name: 'game-detail', params: { slug: g.slug } })"
-                />
-              </ul>
-            </div>
-            <div v-if="results.clips.length > 0">
-              <div
-                class="px-3.5 pt-2.5 pb-1 font-mono text-[10px] uppercase tracking-widest text-text-muted"
-                :class="{ 'border-t border-border': results.games.length > 0 }"
-              >
-                Clips
-              </div>
-              <ul role="listbox" class="m-0 list-none p-0">
-                <li
-                  v-for="c in results.clips.slice(0, DROPDOWN_CLIP_LIMIT)"
-                  :key="c.id"
-                  role="option"
-                  :aria-selected="false"
-                  class="flex cursor-pointer items-center gap-3 px-3.5 py-2 transition-colors duration-150 hover:bg-surface-overlay"
-                  @mousedown.prevent="onResultClick({ name: 'clip', params: { id: c.id } })"
-                >
-                  <img
-                    :src="c.thumbnailUrl"
-                    alt=""
-                    class="h-9 w-16 shrink-0 rounded-sm object-cover"
-                  />
-                  <span class="min-w-0 flex-1 truncate font-body text-sm text-text-primary">
-                    {{ c.title }}
-                  </span>
-                </li>
-              </ul>
-            </div>
             <div
-              v-if="!loading && results.clips.length === 0 && results.games.length === 0"
+              v-if="loading && results.clips.length === 0 && results.games.length === 0"
               class="px-3.5 py-3 font-mono text-[11px] uppercase tracking-widest text-text-muted"
             >
-              No matches
+              Searching…
             </div>
-          </template>
+            <template v-else>
+              <div v-if="results.games.length > 0">
+                <div
+                  class="px-3.5 pt-2.5 pb-1 font-mono text-[10px] uppercase tracking-widest text-text-muted"
+                >
+                  Games
+                </div>
+                <ul role="listbox" class="m-0 list-none p-0">
+                  <GameSearchResult
+                    v-for="g in results.games.slice(0, DROPDOWN_GAME_LIMIT)"
+                    :key="g.id"
+                    :tag="g.tag"
+                    :name="g.name"
+                    @select="onResultClick({ name: 'game-detail', params: { slug: g.slug } })"
+                  />
+                </ul>
+              </div>
+              <div v-if="results.clips.length > 0">
+                <div
+                  class="px-3.5 pt-2.5 pb-1 font-mono text-[10px] uppercase tracking-widest text-text-muted"
+                  :class="{ 'border-t border-border': results.games.length > 0 }"
+                >
+                  Clips
+                </div>
+                <ul role="listbox" class="m-0 list-none p-0">
+                  <li
+                    v-for="c in results.clips.slice(0, DROPDOWN_CLIP_LIMIT)"
+                    :key="c.id"
+                    role="option"
+                    :aria-selected="false"
+                    class="flex cursor-pointer items-center gap-3 px-3.5 py-2 transition-colors duration-150 hover:bg-surface-overlay"
+                    @mousedown.prevent="onResultClick({ name: 'clip', params: { id: c.id } })"
+                  >
+                    <img
+                      :src="c.thumbnailUrl"
+                      alt=""
+                      class="h-9 w-16 shrink-0 rounded-sm object-cover"
+                    />
+                    <span class="min-w-0 flex-1 truncate font-body text-sm text-text-primary">
+                      {{ c.title }}
+                    </span>
+                  </li>
+                </ul>
+              </div>
+              <div
+                v-if="!loading && results.clips.length === 0 && results.games.length === 0"
+                class="px-3.5 py-3 font-mono text-[11px] uppercase tracking-widest text-text-muted"
+              >
+                No matches
+              </div>
+            </template>
           </div>
         </Teleport>
       </div>
