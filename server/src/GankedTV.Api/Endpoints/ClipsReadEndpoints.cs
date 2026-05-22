@@ -107,17 +107,33 @@ public static class ClipsReadEndpoints
         var hasMore = rows.Count > clampedLimit;
         var page = hasMore ? rows.GetRange(0, clampedLimit) : rows;
 
-        var likedIds = await LoadLikedClipIdsAsync(db, principal, page.Select(c => c.Id), ct);
-
-        var thumbnailsBucket = s3.Value.ThumbnailsBucket;
-        var items = page
-            .Select(c => c.ToFeedItem(
-                BuildThumbnailUrl(storage, thumbnailsBucket, c.ThumbnailKey),
-                likedIds.Contains(c.Id)))
-            .ToList();
+        var items = await ProjectFeedItemsAsync(page, principal, db, storage, s3, ct);
         var nextCursor = hasMore ? FeedCursor.Build(page[^1].CreatedAt, page[^1].Id) : null;
 
         return new ClipFeedResponse(items, nextCursor);
+    }
+
+    // Shared DTO projector for any pre-ordered, pre-included Clip list. Splits out the
+    // likedByMe lookup + thumbnail signing so SearchEndpoints can reuse them on a ranked
+    // (non-paginated, non-cursor) result set without duplicating the logic.
+    internal static async Task<List<ClipFeedItem>> ProjectFeedItemsAsync(
+        IReadOnlyList<Clip> clips,
+        ClaimsPrincipal principal,
+        GankedTvDbContext db,
+        IObjectStorageService storage,
+        IOptions<S3Options> s3,
+        CancellationToken ct)
+    {
+        if (clips.Count == 0)
+        {
+            return [];
+        }
+
+        var likedIds = await LoadLikedClipIdsAsync(db, principal, clips.Select(c => c.Id), ct);
+        var thumbnailsBucket = s3.Value.ThumbnailsBucket;
+        return [.. clips.Select(c => c.ToFeedItem(
+            BuildThumbnailUrl(storage, thumbnailsBucket, c.ThumbnailKey),
+            likedIds.Contains(c.Id)))];
     }
 
     // Public Ready clips always have a thumbnail (the worker is the only path to Ready

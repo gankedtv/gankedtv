@@ -1,3 +1,5 @@
+using NpgsqlTypes;
+
 namespace GankedTV.Api.Data.Entities;
 
 public class Game
@@ -20,4 +22,8 @@ public class Game
     // True only for rows the IGDB importer created. Gates display-name refresh so the curated
     // seed rows (incl. ones the importer adopted by name) are never renamed by an upstream change.
     public bool IgdbManaged { get; set; }
+
+    // Postgres-managed `tsvector` (GENERATED ALWAYS AS … STORED) over `name`. Powers the
+    // long-query branch of /search?type=games via plainto_tsquery + ts_rank_cd.
+    public NpgsqlTsVector SearchVector { get; private set; } = null!;
 }

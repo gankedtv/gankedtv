@@ -54,6 +54,16 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             e.Property(g => g.IgdbManaged).HasDefaultValue(false);
             e.HasIndex(g => g.Slug).IsUnique().HasDatabaseName("idx_games_slug");
             e.HasIndex(g => g.Name).HasDatabaseName("idx_games_name");
+            // Full-text search vector, stored generated column. EF emits ALTER TABLE …
+            // GENERATED ALWAYS AS … STORED so the value is maintained by Postgres on every
+            // INSERT/UPDATE of name. Companion GIN index makes `@@` lookups index-driven.
+            e.Property(g => g.SearchVector)
+                .HasComputedColumnSql(
+                    "to_tsvector('simple', coalesce(name, ''))",
+                    stored: true);
+            e.HasIndex(g => g.SearchVector)
+                .HasMethod("GIN")
+                .HasDatabaseName("idx_games_search_vector");
             e.HasData(
                 new Game { Id = 1, Name = "League of Legends", Slug = "league-of-legends", Tag = "LOL" },
                 new Game { Id = 2, Name = "Valorant", Slug = "valorant", Tag = "VALORANT" },
@@ -107,6 +117,18 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
                 .HasDatabaseName("idx_clips_processing_updated_at");
             e.HasIndex(c => c.ShareCode).IsUnique().HasDatabaseName("idx_clips_share_code");
             e.Property(c => c.ShareCode).HasMaxLength(12);
+            // Title gets weight 'A' so exact title matches outrank description-only hits;
+            // description gets weight 'B'. Both go through `to_tsvector('simple', …)`, which
+            // skips stemming/stopwords — fine for short, noun-heavy clip titles ("ace clutch",
+            // game names, player tags). Stored generated → maintained by Postgres on every write.
+            e.Property(c => c.SearchVector)
+                .HasComputedColumnSql(
+                    "setweight(to_tsvector('simple', coalesce(title, '')), 'A') || "
+                    + "setweight(to_tsvector('simple', coalesce(description, '')), 'B')",
+                    stored: true);
+            e.HasIndex(c => c.SearchVector)
+                .HasMethod("GIN")
+                .HasDatabaseName("idx_clips_search_vector");
         });
 
         modelBuilder.Entity<Like>(e =>

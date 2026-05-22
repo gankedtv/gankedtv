@@ -375,6 +375,7 @@ app.MapUsersEndpoints();
 app.MapFollowsEndpoints();
 app.MapGamesEndpoints();
 app.MapTagsEndpoints();
+app.MapSearchEndpoints();
 
 if (app.Environment.IsDevelopment())
 {
