@@ -4,8 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/client'
 import { users, type UserProfile } from '@/api/users'
 import { safeImageUrl } from '@/lib/url'
-import { formatNum, formatRelativeTime } from '@/lib/format'
-import DurationBadge from '@/components/DurationBadge.vue'
+import { formatNum } from '@/lib/format'
+import ClipCard from '@/components/ClipCard.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
 import IconShare from '@/components/icons/IconShare.vue'
 import IconMoreHorizontal from '@/components/icons/IconMoreHorizontal.vue'
@@ -133,10 +133,13 @@ const TABS: { key: Tab; label: string }[] = [
 </script>
 
 <template>
-  <!-- Single root so the route-level <Transition mode="out-in"> can animate the
-       leave cleanly. v-if chains with no else fall through to a comment node, which
-       Vue's transition system can't drive — wrap everything in one element. -->
   <div>
+    <!-- Single root so the route-level <Transition mode="out-in"> can animate the leave
+         cleanly. This comment lives INSIDE the root <div> on purpose: a comment placed
+         before the root element makes the component multi-root (comment + div), which
+         <Transition> can't drive — its leave never resolves, so the next route's view
+         never mounts (issue #92). The v-if chain below also has no bare v-else for the
+         same reason — every branch is an element, never a fallthrough comment node. -->
     <main v-if="loading">
       <StatusPanel kind="loading" message="Loading…" />
     </main>
@@ -297,35 +300,13 @@ const TABS: { key: Tab; label: string }[] = [
                 <p class="font-mono text-[13px] tracking-[0.06em] text-text-muted">No clips yet.</p>
               </div>
               <div v-else class="feed-grid">
-                <article
+                <ClipCard
                   v-for="clip in profile.clips"
                   :key="clip.id"
-                  role="button"
-                  tabindex="0"
-                  :aria-label="clip.title"
-                  class="group relative flex cursor-pointer flex-col overflow-hidden rounded-md border border-border bg-surface-raised transition-all duration-200 outline-none hover:-translate-y-0.5 hover:border-brand hover:shadow-[0_14px_40px_-14px_var(--color-brand-glow)] focus-visible:border-brand focus-visible:shadow-[0_14px_40px_-14px_var(--color-brand-glow)]"
+                  :clip="clip"
+                  :show-author="false"
                   @click="router.push({ name: 'clip', params: { id: clip.id } })"
-                  @keydown.enter.prevent="router.push({ name: 'clip', params: { id: clip.id } })"
-                  @keydown.space.prevent="router.push({ name: 'clip', params: { id: clip.id } })"
-                >
-                  <div class="relative aspect-video overflow-hidden bg-surface-sunken">
-                    <DurationBadge :seconds="clip.durationSecs" class="absolute bottom-2 right-2" />
-                  </div>
-                  <div class="flex flex-col gap-2 px-3.5 pb-3.5 pt-3">
-                    <h3
-                      class="m-0 line-clamp-2 min-h-[2.7em] font-body text-sm font-medium leading-[1.35] text-text-primary"
-                    >
-                      {{ clip.title }}
-                    </h3>
-                    <div
-                      class="flex gap-2.5 border-t border-dashed border-border pt-1.5 font-mono text-[11px] text-text-muted"
-                    >
-                      <span>♥ {{ formatNum(clip.likeCount) }}</span>
-                      <span>▶ {{ formatNum(clip.viewCount) }}</span>
-                      <span class="ml-auto">{{ formatRelativeTime(clip.createdAt) }} ago</span>
-                    </div>
-                  </div>
-                </article>
+                />
               </div>
             </div>
 
