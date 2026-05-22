@@ -6,6 +6,8 @@ import { follows, type UserSummary } from '@/api/follows'
 import UserAvatar from '@/components/UserAvatar.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
 import PageHeader from '@/components/PageHeader.vue'
+import UnderlineTabs from '@/components/UnderlineTabs.vue'
+import LoadMoreButton from '@/components/LoadMoreButton.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -95,27 +97,22 @@ onMounted(loadMore)
       </template>
     </PageHeader>
 
-    <!-- Tab toggle so a viewer can flip between followers/following without
-         going back through the profile. Uses the same underline style as the
-         HomeView Latest/Following tabs and UserView's clip tabs. -->
-    <div class="mt-6 flex items-center border-b border-border">
-      <RouterLink
-        v-for="t in [
-          { key: 'followers', label: 'Followers' },
-          { key: 'following', label: 'Following' },
-        ]"
-        :key="t.key"
-        :to="{ name: `user-${t.key}`, params: { username } }"
-        :class="[
-          'relative cursor-pointer border-none bg-transparent px-4.5 py-3 font-mono text-xs uppercase tracking-[0.08em] no-underline transition-colors duration-150 hover:text-text-primary',
-          kind === t.key
-            ? `text-text-primary after:absolute after:right-0 after:-bottom-px after:left-0 after:h-0.5 after:rounded-t-xs after:bg-brand-light after:content-['']`
-            : 'text-text-muted',
-        ]"
-      >
-        {{ t.label }}
-      </RouterLink>
-    </div>
+    <UnderlineTabs
+      class="mt-6"
+      :tabs="[
+        {
+          key: 'followers',
+          label: 'Followers',
+          to: { name: 'user-followers', params: { username } },
+        },
+        {
+          key: 'following',
+          label: 'Following',
+          to: { name: 'user-following', params: { username } },
+        },
+      ]"
+      :active="kind"
+    />
 
     <StatusPanel
       v-if="loading && items.length === 0 && !errored"
@@ -160,21 +157,13 @@ onMounted(loadMore)
         </li>
       </ul>
 
-      <div v-if="cursor || paginationErrored" class="mt-6 flex flex-col items-center gap-2">
-        <span
-          v-if="paginationErrored"
-          class="font-mono text-[11px] uppercase tracking-widest text-text-muted"
-        >
-          Couldn't load more — try again.
-        </span>
-        <button
-          :disabled="loading"
-          @click="loadMore"
-          class="cursor-pointer rounded-sm border border-border bg-surface-raised px-6 py-2.5 font-mono text-[11px] uppercase tracking-[0.08em] text-text-primary transition-colors duration-150 hover:border-brand-light disabled:opacity-50"
-        >
-          {{ loading ? 'Loading…' : paginationErrored ? 'Retry' : 'Load more' }}
-        </button>
-      </div>
+      <LoadMoreButton
+        v-if="cursor || paginationErrored"
+        class="mt-6"
+        :loading="loading"
+        :errored="paginationErrored"
+        @load="loadMore"
+      />
     </template>
   </main>
 </template>

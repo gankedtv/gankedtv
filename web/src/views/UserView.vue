@@ -9,6 +9,7 @@ import { safeImageUrl } from '@/lib/url'
 import { formatNum } from '@/lib/format'
 import ClipCard from '@/components/ClipCard.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
+import UnderlineTabs from '@/components/UnderlineTabs.vue'
 import IconShare from '@/components/icons/IconShare.vue'
 import IconMoreHorizontal from '@/components/icons/IconMoreHorizontal.vue'
 
@@ -401,23 +402,7 @@ const TABS: { key: Tab; label: string }[] = [
 
         <!-- ---- Tabs ---- -->
         <div class="mt-9">
-          <div class="flex items-center border-b border-border">
-            <div class="flex flex-1 gap-0">
-              <button
-                v-for="t in TABS"
-                :key="t.key"
-                :class="[
-                  'relative cursor-pointer border-none bg-transparent px-4.5 py-3 font-mono text-xs uppercase tracking-[0.08em] transition-colors duration-150 hover:text-text-primary',
-                  tab === t.key
-                    ? `text-text-primary after:absolute after:right-0 after:-bottom-px after:left-0 after:h-0.5 after:rounded-t-xs after:bg-brand-light after:content-['']`
-                    : 'text-text-muted',
-                ]"
-                @click="tab = t.key"
-              >
-                {{ t.label }}
-              </button>
-            </div>
-          </div>
+          <UnderlineTabs :tabs="TABS" :active="tab" @select="(k) => (tab = k)" />
 
           <!-- Tab content -->
           <div class="mt-6">

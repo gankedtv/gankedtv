@@ -12,6 +12,8 @@ import DurationBadge from '@/components/DurationBadge.vue'
 import AuthorHandle from '@/components/AuthorHandle.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
 import PageHeader from '@/components/PageHeader.vue'
+import UnderlineTabs from '@/components/UnderlineTabs.vue'
+import LoadMoreButton from '@/components/LoadMoreButton.vue'
 import IconPlay from '@/components/icons/IconPlay.vue'
 
 const router = useRouter()
@@ -118,23 +120,7 @@ onMounted(loadMore)
       <template #caption>Live Feed · {{ items.length }} clips</template>
     </PageHeader>
 
-    <!-- Feed source tabs (Latest / Following). Underline-active style mirrors the
-         per-profile tab control in UserView so the two read as the same component. -->
-    <div class="mt-6 flex items-center border-b border-border">
-      <button
-        v-for="t in TABS"
-        :key="t.key"
-        :class="[
-          'relative cursor-pointer border-none bg-transparent px-4.5 py-3 font-mono text-xs uppercase tracking-[0.08em] transition-colors duration-150 hover:text-text-primary',
-          source === t.key
-            ? `text-text-primary after:absolute after:right-0 after:-bottom-px after:left-0 after:h-0.5 after:rounded-t-xs after:bg-brand-light after:content-['']`
-            : 'text-text-muted',
-        ]"
-        @click="selectTab(t.key)"
-      >
-        {{ t.label }}
-      </button>
-    </div>
+    <UnderlineTabs class="mt-6" :tabs="TABS" :active="source" @select="selectTab" />
 
     <!-- Initial loading state — explicit so the empty-state branch doesn't flash
          in the gap between mount and the first response. -->
@@ -332,22 +318,13 @@ onMounted(loadMore)
         />
       </div>
 
-      <!-- Load more -->
-      <div v-if="cursor || paginationErrored" class="mt-10 flex flex-col items-center gap-2">
-        <span
-          v-if="paginationErrored"
-          class="font-mono text-[11px] uppercase tracking-widest text-text-muted"
-        >
-          Couldn't load more — try again.
-        </span>
-        <button
-          :disabled="loading"
-          @click="loadMore"
-          class="cursor-pointer rounded-sm border border-border bg-surface-raised px-6 py-2.5 font-mono text-[11px] uppercase tracking-[0.08em] text-text-primary transition-colors duration-150 hover:border-brand-light disabled:opacity-50"
-        >
-          {{ loading ? 'Loading…' : paginationErrored ? 'Retry' : 'Load more' }}
-        </button>
-      </div>
+      <LoadMoreButton
+        v-if="cursor || paginationErrored"
+        class="mt-10"
+        :loading="loading"
+        :errored="paginationErrored"
+        @load="loadMore"
+      />
     </template>
   </main>
 </template>
