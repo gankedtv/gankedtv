@@ -82,5 +82,11 @@ describe('UserView (issue #92 regression)', () => {
     expect(wrapper.text()).toContain('Seed Clip 01')
     // Bug #1 guard: the clip thumbnail renders, bound to thumbnailUrl.
     expect(wrapper.find('.feed-grid img').attributes('src')).toBe('https://cdn.test/thumb.jpg')
+
+    // Onward-navigation guard (issue #92): clicking a clip card routes to its detail page.
+    await wrapper.find('.feed-grid article').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.name).toBe('clip')
+    expect(router.currentRoute.value.params.id).toBe('clp_01')
   })
 })
