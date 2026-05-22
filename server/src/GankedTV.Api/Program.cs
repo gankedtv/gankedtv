@@ -361,6 +361,7 @@ app.MapClipsReadEndpoints();
 app.MapClipsMutateEndpoints();
 app.MapLikesEndpoints();
 app.MapUsersEndpoints();
+app.MapFollowsEndpoints();
 app.MapGamesEndpoints();
 app.MapTagsEndpoints();
 

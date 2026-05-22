@@ -7,6 +7,11 @@ export interface UserProfile {
   bio: string | null
   avatarUrl: string | null
   createdAt: string
+  followerCount: number
+  followingCount: number
+  // null when the caller is unauthenticated or viewing their own profile; otherwise the
+  // signed-in user's follow state for this profile.
+  followedByMe: boolean | null
   clips: ClipFeedItem[]
 }
 

@@ -1,11 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory, type Router } from 'vue-router'
+import { createPinia } from 'pinia'
 import { defineComponent, h } from 'vue'
 
 // Mock the profile API so the component can mount without a backend.
 const getByUsername = vi.fn()
 vi.mock('@/api/users', () => ({ users: { getByUsername: (u: string) => getByUsername(u) } }))
+
+// Stub the follows API — UserView imports it for the follow/unfollow button but the
+// tests below don't exercise that path (no auth.user, so the button is hidden).
+vi.mock('@/api/follows', () => ({ follows: { follow: vi.fn(), unfollow: vi.fn() } }))
 
 import UserView from '../UserView.vue'
 
@@ -40,7 +45,7 @@ describe('UserView (issue #92 regression)', () => {
     const router = makeRouter()
     await router.push({ name: 'user', params: { username: 'seeduser' } })
     await router.isReady()
-    const wrapper = mount(UserView, { global: { plugins: [router] } })
+    const wrapper = mount(UserView, { global: { plugins: [router, createPinia()] } })
 
     // A comment placed before the root element makes the component multi-root, so the
     // rendered output begins with the comment node. <Transition> can't drive that and its
@@ -77,7 +82,7 @@ describe('UserView (issue #92 regression)', () => {
     const router = makeRouter()
     await router.push({ name: 'user', params: { username: 'seeduser' } })
     await router.isReady()
-    const wrapper = mount(UserView, { global: { plugins: [router] } })
+    const wrapper = mount(UserView, { global: { plugins: [router, createPinia()] } })
     await flushPromises()
 
     expect(wrapper.text()).toContain('Seed Clip 01')

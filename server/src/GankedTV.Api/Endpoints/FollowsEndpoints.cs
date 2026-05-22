@@ -1,0 +1,160 @@
+using System.Security.Claims;
+using GankedTV.Api.Contracts.Users;
+using GankedTV.Api.Data;
+using GankedTV.Api.Problems;
+using Microsoft.EntityFrameworkCore;
+
+namespace GankedTV.Api.Endpoints;
+
+public static class FollowsEndpoints
+{
+    private const int FollowListDefaultLimit = 20;
+    private const int FollowListMaxLimit = 100;
+
+    public static IEndpointRouteBuilder MapFollowsEndpoints(this IEndpointRouteBuilder app)
+    {
+        var auth = app.MapGroup("/users").RequireAuthorization();
+        auth.MapPost("/{username}/follow", Follow);
+        auth.MapDelete("/{username}/follow", Unfollow);
+
+        var open = app.MapGroup("/users");
+        open.MapGet("/{username}/followers", ListFollowers);
+        open.MapGet("/{username}/following", ListFollowing);
+        return app;
+    }
+
+    private static async Task<IResult> Follow(
+        string username,
+        ClaimsPrincipal principal,
+        GankedTvDbContext db,
+        CancellationToken ct)
+    {
+        if (!ClipsReadEndpoints.TryGetUserId(principal, out var followerId))
+        {
+            return ProblemResults.Unauthorized("unauthorized");
+        }
+
+        var target = await UsersEndpoints.FindByUsernameAsync(db, username, ct);
+        if (target is null)
+        {
+            return ProblemResults.NotFound("not_found");
+        }
+
+        if (target.Id == followerId)
+        {
+            return ProblemResults.BadRequest("self_follow", "Cannot follow yourself.");
+        }
+
+        // ON CONFLICT DO NOTHING collapses both sequential double-clicks and concurrent
+        // requests from the same follower into a single row — same pattern as Like.
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"INSERT INTO follows (follower_id, followee_id) VALUES ({followerId}, {target.Id}) ON CONFLICT DO NOTHING",
+            ct);
+
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> Unfollow(
+        string username,
+        ClaimsPrincipal principal,
+        GankedTvDbContext db,
+        CancellationToken ct)
+    {
+        if (!ClipsReadEndpoints.TryGetUserId(principal, out var followerId))
+        {
+            return ProblemResults.Unauthorized("unauthorized");
+        }
+
+        var target = await UsersEndpoints.FindByUsernameAsync(db, username, ct);
+        if (target is null)
+        {
+            return ProblemResults.NotFound("not_found");
+        }
+
+        // Idempotent: a DELETE that matches zero rows still returns 204. No transactional
+        // counter to maintain (counts are computed on read), so a single set-based DELETE
+        // suffices.
+        await db.Follows
+            .Where(f => f.FollowerId == followerId && f.FolloweeId == target.Id)
+            .ExecuteDeleteAsync(ct);
+
+        return Results.NoContent();
+    }
+
+    // ListFollowers and ListFollowing are intentionally near-duplicates rather than
+    // a shared helper parameterised over which side of the row to project: the two
+    // queries differ in which column they filter on, which navigation they Include,
+    // and which Guid they keyset on. A generic helper would need EF-translatable
+    // expression-tree parameters for all three, which complicates the query trees
+    // and obscures what each endpoint actually emits. Two straightforward methods
+    // read better and let EF generate the cleanest SQL.
+
+    private static async Task<IResult> ListFollowers(
+        string username, string? cursor, int? limit,
+        GankedTvDbContext db, CancellationToken ct)
+    {
+        var target = await UsersEndpoints.FindByUsernameAsync(db, username, ct);
+        if (target is null) return ProblemResults.NotFound("not_found");
+
+        var clampedLimit = Math.Clamp(limit ?? FollowListDefaultLimit, 1, FollowListMaxLimit);
+        var hasCursor = FeedCursor.TryParse(cursor, out var cAt, out var cId);
+
+        // Followers of target: rows where FolloweeId == target.Id; pagination keyset is
+        // (CreatedAt, FollowerId) — the "other side" of the row, matching what the
+        // projected UserSummary identifies.
+        var query = db.Follows.AsNoTracking().Where(f => f.FolloweeId == target.Id);
+        if (hasCursor)
+        {
+            query = query.Where(f =>
+                f.CreatedAt < cAt || (f.CreatedAt == cAt && f.FollowerId.CompareTo(cId) < 0));
+        }
+
+        var rows = await query
+            .OrderByDescending(f => f.CreatedAt).ThenByDescending(f => f.FollowerId)
+            .Include(f => f.Follower)
+            .Take(clampedLimit + 1)
+            .ToListAsync(ct);
+
+        var hasMore = rows.Count > clampedLimit;
+        var page = hasMore ? rows.GetRange(0, clampedLimit) : rows;
+        var items = page
+            .Select(f => new UserSummary(f.Follower.Id, f.Follower.Username, f.Follower.AvatarUrl))
+            .ToList();
+        var nextCursor = hasMore ? FeedCursor.Build(page[^1].CreatedAt, page[^1].FollowerId) : null;
+
+        return Results.Ok(new UserSummaryPage(items, nextCursor));
+    }
+
+    private static async Task<IResult> ListFollowing(
+        string username, string? cursor, int? limit,
+        GankedTvDbContext db, CancellationToken ct)
+    {
+        var target = await UsersEndpoints.FindByUsernameAsync(db, username, ct);
+        if (target is null) return ProblemResults.NotFound("not_found");
+
+        var clampedLimit = Math.Clamp(limit ?? FollowListDefaultLimit, 1, FollowListMaxLimit);
+        var hasCursor = FeedCursor.TryParse(cursor, out var cAt, out var cId);
+
+        var query = db.Follows.AsNoTracking().Where(f => f.FollowerId == target.Id);
+        if (hasCursor)
+        {
+            query = query.Where(f =>
+                f.CreatedAt < cAt || (f.CreatedAt == cAt && f.FolloweeId.CompareTo(cId) < 0));
+        }
+
+        var rows = await query
+            .OrderByDescending(f => f.CreatedAt).ThenByDescending(f => f.FolloweeId)
+            .Include(f => f.Followee)
+            .Take(clampedLimit + 1)
+            .ToListAsync(ct);
+
+        var hasMore = rows.Count > clampedLimit;
+        var page = hasMore ? rows.GetRange(0, clampedLimit) : rows;
+        var items = page
+            .Select(f => new UserSummary(f.Followee.Id, f.Followee.Username, f.Followee.AvatarUrl))
+            .ToList();
+        var nextCursor = hasMore ? FeedCursor.Build(page[^1].CreatedAt, page[^1].FolloweeId) : null;
+
+        return Results.Ok(new UserSummaryPage(items, nextCursor));
+    }
+}

@@ -71,6 +71,7 @@ export interface ClipFeedPage {
 export interface ClipFeedQuery {
   cursor?: string | null
   limit?: number
+  source?: 'public' | 'following'
 }
 
 export interface UploadUrl {
@@ -107,6 +108,7 @@ export const clips = {
     const params = new URLSearchParams()
     if (query.cursor) params.set('cursor', query.cursor)
     if (query.limit !== undefined) params.set('limit', String(query.limit))
+    if (query.source) params.set('source', query.source)
     const qs = params.toString()
     return api<ClipFeedPage>(`/clips/feed${qs ? `?${qs}` : ''}`)
   },

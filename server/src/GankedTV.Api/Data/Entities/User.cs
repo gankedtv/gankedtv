@@ -16,4 +16,6 @@ public class User
 
     public ICollection<Clip> Clips { get; set; } = [];
     public ICollection<Like> Likes { get; set; } = [];
+    public ICollection<Follow> Following { get; set; } = [];
+    public ICollection<Follow> Followers { get; set; } = [];
 }

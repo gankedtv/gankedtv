@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { clips, type ClipFeedItem } from '@/api/clips'
+import { useAuthStore } from '@/stores/auth'
 import { formatNum, formatDuration, formatRelativeTime } from '@/lib/format'
 import ClipCard from '@/components/ClipCard.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
@@ -14,6 +15,22 @@ import PageHeader from '@/components/PageHeader.vue'
 import IconPlay from '@/components/icons/IconPlay.vue'
 
 const router = useRouter()
+const route = useRoute()
+const auth = useAuthStore()
+
+type FeedSource = 'public' | 'following'
+const TABS: { key: FeedSource; label: string }[] = [
+  { key: 'public', label: 'Latest' },
+  { key: 'following', label: 'Following' },
+]
+
+// Honour ?tab=following (used after login to bounce a viewer back to the tab they
+// clicked while signed-out). Gated on auth so a signed-out user landing on
+// `/?tab=following` directly doesn't hit a 401 and the generic error panel — they
+// fall through to public, which is the right initial state for anonymous browsing.
+const initialTab: FeedSource =
+  route.query.tab === 'following' && auth.isAuthenticated ? 'following' : 'public'
+const source = ref<FeedSource>(initialTab)
 
 const items = ref<ClipFeedItem[]>([])
 const cursor = ref<string | null>(null)
@@ -30,17 +47,31 @@ const hero = computed(() => items.value[0] ?? null)
 const secondary = computed(() => items.value.slice(1, 5))
 const grid = computed(() => items.value.slice(5))
 
+const showFollowingEmpty = computed(
+  () =>
+    source.value === 'following' && !loading.value && !errored.value && items.value.length === 0,
+)
+
 async function loadMore() {
   if (loading.value) return
   const isFirstPage = items.value.length === 0
   loading.value = true
   if (isFirstPage) errored.value = false
   paginationErrored.value = false
+  // Capture the source at request time so a tab switch mid-flight doesn't drop the
+  // response into the wrong list.
+  const requestedSource = source.value
   try {
-    const page = await clips.feed({ cursor: cursor.value, limit: 20 })
+    const page = await clips.feed({
+      cursor: cursor.value,
+      limit: 20,
+      source: requestedSource,
+    })
+    if (source.value !== requestedSource) return
     items.value.push(...page.items)
     cursor.value = page.nextCursor
   } catch (err) {
+    if (source.value !== requestedSource) return
     console.error('feed: load failed', err)
     if (isFirstPage) {
       errored.value = true
@@ -48,8 +79,24 @@ async function loadMore() {
       paginationErrored.value = true
     }
   } finally {
-    loading.value = false
+    if (source.value === requestedSource) loading.value = false
   }
+}
+
+function selectTab(next: FeedSource) {
+  if (next === source.value) return
+  // Signed-out users can browse public but not following — bounce through /login with
+  // a tab=following hint so they land back here after auth.
+  if (next === 'following' && !auth.isAuthenticated) {
+    router.push({ name: 'login', query: { redirect: '/?tab=following' } })
+    return
+  }
+  source.value = next
+  items.value = []
+  cursor.value = null
+  errored.value = false
+  paginationErrored.value = false
+  loadMore()
 }
 
 onMounted(loadMore)
@@ -63,6 +110,24 @@ onMounted(loadMore)
       <template #caption>Live Feed · {{ items.length }} clips</template>
     </PageHeader>
 
+    <!-- Feed source tabs (Latest / Following). Underline-active style mirrors the
+         per-profile tab control in UserView so the two read as the same component. -->
+    <div class="mt-6 flex items-center border-b border-border">
+      <button
+        v-for="t in TABS"
+        :key="t.key"
+        :class="[
+          'relative cursor-pointer border-none bg-transparent px-4.5 py-3 font-mono text-xs uppercase tracking-[0.08em] transition-colors duration-150 hover:text-text-primary',
+          source === t.key
+            ? `text-text-primary after:absolute after:right-0 after:-bottom-px after:left-0 after:h-0.5 after:rounded-t-xs after:bg-brand-light after:content-['']`
+            : 'text-text-muted',
+        ]"
+        @click="selectTab(t.key)"
+      >
+        {{ t.label }}
+      </button>
+    </div>
+
     <!-- Initial loading state — explicit so the empty-state branch doesn't flash
          in the gap between mount and the first response. -->
     <StatusPanel
@@ -71,7 +136,29 @@ onMounted(loadMore)
       message="Loading…"
     />
 
-    <!-- Empty state -->
+    <!-- Empty state — Following gets its own CTA per the issue spec; Latest falls
+         through to the original "no clips yet — be the first" path. -->
+    <StatusPanel
+      v-else-if="showFollowingEmpty"
+      kind="empty"
+      message="Follow some creators to fill your Following feed."
+    >
+      <div class="flex flex-wrap items-center justify-center gap-2">
+        <button
+          class="cursor-pointer rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+          @click="selectTab('public')"
+        >
+          Browse Latest
+        </button>
+        <RouterLink
+          to="/games"
+          class="rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+        >
+          Explore games
+        </RouterLink>
+      </div>
+    </StatusPanel>
+
     <StatusPanel
       v-else-if="!loading && items.length === 0 && !errored"
       kind="empty"

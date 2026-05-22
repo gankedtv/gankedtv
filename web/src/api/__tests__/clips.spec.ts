@@ -51,6 +51,30 @@ describe('api/clips', () => {
       expect(url).toContain('limit=5')
       expect(url.startsWith(`${BASE_URL}/clips/feed?`)).toBe(true)
     })
+
+    it('passes the source param through when set', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ items: [], nextCursor: null })),
+      )
+
+      await clips.feed({ source: 'following' })
+
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+      expect(url).toBe(`${BASE_URL}/clips/feed?source=following`)
+    })
+
+    it('omits source when not provided (falls back to public on the server)', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ items: [], nextCursor: null })),
+      )
+
+      await clips.feed({ limit: 10 })
+
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+      expect(url).not.toContain('source=')
+    })
   })
 
   describe('getDetail()', () => {

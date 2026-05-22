@@ -8,4 +8,7 @@ public sealed record UserProfileResponse(
     string? Bio,
     string? AvatarUrl,
     DateTimeOffset CreatedAt,
+    int FollowerCount,
+    int FollowingCount,
+    bool? FollowedByMe,
     IReadOnlyList<ClipFeedItem> Clips);

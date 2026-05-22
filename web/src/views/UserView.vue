@@ -3,6 +3,8 @@ import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/client'
 import { users, type UserProfile } from '@/api/users'
+import { follows } from '@/api/follows'
+import { useAuthStore } from '@/stores/auth'
 import { safeImageUrl } from '@/lib/url'
 import { formatNum } from '@/lib/format'
 import ClipCard from '@/components/ClipCard.vue'
@@ -12,10 +14,18 @@ import IconMoreHorizontal from '@/components/icons/IconMoreHorizontal.vue'
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 
 const profile = ref<UserProfile | null>(null)
 const loading = ref(false)
 const errored = ref(false)
+const followBusy = ref(false)
+
+// Identity-based — `auth.user.id === profile.id` is more reliable than username string
+// equality (case, future username changes). When the viewer isn't signed in, this is
+// always false and the follow button shows for any profile.
+const isMe = computed(() => !!auth.user && !!profile.value && auth.user.id === profile.value.id)
+const canShowFollowButton = computed(() => auth.isAuthenticated && !!profile.value && !isMe.value)
 
 const username = computed(() => {
   const u = route.params.username
@@ -96,6 +106,43 @@ const joinedDate = computed(() => {
 
 const totalPlays = computed(() => (profile.value?.clips ?? []).reduce((s, c) => s + c.viewCount, 0))
 const totalLikes = computed(() => (profile.value?.clips ?? []).reduce((s, c) => s + c.likeCount, 0))
+
+async function toggleFollow() {
+  if (!profile.value || followBusy.value) return
+  // Mirrors the like button: redirect to login when unauthenticated so the user can
+  // come back and try again rather than silently failing.
+  if (!auth.isAuthenticated) {
+    router.push({ name: 'login', query: { redirect: route.fullPath } })
+    return
+  }
+
+  const targetUsername = profile.value.username
+  const wasFollowing = profile.value.followedByMe === true
+  // Optimistic flip — same pattern as ClipView's like toggle. The +/- 1 can drift
+  // out of sync with reality if the same user toggles follow state in another tab
+  // between page load and this click; a hard refresh resolves it. Multi-tab
+  // consistency isn't required for v1 and follow ops are idempotent on the server,
+  // so the worst case is a stale counter, not a state corruption.
+  profile.value.followedByMe = !wasFollowing
+  profile.value.followerCount += wasFollowing ? -1 : 1
+  followBusy.value = true
+  try {
+    if (wasFollowing) {
+      await follows.unfollow(targetUsername)
+    } else {
+      await follows.follow(targetUsername)
+    }
+    // Guard against route navigation mid-request.
+    if (profile.value?.username !== targetUsername) return
+  } catch {
+    if (profile.value?.username !== targetUsername) return
+    // Roll back.
+    profile.value.followedByMe = wasFollowing
+    profile.value.followerCount += wasFollowing ? 1 : -1
+  } finally {
+    followBusy.value = false
+  }
+}
 
 const copyMessage = ref<string | null>(null)
 let copyTimer: ReturnType<typeof setTimeout> | null = null
@@ -226,8 +273,21 @@ const TABS: { key: Tab; label: string }[] = [
           </div>
 
           <!-- Action buttons (follow + share + more) -->
-          <!-- Follow lives in Phase 3 (social-graph endpoints). Share is best-effort clipboard. -->
           <div class="flex flex-wrap items-center gap-2 pt-19">
+            <button
+              v-if="canShowFollowButton"
+              :class="[
+                'flex h-9 cursor-pointer items-center rounded-sm px-4 font-mono text-[11px] uppercase tracking-[0.08em] transition-all duration-150 disabled:opacity-60',
+                profile.followedByMe
+                  ? 'bg-brand text-white hover:bg-brand-light'
+                  : 'border border-border bg-surface-raised text-text-primary hover:border-border-hover',
+              ]"
+              :disabled="followBusy"
+              :aria-pressed="profile.followedByMe === true"
+              @click="toggleFollow"
+            >
+              {{ profile.followedByMe ? 'Following' : 'Follow' }}
+            </button>
             <button
               class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-sm border border-border bg-surface-raised text-text-secondary transition-[border-color] duration-150 hover:border-border-hover"
               aria-label="Share profile"
@@ -258,6 +318,8 @@ const TABS: { key: Tab; label: string }[] = [
           <div
             v-for="stat in [
               { label: 'Clips', value: formatNum(profile.clips.length) },
+              { label: 'Followers', value: formatNum(profile.followerCount) },
+              { label: 'Following', value: formatNum(profile.followingCount) },
               { label: 'Total plays', value: formatNum(totalPlays) },
               { label: 'Total likes', value: formatNum(totalLikes) },
             ]"
