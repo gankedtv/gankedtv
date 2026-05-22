@@ -71,4 +71,28 @@ public class CorsOriginsParserTests
         var act = () => CorsOriginsParser.Parse("http://a.test", "");
         act.Should().Throw<ArgumentException>().WithParameterName("alwaysInclude");
     }
+
+    [Theory]
+    [InlineData("http://localhost")]
+    [InlineData("http://localhost:5173")]
+    [InlineData("http://localhost:5493")] // a worktree port
+    [InlineData("https://localhost:8443")]
+    [InlineData("http://LocalHost:5173")] // host comparison is case-insensitive per RFC 6454
+    [InlineData("http://127.0.0.1")]
+    [InlineData("http://127.0.0.1:9999")]
+    [InlineData("http://[::1]:5173")]
+    public void IsLocalhostOrigin_Accepts(string origin) =>
+        CorsOriginsParser.IsLocalhostOrigin(origin).Should().BeTrue();
+
+    [Theory]
+    [InlineData("http://evil.test")]
+    [InlineData("http://localhost.evil.test")] // suffix-based hijack attempt
+    [InlineData("http://127.0.0.2")] // not loopback, despite the 127. prefix
+    [InlineData("http://10.0.0.1")]
+    [InlineData("ftp://localhost")] // wrong scheme
+    [InlineData("file:///localhost")] // wrong scheme + format
+    [InlineData("not a url")]
+    [InlineData("")]
+    public void IsLocalhostOrigin_Rejects(string origin) =>
+        CorsOriginsParser.IsLocalhostOrigin(origin).Should().BeFalse();
 }

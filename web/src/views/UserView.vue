@@ -311,15 +311,69 @@ const TABS: { key: Tab; label: string }[] = [
           </div>
         </div>
 
-        <!-- ---- Stat block ---- -->
+        <!-- ---- Stat block ----
+             Followers + Following render as RouterLinks when their count is > 0
+             so a viewer can drill into the list. We keep a 0-count cell as a
+             plain <div> so it doesn't look (or behave) clickable when the
+             destination would just be an empty list. -->
         <div
           class="mt-7 grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-px overflow-hidden rounded-md border border-border bg-border"
         >
+          <div class="flex flex-col gap-1 bg-surface-raised px-5 py-4">
+            <span class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
+              >Clips</span
+            >
+            <span class="font-heading text-[22px] font-bold leading-none text-text-primary">{{
+              formatNum(profile.clips.length)
+            }}</span>
+          </div>
+
+          <component
+            :is="profile.followerCount > 0 ? 'RouterLink' : 'div'"
+            :to="
+              profile.followerCount > 0
+                ? { name: 'user-followers', params: { username: profile.username } }
+                : undefined
+            "
+            :class="[
+              'flex flex-col gap-1 bg-surface-raised px-5 py-4 no-underline',
+              profile.followerCount > 0
+                ? 'cursor-pointer transition-colors duration-150 hover:bg-surface-overlay'
+                : '',
+            ]"
+          >
+            <span class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
+              >Followers</span
+            >
+            <span class="font-heading text-[22px] font-bold leading-none text-text-primary">{{
+              formatNum(profile.followerCount)
+            }}</span>
+          </component>
+
+          <component
+            :is="profile.followingCount > 0 ? 'RouterLink' : 'div'"
+            :to="
+              profile.followingCount > 0
+                ? { name: 'user-following', params: { username: profile.username } }
+                : undefined
+            "
+            :class="[
+              'flex flex-col gap-1 bg-surface-raised px-5 py-4 no-underline',
+              profile.followingCount > 0
+                ? 'cursor-pointer transition-colors duration-150 hover:bg-surface-overlay'
+                : '',
+            ]"
+          >
+            <span class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
+              >Following</span
+            >
+            <span class="font-heading text-[22px] font-bold leading-none text-text-primary">{{
+              formatNum(profile.followingCount)
+            }}</span>
+          </component>
+
           <div
             v-for="stat in [
-              { label: 'Clips', value: formatNum(profile.clips.length) },
-              { label: 'Followers', value: formatNum(profile.followerCount) },
-              { label: 'Following', value: formatNum(profile.followingCount) },
               { label: 'Total plays', value: formatNum(totalPlays) },
               { label: 'Total likes', value: formatNum(totalLikes) },
             ]"

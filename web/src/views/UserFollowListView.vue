@@ -1,0 +1,175 @@
+<script setup lang="ts">
+import { ref, computed, watch, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { ApiError } from '@/api/client'
+import { follows, type UserSummary } from '@/api/follows'
+import UserAvatar from '@/components/UserAvatar.vue'
+import StatusPanel from '@/components/StatusPanel.vue'
+import PageHeader from '@/components/PageHeader.vue'
+
+const route = useRoute()
+const router = useRouter()
+
+type Kind = 'followers' | 'following'
+// Route meta carries the static "kind" of the list so a single view component
+// services both /user/:username/followers and /user/:username/following without
+// the URL-path sniffing being duplicated here.
+const kind = computed<Kind>(() => (route.meta.kind as Kind) ?? 'followers')
+
+const username = computed(() => {
+  const u = route.params.username
+  return Array.isArray(u) ? u[0] : u
+})
+
+const items = ref<UserSummary[]>([])
+const cursor = ref<string | null>(null)
+const loading = ref(false)
+const errored = ref(false)
+const paginationErrored = ref(false)
+// Tracks "is this the first page for the current (username, kind) combo" so
+// route switches reset state cleanly without confusing initial-vs-pagination
+// error branches.
+let latestLoadKey = ''
+
+const heading = computed(() => {
+  const name = username.value || ''
+  return kind.value === 'followers' ? `${name}'s followers` : `${name} is following`
+})
+
+async function loadMore() {
+  if (loading.value || !username.value) return
+  const name = username.value
+  const k = kind.value
+  const key = `${name}|${k}`
+  const isFirstPage = key !== latestLoadKey || items.value.length === 0
+  if (isFirstPage) {
+    latestLoadKey = key
+    items.value = []
+    cursor.value = null
+    errored.value = false
+  }
+  paginationErrored.value = false
+  loading.value = true
+  try {
+    const fetcher = k === 'followers' ? follows.listFollowers : follows.listFollowing
+    const page = await fetcher(name, { cursor: cursor.value, limit: 20 })
+    // Discard if the route changed mid-flight.
+    if (latestLoadKey !== key) return
+    items.value.push(...page.items)
+    cursor.value = page.nextCursor
+  } catch (err) {
+    if (latestLoadKey !== key) return
+    if (err instanceof ApiError && err.status === 404) {
+      router.replace({ name: 'not-found' })
+      return
+    }
+    if (isFirstPage) errored.value = true
+    else paginationErrored.value = true
+  } finally {
+    if (latestLoadKey === key) loading.value = false
+  }
+}
+
+// Re-fetch when either the username changes (route nav) or the kind changes
+// (user switches between /followers and /following on the same profile).
+watch([username, kind], () => loadMore(), { immediate: false })
+
+onMounted(loadMore)
+</script>
+
+<template>
+  <main class="mx-auto max-w-3xl px-6 pt-8 pb-30 max-[899px]:px-3.5 max-[899px]:pt-4">
+    <PageHeader :title="heading">
+      <template #caption>
+        <RouterLink
+          :to="{ name: 'user', params: { username } }"
+          class="font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary no-underline hover:text-text-primary"
+        >
+          ← Back to @{{ username }}
+        </RouterLink>
+      </template>
+    </PageHeader>
+
+    <!-- Tab toggle so a viewer can flip between followers/following without
+         going back through the profile. Uses the same underline style as the
+         HomeView Latest/Following tabs and UserView's clip tabs. -->
+    <div class="mt-6 flex items-center border-b border-border">
+      <RouterLink
+        v-for="t in [
+          { key: 'followers', label: 'Followers' },
+          { key: 'following', label: 'Following' },
+        ]"
+        :key="t.key"
+        :to="{ name: `user-${t.key}`, params: { username } }"
+        :class="[
+          'relative cursor-pointer border-none bg-transparent px-4.5 py-3 font-mono text-xs uppercase tracking-[0.08em] no-underline transition-colors duration-150 hover:text-text-primary',
+          kind === t.key
+            ? `text-text-primary after:absolute after:right-0 after:-bottom-px after:left-0 after:h-0.5 after:rounded-t-xs after:bg-brand-light after:content-['']`
+            : 'text-text-muted',
+        ]"
+      >
+        {{ t.label }}
+      </RouterLink>
+    </div>
+
+    <StatusPanel
+      v-if="loading && items.length === 0 && !errored"
+      kind="loading"
+      message="Loading…"
+    />
+
+    <StatusPanel v-else-if="errored" kind="error" message="Couldn't load this list.">
+      <button
+        class="cursor-pointer rounded-sm border border-border bg-surface-raised px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+        @click="loadMore"
+      >
+        Retry
+      </button>
+    </StatusPanel>
+
+    <StatusPanel
+      v-else-if="!loading && items.length === 0"
+      kind="empty"
+      :message="
+        kind === 'followers' ? 'No followers yet.' : `@${username} isn't following anyone yet.`
+      "
+    />
+
+    <template v-else>
+      <ul class="mt-6 grid grid-cols-1 gap-2 p-0">
+        <li v-for="u in items" :key="u.id" class="list-none">
+          <RouterLink
+            :to="{ name: 'user', params: { username: u.username } }"
+            class="flex items-center gap-3 rounded-sm border border-border bg-surface-raised px-4 py-3 no-underline transition-colors duration-150 hover:border-border-hover"
+          >
+            <UserAvatar :user="u" :size="36" />
+            <div class="flex min-w-0 flex-col">
+              <span class="truncate font-heading text-base text-text-primary">{{
+                u.username
+              }}</span>
+              <span class="truncate font-mono text-[11px] tracking-[0.04em] text-neon">
+                @{{ u.username }}
+              </span>
+            </div>
+          </RouterLink>
+        </li>
+      </ul>
+
+      <div v-if="cursor || paginationErrored" class="mt-6 flex flex-col items-center gap-2">
+        <span
+          v-if="paginationErrored"
+          class="font-mono text-[11px] uppercase tracking-widest text-text-muted"
+        >
+          Couldn't load more — try again.
+        </span>
+        <button
+          :disabled="loading"
+          @click="loadMore"
+          class="cursor-pointer rounded-sm border border-border bg-surface-raised px-6 py-2.5 font-mono text-[11px] uppercase tracking-[0.08em] text-text-primary transition-colors duration-150 hover:border-brand-light disabled:opacity-50"
+        >
+          {{ loading ? 'Loading…' : paginationErrored ? 'Retry' : 'Load more' }}
+        </button>
+      </div>
+    </template>
+  </main>
+</template>

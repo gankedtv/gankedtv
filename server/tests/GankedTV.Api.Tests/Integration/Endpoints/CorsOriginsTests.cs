@@ -99,6 +99,40 @@ public class CorsOriginsTests
         }
     }
 
+    [Theory]
+    [InlineData("http://localhost:5493")] // a worktree's Vite port
+    [InlineData("http://localhost:9999")] // a one-off dev override
+    [InlineData("http://127.0.0.1:5173")]
+    public async Task Development_AllowsAnyLocalhostOrigin_EvenWhenNotInAllowlist(string origin)
+    {
+        // Regression guard for the worktree foot-gun: a developer running with a non-default
+        // VITE_PORT (or no WEB_ORIGIN at all) should not surface an opaque CORS error in
+        // the browser. Production still enforces the strict allowlist — covered below.
+        Environment.SetEnvironmentVariable("CORS_ORIGINS", null);
+        await using var factory = new AuthApiFactory(_fx.ConnectionString, environment: "Development");
+        using var client = factory.CreateClient();
+
+        (await PreflightAllowOrigin(client, origin)).Should().Be(origin);
+    }
+
+    [Fact]
+    public async Task Production_DoesNotAutoAllowLocalhost_StrictAllowlistOnly()
+    {
+        // Mirror of the dev-mode test above for production: any localhost origin not on
+        // the explicit allowlist is denied. Prod has no reason to receive localhost
+        // requests and we don't want the dev convenience to leak into deployed envs.
+        Environment.SetEnvironmentVariable("CORS_ORIGINS", null);
+        await using var factory = new AuthApiFactory(_fx.ConnectionString, environment: "Production");
+        using var client = factory.CreateClient();
+
+        // localhost:5173 IS the WebOrigin (AuthApiFactory sets WEB_ORIGIN=http://localhost:5173),
+        // so it's allowed via the regular allowlist path — verify that still works.
+        (await PreflightAllowOrigin(client, "http://localhost:5173")).Should().Be("http://localhost:5173");
+
+        // A different localhost port is NOT on the allowlist and must be rejected in prod.
+        (await PreflightAllowOrigin(client, "http://localhost:9999")).Should().BeNull();
+    }
+
     private static async Task<string?> PreflightAllowOrigin(HttpClient client, string origin)
     {
         var req = new HttpRequestMessage(HttpMethod.Options, "/clips/feed");

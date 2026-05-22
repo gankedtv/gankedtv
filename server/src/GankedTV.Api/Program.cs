@@ -293,6 +293,9 @@ const string corsPolicy = "WebOrigin";
 // instead of AddCors(o => o.AddPolicy(...)) because the origin list depends on the already-
 // bound OAuthOptions and the AddCors lambda overload can't inject IOptions<T>.
 var corsOriginsRaw = Environment.GetEnvironmentVariable("CORS_ORIGINS");
+// Capture into a local so the lambda doesn't reach into `builder` (which is closed-over
+// at scope exit and could surface stale state if Program ever evolves into a class).
+var corsAllowAnyLocalhost = builder.Environment.IsDevelopment();
 builder.Services
     .AddOptions<CorsOptions>()
     .Configure<IOptions<OAuthOptions>>((cors, oauth) =>
@@ -302,8 +305,16 @@ builder.Services
         // in CORS_ORIGINS is matched as a string, not interpreted by CorsService as the
         // CORS-spec wildcard (which silently disables AllowCredentials). Host comparison
         // is case-insensitive per RFC 6454; scheme/port exact-match.
+        //
+        // Dev belt-and-suspenders: in Development we also accept any localhost origin so
+        // a worktree on a non-default VITE_PORT (or a misconfigured WEB_ORIGIN) doesn't
+        // surface as an opaque CORS error in the browser. Production keeps the strict
+        // allowlist — there's no scenario in prod where a request from "localhost"
+        // should reach the public API.
         cors.AddPolicy(corsPolicy, policy => policy
-            .SetIsOriginAllowed(origin => origins.Contains(origin, StringComparer.OrdinalIgnoreCase))
+            .SetIsOriginAllowed(origin =>
+                origins.Contains(origin, StringComparer.OrdinalIgnoreCase)
+                || (corsAllowAnyLocalhost && CorsOriginsParser.IsLocalhostOrigin(origin)))
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials());
