@@ -8,7 +8,9 @@ import AuthorHandle from './AuthorHandle.vue'
 import IconHeart from './icons/IconHeart.vue'
 import IconEye from './icons/IconEye.vue'
 
-const props = defineProps<{ clip: ClipFeedItem }>()
+const props = withDefaults(defineProps<{ clip: ClipFeedItem; showAuthor?: boolean }>(), {
+  showAuthor: true,
+})
 const emit = defineEmits<{ click: [] }>()
 
 function onKeydown(e: KeyboardEvent) {
@@ -64,6 +66,7 @@ function onKeydown(e: KeyboardEvent) {
       </h3>
 
       <div
+        v-if="showAuthor"
         class="flex items-center gap-2 overflow-hidden font-mono text-[11px] text-text-secondary"
       >
         <UserAvatar :user="clip.author" :size="20" />
@@ -83,6 +86,7 @@ function onKeydown(e: KeyboardEvent) {
           <IconEye :size="11" />
           {{ formatNum(clip.viewCount) }}
         </span>
+        <span v-if="!showAuthor" class="ml-auto">{{ formatRelativeTime(clip.createdAt) }} ago</span>
       </div>
     </div>
   </article>

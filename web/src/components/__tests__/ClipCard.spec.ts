@@ -76,6 +76,22 @@ describe('ClipCard', () => {
     expect(wrapper.text()).toContain('@phantomveil')
   })
 
+  it('renders the thumbnail img bound to thumbnailUrl', () => {
+    const clip = makeClip()
+    const wrapper = mount(ClipCard, { props: { clip }, global: { plugins: [makeRouter()] } })
+    expect(wrapper.find('img').attributes('src')).toBe(clip.thumbnailUrl)
+  })
+
+  it('hides the author row but keeps the relative time when showAuthor is false', () => {
+    const wrapper = mount(ClipCard, {
+      props: { clip: makeClip(), showAuthor: false },
+      global: { plugins: [makeRouter()] },
+    })
+    expect(wrapper.text()).not.toContain('@phantomveil')
+    expect(wrapper.text()).toContain('ago')
+    expect(wrapper.find('img').attributes('src')).toBe('https://cdn.test/thumb.jpg')
+  })
+
   it('emits click when the article is clicked', async () => {
     const wrapper = mount(ClipCard, {
       props: { clip: makeClip() },
