@@ -18,23 +18,37 @@ const errored = ref(false)
 // "0 results for newWord" while the previous response is still on screen.
 const lastQuery = ref('')
 
+// Per-call token: route.query.q can change faster than the fetch resolves (e.g. user
+// edits the URL twice in quick succession or types in the navbar while SearchView is
+// open). Capturing the seq at the start of load() and re-checking before each state
+// write makes sure an out-of-order earlier response can't overwrite the newer one.
+let loadSeq = 0
+
 async function load(q: string) {
+  const seq = ++loadSeq
   const trimmed = q.trim()
   if (!trimmed) {
     results.value = { clips: [], games: [] }
     lastQuery.value = ''
+    // Clear errored too: navigating from a failed `/search?q=foo` back to `/search`
+    // shouldn't leave the error panel up over an empty-query state.
+    errored.value = false
+    loading.value = false
     return
   }
   loading.value = true
   errored.value = false
   try {
-    results.value = await search.query(trimmed, { type: 'all', limit: 20 })
+    const resp = await search.query(trimmed, { type: 'all', limit: 20 })
+    if (seq !== loadSeq) return
+    results.value = resp
     lastQuery.value = trimmed
   } catch (err) {
+    if (seq !== loadSeq) return
     console.error('search: load failed', err)
     errored.value = true
   } finally {
-    loading.value = false
+    if (seq === loadSeq) loading.value = false
   }
 }
 

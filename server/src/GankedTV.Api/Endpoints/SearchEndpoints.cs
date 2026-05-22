@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.RegularExpressions;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Contracts.Games;
 using GankedTV.Api.Contracts.Search;
@@ -16,6 +17,16 @@ public static class SearchEndpoints
     private const int DefaultLimit = 20;
     private const int MaxLimit = 50;
 
+    // Matches contiguous runs of Unicode letters/digits. Everything else (whitespace,
+    // hyphens, punctuation, tsquery operators like ! & | : *) acts as a separator, which
+    // is what we want: "Counter-Strike 2" must tokenize to ["counter", "strike", "2"] to
+    // align with what `to_tsvector('simple', …)` stores. The previous Split+Where chain
+    // fused punctuation-separated words into one token (e.g. "CounterStrike"), which then
+    // didn't match the split lexemes in the tsvector.
+    private static readonly Regex TokenRegex = new(
+        @"[\p{L}\p{N}]+",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     public static IEndpointRouteBuilder MapSearchEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/search", Search);
@@ -23,10 +34,9 @@ public static class SearchEndpoints
     }
 
     // Turns user input into a safe `tsquery` expression with prefix-matching on every
-    // token (the `:*` suffix). Sanitization is by allowlist — anything that isn't a
-    // Unicode letter or digit is dropped, which both prevents tsquery operator injection
-    // (`!`, `&`, `|`, `(`, `)`, `:`, `*`, `<->`) and naturally splits on punctuation so
-    // "Counter-Strike 2" tokenizes the same way the simple dictionary does.
+    // token (the `:*` suffix). Sanitization is by allowlist — only runs of Unicode
+    // letters/digits become tokens, so tsquery operator injection (`!`, `&`, `|`, `(`,
+    // `)`, `:`, `*`, `<->`) is structurally impossible.
     //
     // Why `to_tsquery` + manual `:*` instead of `plainto_tsquery`:
     //   plainto_tsquery has no prefix-match support, so typing "valo" wouldn't match the
@@ -40,11 +50,8 @@ public static class SearchEndpoints
     // as "no results" rather than constructing an empty tsquery (which would 500).
     internal static string? BuildPrefixTsQuery(string input)
     {
-        var tokens = input
-            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
-            .Select(t => new string([.. t.Where(char.IsLetterOrDigit)]))
-            .Where(t => t.Length > 0)
-            .Select(t => $"{t}:*")
+        var tokens = TokenRegex.Matches(input)
+            .Select(m => $"{m.Value}:*")
             .ToArray();
         return tokens.Length == 0 ? null : string.Join(" & ", tokens);
     }

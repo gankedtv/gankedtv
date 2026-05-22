@@ -99,6 +99,27 @@ public class SearchEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Search_PunctuatedQuery_SplitsTokensAtSeparators()
+    {
+        // Regression: the previous tokenizer stripped non-alphanumeric chars *within*
+        // a whitespace-split token, so "Counter-Strike" became one fused lexeme
+        // "CounterStrike:*" that didn't match any of the actual stored lexemes
+        // ("counter", "strike", "counter-strike"). The regex-based tokenizer splits
+        // on punctuation instead, producing "counter:* & strike:*" — both lexemes
+        // exist in the tsvector, so the game surfaces.
+        await _fx.ResetAsync();
+        using var client = _factory!.CreateClient();
+
+        var resp = await client.GetAsync("/search?q=Counter-Strike&type=games");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var slugs = body.GetProperty("games").EnumerateArray()
+            .Select(g => g.GetProperty("slug").GetString()).ToArray();
+        slugs.Should().Contain("cs2");
+    }
+
+    [Fact]
     public async Task Search_ShortQuery_MatchesTokenPrefix()
     {
         // 2-char "va" becomes the tsquery lexeme `va:*`, which matches any token that

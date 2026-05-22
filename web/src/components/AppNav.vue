@@ -113,10 +113,13 @@ async function runSearch(raw: string) {
 }
 
 watch(query, (q) => {
-  clearTimeout(debounceTimer)
+  // cancelInFlight bumps requestSeq so any pending fetch resolves into the stale
+  // branch — without this, the next keystroke would only clear the debounce timer
+  // and an in-flight response could land between debounces, briefly painting stale
+  // results for the previous query.
+  cancelInFlight()
   if (!q.trim()) {
     results.value = { clips: [], games: [] }
-    loading.value = false
     return
   }
   debounceTimer = setTimeout(() => runSearch(q), SEARCH_DEBOUNCE_MS)
