@@ -9,6 +9,7 @@ import { formatNum, formatRelativeTime } from '@/lib/format'
 import { useAuthStore } from '@/stores/auth'
 import { safeImageUrl } from '@/lib/url'
 import GameTag from '@/components/GameTag.vue'
+import TagChip from '@/components/TagChip.vue'
 import AuthorHandle from '@/components/AuthorHandle.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
 import ClipEditDialog from '@/components/ClipEditDialog.vue'
@@ -304,6 +305,16 @@ async function onConfirmDelete() {
         >
           {{ clip.title }}
         </h1>
+
+        <div v-if="clip.tags.length" class="mt-3 flex flex-wrap gap-2">
+          <TagChip
+            v-for="t in clip.tags"
+            :key="t.id"
+            :slug="t.slug"
+            :name="t.name"
+            size="md"
+          />
+        </div>
 
         <div class="mt-4 flex flex-wrap items-center gap-3">
           <!-- Author info -->
