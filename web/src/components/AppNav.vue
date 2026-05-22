@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
@@ -36,6 +36,48 @@ const query = ref('')
 const isFocused = ref(false)
 const results = ref<SearchResponse>({ clips: [], games: [] })
 const loading = ref(false)
+
+// The dropdown is teleported to <body> so it doesn't get clipped/stack-trapped by
+// the header's `backdrop-filter` paint context — which was rendering page content
+// over the dropdown's bottom rows and breaking hit-testing for clicks. Living in
+// the root stacking context means it just needs a high z-index to beat the header.
+const inputWrapperRef = useTemplateRef<HTMLDivElement>('inputWrapperRef')
+// Coordinates the teleported popover anchors to. Recomputed on focus + on resize
+// while the popover is visible — scroll isn't tracked because the header is sticky,
+// so the input's viewport position is stable.
+const popoverPos = ref({ top: 0, left: 0, width: 0 })
+
+function updatePopoverPos() {
+  const el = inputWrapperRef.value
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  popoverPos.value = {
+    top: rect.bottom + 4, // matches the previous mt-1 (4px) gap
+    left: rect.left,
+    width: rect.width,
+  }
+}
+
+const popoverStyle = computed(() => ({
+  top: `${popoverPos.value.top}px`,
+  left: `${popoverPos.value.left}px`,
+  width: `${popoverPos.value.width}px`,
+}))
+
+const showPopover = computed(() => isFocused.value && query.value.trim().length > 0)
+
+watch(showPopover, async (open) => {
+  if (!open) return
+  await nextTick()
+  updatePopoverPos()
+})
+
+function onResize() {
+  if (showPopover.value) updatePopoverPos()
+}
+
+onMounted(() => window.addEventListener('resize', onResize))
+onBeforeUnmount(() => window.removeEventListener('resize', onResize))
 
 let debounceTimer: ReturnType<typeof setTimeout> | undefined
 // requestSeq ensures a slow earlier response can't overwrite a fast later one.
@@ -155,8 +197,9 @@ function onBlur() {
       </nav>
 
       <!-- Search (desktop only) -->
-      <div class="relative hidden min-w-0 shrink min-[1281px]:block">
+      <div class="hidden min-w-0 shrink min-[1281px]:block">
         <div
+          ref="inputWrapperRef"
           class="flex h-9 w-60 max-w-60 items-center gap-2 overflow-hidden rounded-md border bg-surface-overlay px-3 font-mono text-xs whitespace-nowrap transition-colors duration-150"
           :class="isFocused ? 'border-brand text-text-primary' : 'border-border text-text-muted'"
         >
@@ -177,12 +220,18 @@ function onBlur() {
           />
         </div>
 
-        <!-- Dropdown -->
-        <div
-          v-if="isFocused && query.trim().length > 0"
-          id="nav-search-results"
-          class="absolute right-0 left-0 top-full z-40 mt-1 overflow-hidden rounded-md border border-border bg-surface-overlay shadow-[0_18px_50px_-18px_rgba(0,0,0,0.6)]"
-        >
+        <!-- Dropdown — teleported to body so the header's backdrop-filter context
+             can't trap or clip its rendering. Position is computed from the input
+             wrapper's bounding rect (see updatePopoverPos). Panel bg uses
+             surface-raised so the row-hover surface-overlay reads as a brighter band. -->
+        <Teleport to="body">
+          <div
+            v-if="showPopover"
+            id="nav-search-results"
+            :style="popoverStyle"
+            class="fixed z-[60] overflow-hidden rounded-md border border-border-strong bg-surface-raised shadow-[0_18px_50px_-18px_rgba(0,0,0,0.6)]"
+            @mousedown.prevent
+          >
           <div
             v-if="loading && results.clips.length === 0 && results.games.length === 0"
             class="px-3.5 py-3 font-mono text-[11px] uppercase tracking-widest text-text-muted"
@@ -219,7 +268,7 @@ function onBlur() {
                   :key="c.id"
                   role="option"
                   :aria-selected="false"
-                  class="flex cursor-pointer items-center gap-3 px-3.5 py-2 transition-colors duration-150 hover:bg-surface-raised"
+                  class="flex cursor-pointer items-center gap-3 px-3.5 py-2 transition-colors duration-150 hover:bg-surface-overlay"
                   @mousedown.prevent="onResultClick({ name: 'clip', params: { id: c.id } })"
                 >
                   <img
@@ -240,7 +289,8 @@ function onBlur() {
               No matches
             </div>
           </template>
-        </div>
+          </div>
+        </Teleport>
       </div>
 
       <!-- Actions -->

@@ -99,16 +99,17 @@ public class SearchEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Search_ShortQuery_UsesPrefixFallback()
+    public async Task Search_ShortQuery_MatchesTokenPrefix()
     {
-        // 2-char "va" wouldn't tokenize into a useful tsquery lexeme, so the endpoint
-        // falls back to ILIKE 'va%'. Prefix-only — "va" must not match games like
-        // "Counter-Strike 2" or clip titles that merely contain "va" mid-word.
+        // 2-char "va" becomes the tsquery lexeme `va:*`, which matches any token that
+        // *starts* with "va" (anywhere in the title, not just title-prefix). It must
+        // still reject titles that only contain "va" mid-word: "Save" tokenizes as
+        // "save", and "save" doesn't start with "va".
         await _fx.ResetAsync();
         var userId = await SeedUserAsync();
         var apexId = await GetGameIdBySlugAsync("apex-legends");
         await SeedClipAsync(userId, DateTimeOffset.UtcNow, apexId, title: "Vault chase");
-        await SeedClipAsync(userId, DateTimeOffset.UtcNow, apexId, title: "Save the round"); // contains "va" mid-word, must NOT match
+        await SeedClipAsync(userId, DateTimeOffset.UtcNow, apexId, title: "Save the round"); // "save" doesn't start with "va"
 
         using var client = _factory!.CreateClient();
         var resp = await client.GetAsync("/search?q=va");
@@ -123,6 +124,29 @@ public class SearchEndpointsTests : IAsyncLifetime
         var clipTitles = body.GetProperty("clips").EnumerateArray()
             .Select(c => c.GetProperty("title").GetString()).ToArray();
         clipTitles.Should().ContainSingle().Which.Should().Be("Vault chase");
+    }
+
+    [Fact]
+    public async Task Search_NumericToken_MatchesTokenAnywhereInTitle()
+    {
+        // Regression: with the old plainto_tsquery + 3-char-cutoff design, searching
+        // "04" fell into the ILIKE-prefix branch and only matched titles *starting*
+        // with "04" — so "Seed Clip 04" never surfaced. With to_tsquery(`04:*`) the
+        // numeric token matches wherever it appears in the tsvector.
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync();
+        var apexId = await GetGameIdBySlugAsync("apex-legends");
+        await SeedClipAsync(userId, DateTimeOffset.UtcNow, apexId, title: "Seed Clip 04");
+        await SeedClipAsync(userId, DateTimeOffset.UtcNow, apexId, title: "Seed Clip 07");
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/search?q=04&type=clips");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var titles = body.GetProperty("clips").EnumerateArray()
+            .Select(c => c.GetProperty("title").GetString()).ToArray();
+        titles.Should().ContainSingle().Which.Should().Be("Seed Clip 04");
     }
 
     [Fact]
@@ -179,9 +203,9 @@ public class SearchEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task Search_TsqueryMetacharacters_DoNotCause500()
     {
-        // PlainToTsQuery treats input as a plain phrase, so operators like !, &, |, : *
-        // never reach the tsquery parser. Without that guard, raw to_tsquery would 500 on
-        // a malformed query like "!&|".
+        // BuildPrefixTsQuery's allowlist sanitization strips tsquery operators (!, &,
+        // |, :, *) before they reach to_tsquery. Without that guard, to_tsquery would
+        // 500 on a malformed expression like "!&|".
         await _fx.ResetAsync();
         using var client = _factory!.CreateClient();
 
@@ -263,35 +287,22 @@ public class SearchEndpointsTests : IAsyncLifetime
         ids[1].Should().Be(descOnlyId);
     }
 
-    [Theory]
-    [InlineData("%5C", "snake")] // url-encoded backslash
-    [InlineData("%5F", "snake")] // url-encoded underscore
-    public async Task Search_PrefixFallback_EscapesLikeMetacharacters(string encodedChar, string seedPrefix)
+    [Fact]
+    public async Task Search_AllNonAlphanumericQuery_Returns200WithEmptyResults()
     {
-        // Without escaping, a 2-char query like `\` or `_` would interpret as wildcard
-        // and match every row. Each variant seeds a literal-char clip + a sibling and
-        // asserts the search resolves to a single clip whose title actually starts
-        // with the metacharacter.
+        // Replaces the old "LIKE escape" theory. Sanitization now strips anything
+        // that isn't a letter/digit before building the tsquery; a query that's
+        // purely punctuation tokenizes to nothing, so the response is a 200 with
+        // empty halves rather than a 500 from a malformed to_tsquery expression.
         await _fx.ResetAsync();
-        var userId = await SeedUserAsync();
-        var apexId = await GetGameIdBySlugAsync("apex-legends");
-
-        var rawChar = Uri.UnescapeDataString(encodedChar);
-        var matchTitle = rawChar + seedPrefix; // e.g. "_snake" or "\snake"
-        var (matchId, _) = await SeedClipAsync(
-            userId, DateTimeOffset.UtcNow, apexId, title: matchTitle);
-        await SeedClipAsync(
-            userId, DateTimeOffset.UtcNow, apexId, title: "other clip");
-
         using var client = _factory!.CreateClient();
-        // Two-char query exercises the prefix-fallback branch (< FullTextMinLength=3).
-        var resp = await client.GetAsync($"/search?q={encodedChar}s&type=clips");
+
+        var resp = await client.GetAsync("/search?q=%5C%5F%26%21"); // "\_&!"
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
-        var ids = body.GetProperty("clips").EnumerateArray()
-            .Select(c => c.GetProperty("id").GetGuid()).ToList();
-        ids.Should().ContainSingle().Which.Should().Be(matchId);
+        body.GetProperty("clips").GetArrayLength().Should().Be(0);
+        body.GetProperty("games").GetArrayLength().Should().Be(0);
     }
 
     [Fact]
