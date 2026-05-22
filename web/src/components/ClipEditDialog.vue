@@ -3,6 +3,7 @@ import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { ApiError } from '@/api/client'
 import { clips, type ClipDetail, type UpdateClipBody, type GameSummary } from '@/api/clips'
 import GameSelector from '@/components/GameSelector.vue'
+import TagInput from '@/components/TagInput.vue'
 import IconGlobe from '@/components/icons/IconGlobe.vue'
 import IconLink from '@/components/icons/IconLink.vue'
 
@@ -17,6 +18,7 @@ const localTitle = ref(props.clip.title)
 const localDesc = ref(props.clip.description ?? '')
 const localGame = ref<GameSummary | null>(props.clip.game)
 const localVisibility = ref<'public' | 'unlisted'>(props.clip.visibility)
+const localTags = ref<string[]>(props.clip.tags.map((t) => t.slug))
 const submitting = ref(false)
 
 watch(
@@ -27,10 +29,19 @@ watch(
       localDesc.value = props.clip.description ?? ''
       localGame.value = props.clip.game
       localVisibility.value = props.clip.visibility
+      localTags.value = props.clip.tags.map((t) => t.slug)
       submitting.value = false
     }
   },
 )
+
+function arraysEqualSorted(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false
+  const sa = [...a].sort()
+  const sb = [...b].sort()
+  for (let i = 0; i < sa.length; i++) if (sa[i] !== sb[i]) return false
+  return true
+}
 
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape' && props.open) emit('close')
@@ -52,6 +63,10 @@ const diff = computed((): UpdateClipBody => {
   if ((localGame.value?.id ?? null) !== (props.clip.game?.id ?? null))
     body.gameId = localGame.value?.id ?? null
   if (localVisibility.value !== props.clip.visibility) body.visibility = localVisibility.value
+  const originalTagSlugs = props.clip.tags.map((t) => t.slug)
+  if (!arraysEqualSorted(localTags.value, originalTagSlugs)) {
+    body.tags = [...localTags.value]
+  }
   return body
 })
 
@@ -67,6 +82,8 @@ const ERROR_CODES: Record<string, string> = {
   forbidden: "You don't have permission to edit this clip",
   not_found: 'Clip not found',
   invalid_state: 'Only published clips can be edited',
+  too_many_tags: 'You can use up to 5 tags',
+  invalid_tag: 'One of your tags is invalid (use 2-24 letters, digits or hyphens)',
 }
 
 async function save() {
@@ -175,6 +192,14 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
                 Game <span class="text-[9px] text-text-muted">(optional)</span>
               </label>
               <GameSelector v-model="localGame" />
+            </div>
+
+            <!-- Tags -->
+            <div>
+              <label :class="labelClass">
+                Tags <span class="text-[9px] text-text-muted">(optional, max 5)</span>
+              </label>
+              <TagInput v-model="localTags" :input-class="inputClass" />
             </div>
 
             <!-- Visibility -->

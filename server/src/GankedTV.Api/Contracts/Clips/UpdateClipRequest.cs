@@ -9,4 +9,8 @@ public sealed record UpdateClipRequest(
     [property: StringLength(ClipValidationLimits.MaxDescriptionLength)]
     string? Description,
     int? GameId,
-    string? Visibility);
+    string? Visibility,
+    // PATCH semantics: <c>null</c> = "tags field omitted, leave the existing set alone".
+    // A non-null list (including empty) = "replace the current set with this exact list".
+    // Caller distinguishes the two states; the JSON binder maps a missing key to null.
+    List<string>? Tags);

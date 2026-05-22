@@ -4,6 +4,7 @@ using GankedTV.Api.Clips;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Problems;
 using GankedTV.Api.Services.Clips;
+using GankedTV.Api.Services.Tags;
 using GankedTV.Api.Validation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -50,7 +51,7 @@ public static class ClipsUploadEndpoints
 
         var result = await clips.CreateAsync(
             userId,
-            new CreateClipInput(req.Title, req.Description, req.GameId, req.Visibility),
+            new CreateClipInput(req.Title, req.Description, req.GameId, req.Visibility, req.Tags),
             ct);
 
         return result.IsSuccess
@@ -105,6 +106,8 @@ public static class ClipsUploadEndpoints
         ClipUploadError.ObjectNotUploaded => ProblemResults.BadRequest("object_not_uploaded"),
         ClipUploadError.FileTooLarge => ProblemResults.BadRequest("file_too_large"),
         ClipUploadError.UnsupportedContentType => ProblemResults.BadRequest("unsupported_content_type"),
+        ClipUploadError.TooManyTags => ProblemResults.BadRequest(TagsResolveProblemCodes.TooManyTags),
+        ClipUploadError.InvalidTag => ProblemResults.BadRequest(TagsResolveProblemCodes.InvalidTag),
         _ => UnmappedError(error, loggerFactory),
     };
 

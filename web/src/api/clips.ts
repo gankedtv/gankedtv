@@ -1,4 +1,5 @@
 import { api } from './client'
+import type { TagSummary } from './tags'
 
 export interface AuthorSummary {
   id: string
@@ -26,6 +27,7 @@ export interface ClipFeedItem {
   createdAt: string
   author: AuthorSummary
   game: GameSummary | null
+  tags: TagSummary[]
   likedByMe: boolean
   shareCode: string
 }
@@ -45,6 +47,7 @@ export interface ClipDetail {
   createdAt: string
   author: AuthorSummary
   game: GameSummary | null
+  tags: TagSummary[]
   likedByMe: boolean
   visibility: 'public' | 'unlisted'
   shareCode: string
@@ -55,6 +58,9 @@ export interface UpdateClipBody {
   description?: string
   gameId?: number | null
   visibility?: 'public' | 'unlisted'
+  // null/omitted = "leave tags alone". Empty array = "clear all tags".
+  // Otherwise = "replace the tag set with this exact list (post-normalization server-side)".
+  tags?: string[]
 }
 
 export interface ClipFeedPage {
@@ -81,6 +87,9 @@ export interface CreateClipBody {
   description: string | null
   gameId: number | null
   visibility: 'public' | 'unlisted'
+  // Optional. When omitted, the clip has no tags. Server normalizes (lowercase,
+  // hyphenate, max 5) and get-or-creates rows by slug.
+  tags?: string[]
 }
 
 export interface CompleteClipResult {

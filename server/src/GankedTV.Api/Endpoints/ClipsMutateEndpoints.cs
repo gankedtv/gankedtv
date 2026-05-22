@@ -7,6 +7,7 @@ using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Problems;
 using GankedTV.Api.Services.Maintenance;
 using GankedTV.Api.Services.ObjectStorage;
+using GankedTV.Api.Services.Tags;
 using GankedTV.Api.Validation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -40,6 +41,7 @@ public static class ClipsMutateEndpoints
         ClaimsPrincipal principal,
         GankedTvDbContext db,
         IObjectStorageService storage,
+        ITagsResolver tagsResolver,
         IOptions<S3Options> s3,
         IOptions<ClipValidationOptions> validation,
         CancellationToken ct)
@@ -58,7 +60,7 @@ public static class ClipsMutateEndpoints
         }
 
         var clip = await db.Clips
-            .Include(c => c.User)
+            .IncludeFeedRelations()
             .FirstOrDefaultAsync(c => c.Id == id, ct);
 
         if (clip is null)
@@ -121,6 +123,20 @@ public static class ClipsMutateEndpoints
                 return ProblemResults.BadRequest("invalid_game");
             }
             clip.GameId = req.GameId;
+        }
+
+        // PATCH semantics: null Tags = "field omitted, leave alone"; any non-null list
+        // (including empty) = "replace with this set". The resolver handles normalize +
+        // dedupe + max-5 + get-or-create; SetClipTags applies the diff against the loaded
+        // ClipTags collection (already Include'd above).
+        if (req.Tags is not null)
+        {
+            var tagsResult = await tagsResolver.ResolveAsync(req.Tags, ct);
+            if (!tagsResult.IsSuccess)
+            {
+                return ProblemResults.BadRequest(TagsResolveProblemCodes.ToCode(tagsResult.Error!.Value));
+            }
+            tagsResolver.SetClipTags(clip, tagsResult.Tags);
         }
 
         clip.UpdatedAt = DateTimeOffset.UtcNow;

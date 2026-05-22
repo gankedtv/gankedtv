@@ -30,4 +30,5 @@ public class Clip
     public User User { get; set; } = null!;
     public Game? Game { get; set; }
     public ICollection<Like> Likes { get; set; } = [];
+    public ICollection<ClipTag> ClipTags { get; set; } = [];
 }
