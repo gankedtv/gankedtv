@@ -257,7 +257,7 @@ public class FollowsEndpointsTests : IAsyncLifetime
     {
         // Mirrors the clip feed's forgive-and-fall-back stance: a corrupted cursor
         // (truncated, wrong base64, mangled by a client) returns the first page rather
-        // than 400-ing the pagination flow. FeedCursor.TryParse handles the parse;
+        // than 400-ing the pagination flow. KeysetCursor.TryParse handles the parse;
         // this exercises the wiring through the endpoint.
         await _fx.ResetAsync();
         var (targetId, _) = await SeedUserAndIssueTokenAsync("target");

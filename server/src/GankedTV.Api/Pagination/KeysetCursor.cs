@@ -2,22 +2,33 @@ using System.Buffers.Text;
 using System.Globalization;
 using System.Text;
 
-namespace GankedTV.Api.Endpoints;
+namespace GankedTV.Api.Pagination;
 
-// Shared keyset-cursor helper used by every cursor-paginated list that orders by
-// (CreatedAt desc, Guid desc). Base64Url so the raw token survives a query string
-// without client-side escaping — DateTimeOffset.ToString("O") includes `+` and `:`
-// which URL decoders mangle.
-internal static class FeedCursor
+/// <summary>
+/// Encodes/decodes a composite <c>(CreatedAt, Id)</c> keyset cursor as an opaque, URL-safe
+/// token. The <c>(CreatedAt, Id)</c> pair (rather than <c>CreatedAt</c> alone) keeps paging
+/// deterministic when two rows share the same <c>created_at</c> — bulk imports, seed scripts,
+/// or same-microsecond inserts would otherwise skip the second row.
+/// </summary>
+public static class KeysetCursor
 {
     private const char Separator = '_';
 
+    /// <summary>
+    /// Builds a Base64Url-encoded cursor token. Base64Url keeps the token safe to drop into a
+    /// query string without client-side escaping: <c>DateTimeOffset.ToString("O")</c> contains
+    /// <c>+</c> (which decoders turn into a space) and <c>:</c>, so encoding keeps it opaque.
+    /// </summary>
     public static string Build(DateTimeOffset createdAt, Guid id)
     {
         var payload = $"{createdAt.ToString("O", CultureInfo.InvariantCulture)}{Separator}{id:D}";
         return Base64Url.EncodeToString(Encoding.UTF8.GetBytes(payload));
     }
 
+    /// <summary>
+    /// Parses a cursor token. Returns <c>false</c> for null/empty/corrupt input so callers can
+    /// silently fall back to "no cursor" rather than 400-ing on a malformed query string.
+    /// </summary>
     public static bool TryParse(string? raw, out DateTimeOffset createdAt, out Guid id)
     {
         createdAt = default;

@@ -10,6 +10,7 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
     public DbSet<Clip> Clips => Set<Clip>();
     public DbSet<Like> Likes => Set<Like>();
     public DbSet<Follow> Follows => Set<Follow>();
+    public DbSet<Comment> Comments => Set<Comment>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<ClipTag> ClipTags => Set<ClipTag>();
@@ -206,6 +207,36 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             e.HasIndex(f => new { f.FollowerId, f.CreatedAt })
                 .IsDescending(false, true)
                 .HasDatabaseName("idx_follows_follower_created_at");
+        });
+
+        modelBuilder.Entity<Comment>(e =>
+        {
+            e.HasKey(c => c.Id);
+            e.Property(c => c.Id).HasDefaultValueSql("gen_random_uuid()");
+            e.Property(c => c.Body).HasMaxLength(2000);
+            e.Property(c => c.CreatedAt).HasDefaultValueSql("now()");
+            e.Property(c => c.UpdatedAt).HasDefaultValueSql("now()");
+
+            e.HasOne(c => c.Clip)
+                .WithMany()
+                .HasForeignKey(c => c.ClipId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(c => c.User)
+                .WithMany(u => u.Comments)
+                .HasForeignKey(c => c.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Self-referencing parent → replies. Cascade only fires on a real (hard) delete of
+            // a parent row; the app soft-deletes (DeletedAt) so threads stay intact in practice.
+            e.HasOne(c => c.Parent)
+                .WithMany(c => c.Replies)
+                .HasForeignKey(c => c.ParentId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Drives the top-level listing for a clip (ordered by created_at) and reply lookups.
+            e.HasIndex(c => new { c.ClipId, c.CreatedAt }).HasDatabaseName("idx_comments_clip_id");
+            e.HasIndex(c => new { c.ParentId, c.CreatedAt }).HasDatabaseName("idx_comments_parent_id");
         });
 
         modelBuilder.Entity<RefreshToken>(e =>

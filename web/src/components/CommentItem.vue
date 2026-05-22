@@ -1,0 +1,70 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+import type { CommentItem } from '@/api/comments'
+import { formatRelativeTime } from '@/lib/format'
+import UserAvatar from '@/components/UserAvatar.vue'
+
+const props = defineProps<{
+  comment: CommentItem
+  currentUserId: string | null
+  // Top-level rows expose a Reply affordance; replies (one level deep) do not.
+  canReply: boolean
+}>()
+
+const emit = defineEmits<{
+  delete: [id: string]
+  reply: [id: string]
+}>()
+
+const isOwn = computed(
+  () => !props.comment.deleted && props.currentUserId === props.comment.author.id,
+)
+</script>
+
+<template>
+  <div class="flex gap-3">
+    <UserAvatar :user="comment.author" :size="32" class="mt-0.5" />
+    <div class="min-w-0 flex-1">
+      <div class="flex items-baseline gap-2">
+        <span class="font-mono text-[13px] font-semibold text-text-primary">{{
+          comment.author.username
+        }}</span>
+        <span class="font-mono text-[11px] text-text-muted">{{
+          formatRelativeTime(comment.createdAt)
+        }}</span>
+      </div>
+
+      <p
+        v-if="comment.deleted"
+        class="mt-0.5 font-body text-sm italic leading-relaxed text-text-muted"
+      >
+        [deleted]
+      </p>
+      <p
+        v-else
+        class="mt-0.5 whitespace-pre-wrap break-words font-body text-sm leading-relaxed text-text-secondary"
+      >
+        {{ comment.body }}
+      </p>
+
+      <div class="mt-1 flex items-center gap-3">
+        <button
+          v-if="canReply"
+          type="button"
+          class="cursor-pointer font-mono text-[11px] uppercase tracking-wider text-text-muted transition-colors duration-150 hover:text-text-primary"
+          @click="emit('reply', comment.id)"
+        >
+          Reply
+        </button>
+        <button
+          v-if="isOwn"
+          type="button"
+          class="cursor-pointer font-mono text-[11px] uppercase tracking-wider text-text-muted transition-colors duration-150 hover:text-[color:var(--color-error)]"
+          @click="emit('delete', comment.id)"
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+  </div>
+</template>

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using GankedTV.Api.Contracts.Users;
 using GankedTV.Api.Data;
+using GankedTV.Api.Pagination;
 using GankedTV.Api.Problems;
 using Microsoft.EntityFrameworkCore;
 
@@ -97,7 +98,7 @@ public static class FollowsEndpoints
         if (target is null) return ProblemResults.NotFound("not_found");
 
         var clampedLimit = Math.Clamp(limit ?? FollowListDefaultLimit, 1, FollowListMaxLimit);
-        var hasCursor = FeedCursor.TryParse(cursor, out var cAt, out var cId);
+        var hasCursor = KeysetCursor.TryParse(cursor, out var cAt, out var cId);
 
         // Followers of target: rows where FolloweeId == target.Id; pagination keyset is
         // (CreatedAt, FollowerId) — the "other side" of the row, matching what the
@@ -120,7 +121,7 @@ public static class FollowsEndpoints
         var items = page
             .Select(f => new UserSummary(f.Follower.Id, f.Follower.Username, f.Follower.AvatarUrl))
             .ToList();
-        var nextCursor = hasMore ? FeedCursor.Build(page[^1].CreatedAt, page[^1].FollowerId) : null;
+        var nextCursor = hasMore ? KeysetCursor.Build(page[^1].CreatedAt, page[^1].FollowerId) : null;
 
         return Results.Ok(new UserSummaryPage(items, nextCursor));
     }
@@ -133,7 +134,7 @@ public static class FollowsEndpoints
         if (target is null) return ProblemResults.NotFound("not_found");
 
         var clampedLimit = Math.Clamp(limit ?? FollowListDefaultLimit, 1, FollowListMaxLimit);
-        var hasCursor = FeedCursor.TryParse(cursor, out var cAt, out var cId);
+        var hasCursor = KeysetCursor.TryParse(cursor, out var cAt, out var cId);
 
         var query = db.Follows.AsNoTracking().Where(f => f.FollowerId == target.Id);
         if (hasCursor)
@@ -153,7 +154,7 @@ public static class FollowsEndpoints
         var items = page
             .Select(f => new UserSummary(f.Followee.Id, f.Followee.Username, f.Followee.AvatarUrl))
             .ToList();
-        var nextCursor = hasMore ? FeedCursor.Build(page[^1].CreatedAt, page[^1].FolloweeId) : null;
+        var nextCursor = hasMore ? KeysetCursor.Build(page[^1].CreatedAt, page[^1].FolloweeId) : null;
 
         return Results.Ok(new UserSummaryPage(items, nextCursor));
     }

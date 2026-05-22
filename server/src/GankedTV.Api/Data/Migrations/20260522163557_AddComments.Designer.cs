@@ -3,18 +3,20 @@ using System;
 using GankedTV.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
-using NpgsqlTypes;
 
 #nullable disable
 
 namespace GankedTV.Api.Data.Migrations
 {
     [DbContext(typeof(GankedTvDbContext))]
-    partial class GankedTvDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260522163557_AddComments")]
+    partial class AddComments
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -72,13 +74,6 @@ namespace GankedTV.Api.Data.Migrations
                     b.Property<DateTimeOffset?>("ProcessingStartedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("processing_started_at");
-
-                    b.Property<NpgsqlTsVector>("SearchVector")
-                        .IsRequired()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("tsvector")
-                        .HasColumnName("search_vector")
-                        .HasComputedColumnSql("setweight(to_tsvector('simple', coalesce(title, '')), 'A') || setweight(to_tsvector('simple', coalesce(description, '')), 'B')", true);
 
                     b.Property<string>("ShareCode")
                         .IsRequired()
@@ -147,11 +142,6 @@ namespace GankedTV.Api.Data.Migrations
                     b.HasIndex("GameId")
                         .HasDatabaseName("idx_clips_game_id");
 
-                    b.HasIndex("SearchVector")
-                        .HasDatabaseName("idx_clips_search_vector");
-
-                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("SearchVector"), "GIN");
-
                     b.HasIndex("ShareCode")
                         .IsUnique()
                         .HasDatabaseName("idx_clips_share_code");
@@ -172,25 +162,6 @@ namespace GankedTV.Api.Data.Migrations
                         .HasFilter("status = 'processing'");
 
                     b.ToTable("clips", (string)null);
-                });
-
-            modelBuilder.Entity("GankedTV.Api.Data.Entities.ClipTag", b =>
-                {
-                    b.Property<Guid>("ClipId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("clip_id");
-
-                    b.Property<int>("TagId")
-                        .HasColumnType("integer")
-                        .HasColumnName("tag_id");
-
-                    b.HasKey("ClipId", "TagId")
-                        .HasName("pk_clip_tags");
-
-                    b.HasIndex("TagId", "ClipId")
-                        .HasDatabaseName("idx_clip_tags_tag");
-
-                    b.ToTable("clip_tags", (string)null);
                 });
 
             modelBuilder.Entity("GankedTV.Api.Data.Entities.Comment", b =>
@@ -250,39 +221,6 @@ namespace GankedTV.Api.Data.Migrations
                     b.ToTable("comments", (string)null);
                 });
 
-            modelBuilder.Entity("GankedTV.Api.Data.Entities.Follow", b =>
-                {
-                    b.Property<Guid>("FollowerId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("follower_id");
-
-                    b.Property<Guid>("FolloweeId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("followee_id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("now()");
-
-                    b.HasKey("FollowerId", "FolloweeId")
-                        .HasName("pk_follows");
-
-                    b.HasIndex("FolloweeId", "CreatedAt")
-                        .IsDescending(false, true)
-                        .HasDatabaseName("idx_follows_followee_created_at");
-
-                    b.HasIndex("FollowerId", "CreatedAt")
-                        .IsDescending(false, true)
-                        .HasDatabaseName("idx_follows_follower_created_at");
-
-                    b.ToTable("follows", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_follows_no_self", "follower_id <> followee_id");
-                        });
-                });
-
             modelBuilder.Entity("GankedTV.Api.Data.Entities.Game", b =>
                 {
                     b.Property<int>("Id")
@@ -317,13 +255,6 @@ namespace GankedTV.Api.Data.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("name");
 
-                    b.Property<NpgsqlTsVector>("SearchVector")
-                        .IsRequired()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("tsvector")
-                        .HasColumnName("search_vector")
-                        .HasComputedColumnSql("to_tsvector('simple', coalesce(name, ''))", true);
-
                     b.Property<string>("Slug")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -341,11 +272,6 @@ namespace GankedTV.Api.Data.Migrations
 
                     b.HasIndex("Name")
                         .HasDatabaseName("idx_games_name");
-
-                    b.HasIndex("SearchVector")
-                        .HasDatabaseName("idx_games_search_vector");
-
-                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("SearchVector"), "GIN");
 
                     b.HasIndex("Slug")
                         .IsUnique()
@@ -504,43 +430,6 @@ namespace GankedTV.Api.Data.Migrations
                     b.ToTable("refresh_tokens", (string)null);
                 });
 
-            modelBuilder.Entity("GankedTV.Api.Data.Entities.Tag", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("now()");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(24)
-                        .HasColumnType("character varying(24)")
-                        .HasColumnName("name");
-
-                    b.Property<string>("Slug")
-                        .IsRequired()
-                        .HasMaxLength(24)
-                        .HasColumnType("character varying(24)")
-                        .HasColumnName("slug");
-
-                    b.HasKey("Id")
-                        .HasName("pk_tags");
-
-                    b.HasIndex("Slug")
-                        .IsUnique()
-                        .HasDatabaseName("idx_tags_slug");
-
-                    b.ToTable("tags", (string)null);
-                });
-
             modelBuilder.Entity("GankedTV.Api.Data.Entities.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -646,27 +535,6 @@ namespace GankedTV.Api.Data.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("GankedTV.Api.Data.Entities.ClipTag", b =>
-                {
-                    b.HasOne("GankedTV.Api.Data.Entities.Clip", "Clip")
-                        .WithMany("ClipTags")
-                        .HasForeignKey("ClipId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_clip_tags_clips_clip_id");
-
-                    b.HasOne("GankedTV.Api.Data.Entities.Tag", "Tag")
-                        .WithMany("ClipTags")
-                        .HasForeignKey("TagId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_clip_tags_tags_tag_id");
-
-                    b.Navigation("Clip");
-
-                    b.Navigation("Tag");
-                });
-
             modelBuilder.Entity("GankedTV.Api.Data.Entities.Comment", b =>
                 {
                     b.HasOne("GankedTV.Api.Data.Entities.Clip", "Clip")
@@ -694,27 +562,6 @@ namespace GankedTV.Api.Data.Migrations
                     b.Navigation("Parent");
 
                     b.Navigation("User");
-                });
-
-            modelBuilder.Entity("GankedTV.Api.Data.Entities.Follow", b =>
-                {
-                    b.HasOne("GankedTV.Api.Data.Entities.User", "Followee")
-                        .WithMany("Followers")
-                        .HasForeignKey("FolloweeId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_follows_users_followee_id");
-
-                    b.HasOne("GankedTV.Api.Data.Entities.User", "Follower")
-                        .WithMany("Following")
-                        .HasForeignKey("FollowerId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_follows_users_follower_id");
-
-                    b.Navigation("Followee");
-
-                    b.Navigation("Follower");
                 });
 
             modelBuilder.Entity("GankedTV.Api.Data.Entities.Like", b =>
@@ -752,8 +599,6 @@ namespace GankedTV.Api.Data.Migrations
 
             modelBuilder.Entity("GankedTV.Api.Data.Entities.Clip", b =>
                 {
-                    b.Navigation("ClipTags");
-
                     b.Navigation("Likes");
                 });
 
@@ -762,20 +607,11 @@ namespace GankedTV.Api.Data.Migrations
                     b.Navigation("Replies");
                 });
 
-            modelBuilder.Entity("GankedTV.Api.Data.Entities.Tag", b =>
-                {
-                    b.Navigation("ClipTags");
-                });
-
             modelBuilder.Entity("GankedTV.Api.Data.Entities.User", b =>
                 {
                     b.Navigation("Clips");
 
                     b.Navigation("Comments");
-
-                    b.Navigation("Followers");
-
-                    b.Navigation("Following");
 
                     b.Navigation("Likes");
                 });
