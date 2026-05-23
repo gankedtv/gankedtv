@@ -78,6 +78,7 @@ internal sealed class RedisFixedWindowRateLimiter : RateLimiter
     private readonly Lazy<FixedWindowRateLimiter> _fallback;
     private readonly ILogger<RedisFixedWindowRateLimiter> _logger;
     private int _degradedLogged;
+    private long _lastActivityTicks = Environment.TickCount64;
 
     public RedisFixedWindowRateLimiter(
         IConnectionMultiplexer multiplexer,
@@ -95,12 +96,17 @@ internal sealed class RedisFixedWindowRateLimiter : RateLimiter
         _logger = logger;
     }
 
-    public override TimeSpan? IdleDuration => null;
+    // Report idle time since the last acquire so the partitioned limiter's reaper can evict
+    // stale per-user / per-IP limiters — returning null (the default) would pin every partition
+    // key ever seen in memory for the life of the process.
+    public override TimeSpan? IdleDuration =>
+        TimeSpan.FromMilliseconds(Environment.TickCount64 - Interlocked.Read(ref _lastActivityTicks));
 
     public override RateLimiterStatistics? GetStatistics() => null;
 
     protected override async ValueTask<RateLimitLease> AcquireAsyncCore(int permitCount, CancellationToken cancellationToken)
     {
+        Interlocked.Exchange(ref _lastActivityTicks, Environment.TickCount64);
         try
         {
             var db = _multiplexer.GetDatabase();
@@ -119,6 +125,7 @@ internal sealed class RedisFixedWindowRateLimiter : RateLimiter
 
     protected override RateLimitLease AttemptAcquireCore(int permitCount)
     {
+        Interlocked.Exchange(ref _lastActivityTicks, Environment.TickCount64);
         try
         {
             var db = _multiplexer.GetDatabase();

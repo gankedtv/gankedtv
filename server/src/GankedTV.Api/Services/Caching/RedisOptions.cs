@@ -47,12 +47,24 @@ public sealed class RedisOptions
         configuration.EndPoints.Add(uri.Host, port);
         configuration.Ssl = isTls;
 
-        // userinfo carries the password: redis://:pw@host or redis://user:pw@host. Redis AUTH
-        // is password-only (the username is the ACL user, optional). Take the password half.
+        // userinfo carries credentials: redis://:pw@host (password only) or redis://user:pw@host
+        // (ACL username + password). Preserve both so Redis 6+ ACL auth works, not just the
+        // legacy password-only AUTH.
         if (!string.IsNullOrEmpty(uri.UserInfo))
         {
             var parts = uri.UserInfo.Split(':', 2);
-            configuration.Password = Uri.UnescapeDataString(parts.Length == 2 ? parts[1] : parts[0]);
+            if (parts.Length == 2)
+            {
+                if (parts[0].Length > 0)
+                {
+                    configuration.User = Uri.UnescapeDataString(parts[0]);
+                }
+                configuration.Password = Uri.UnescapeDataString(parts[1]);
+            }
+            else
+            {
+                configuration.Password = Uri.UnescapeDataString(parts[0]);
+            }
         }
 
         return true;

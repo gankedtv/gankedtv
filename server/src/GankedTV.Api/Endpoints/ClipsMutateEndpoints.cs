@@ -46,6 +46,7 @@ public static class ClipsMutateEndpoints
         IOptions<S3Options> s3,
         IOptions<ClipValidationOptions> validation,
         IFeedCache feedCache,
+        ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
         if (!TryGetUserId(principal, out var userId))
@@ -146,7 +147,7 @@ public static class ClipsMutateEndpoints
 
         // An edit can change anything shown in a feed item (title, thumbnail, game, tags) or move
         // the clip in/out of the public feed (visibility), so drop the cached pages.
-        await feedCache.InvalidateFeedsAsync(ct);
+        await InvalidateFeedsBestEffortAsync(feedCache, loggerFactory, ct);
 
         var expiresAt = DateTimeOffset.UtcNow.Add(VideoUrlLifetime);
         var videoUrl = storage.GetPresignedGetUrl(s3.Value.ClipsBucket, clip.VideoKey, VideoUrlLifetime);
@@ -188,7 +189,7 @@ public static class ClipsMutateEndpoints
         await db.SaveChangesAsync(ct);
 
         // A deleted clip may have been on a cached feed page; drop them so it stops being served.
-        await feedCache.InvalidateFeedsAsync(ct);
+        await InvalidateFeedsBestEffortAsync(feedCache, loggerFactory, ct);
 
         // S3 cleanup is best-effort: the DB row is already gone, so a cleanup failure must not
         // surface as 500 (that would mislead the client into retrying a non-existent row).
@@ -200,6 +201,23 @@ public static class ClipsMutateEndpoints
             ct);
 
         return Results.NoContent();
+    }
+
+    // The DB write has already committed by the time we invalidate, so a cache failure (e.g. Redis
+    // down) must not turn a successful mutation into a 500. Swallow + log; the short TTL self-heals
+    // if invalidation is missed. Mirrors the best-effort pattern in MediaJobHostedService.
+    private static async Task InvalidateFeedsBestEffortAsync(
+        IFeedCache feedCache, ILoggerFactory loggerFactory, CancellationToken ct)
+    {
+        try
+        {
+            await feedCache.InvalidateFeedsAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            loggerFactory.CreateLogger(LogCategory).LogWarning(ex,
+                "Feed cache invalidation failed after a clip mutation; entries will expire via TTL.");
+        }
     }
 
     private static bool TryGetUserId(ClaimsPrincipal principal, out Guid userId)

@@ -49,11 +49,14 @@ public class RedisOptionsTests
     [Fact]
     public void TryBuildConfiguration_ExtractsPasswordFromUserInfo()
     {
-        // redis://:password@host and redis://user:password@host both carry the password second.
+        // redis://:password@host → password only, no ACL user.
         new RedisOptions { Url = "redis://:s3cr3t@host:6379" }.TryBuildConfiguration(out var withColon);
         withColon.Password.Should().Be("s3cr3t");
+        withColon.User.Should().BeNull();
 
+        // redis://user:password@host → ACL username preserved alongside the password.
         new RedisOptions { Url = "redis://aclu:p%40ss@host:6379" }.TryBuildConfiguration(out var withUser);
+        withUser.User.Should().Be("aclu");
         withUser.Password.Should().Be("p@ss"); // %40 decoded
     }
 
