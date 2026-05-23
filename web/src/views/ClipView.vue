@@ -3,6 +3,7 @@ import { ref, computed, watch, onBeforeUnmount, useTemplateRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Plyr from 'plyr'
 import 'plyr/dist/plyr.css'
+import Hls from 'hls.js'
 import { ApiError } from '@/api/client'
 import { clips, type ClipDetail } from '@/api/clips'
 import { formatNum, formatRelativeTime } from '@/lib/format'
@@ -34,6 +35,26 @@ const toastText = ref('')
 
 const videoEl = useTemplateRef<HTMLVideoElement>('videoEl')
 let player: Plyr | null = null
+let hls: Hls | null = null
+// Bumped on every teardown so an in-flight JIT poll loop knows to stop (clip switched away
+// or component unmounted).
+let playerToken = 0
+// A representative AV1 codec string for capability detection.
+const AV1_MIME = 'video/mp4; codecs="av01.0.05M.08"'
+const JIT_POLL_MS = 2000
+// Give up polling after ~3 minutes so a stuck/disabled transcoder doesn't poll forever.
+const JIT_MAX_POLLS = 90
+
+const BASE_CONTROLS = [
+  'play-large',
+  'play',
+  'progress',
+  'current-time',
+  'mute',
+  'volume',
+  'settings',
+  'fullscreen',
+]
 
 // View tracking: fire POST /clips/{id}/view exactly once per mount after ~3s of
 // accumulated playback. Bounded per-tick delta caps seeking jumps (current_time can
@@ -108,11 +129,7 @@ watch(
   [clip, videoEl],
   ([detail, el]) => {
     if (!detail || !el || player) return
-    el.src = detail.videoUrl
-    player = new Plyr(el, {
-      controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'fullscreen'],
-      tooltips: { controls: true, seek: true },
-    })
+    setupPlayer(detail, el)
     attachViewTracking(detail.id, el)
   },
   { flush: 'post' },
@@ -149,11 +166,103 @@ function attachViewTracking(targetClipId: string, el: HTMLVideoElement) {
   viewTickListener = { el, handler: onTick }
 }
 
+// Decide how to play a clip. If the browser can decode the stored master directly (H.264
+// always; AV1 only on capable devices), play it as a plain progressive file. Otherwise fall
+// back to a just-in-time H.264 HLS stream the server transcodes on demand.
+function setupPlayer(detail: ClipDetail, el: HTMLVideoElement) {
+  if (canPlayMaster(detail.videoCodec, el)) {
+    el.src = detail.videoUrl
+    player = new Plyr(el, { controls: BASE_CONTROLS, tooltips: { controls: true, seek: true } })
+    return
+  }
+  void startJitStream(detail.id, el)
+}
+
+function canPlayMaster(codec: string | null, el: HTMLVideoElement): boolean {
+  if (!codec || codec === 'h264') return true
+  if (codec === 'av1') return el.canPlayType(AV1_MIME) !== ''
+  // Unknown codec: optimistically try direct playback rather than forcing a transcode.
+  return true
+}
+
+// Poll the JIT stream endpoint until a cached H.264 ladder is ready, then attach it. The
+// captured playerToken aborts the loop if the user navigates away or the component unmounts.
+async function startJitStream(id: string, el: HTMLVideoElement) {
+  const myToken = playerToken
+  for (let polls = 0; polls < JIT_MAX_POLLS; polls++) {
+    let res
+    try {
+      res = await clips.getStream(id)
+    } catch {
+      if (myToken === playerToken) errored.value = true
+      return
+    }
+    if (myToken !== playerToken) return
+    if (res.status === 'ready' && res.hlsUrl) {
+      attachHlsStream(el, res.hlsUrl)
+      return
+    }
+    await new Promise((r) => setTimeout(r, JIT_POLL_MS))
+    if (myToken !== playerToken) return
+  }
+  // Exhausted the poll budget without a ready rendition — surface an error rather than hang.
+  errored.value = true
+}
+
+// Attach an HLS stream: native on Safari, hls.js (with a Plyr quality menu) elsewhere.
+function attachHlsStream(el: HTMLVideoElement, hlsUrl: string) {
+  if (el.canPlayType('application/vnd.apple.mpegurl') !== '') {
+    el.src = hlsUrl
+    player = new Plyr(el, { controls: BASE_CONTROLS, tooltips: { controls: true, seek: true } })
+    return
+  }
+
+  if (Hls.isSupported()) {
+    const instance = new Hls()
+    hls = instance
+    instance.loadSource(hlsUrl)
+    instance.attachMedia(el)
+    instance.on(Hls.Events.MANIFEST_PARSED, () => {
+      // Highest-first list of distinct rendition heights for the quality menu.
+      const heights = [...new Set(instance.levels.map((l) => l.height))].sort((a, b) => b - a)
+      player = new Plyr(el, {
+        controls: BASE_CONTROLS,
+        tooltips: { controls: true, seek: true },
+        // 0 = Plyr's "Auto" sentinel: let hls.js pick the level by bandwidth.
+        quality: {
+          default: 0,
+          options: [0, ...heights],
+          forced: true,
+          onChange: (newQuality: number) => {
+            if (newQuality === 0) {
+              instance.currentLevel = -1 // -1 = ABR auto
+              return
+            }
+            const levelIndex = instance.levels.findIndex((l) => l.height === newQuality)
+            if (levelIndex !== -1) instance.currentLevel = levelIndex
+          },
+        },
+        i18n: { qualityLabel: { 0: 'Auto' } },
+      })
+    })
+    return
+  }
+
+  // No native HLS and no MSE — nothing left to try.
+  errored.value = true
+}
+
 function teardownPlayer() {
   detachViewTracking()
+  // Invalidate any in-flight JIT poll loop.
+  playerToken++
   if (player) {
     player.destroy()
     player = null
+  }
+  if (hls) {
+    hls.destroy()
+    hls = null
   }
 }
 

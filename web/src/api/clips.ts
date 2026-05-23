@@ -38,6 +38,9 @@ export interface ClipDetail {
   description: string | null
   videoUrl: string
   videoUrlExpiresAt: string
+  // Codec of the stored master ("av1" / "h264" / null). The player uses it to decide whether
+  // to play videoUrl directly or request a just-in-time H.264 stream.
+  videoCodec: string | null
   thumbnailUrl: string
   durationSecs: number | null
   width: number | null
@@ -110,6 +113,11 @@ export interface LikeResult {
   liked: boolean
 }
 
+export interface StreamStatus {
+  hlsUrl: string | null
+  status: 'ready' | 'pending'
+}
+
 export const clips = {
   feed(query: ClipFeedQuery = {}): Promise<ClipFeedPage> {
     const params = new URLSearchParams()
@@ -140,6 +148,12 @@ export const clips = {
 
   getByShareCode(code: string): Promise<ClipDetail> {
     return api<ClipDetail>(`/c/${encodeURIComponent(code)}`)
+  },
+
+  // Requests the just-in-time H.264 HLS stream for a clip whose stored master the device
+  // can't decode. status: 'ready' (hlsUrl set) or 'pending' (a rendition is building — poll).
+  getStream(id: string): Promise<StreamStatus> {
+    return api<StreamStatus>(`/clips/${encodeURIComponent(id)}/stream`)
   },
 
   create(body: CreateClipBody): Promise<{ id: string }> {

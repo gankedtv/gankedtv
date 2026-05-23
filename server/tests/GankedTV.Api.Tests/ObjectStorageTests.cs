@@ -23,6 +23,7 @@ public class ObjectStorageTests
             ClipsBucket = "clips",
             ThumbnailsBucket = "thumbnails",
             GameCoversBucket = "game-covers",
+            StreamCacheBucket = "stream-cache",
         });
         return new S3ObjectStorageService(s3, options, NullLogger<S3ObjectStorageService>.Instance);
     }
@@ -56,6 +57,7 @@ public class ObjectStorageTests
                     new() { BucketName = "clips" },
                     new() { BucketName = "thumbnails" },
                     new() { BucketName = "game-covers" },
+                    new() { BucketName = "stream-cache" },
                 },
             });
 
@@ -100,6 +102,7 @@ public class ObjectStorageTests
             ClipsBucket = "clips",
             ThumbnailsBucket = "thumbnails",
             GameCoversBucket = "clips", // aliased onto a private bucket
+            StreamCacheBucket = "thumbnails", // also aliased — neither public bucket may get a policy
         });
 
         await new S3ObjectStorageService(s3, options, NullLogger<S3ObjectStorageService>.Instance)
@@ -122,6 +125,42 @@ public class ObjectStorageTests
         policy.Should().Contain("\"Principal\":\"*\"");
         policy.Should().Contain("s3:GetObject");
         policy.Should().Contain("arn:aws:s3:::game-covers/*");
+    }
+
+    [Fact]
+    public async Task EnsureBucketsAsync_CreatesStreamCacheBucketWithPublicReadAndLifecycle()
+    {
+        var s3 = Substitute.For<IAmazonS3>();
+        s3.ListBucketsAsync(Arg.Any<CancellationToken>())
+            .Returns(new ListBucketsResponse { Buckets = new List<S3Bucket>() });
+
+        await BuildService(s3).EnsureBucketsAsync();
+
+        await s3.Received(1).PutBucketAsync(
+            Arg.Is<PutBucketRequest>(r => r.BucketName == "stream-cache"),
+            Arg.Any<CancellationToken>());
+        await s3.Received(1).PutBucketPolicyAsync(
+            Arg.Is<PutBucketPolicyRequest>(r =>
+                r.BucketName == "stream-cache" && r.Policy.Contains("s3:GetObject")),
+            Arg.Any<CancellationToken>());
+        // Transient cache → a lifecycle expiry rule auto-evicts cached renditions.
+        await s3.Received(1).PutLifecycleConfigurationAsync(
+            Arg.Is<PutLifecycleConfigurationRequest>(r =>
+                r.BucketName == "stream-cache"
+                && r.Configuration.Rules.Any(rule => rule.Expiration != null && rule.Expiration.Days > 0)),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void S3PublicUrls_BuildUrl_PrefersPublicUrlFallsBackToEndpoint()
+    {
+        var withPublic = new S3Options { Endpoint = "http://minio:9000", PublicUrl = "https://cdn.example.com/" };
+        S3PublicUrls.BuildUrl(withPublic, "hls", "hls/abc/master.m3u8")
+            .Should().Be("https://cdn.example.com/hls/hls/abc/master.m3u8");
+
+        var noPublic = new S3Options { Endpoint = "http://localhost:9000/", PublicUrl = null };
+        S3PublicUrls.BuildUrl(noPublic, "hls", "hls/abc/master.m3u8")
+            .Should().Be("http://localhost:9000/hls/hls/abc/master.m3u8");
     }
 
     [Fact]

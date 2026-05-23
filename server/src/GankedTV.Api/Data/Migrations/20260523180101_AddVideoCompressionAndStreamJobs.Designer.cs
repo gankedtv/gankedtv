@@ -3,6 +3,7 @@ using System;
 using GankedTV.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using NpgsqlTypes;
@@ -12,9 +13,11 @@ using NpgsqlTypes;
 namespace GankedTV.Api.Data.Migrations
 {
     [DbContext(typeof(GankedTvDbContext))]
-    partial class GankedTvDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260523180101_AddVideoCompressionAndStreamJobs")]
+    partial class AddVideoCompressionAndStreamJobs
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -241,39 +244,6 @@ namespace GankedTV.Api.Data.Migrations
                         .HasDatabaseName("idx_clip_tags_tag");
 
                     b.ToTable("clip_tags", (string)null);
-                });
-
-            modelBuilder.Entity("GankedTV.Api.Data.Entities.ClipView", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<Guid>("ClipId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("clip_id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("now()");
-
-                    b.HasKey("Id")
-                        .HasName("pk_clip_views");
-
-                    b.HasIndex("CreatedAt")
-                        .IsDescending()
-                        .HasDatabaseName("idx_clip_views_created_at");
-
-                    b.HasIndex("ClipId", "CreatedAt")
-                        .IsDescending(false, true)
-                        .HasDatabaseName("idx_clip_views_clip_id_created_at");
-
-                    b.ToTable("clip_views", (string)null);
                 });
 
             modelBuilder.Entity("GankedTV.Api.Data.Entities.Comment", b =>
@@ -533,77 +503,7 @@ namespace GankedTV.Api.Data.Migrations
                     b.HasIndex("ClipId")
                         .HasDatabaseName("ix_likes_clip_id");
 
-                    b.HasIndex("CreatedAt", "ClipId")
-                        .IsDescending(true, false)
-                        .HasDatabaseName("idx_likes_created_at_clip_id");
-
                     b.ToTable("likes", (string)null);
-                });
-
-            modelBuilder.Entity("GankedTV.Api.Data.Entities.Notification", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id")
-                        .HasDefaultValueSql("gen_random_uuid()");
-
-                    b.Property<Guid>("ActorId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("actor_id");
-
-                    b.Property<Guid?>("ClipId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("clip_id");
-
-                    b.Property<Guid?>("CommentId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("comment_id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("now()");
-
-                    b.Property<DateTimeOffset?>("ReadAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("read_at");
-
-                    b.Property<Guid>("RecipientId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("recipient_id");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("type");
-
-                    b.HasKey("Id")
-                        .HasName("pk_notifications");
-
-                    b.HasIndex("ActorId")
-                        .HasDatabaseName("ix_notifications_actor_id");
-
-                    b.HasIndex("ClipId")
-                        .HasDatabaseName("ix_notifications_clip_id");
-
-                    b.HasIndex("CommentId")
-                        .HasDatabaseName("ix_notifications_comment_id");
-
-                    b.HasIndex("RecipientId")
-                        .HasDatabaseName("idx_notifications_unread")
-                        .HasFilter("read_at IS NULL");
-
-                    b.HasIndex("RecipientId", "CreatedAt")
-                        .IsDescending(false, true)
-                        .HasDatabaseName("idx_notifications_recipient");
-
-                    b.ToTable("notifications", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_notifications_no_self", "actor_id <> recipient_id");
-                        });
                 });
 
             modelBuilder.Entity("GankedTV.Api.Data.Entities.RefreshToken", b =>
@@ -832,18 +732,6 @@ namespace GankedTV.Api.Data.Migrations
                     b.Navigation("Tag");
                 });
 
-            modelBuilder.Entity("GankedTV.Api.Data.Entities.ClipView", b =>
-                {
-                    b.HasOne("GankedTV.Api.Data.Entities.Clip", "Clip")
-                        .WithMany()
-                        .HasForeignKey("ClipId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_clip_views_clips_clip_id");
-
-                    b.Navigation("Clip");
-                });
-
             modelBuilder.Entity("GankedTV.Api.Data.Entities.Comment", b =>
                 {
                     b.HasOne("GankedTV.Api.Data.Entities.Clip", "Clip")
@@ -913,43 +801,6 @@ namespace GankedTV.Api.Data.Migrations
                     b.Navigation("Clip");
 
                     b.Navigation("User");
-                });
-
-            modelBuilder.Entity("GankedTV.Api.Data.Entities.Notification", b =>
-                {
-                    b.HasOne("GankedTV.Api.Data.Entities.User", "Actor")
-                        .WithMany()
-                        .HasForeignKey("ActorId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_notifications_users_actor_id");
-
-                    b.HasOne("GankedTV.Api.Data.Entities.Clip", "Clip")
-                        .WithMany()
-                        .HasForeignKey("ClipId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .HasConstraintName("fk_notifications_clips_clip_id");
-
-                    b.HasOne("GankedTV.Api.Data.Entities.Comment", "Comment")
-                        .WithMany()
-                        .HasForeignKey("CommentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .HasConstraintName("fk_notifications_comments_comment_id");
-
-                    b.HasOne("GankedTV.Api.Data.Entities.User", "Recipient")
-                        .WithMany()
-                        .HasForeignKey("RecipientId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_notifications_users_recipient_id");
-
-                    b.Navigation("Actor");
-
-                    b.Navigation("Clip");
-
-                    b.Navigation("Comment");
-
-                    b.Navigation("Recipient");
                 });
 
             modelBuilder.Entity("GankedTV.Api.Data.Entities.RefreshToken", b =>

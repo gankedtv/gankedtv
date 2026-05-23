@@ -51,6 +51,35 @@ The dev workflow runs `dotnet watch` on the host, which means the API process �
 
 [server/Dockerfile.api](server/Dockerfile.api) ships an API image with ffmpeg pre-installed — it's there for production / CI parity builds, not used by the dev compose stack.
 
+### Media pipeline: compress-in-place + just-in-time playback (issue #102)
+
+The pipeline is built to **minimise persistent storage** (Tdarr-style): each clip keeps exactly one
+efficiently-compressed master on disk; adaptive HLS ladders are generated **on demand at watch
+time** and cached transiently, never stored permanently. Workers extend the generic
+`MediaStageWorker<TJob>` ([server/src/GankedTV.Api/Services/Media/MediaStageWorker.cs](server/src/GankedTV.Api/Services/Media/MediaStageWorker.cs)).
+
+**Upload-time stages** (status flow `draft → processing → transcoding → ready`):
+
+1. **Thumbnail** (`ThumbnailWorker`, claims `processing`) — poster + ffprobe metadata, then advances to `transcoding` (or straight to `ready` when `TranscodeEnabled=false`).
+2. **Compress** (`CompressWorker` → `CompressJobService`, claims `transcoding`) — re-encodes the raw upload into ONE resolution-capped, quality-targeted master (AV1 on the GPU box, H.264 in dev), repoints the clip's `video_key` at it, records `video_codec`, **deletes the original**, advances to `ready`. Net disk per clip goes *down*.
+
+**Watch-time JIT stage** (no persisted ladder):
+
+- The clip detail returns the presigned master `videoUrl` + `videoCodec`. The web player plays the master directly when the browser can decode it (H.264 always; AV1 on capable devices).
+- Otherwise the player calls `GET /clips/{id}/stream`: a cache hit returns the public master-playlist URL; a miss enqueues a `clip_stream_jobs` row (202, client polls). `StreamRenditionWorker` → `JitLadderService` transcodes the master → H.264 HLS ladder into the anonymous-read **`stream-cache`** bucket, which auto-evicts via a lifecycle rule (`StreamCacheTtlDays`, default 14). A re-watch after eviction simply re-enqueues. Because clips are short, a whole-clip transcode is fast — no segment-level JIT needed.
+
+Failures from any stage respect `MaxAttempts` and never wedge the worker. **Trade-off (intentional, Tdarr-style):** deleting the original means re-encodes come from a lossy master.
+
+Both GPU stages (compress + JIT) are **location-independent** — the queues use `FOR UPDATE SKIP LOCKED`, so they can run on a separate GPU host. Controlled by env toggles ([MediaJobOptions.cs](server/src/GankedTV.Api/Services/Media/MediaJobOptions.cs)):
+
+| Instance | `MEDIA_TRANSCODE_ENABLED` | `MEDIA_THUMBNAIL_WORKER_ENABLED` | `MEDIA_TRANSCODE_WORKER_ENABLED` | `MEDIA_VIDEO_ENCODER` | `MEDIA_JIT_VIDEO_ENCODER` |
+|---|---|---|---|---|---|
+| Main API server | `true` | `true` | `false` | — | — |
+| GPU box (TrueNAS + NVENC) | `true` | `false` | `true` | `av1_nvenc` (+`MEDIA_VIDEO_CODEC=av1`) | `h264_nvenc` |
+| No-compress (store upload as-is) | `false` | `true` | `false` | — | — |
+
+In dev, all workers run **in-process** on the host (toggles default `true`), using host ffmpeg — no new container. The master encoder (`MEDIA_VIDEO_ENCODER`/`MEDIA_VIDEO_CODEC`), JIT encoder (`MEDIA_JIT_VIDEO_ENCODER`), resolution cap (`MEDIA_MAX_HEIGHT`), and quality (`MEDIA_CRF`) are all configurable, so moving the GPU box to AV1 is a config change, not code.
+
 ### Parallel worktrees
 
 For working on multiple issues in parallel, `./scripts/new-worktree.sh <issue>` (also exposed as `/worktree <n>`) creates `.worktrees/issue-<n>/` inside the repo with its own dev stack on offset ports — deterministic per-issue, derived from a SHA1 of the issue number. The script writes a `.env.worktree.local` (auto-loaded by the Makefile and passed through to `docker compose` via `--env-file`) which sets `COMPOSE_PROJECT_NAME=gankedtv-issue-<n>` so containers and volumes are visibly scoped to this codebase. It then runs the equivalent of `make setup` minus the destructive clean, and opens the worktree in a new editor window — defaults to `code`, override with `WORKTREE_EDITOR=cursor` (or any VS Code-family CLI), or `WORKTREE_NO_OPEN=1` to skip. Use `make ports` from inside a worktree to re-read its URLs after the bootstrap scrollback is gone. Tear down with `./scripts/remove-worktree.sh <issue>` (or `/worktree-remove <n>`); teardown also deletes the local branch via `git branch -d` (safe; pass `--force` to escalate to `-D`). The `.worktrees/` directory is gitignored. The main checkout with no `.env.worktree.local` is unchanged — defaults still resolve to 5435 / 9000 / 9001 / 5050 / 5173.

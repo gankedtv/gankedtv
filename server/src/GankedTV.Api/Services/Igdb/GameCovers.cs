@@ -22,10 +22,6 @@ public static class GameCovers
     /// anonymous-read, so this needs no signing/expiry. Prefers the host-visible
     /// <see cref="S3Options.PublicUrl"/>, falling back to the API endpoint for dev.
     /// </summary>
-    public static string BuildCoverUrl(S3Options s3, string key)
-    {
-        var baseUrl = (string.IsNullOrWhiteSpace(s3.PublicUrl) ? s3.Endpoint : s3.PublicUrl)
-            .TrimEnd('/');
-        return $"{baseUrl}/{s3.GameCoversBucket}/{key}";
-    }
+    public static string BuildCoverUrl(S3Options s3, string key) =>
+        S3PublicUrls.BuildUrl(s3, s3.GameCoversBucket, key);
 }

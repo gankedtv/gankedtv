@@ -72,7 +72,7 @@ public class ThumbnailJobServiceTests
 
         var userId = Guid.NewGuid();
         var clipId = Guid.NewGuid();
-        var job = new ClaimedMediaJob(clipId, userId, GameId: 2, VideoKey: $"{userId}/valorant/{clipId}.mp4", AttemptNumber: 1);
+        var job = new ClaimedMediaJob(clipId, userId, GameId: 2, VideoKey: $"{userId}/valorant/{clipId}.mp4", SourceHeight: null, AttemptNumber: 1);
 
         var result = await svc.ExtractAsync(job, "valorant", CancellationToken.None);
 
@@ -98,7 +98,7 @@ public class ThumbnailJobServiceTests
 
         var userId = Guid.NewGuid();
         var clipId = Guid.NewGuid();
-        var job = new ClaimedMediaJob(clipId, userId, GameId: null, VideoKey: $"{userId}/{clipId}.mp4", AttemptNumber: 1);
+        var job = new ClaimedMediaJob(clipId, userId, GameId: null, VideoKey: $"{userId}/{clipId}.mp4", SourceHeight: null, AttemptNumber: 1);
 
         var result = await svc.ExtractAsync(job, gameSlug: null, CancellationToken.None);
 
@@ -280,5 +280,5 @@ public class ThumbnailJobServiceTests
     }
 
     private static ClaimedMediaJob NewJob() =>
-        new(Guid.NewGuid(), Guid.NewGuid(), GameId: null, VideoKey: "k.mp4", AttemptNumber: 1);
+        new(Guid.NewGuid(), Guid.NewGuid(), GameId: null, VideoKey: "k.mp4", SourceHeight: null, AttemptNumber: 1);
 }

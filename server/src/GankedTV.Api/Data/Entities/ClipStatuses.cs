@@ -4,6 +4,7 @@ public static class ClipStatuses
 {
     public const string Draft = "draft";
     public const string Processing = "processing";
+    public const string Transcoding = "transcoding";
     public const string Ready = "ready";
     public const string Failed = "failed";
 }

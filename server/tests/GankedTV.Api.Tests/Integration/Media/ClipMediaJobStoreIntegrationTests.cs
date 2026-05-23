@@ -42,7 +42,8 @@ public class ClipMediaJobStoreIntegrationTests
         DateTimeOffset? processingStartedAt = null,
         int processingAttempts = 0,
         string? thumbnailKey = null,
-        int? gameId = null)
+        int? gameId = null,
+        short? height = null)
     {
         await using var db = NewContext();
         var clip = new Clip
@@ -59,6 +60,7 @@ public class ClipMediaJobStoreIntegrationTests
             ProcessingAttempts = processingAttempts,
             ThumbnailKey = thumbnailKey,
             GameId = gameId,
+            Height = height,
         };
         db.Clips.Add(clip);
         await db.SaveChangesAsync();
@@ -72,7 +74,7 @@ public class ClipMediaJobStoreIntegrationTests
         await using var db = NewContext();
         var store = NewStore(DateTimeOffset.UtcNow, db);
 
-        var result = await store.ClaimNextAsync(TimeSpan.FromMinutes(5), maxAttempts: 3, CancellationToken.None);
+        var result = await store.ClaimNextAsync(ClipStatuses.Processing, TimeSpan.FromMinutes(5), maxAttempts: 3, CancellationToken.None);
 
         result.Should().BeNull();
     }
@@ -87,7 +89,7 @@ public class ClipMediaJobStoreIntegrationTests
         await using var db = NewContext();
         var store = NewStore(DateTimeOffset.UtcNow, db);
 
-        var result = await store.ClaimNextAsync(TimeSpan.FromMinutes(5), 3, CancellationToken.None);
+        var result = await store.ClaimNextAsync(ClipStatuses.Processing, TimeSpan.FromMinutes(5), 3, CancellationToken.None);
 
         result.Should().BeNull();
     }
@@ -105,7 +107,7 @@ public class ClipMediaJobStoreIntegrationTests
         await using var db = NewContext();
         var store = NewStore(now, db);
 
-        var result = await store.ClaimNextAsync(TimeSpan.FromMinutes(5), 3, CancellationToken.None);
+        var result = await store.ClaimNextAsync(ClipStatuses.Processing, TimeSpan.FromMinutes(5), 3, CancellationToken.None);
 
         result.Should().NotBeNull();
         result!.ClipId.Should().Be(older);
@@ -122,23 +124,41 @@ public class ClipMediaJobStoreIntegrationTests
     }
 
     [Fact]
-    public async Task ClaimNextAsync_SkipsClipWithThumbnailAlreadySet()
+    public async Task ClaimNextAsync_TranscodeStage_OnlyPicksTranscodingClips()
     {
-        // Defensive: a clip in 'processing' that already has a thumbnail_key shouldn't
-        // be re-processed. (Should not occur normally — MarkReady flips status to ready —
-        // but the predicate is cheap and protects against stuck states.)
+        // The transcode stage claims 'transcoding', not 'processing'. A 'processing' clip
+        // (still awaiting its thumbnail) must be invisible to it.
         await _fx.ResetAsync();
         var userId = await SeedUserAsync("carol");
         var now = DateTimeOffset.UtcNow;
 
-        await SeedClipAsync(userId, ClipStatuses.Processing, now, thumbnailKey: "already.jpg");
+        await SeedClipAsync(userId, ClipStatuses.Processing, now.AddMinutes(-1));
+        var transcoding = await SeedClipAsync(userId, ClipStatuses.Transcoding, now.AddMinutes(-2));
 
         await using var db = NewContext();
         var store = NewStore(now, db);
 
-        var result = await store.ClaimNextAsync(TimeSpan.FromMinutes(5), 3, CancellationToken.None);
+        var result = await store.ClaimNextAsync(ClipStatuses.Transcoding, TimeSpan.FromMinutes(5), 3, CancellationToken.None);
 
-        result.Should().BeNull();
+        result.Should().NotBeNull();
+        result!.ClipId.Should().Be(transcoding);
+    }
+
+    [Fact]
+    public async Task ClaimNextAsync_CarriesSourceHeight()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("hugh");
+        var now = DateTimeOffset.UtcNow;
+        await SeedClipAsync(userId, ClipStatuses.Transcoding, now, height: 720);
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+
+        var result = await store.ClaimNextAsync(ClipStatuses.Transcoding, TimeSpan.FromMinutes(5), 3, CancellationToken.None);
+
+        result.Should().NotBeNull();
+        result!.SourceHeight.Should().Be(720);
     }
 
     [Fact]
@@ -153,7 +173,7 @@ public class ClipMediaJobStoreIntegrationTests
         await using var db = NewContext();
         var store = NewStore(now, db);
 
-        var result = await store.ClaimNextAsync(TimeSpan.FromMinutes(5), maxAttempts: 3, CancellationToken.None);
+        var result = await store.ClaimNextAsync(ClipStatuses.Processing, TimeSpan.FromMinutes(5), maxAttempts: 3, CancellationToken.None);
 
         result.Should().BeNull();
     }
@@ -173,7 +193,7 @@ public class ClipMediaJobStoreIntegrationTests
         await using var db = NewContext();
         var store = NewStore(now, db);
 
-        var result = await store.ClaimNextAsync(TimeSpan.FromMinutes(5), 3, CancellationToken.None);
+        var result = await store.ClaimNextAsync(ClipStatuses.Processing, TimeSpan.FromMinutes(5), 3, CancellationToken.None);
 
         result.Should().BeNull();
     }
@@ -192,7 +212,7 @@ public class ClipMediaJobStoreIntegrationTests
         await using var db = NewContext();
         var store = NewStore(now, db);
 
-        var result = await store.ClaimNextAsync(TimeSpan.FromMinutes(5), 3, CancellationToken.None);
+        var result = await store.ClaimNextAsync(ClipStatuses.Processing, TimeSpan.FromMinutes(5), 3, CancellationToken.None);
 
         result.Should().NotBeNull();
         result!.ClipId.Should().Be(clipId);
@@ -218,8 +238,8 @@ public class ClipMediaJobStoreIntegrationTests
         var store1 = NewStore(now, db1);
         var store2 = NewStore(now, db2);
 
-        var task1 = store1.ClaimNextAsync(TimeSpan.FromMinutes(5), 3, CancellationToken.None);
-        var task2 = store2.ClaimNextAsync(TimeSpan.FromMinutes(5), 3, CancellationToken.None);
+        var task1 = store1.ClaimNextAsync(ClipStatuses.Processing, TimeSpan.FromMinutes(5), 3, CancellationToken.None);
+        var task2 = store2.ClaimNextAsync(ClipStatuses.Processing, TimeSpan.FromMinutes(5), 3, CancellationToken.None);
         var results = await Task.WhenAll(task1, task2);
 
         results[0].Should().NotBeNull();
@@ -250,7 +270,7 @@ public class ClipMediaJobStoreIntegrationTests
     }
 
     [Fact]
-    public async Task MarkReadyAsync_FlipsStatusAndPersistsMetadata()
+    public async Task AdvanceThumbnailAsync_AdvancesToTranscodingAndPersistsMetadata()
     {
         await _fx.ResetAsync();
         var userId = await SeedUserAsync("hank");
@@ -262,14 +282,15 @@ public class ClipMediaJobStoreIntegrationTests
         await using var db = NewContext();
         var store = NewStore(now, db);
 
-        await store.MarkReadyAsync(clipId,
+        await store.AdvanceThumbnailAsync(clipId,
             expectedAttempt: 1,
             new FinalizedMediaJob("k.jpg", DurationSecs: 12, Width: 1920, Height: 1080),
+            ClipStatuses.Transcoding,
             CancellationToken.None);
 
         await using var verify = NewContext();
         var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
-        clip.Status.Should().Be(ClipStatuses.Ready);
+        clip.Status.Should().Be(ClipStatuses.Transcoding);
         clip.ThumbnailKey.Should().Be("k.jpg");
         clip.DurationSecs.Should().Be(12);
         clip.Width.Should().Be(1920);
@@ -278,10 +299,33 @@ public class ClipMediaJobStoreIntegrationTests
     }
 
     [Fact]
-    public async Task MarkReadyAsync_NoOpsWhenStatusAlreadyFailed()
+    public async Task AdvanceThumbnailAsync_ToReady_WhenTranscodeDisabled()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("hilda");
+        var now = DateTimeOffset.UtcNow;
+        var clipId = await SeedClipAsync(userId, ClipStatuses.Processing, now, processingAttempts: 1);
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+
+        await store.AdvanceThumbnailAsync(clipId,
+            expectedAttempt: 1,
+            new FinalizedMediaJob("k.jpg", 5, 1280, 720),
+            ClipStatuses.Ready,
+            CancellationToken.None);
+
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.Status.Should().Be(ClipStatuses.Ready);
+        clip.ThumbnailKey.Should().Be("k.jpg");
+    }
+
+    [Fact]
+    public async Task AdvanceThumbnailAsync_NoOpsWhenStatusAlreadyFailed()
     {
         // The status guard means a row that was already marked failed by a parallel
-        // worker doesn't get resurrected by a late MarkReady.
+        // worker doesn't get resurrected by a late advance.
         await _fx.ResetAsync();
         var userId = await SeedUserAsync("ivy");
         var now = DateTimeOffset.UtcNow;
@@ -290,9 +334,10 @@ public class ClipMediaJobStoreIntegrationTests
         await using var db = NewContext();
         var store = NewStore(now, db);
 
-        await store.MarkReadyAsync(clipId,
+        await store.AdvanceThumbnailAsync(clipId,
             expectedAttempt: 0,
             new FinalizedMediaJob("k.jpg", 1, 1, 1),
+            ClipStatuses.Transcoding,
             CancellationToken.None);
 
         await using var verify = NewContext();
@@ -302,10 +347,10 @@ public class ClipMediaJobStoreIntegrationTests
     }
 
     [Fact]
-    public async Task MarkReadyAsync_NoOpsWhenAttemptMismatch()
+    public async Task AdvanceThumbnailAsync_NoOpsWhenAttemptMismatch()
     {
         // Race regression: this worker's lease elapsed mid-extraction; another worker
-        // re-claimed and bumped processing_attempts. The original worker's late MarkReady
+        // re-claimed and bumped processing_attempts. The original worker's late advance
         // arrives with the stale attempt number and must NOT clobber the new claim.
         await _fx.ResetAsync();
         var userId = await SeedUserAsync("liam");
@@ -318,9 +363,10 @@ public class ClipMediaJobStoreIntegrationTests
         var store = NewStore(now, db);
 
         // Original worker thinks it owns attempt 1 — but the store is on attempt 2.
-        await store.MarkReadyAsync(clipId,
+        await store.AdvanceThumbnailAsync(clipId,
             expectedAttempt: 1,
             new FinalizedMediaJob("stale.jpg", 99, 99, 99),
+            ClipStatuses.Transcoding,
             CancellationToken.None);
 
         await using var verify = NewContext();
@@ -329,6 +375,50 @@ public class ClipMediaJobStoreIntegrationTests
         clip.ThumbnailKey.Should().BeNull();
         clip.ProcessingAttempts.Should().Be(2);
         clip.ProcessingStartedAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task CompleteCompressionAsync_FlipsToReadyAndRepointsVideoKey()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("trent");
+        var now = DateTimeOffset.UtcNow;
+        var clipId = await SeedClipAsync(userId, ClipStatuses.Transcoding, now,
+            processingStartedAt: now.AddSeconds(-2),
+            processingAttempts: 1);
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+
+        await store.CompleteCompressionAsync(clipId, expectedAttempt: 1, "user/clip.cmp.mp4", "av1", CancellationToken.None);
+
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.Status.Should().Be(ClipStatuses.Ready);
+        clip.VideoKey.Should().Be("user/clip.cmp.mp4");
+        clip.VideoCodec.Should().Be("av1");
+        clip.ProcessingStartedAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task CompleteCompressionAsync_NoOpsWhenNotTranscoding()
+    {
+        // Status guard: a clip that was already failed (or never reached transcoding) must
+        // not be flipped to ready by a late compression completion.
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("tara");
+        var now = DateTimeOffset.UtcNow;
+        var clipId = await SeedClipAsync(userId, ClipStatuses.Failed, now);
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+
+        await store.CompleteCompressionAsync(clipId, expectedAttempt: 0, "user/clip.cmp.mp4", "av1", CancellationToken.None);
+
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.Status.Should().Be(ClipStatuses.Failed);
+        clip.VideoCodec.Should().BeNull();
     }
 
     [Fact]
@@ -344,7 +434,7 @@ public class ClipMediaJobStoreIntegrationTests
         await using var db = NewContext();
         var store = NewStore(now, db);
 
-        await store.MarkFailedAsync(clipId, expectedAttempt: 3, CancellationToken.None);
+        await store.MarkFailedAsync(clipId, expectedAttempt: 3, ClipStatuses.Processing, CancellationToken.None);
 
         await using var verify = NewContext();
         var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
@@ -369,7 +459,7 @@ public class ClipMediaJobStoreIntegrationTests
         await using var db = NewContext();
         var store = NewStore(now, db);
 
-        await store.MarkFailedAsync(clipId, expectedAttempt: 3, CancellationToken.None);
+        await store.MarkFailedAsync(clipId, expectedAttempt: 3, ClipStatuses.Processing, CancellationToken.None);
 
         await using var verify = NewContext();
         var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
@@ -391,7 +481,7 @@ public class ClipMediaJobStoreIntegrationTests
         await using var db = NewContext();
         var store = NewStore(now, db);
 
-        await store.ReleaseLeaseAsync(clipId, expectedAttempt: 1, CancellationToken.None);
+        await store.ReleaseLeaseAsync(clipId, expectedAttempt: 1, ClipStatuses.Processing, CancellationToken.None);
 
         await using var verify = NewContext();
         var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
@@ -418,7 +508,7 @@ public class ClipMediaJobStoreIntegrationTests
         var store = NewStore(now, db);
 
         // Worker A wakes up holding stale attempt=2; release must be a no-op.
-        await store.ReleaseLeaseAsync(clipId, expectedAttempt: 2, CancellationToken.None);
+        await store.ReleaseLeaseAsync(clipId, expectedAttempt: 2, ClipStatuses.Processing, CancellationToken.None);
 
         await using var verify = NewContext();
         var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);

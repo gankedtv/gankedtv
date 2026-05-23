@@ -6,6 +6,7 @@ using GankedTV.Api.Clips;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Tests.TestSupport;
+using Microsoft.EntityFrameworkCore;
 using NSubstitute;
 
 namespace GankedTV.Api.Tests.Integration.Endpoints;
@@ -43,7 +44,8 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         string status = "ready",
         string visibility = "public",
         string? title = null,
-        int? gameId = null)
+        int? gameId = null,
+        string? videoCodec = null)
     {
         var id = Guid.NewGuid();
         var shareCode = ShareCodeGenerator.Next();
@@ -56,6 +58,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
             Title = title ?? $"clip-{id:N}".Substring(0, 20),
             VideoKey = $"{userId}/{id}.mp4",
             ThumbnailKey = $"thumbs/{id}.jpg",
+            VideoCodec = videoCodec,
             ShareCode = shareCode,
             Status = status,
             Visibility = visibility,
@@ -758,6 +761,8 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         body.GetProperty("videoUrl").GetString().Should().Be(presigned);
         body.GetProperty("likedByMe").GetBoolean().Should().BeFalse();
         body.GetProperty("shareCode").GetString().Should().NotBeNullOrEmpty();
+        // No codec recorded for this seed → null; the player plays the master directly.
+        body.GetProperty("videoCodec").ValueKind.Should().Be(JsonValueKind.Null);
 
         var expiresAt = body.GetProperty("videoUrlExpiresAt").GetDateTimeOffset();
         expiresAt.Should().BeCloseTo(DateTimeOffset.UtcNow.AddHours(1), TimeSpan.FromMinutes(2));
@@ -767,6 +772,99 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
             Arg.Any<string>(),
             $"{userId}/{clipId}.mp4",
             Arg.Is<TimeSpan?>(ts => ts.HasValue && ts.Value == TimeSpan.FromHours(1)));
+    }
+
+    [Fact]
+    public async Task Detail_WithVideoCodec_ReturnsCodec()
+    {
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync("av1owner");
+        var (clipId, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, videoCodec: "av1");
+
+        _storage.GetPresignedGetUrl(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan?>())
+            .Returns("https://minio.local/clips/presigned?sig=abc");
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync($"/clips/{clipId}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        // videoCodec drives the player's native-vs-JIT decision.
+        body.GetProperty("videoCodec").GetString().Should().Be("av1");
+    }
+
+    [Fact]
+    public async Task Stream_CacheMiss_Returns202_AndEnqueuesJob()
+    {
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync("streamer");
+        var (clipId, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow);
+        // GetObjectMetadataAsync defaults to null on the substitute → cache miss.
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync($"/clips/{clipId}/stream");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("status").GetString().Should().Be("pending");
+
+        await using var db = _fx.CreateContext();
+        var enqueued = await db.ClipStreamJobs.AsNoTracking().AnyAsync(j => j.ClipId == clipId);
+        enqueued.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Stream_CacheHit_Returns200_WithPublicHlsUrl()
+    {
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync("streamer2");
+        var (clipId, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow);
+        _storage.GetObjectMetadataAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new ObjectMetadata(42, "application/vnd.apple.mpegurl"));
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync($"/clips/{clipId}/stream");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("status").GetString().Should().Be("ready");
+        var hlsUrl = body.GetProperty("hlsUrl").GetString();
+        hlsUrl.Should().NotBeNullOrEmpty();
+        hlsUrl.Should().EndWith($"{clipId:N}/master.m3u8");
+        hlsUrl.Should().NotContain("sig=");
+    }
+
+    [Fact]
+    public async Task Stream_UnknownClip_Returns404()
+    {
+        await _fx.ResetAsync();
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync($"/clips/{Guid.NewGuid()}/stream");
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Stream_FailedJob_Returns503()
+    {
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync("streamer3");
+        var (clipId, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow);
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipStreamJobs.Add(new ClipStreamJob
+            {
+                ClipId = clipId,
+                Status = ClipStreamJobStatuses.Failed,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync($"/clips/{clipId}/stream");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
     }
 
     [Fact]

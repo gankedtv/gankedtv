@@ -104,25 +104,27 @@ public class ThumbnailRoundTripTests : IAsyncLifetime
                 status.Should().Be(ClipStatuses.Processing);
             }
 
-            // Run one worker tick manually. The factory removed all hosted services, so
-            // we instantiate MediaJobHostedService here with the real IFfmpegRunner that
-            // the API would have used in production.
+            // Run one thumbnail-stage tick manually. The factory removed all hosted services, so
+            // we instantiate ThumbnailWorker here with the real IFfmpegRunner that the API would
+            // have used in production.
             var sp = _factory!.Services;
-            var worker = new MediaJobHostedService(
+            var worker = new ThumbnailWorker(
                 sp.GetRequiredService<IServiceScopeFactory>(),
                 sp.GetRequiredService<IFfmpegRunner>(),
                 sp.GetRequiredService<IOptionsMonitor<MediaJobOptions>>(),
-                NullLogger<MediaJobHostedService>.Instance);
+                NullLogger<ThumbnailWorker>.Instance);
 
             var processed = await worker.TryProcessOneAsync(CancellationToken.None);
             processed.Should().BeTrue("the just-completed clip is claimable");
 
-            // Assert: clip flipped to Ready, ThumbnailKey set, thumbnail blob present in real S3.
+            // Assert: thumbnail extracted + blob present in real S3, and the clip advanced to
+            // 'transcoding' (transcoding is enabled by default, so the thumbnail stage hands
+            // off rather than going straight to 'ready').
             string? thumbnailKey;
             await using (var db = _pg.CreateContext())
             {
                 var clip = await db.Clips.AsNoTracking().FirstAsync(c => c.Id == clipId);
-                clip.Status.Should().Be(ClipStatuses.Ready);
+                clip.Status.Should().Be(ClipStatuses.Transcoding);
                 clip.ThumbnailKey.Should().NotBeNullOrEmpty();
                 thumbnailKey = clip.ThumbnailKey;
             }

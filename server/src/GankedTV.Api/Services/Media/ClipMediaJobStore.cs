@@ -16,6 +16,7 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
     }
 
     public async Task<ClaimedMediaJob?> ClaimNextAsync(
+        string status,
         TimeSpan leaseDuration,
         int maxAttempts,
         CancellationToken ct)
@@ -26,7 +27,8 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
         // Wrapping SELECT FOR UPDATE SKIP LOCKED + the lease bump in a single transaction
         // means another worker can't see the row between us locking it and us writing the
         // claim — without the lock, two pollers could both observe an expired lease and
-        // both proceed.
+        // both proceed. The status parameter selects the stage queue ('processing' or
+        // 'transcoding'); both are backed by a partial idx_clips_<status>_updated_at index.
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
         // AsNoTracking on a FOR UPDATE query is safe: the row lock is held by the
@@ -37,8 +39,7 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
             .FromSqlInterpolated($@"
                 SELECT *
                 FROM clips
-                WHERE status = 'processing'
-                  AND thumbnail_key IS NULL
+                WHERE status = {status}
                   AND (processing_started_at IS NULL OR processing_started_at < {leaseExpiry})
                   AND processing_attempts < {maxAttempts}
                 ORDER BY updated_at
@@ -66,7 +67,7 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
 
         await tx.CommitAsync(ct);
 
-        return new ClaimedMediaJob(clip.Id, clip.UserId, clip.GameId, clip.VideoKey, nextAttempt);
+        return new ClaimedMediaJob(clip.Id, clip.UserId, clip.GameId, clip.VideoKey, clip.Height, nextAttempt);
     }
 
     public async Task<string?> GetGameSlugAsync(int? gameId, CancellationToken ct)
@@ -79,10 +80,11 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
             .FirstOrDefaultAsync(ct);
     }
 
-    public async Task MarkReadyAsync(
+    public async Task AdvanceThumbnailAsync(
         Guid clipId,
         int expectedAttempt,
         FinalizedMediaJob result,
+        string toStatus,
         CancellationToken ct)
     {
         var now = _clock.GetUtcNow();
@@ -91,7 +93,7 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
                 && c.Status == ClipStatuses.Processing
                 && c.ProcessingAttempts == expectedAttempt)
             .ExecuteUpdateAsync(setters => setters
-                .SetProperty(c => c.Status, ClipStatuses.Ready)
+                .SetProperty(c => c.Status, toStatus)
                 .SetProperty(c => c.ThumbnailKey, result.ThumbnailKey)
                 .SetProperty(c => c.DurationSecs, result.DurationSecs)
                 .SetProperty(c => c.Width, result.Width)
@@ -100,12 +102,32 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
                 .SetProperty(c => c.UpdatedAt, now), ct);
     }
 
-    public async Task MarkFailedAsync(Guid clipId, int expectedAttempt, CancellationToken ct)
+    public async Task CompleteCompressionAsync(
+        Guid clipId,
+        int expectedAttempt,
+        string videoKey,
+        string videoCodec,
+        CancellationToken ct)
     {
         var now = _clock.GetUtcNow();
         await _db.Clips
             .Where(c => c.Id == clipId
-                && c.Status == ClipStatuses.Processing
+                && c.Status == ClipStatuses.Transcoding
+                && c.ProcessingAttempts == expectedAttempt)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(c => c.Status, ClipStatuses.Ready)
+                .SetProperty(c => c.VideoKey, videoKey)
+                .SetProperty(c => c.VideoCodec, videoCodec)
+                .SetProperty(c => c.ProcessingStartedAt, (DateTimeOffset?)null)
+                .SetProperty(c => c.UpdatedAt, now), ct);
+    }
+
+    public async Task MarkFailedAsync(Guid clipId, int expectedAttempt, string fromStatus, CancellationToken ct)
+    {
+        var now = _clock.GetUtcNow();
+        await _db.Clips
+            .Where(c => c.Id == clipId
+                && c.Status == fromStatus
                 && c.ProcessingAttempts == expectedAttempt)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(c => c.Status, ClipStatuses.Failed)
@@ -113,12 +135,12 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
                 .SetProperty(c => c.UpdatedAt, now), ct);
     }
 
-    public async Task ReleaseLeaseAsync(Guid clipId, int expectedAttempt, CancellationToken ct)
+    public async Task ReleaseLeaseAsync(Guid clipId, int expectedAttempt, string fromStatus, CancellationToken ct)
     {
         var now = _clock.GetUtcNow();
         await _db.Clips
             .Where(c => c.Id == clipId
-                && c.Status == ClipStatuses.Processing
+                && c.Status == fromStatus
                 && c.ProcessingAttempts == expectedAttempt)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(c => c.ProcessingStartedAt, (DateTimeOffset?)null)
