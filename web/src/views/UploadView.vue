@@ -5,6 +5,7 @@ import { ApiError } from '@/api/client'
 import { clips } from '@/api/clips'
 import type { GameSummary } from '@/api/clips'
 import GameSelector from '@/components/GameSelector.vue'
+import TagInput from '@/components/TagInput.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import IconUploadCloud from '@/components/icons/IconUploadCloud.vue'
 import IconFile from '@/components/icons/IconFile.vue'
@@ -33,6 +34,7 @@ const visibility = ref<'public' | 'unlisted'>('public')
 const dragging = ref(false)
 
 const selectedGame = ref<GameSummary | null>(null)
+const selectedTags = ref<string[]>([])
 
 // Upload state — granular so the checklist can light up step-by-step.
 type UploadStage = 'idle' | 'creating' | 'uploading' | 'completing' | 'done' | 'error'
@@ -130,6 +132,9 @@ async function startUpload() {
       description: desc.value.trim() || null,
       gameId: selectedGame.value?.id ?? null,
       visibility: visibility.value,
+      // Omit the field entirely when empty so the server treats it as "no tags"
+      // instead of an empty array. Same wire shape as the old POST.
+      ...(selectedTags.value.length ? { tags: selectedTags.value } : {}),
     })
     createdClipId.value = created.id
 
@@ -318,6 +323,14 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
               >Game <span class="text-[9px] text-text-muted">(optional)</span></label
             >
             <GameSelector v-model="selectedGame" />
+          </div>
+
+          <!-- Tags -->
+          <div>
+            <label :class="labelClass"
+              >Tags <span class="text-[9px] text-text-muted">(optional, max 5)</span></label
+            >
+            <TagInput v-model="selectedTags" :input-class="inputClass" />
           </div>
 
           <div>

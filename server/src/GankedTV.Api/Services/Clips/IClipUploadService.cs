@@ -11,7 +11,8 @@ public sealed record CreateClipInput(
     string? Title,
     string? Description,
     int? GameId,
-    string? Visibility);
+    string? Visibility,
+    IReadOnlyList<string>? Tags);
 
 public sealed record CreateClipResult(Guid ClipId);
 public sealed record UploadUrlResult(string Url, DateTimeOffset ExpiresAt, string ContentType);
@@ -28,6 +29,8 @@ public enum ClipUploadError
     ObjectNotUploaded,
     FileTooLarge,
     UnsupportedContentType,
+    TooManyTags,
+    InvalidTag,
 }
 
 public readonly record struct ClipResult<T>(T? Value, ClipUploadError? Error)

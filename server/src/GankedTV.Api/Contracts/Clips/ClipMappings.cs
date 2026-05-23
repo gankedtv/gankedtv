@@ -1,4 +1,5 @@
 using GankedTV.Api.Contracts.Games;
+using GankedTV.Api.Contracts.Tags;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Services.Clips;
 
@@ -31,6 +32,7 @@ public static class ClipMappings
             clip.CreatedAt,
             clip.User.ToAuthorSummary(),
             clip.Game?.ToGameSummary(),
+            clip.ToTagSummaries(),
             likedByMe);
 
     public static ClipDetailResponse ToDetail(
@@ -55,6 +57,18 @@ public static class ClipMappings
             clip.CreatedAt,
             clip.User.ToAuthorSummary(),
             clip.Game?.ToGameSummary(),
+            clip.ToTagSummaries(),
             likedByMe,
             clip.Visibility);
+
+    // Tag projection used by both ToFeedItem and ToDetail. Sorted by slug so cards
+    // render deterministically regardless of clip_tags insertion order. Callers must
+    // Include(c => c.ClipTags).ThenInclude(ct => ct.Tag) on the entity load — an
+    // un-included collection silently maps to an empty list, hiding bugs.
+    private static IReadOnlyList<TagSummary> ToTagSummaries(this Clip clip) =>
+        clip.ClipTags
+            .Where(ct => ct.Tag is not null)
+            .OrderBy(ct => ct.Tag.Slug, StringComparer.Ordinal)
+            .Select(ct => ct.Tag.ToSummary())
+            .ToList();
 }

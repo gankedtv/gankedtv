@@ -87,8 +87,7 @@ public static class ClipsReadEndpoints
         var rows = await query
             .OrderByDescending(c => c.CreatedAt)
             .ThenByDescending(c => c.Id)
-            .Include(c => c.User)
-            .Include(c => c.Game)
+            .IncludeFeedRelations()
             .Take(clampedLimit + 1)
             .ToListAsync(ct);
 
@@ -226,8 +225,7 @@ public static class ClipsReadEndpoints
         CancellationToken ct)
     {
         var clip = await db.Clips.AsNoTracking()
-            .Include(c => c.User)
-            .Include(c => c.Game)
+            .IncludeFeedRelations()
             .FirstOrDefaultAsync(predicate, ct);
 
         if (clip is null)

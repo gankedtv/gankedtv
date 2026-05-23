@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using GankedTV.Api.Clips;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Services.ObjectStorage;
+using GankedTV.Api.Services.Tags;
 using GankedTV.Api.Validation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -14,6 +16,7 @@ public sealed class ClipUploadService : IClipUploadService
 
     private readonly GankedTvDbContext _db;
     private readonly IObjectStorageService _storage;
+    private readonly ITagsResolver _tagsResolver;
     private readonly ClipValidationOptions _validation;
     private readonly S3Options _s3;
     private readonly TimeProvider _clock;
@@ -21,12 +24,14 @@ public sealed class ClipUploadService : IClipUploadService
     public ClipUploadService(
         GankedTvDbContext db,
         IObjectStorageService storage,
+        ITagsResolver tagsResolver,
         IOptions<ClipValidationOptions> validation,
         IOptions<S3Options> s3,
         TimeProvider clock)
     {
         _db = db;
         _storage = storage;
+        _tagsResolver = tagsResolver;
         _validation = validation.Value;
         _s3 = s3.Value;
         _clock = clock;
@@ -73,6 +78,18 @@ public sealed class ClipUploadService : IClipUploadService
             }
         }
 
+        // Resolve tags BEFORE the clip is staged so a tag validation failure doesn't
+        // require rolling back a partial Clip insert. ResolveAsync flushes any newly
+        // created tag rows; rolling back the clip insert via SaveChangesAsync below
+        // leaves those Tag rows intact but unreferenced — harmless and reachable for
+        // the next clip that uses the same slug (the whole point of get-or-create).
+        var requestedTags = input.Tags ?? [];
+        var tagsResult = await _tagsResolver.ResolveAsync(requestedTags, ct);
+        if (!tagsResult.IsSuccess)
+        {
+            return ClipResult<CreateClipResult>.Fail(MapTagsError(tagsResult.Error!.Value));
+        }
+
         var id = Guid.NewGuid();
         var now = _clock.GetUtcNow();
         var shareCode = await ShareCodeGenerator.GenerateUniqueAsync(_db.Clips, ct);
@@ -93,12 +110,26 @@ public sealed class ClipUploadService : IClipUploadService
             CreatedAt = now,
             UpdatedAt = now,
         };
+        // Same diff-and-attach as PATCH — the clip starts with an empty ClipTags
+        // collection, so SetClipTags reduces to "add all resolved tags".
+        _tagsResolver.SetClipTags(clip, tagsResult.Tags);
 
         _db.Clips.Add(clip);
         await _db.SaveChangesAsync(ct);
 
         return ClipResult<CreateClipResult>.Ok(new CreateClipResult(id));
     }
+
+    // Exhaustive over the defined TagsResolveError cases. The throwing default arm
+    // satisfies CS8524 (which can't prove an int-backed enum has no unnamed values)
+    // while still failing loudly if a future enum case is added without updating this
+    // map — preferable to a silent wrong mapping.
+    internal static ClipUploadError MapTagsError(TagsResolveError error) => error switch
+    {
+        TagsResolveError.TooManyTags => ClipUploadError.TooManyTags,
+        TagsResolveError.InvalidTag => ClipUploadError.InvalidTag,
+        _ => throw new UnreachableException($"Unmapped TagsResolveError: {error}"),
+    };
 
     public async Task<ClipResult<UploadUrlResult>> GetUploadUrlAsync(
         Guid userId,

@@ -6,6 +6,7 @@ import { formatNum, formatDuration, formatRelativeTime } from '@/lib/format'
 import ClipCard from '@/components/ClipCard.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import GameTag from '@/components/GameTag.vue'
+import TagChip from '@/components/TagChip.vue'
 import DurationBadge from '@/components/DurationBadge.vue'
 import AuthorHandle from '@/components/AuthorHandle.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
@@ -145,6 +146,15 @@ onMounted(loadMore)
                 {{ formatRelativeTime(hero.createdAt) }} ago by
                 <AuthorHandle :username="hero.author.username" class="text-text-primary" />
               </p>
+              <div v-if="hero.tags.length" class="flex flex-wrap gap-2">
+                <TagChip
+                  v-for="t in hero.tags"
+                  :key="t.id"
+                  :slug="t.slug"
+                  :name="t.name"
+                  size="md"
+                />
+              </div>
             </div>
 
             <div class="my-5 flex gap-7 border-y border-border py-4 font-mono">

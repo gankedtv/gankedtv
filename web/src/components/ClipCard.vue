@@ -1,17 +1,24 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { ClipFeedItem } from '@/api/clips'
 import { formatNum, formatRelativeTime } from '@/lib/format'
 import UserAvatar from './UserAvatar.vue'
 import GameTag from './GameTag.vue'
 import DurationBadge from './DurationBadge.vue'
 import AuthorHandle from './AuthorHandle.vue'
+import TagChip from './TagChip.vue'
 import IconHeart from './icons/IconHeart.vue'
 import IconEye from './icons/IconEye.vue'
+
+const MAX_VISIBLE_TAGS = 3
 
 const props = withDefaults(defineProps<{ clip: ClipFeedItem; showAuthor?: boolean }>(), {
   showAuthor: true,
 })
 const emit = defineEmits<{ click: [] }>()
+
+const visibleTags = computed(() => props.clip.tags.slice(0, MAX_VISIBLE_TAGS))
+const overflowCount = computed(() => Math.max(0, props.clip.tags.length - MAX_VISIBLE_TAGS))
 
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter' || e.key === ' ') {
@@ -64,6 +71,24 @@ function onKeydown(e: KeyboardEvent) {
       >
         {{ clip.title }}
       </h3>
+
+      <!-- Tag row: up to 3 chips + "+N" overflow indicator. Hidden when the
+           clip has no tags so cards without tags don't grow a blank row. The
+           overflow chip is a plain span — it isn't a link to any tag in
+           particular, just a visual cue that more exist on the detail page.
+           Both elements .stop the click so the chip area doesn't double as a
+           card-click target (TagChip's internal RouterLink also .stops, but
+           the redundancy makes the contract obvious from this template). -->
+      <div v-if="clip.tags.length" class="flex flex-wrap gap-1.5">
+        <TagChip v-for="t in visibleTags" :key="t.id" :slug="t.slug" :name="t.name" @click.stop />
+        <span
+          v-if="overflowCount > 0"
+          class="rounded-[3px] border border-border-strong bg-surface-base px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-text-muted"
+          @click.stop
+        >
+          +{{ overflowCount }}
+        </span>
+      </div>
 
       <div
         v-if="showAuthor"

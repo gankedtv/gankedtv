@@ -1,4 +1,5 @@
 using GankedTV.Api.Contracts.Games;
+using GankedTV.Api.Contracts.Tags;
 
 namespace GankedTV.Api.Contracts.Clips;
 
@@ -17,4 +18,5 @@ public sealed record ClipFeedItem(
     DateTimeOffset CreatedAt,
     AuthorSummary Author,
     GameSummary? Game,
+    IReadOnlyList<TagSummary> Tags,
     bool LikedByMe);

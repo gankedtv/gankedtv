@@ -42,6 +42,11 @@ const router = createRouter({
       component: () => import('@/views/GameView.vue'),
     },
     {
+      path: '/tag/:slug',
+      name: 'tag-detail',
+      component: () => import('@/views/TagView.vue'),
+    },
+    {
       path: '/trending',
       name: 'trending',
       component: () => import('@/views/TrendingView.vue'),

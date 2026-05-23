@@ -15,6 +15,7 @@ using GankedTV.Api.Services.Igdb;
 using GankedTV.Api.Services.Maintenance;
 using GankedTV.Api.Services.Media;
 using GankedTV.Api.Services.ObjectStorage;
+using GankedTV.Api.Services.Tags;
 using GankedTV.Api.Tools;
 using GankedTV.Api.Validation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -154,6 +155,7 @@ builder.Services.AddOptions<ClipValidationOptions>()
     .ValidateOnStart();
 
 builder.Services.AddScoped<IClipUploadService, ClipUploadService>();
+builder.Services.AddScoped<ITagsResolver, TagsResolver>();
 
 // ---- Auth configuration ----
 
@@ -360,6 +362,7 @@ app.MapClipsMutateEndpoints();
 app.MapLikesEndpoints();
 app.MapUsersEndpoints();
 app.MapGamesEndpoints();
+app.MapTagsEndpoints();
 
 if (app.Environment.IsDevelopment())
 {

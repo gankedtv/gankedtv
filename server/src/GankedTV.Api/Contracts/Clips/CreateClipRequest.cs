@@ -10,4 +10,8 @@ public sealed record CreateClipRequest(
     [property: StringLength(ClipValidationLimits.MaxDescriptionLength)]
     string? Description,
     int? GameId,
-    string? Visibility);
+    string? Visibility,
+    // Optional. Omitted = no tags; otherwise each entry is normalized + get-or-created
+    // server-side. Validation (max 5, char/length rules) lives in TagsResolver so POST
+    // and PATCH share one code path. Null is treated identically to an empty list.
+    List<string>? Tags);

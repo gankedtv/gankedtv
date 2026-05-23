@@ -10,6 +10,8 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
     public DbSet<Clip> Clips => Set<Clip>();
     public DbSet<Like> Likes => Set<Like>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<Tag> Tags => Set<Tag>();
+    public DbSet<ClipTag> ClipTags => Set<ClipTag>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -120,6 +122,34 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
                 .WithMany(c => c.Likes)
                 .HasForeignKey(l => l.ClipId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Tag>(e =>
+        {
+            e.HasKey(t => t.Id);
+            e.Property(t => t.Slug).HasMaxLength(24);
+            e.Property(t => t.Name).HasMaxLength(24);
+            e.Property(t => t.CreatedAt).HasDefaultValueSql("now()");
+            e.HasIndex(t => t.Slug).IsUnique().HasDatabaseName("idx_tags_slug");
+        });
+
+        modelBuilder.Entity<ClipTag>(e =>
+        {
+            e.HasKey(ct => new { ct.ClipId, ct.TagId });
+
+            e.HasOne(ct => ct.Clip)
+                .WithMany(c => c.ClipTags)
+                .HasForeignKey(ct => ct.ClipId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(ct => ct.Tag)
+                .WithMany(t => t.ClipTags)
+                .HasForeignKey(ct => ct.TagId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Supports both the autocomplete (counting clips per tag) and the
+            // GET /tags/{slug}/clips query (filtering by tag id then joining clips).
+            e.HasIndex(ct => new { ct.TagId, ct.ClipId }).HasDatabaseName("idx_clip_tags_tag");
         });
 
         modelBuilder.Entity<RefreshToken>(e =>

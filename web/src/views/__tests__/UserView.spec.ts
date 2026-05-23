@@ -68,6 +68,7 @@ describe('UserView (issue #92 regression)', () => {
           createdAt: new Date().toISOString(),
           author: { id: 'u1', username: 'seeduser', avatarUrl: null },
           game: null,
+          tags: [],
           likedByMe: false,
           shareCode: 'seed01',
         },
