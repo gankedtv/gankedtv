@@ -169,7 +169,7 @@ builder.Services.AddOptions<MediaJobOptions>()
     .Validate(o => !string.IsNullOrWhiteSpace(o.VideoEncoder), "MediaJobs.VideoEncoder must be set.")
     .Validate(o => !string.IsNullOrWhiteSpace(o.VideoCodec), "MediaJobs.VideoCodec must be set.")
     .Validate(o => !string.IsNullOrWhiteSpace(o.JitVideoEncoder), "MediaJobs.JitVideoEncoder must be set.")
-    .Validate(o => o.Ladder.Count > 0, "MediaJobs.Ladder must define at least one rung.")
+    .Validate(o => o.Ladder is { Count: > 0 }, "MediaJobs.Ladder must define at least one rung.")
     .ValidateOnStart();
 builder.Services.AddSingleton<IFfmpegRunner, FfmpegRunner>();
 builder.Services.AddScoped<IClipMediaJobStore, ClipMediaJobStore>();

@@ -56,7 +56,8 @@ public sealed class S3ObjectStorageService : IObjectStorageService
         // The stream cache is transient: a lifecycle rule expires cached renditions so the JIT
         // output never accumulates indefinitely. Skipped when aliased onto a private bucket.
         if (_options.StreamCacheBucket != _options.ClipsBucket
-            && _options.StreamCacheBucket != _options.ThumbnailsBucket)
+            && _options.StreamCacheBucket != _options.ThumbnailsBucket
+            && _options.StreamCacheBucket != _options.GameCoversBucket)
         {
             await ApplyStreamCacheLifecycleAsync(ct);
         }

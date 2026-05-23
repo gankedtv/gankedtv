@@ -32,6 +32,10 @@ const file = ref<File | null>(null)
 // frame while the user fills in title/game/tags — no server round-trip. Best-effort: stays null
 // if the browser can't decode the source.
 const posterUrl = ref<string | null>(null)
+// Monotonic token so a slow capture from an earlier pick can't overwrite a newer one's poster.
+let posterRequestId = 0
+// Cap the preview canvas so a 4K/8K source doesn't allocate a huge bitmap for a small thumbnail.
+const MAX_PREVIEW_DIM = 1280
 const title = ref('')
 const desc = ref('')
 const visibility = ref<'public' | 'unlisted'>('public')
@@ -54,6 +58,8 @@ onUnmounted(() => {
 
 function pickFile(f: File | null) {
   if (!f) return
+  // Bump on every pick (valid or not) so any in-flight capture from a prior pick is ignored.
+  const requestId = ++posterRequestId
   if (!f.type.startsWith('video/')) {
     // Clear any prior valid selection — leaving the old file as the "current"
     // pick alongside an error about a different file is confusing.
@@ -70,18 +76,20 @@ function pickFile(f: File | null) {
   }
   errorMsg.value = null
   file.value = f
-  void generatePoster(f)
+  void generatePoster(f, requestId)
 }
 
 // Capture a representative frame from the picked file via an offscreen <video> + <canvas>.
-// Resolves to a JPEG data URL, or null if the browser can't decode/draw the source.
-async function generatePoster(f: File): Promise<void> {
+// Resolves to a JPEG data URL, or null if the browser can't decode/draw the source. Only
+// assigns posterUrl if this is still the latest pick (requestId guard).
+async function generatePoster(f: File, requestId: number): Promise<void> {
   posterUrl.value = null
   const objectUrl = URL.createObjectURL(f)
   try {
-    posterUrl.value = await capturePosterFrame(objectUrl)
+    const url = await capturePosterFrame(objectUrl)
+    if (requestId === posterRequestId) posterUrl.value = url
   } catch {
-    posterUrl.value = null // best-effort — the preview just falls back to the filename
+    // best-effort — the preview just falls back to the filename
   } finally {
     URL.revokeObjectURL(objectUrl)
   }
@@ -107,9 +115,11 @@ function capturePosterFrame(src: string): Promise<string> {
     video.onseeked = () => {
       try {
         if (!video.videoWidth || !video.videoHeight) throw new Error('no video frame')
+        // Downscale so a 4K/8K source doesn't allocate a giant bitmap for a small preview.
+        const scale = Math.min(1, MAX_PREVIEW_DIM / Math.max(video.videoWidth, video.videoHeight))
         const canvas = document.createElement('canvas')
-        canvas.width = video.videoWidth
-        canvas.height = video.videoHeight
+        canvas.width = Math.round(video.videoWidth * scale)
+        canvas.height = Math.round(video.videoHeight * scale)
         const ctx = canvas.getContext('2d')
         if (!ctx) throw new Error('no 2d context')
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height)

@@ -134,6 +134,9 @@ async function loadClip(isPoll = false) {
       router.replace({ name: 'not-found' })
       return
     }
+    // A non-404 error during a processing poll must clear `processing` so the error panel
+    // (rendered after the processing panel) actually shows instead of being masked.
+    processing.value = false
     errored.value = true
   } finally {
     if (myLoadId === latestLoadId && !processing.value) loading.value = false

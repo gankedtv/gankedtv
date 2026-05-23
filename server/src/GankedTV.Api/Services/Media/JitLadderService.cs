@@ -66,7 +66,14 @@ public sealed class JitLadderService : IJitLadderService
             }
 
             var keyPrefix = BuildCachePrefix(job.ClipId);
-            foreach (var path in Directory.EnumerateFiles(workDir))
+            // Upload segments + variant playlists first and master.m3u8 LAST. The /stream
+            // endpoint treats the presence of master.m3u8 as "ready", so publishing it before
+            // its referenced files exist would briefly serve a playlist whose segments 404.
+            const string masterName = "master.m3u8";
+            var paths = Directory.EnumerateFiles(workDir)
+                .OrderBy(p => Path.GetFileName(p) == masterName) // false (0) sorts before true (1)
+                .ToList();
+            foreach (var path in paths)
             {
                 var name = Path.GetFileName(path);
                 await using var stream = File.OpenRead(path);

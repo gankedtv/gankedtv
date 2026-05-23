@@ -807,6 +807,8 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         body.GetProperty("status").GetString().Should().Be("pending");
+        // A "pending" response must not carry an hlsUrl — lock the 202 payload shape.
+        body.GetProperty("hlsUrl").ValueKind.Should().Be(JsonValueKind.Null);
 
         await using var db = _fx.CreateContext();
         var enqueued = await db.ClipStreamJobs.AsNoTracking().AnyAsync(j => j.ClipId == clipId);
