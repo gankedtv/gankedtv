@@ -4,6 +4,7 @@ using System.Text.Json;
 using FluentAssertions;
 using GankedTV.Api.Clips;
 using GankedTV.Api.Data.Entities;
+using GankedTV.Api.Notifications;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Tests.TestSupport;
 using Microsoft.EntityFrameworkCore;
@@ -266,6 +267,76 @@ public class LikesEndpointsTests : IAsyncLifetime
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         await using var db = _fx.CreateContext();
         (await db.Clips.Where(c => c.Id == clipId).Select(c => c.LikeCount).FirstAsync()).Should().Be(0);
+    }
+
+    // ---- Notification side-effects ----
+
+    [Fact]
+    public async Task Like_RecordsNotificationForClipOwner()
+    {
+        await _fx.ResetAsync();
+        var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
+        var (fanId, token) = await SeedUserAndIssueTokenAsync("fan");
+        var clipId = await SeedClipAsync(authorId);
+
+        using var client = ClientWithBearer(token);
+        (await client.PostAsync($"/clips/{clipId}/like", content: null)).EnsureSuccessStatusCode();
+
+        await using var db = _fx.CreateContext();
+        var notif = await db.Notifications.SingleAsync();
+        notif.Type.Should().Be(NotificationTypes.Like);
+        notif.RecipientId.Should().Be(authorId);
+        notif.ActorId.Should().Be(fanId);
+        notif.ClipId.Should().Be(clipId);
+    }
+
+    [Fact]
+    public async Task Like_OwnClip_DoesNotRecordNotification()
+    {
+        await _fx.ResetAsync();
+        var (authorId, token) = await SeedUserAndIssueTokenAsync("author");
+        var clipId = await SeedClipAsync(authorId);
+
+        using var client = ClientWithBearer(token);
+        (await client.PostAsync($"/clips/{clipId}/like", content: null)).EnsureSuccessStatusCode();
+
+        await using var db = _fx.CreateContext();
+        (await db.Notifications.AnyAsync()).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Like_DoubleLike_OnlyRecordsOneNotification()
+    {
+        // The endpoint already collapses re-likes into a single Like row via ON CONFLICT DO
+        // NOTHING — the notification must follow the same guard.
+        await _fx.ResetAsync();
+        var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
+        var (_, token) = await SeedUserAndIssueTokenAsync("fan");
+        var clipId = await SeedClipAsync(authorId);
+
+        using var client = ClientWithBearer(token);
+        (await client.PostAsync($"/clips/{clipId}/like", content: null)).EnsureSuccessStatusCode();
+        (await client.PostAsync($"/clips/{clipId}/like", content: null)).EnsureSuccessStatusCode();
+
+        await using var db = _fx.CreateContext();
+        (await db.Notifications.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Unlike_DoesNotDeleteExistingLikeNotification()
+    {
+        // Per the issue: unliking must not erase the historical notification.
+        await _fx.ResetAsync();
+        var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
+        var (_, token) = await SeedUserAndIssueTokenAsync("fan");
+        var clipId = await SeedClipAsync(authorId);
+
+        using var client = ClientWithBearer(token);
+        (await client.PostAsync($"/clips/{clipId}/like", content: null)).EnsureSuccessStatusCode();
+        (await client.DeleteAsync($"/clips/{clipId}/like")).EnsureSuccessStatusCode();
+
+        await using var db = _fx.CreateContext();
+        (await db.Notifications.CountAsync()).Should().Be(1);
     }
 
     [Fact]

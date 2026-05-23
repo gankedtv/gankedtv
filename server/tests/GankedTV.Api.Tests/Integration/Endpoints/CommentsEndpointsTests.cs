@@ -4,9 +4,11 @@ using System.Text.Json;
 using FluentAssertions;
 using GankedTV.Api.Clips;
 using GankedTV.Api.Data.Entities;
+using GankedTV.Api.Notifications;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Tests.TestSupport;
 using GankedTV.Api.Validation;
+using Microsoft.EntityFrameworkCore;
 using NSubstitute;
 
 namespace GankedTV.Api.Tests.Integration.Endpoints;
@@ -190,6 +192,42 @@ public class CommentsEndpointsTests : IAsyncLifetime
         var createdAt = item.GetProperty("createdAt").GetDateTimeOffset();
         createdAt.Should().BeOnOrAfter(before.AddSeconds(-1));
         createdAt.Should().BeOnOrBefore(DateTimeOffset.UtcNow.AddSeconds(1));
+    }
+
+    [Fact]
+    public async Task Create_OnOthersClip_RecordsNotificationForClipOwner()
+    {
+        await _fx.ResetAsync();
+        var (ownerId, _) = await SeedUserAndIssueTokenAsync("author");
+        var (commenterId, token) = await SeedUserAndIssueTokenAsync("commenter");
+        var clipId = await SeedClipAsync(ownerId);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/comments", new { body = "great clip" });
+        resp.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        await using var db = _fx.CreateContext();
+        var notif = await db.Notifications.SingleAsync();
+        notif.Type.Should().Be(NotificationTypes.Comment);
+        notif.RecipientId.Should().Be(ownerId);
+        notif.ActorId.Should().Be(commenterId);
+        notif.ClipId.Should().Be(clipId);
+        notif.CommentId.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Create_OnOwnClip_DoesNotRecordNotification()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync("author");
+        var clipId = await SeedClipAsync(userId);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/comments", new { body = "self" });
+        resp.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        await using var db = _fx.CreateContext();
+        (await db.Notifications.AnyAsync()).Should().BeFalse();
     }
 
     [Fact]

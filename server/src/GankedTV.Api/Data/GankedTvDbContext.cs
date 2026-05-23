@@ -15,6 +15,7 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<ClipTag> ClipTags => Set<ClipTag>();
+    public DbSet<Notification> Notifications => Set<Notification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -241,6 +242,55 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             // EF auto-generates an index on the UserId FK; name it explicitly to match the
             // `idx_*` convention used elsewhere (otherwise it lands as `ix_comments_user_id`).
             e.HasIndex(c => c.UserId).HasDatabaseName("idx_comments_user_id");
+        });
+
+        modelBuilder.Entity<Notification>(e =>
+        {
+            e.HasKey(n => n.Id);
+            e.Property(n => n.Id).HasDefaultValueSql("gen_random_uuid()");
+            e.Property(n => n.Type).HasMaxLength(20);
+            e.Property(n => n.CreatedAt).HasDefaultValueSql("now()");
+
+            // Two FKs to the same `users` table (recipient + actor): use parameterless WithMany()
+            // so we don't have to carry two collections on User just for cascade configuration.
+            e.HasOne(n => n.Recipient)
+                .WithMany()
+                .HasForeignKey(n => n.RecipientId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(n => n.Actor)
+                .WithMany()
+                .HasForeignKey(n => n.ActorId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Deleting a clip clears any notifications anchored to it; same for a comment. Both
+            // FKs are nullable since a `follow` notification has neither.
+            e.HasOne(n => n.Clip)
+                .WithMany()
+                .HasForeignKey(n => n.ClipId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(n => n.Comment)
+                .WithMany()
+                .HasForeignKey(n => n.CommentId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Defence in depth: the service layer filters self-actions, but the DB-level CHECK
+            // guards against a buggy future call site (mirrors ck_follows_no_self).
+            e.ToTable(t => t.HasCheckConstraint(
+                "ck_notifications_no_self",
+                "actor_id <> recipient_id"));
+
+            // Drives the recipient's listing (RecipientId filter, CreatedAt desc keyset).
+            e.HasIndex(n => new { n.RecipientId, n.CreatedAt })
+                .IsDescending(false, true)
+                .HasDatabaseName("idx_notifications_recipient");
+
+            // Partial index — only unread rows, so the unread-count probe stays bounded by the
+            // tail of in-flight notifications even as the table grows.
+            e.HasIndex(n => n.RecipientId)
+                .HasFilter("read_at IS NULL")
+                .HasDatabaseName("idx_notifications_unread");
         });
 
         modelBuilder.Entity<RefreshToken>(e =>

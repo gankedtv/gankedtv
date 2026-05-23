@@ -4,6 +4,7 @@ using GankedTV.Api.Clips;
 using GankedTV.Api.Contracts.Comments;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
+using GankedTV.Api.Notifications;
 using GankedTV.Api.Pagination;
 using GankedTV.Api.Problems;
 using GankedTV.Api.Validation;
@@ -44,6 +45,7 @@ public static class CommentsEndpoints
         [FromBody] CreateCommentRequest? req,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
+        INotificationService notifications,
         CancellationToken ct)
     {
         if (!TryGetUserId(principal, out var userId))
@@ -60,7 +62,11 @@ public static class CommentsEndpoints
 
         var body = req.Body.Trim();
 
-        if (!await db.Clips.AnyAsync(c => c.Id == clipId, ct))
+        var clipOwnerId = await db.Clips.AsNoTracking()
+            .Where(c => c.Id == clipId)
+            .Select(c => (Guid?)c.UserId)
+            .FirstOrDefaultAsync(ct);
+        if (clipOwnerId is null)
         {
             return ProblemResults.NotFound("not_found");
         }
@@ -89,6 +95,11 @@ public static class CommentsEndpoints
         };
         db.Comments.Add(comment);
         await db.SaveChangesAsync(ct);
+
+        // Notify the clip owner — replies-to-replies still notify the clip owner only; notifying
+        // the parent commenter is a Phase 4 follow-up. Self-comments are dropped by the service.
+        await notifications.RecordAsync(
+            clipOwnerId.Value, userId, NotificationTypes.Comment, clipId, comment.Id, ct);
 
         // Author is needed for the response shape; the authenticated user always exists.
         comment.User = (await db.Users.FindAsync([userId], ct))!;

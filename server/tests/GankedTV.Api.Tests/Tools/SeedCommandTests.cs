@@ -42,7 +42,7 @@ public class SeedCommandTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task FreshDb_CreatesOneUserAndTenClips()
+    public async Task FreshDb_CreatesTwoUsersAndTenClips()
     {
         await using var db = _fx.CreateContext();
         var seed = NewSeed(db, out _, out _);
@@ -50,9 +50,14 @@ public class SeedCommandTests : IAsyncLifetime
         await seed.RunAsync(CancellationToken.None);
 
         await using var verify = _fx.CreateContext();
-        (await verify.Users.CountAsync()).Should().Be(1);
+        (await verify.Users.CountAsync()).Should().Be(2);
         (await verify.Clips.CountAsync()).Should().Be(SeedCommand.SeedClipCount);
-        (await verify.Users.SingleAsync()).Username.Should().Be(SeedCommand.SeedUsername);
+        var usernames = await verify.Users.Select(u => u.Username).ToListAsync();
+        usernames.Should().Contain([SeedCommand.SeedUsername, SeedCommand.SeedUser2Username]);
+        // Clips all belong to the primary seeded user; seeduser2 has none — they're the
+        // "actor" persona used by two-browser smoke tests, not a content owner.
+        (await verify.Clips.CountAsync(c => c.UserId == SeedCommand.SeedUserId))
+            .Should().Be(SeedCommand.SeedClipCount);
     }
 
     [Fact]
@@ -69,7 +74,7 @@ public class SeedCommandTests : IAsyncLifetime
         }
 
         await using var verify = _fx.CreateContext();
-        (await verify.Users.CountAsync()).Should().Be(1);
+        (await verify.Users.CountAsync()).Should().Be(2);
         (await verify.Clips.CountAsync()).Should().Be(SeedCommand.SeedClipCount);
     }
 
@@ -117,14 +122,24 @@ public class SeedCommandTests : IAsyncLifetime
     {
         // The README documents seeduser@dev.local / testpass123! as the local-dev login;
         // contributors should be able to call /auth/login with that pair after `make seed`.
+        // seeduser2 ships with the same password — it's an alternate identity for two-browser
+        // smoke tests, not a different credential surface to maintain.
         await using var db = _fx.CreateContext();
         await NewSeed(db, out _, out _).RunAsync(CancellationToken.None);
 
+        var hasher = new Argon2idPasswordHasher();
         await using var verify = _fx.CreateContext();
-        var user = await verify.Users.SingleAsync();
-        user.PasswordHash.Should().NotBeNullOrEmpty();
-        user.PasswordAlgo.Should().Be("argon2id");
-        new Argon2idPasswordHasher().Verify(SeedCommand.SeedUserPassword, user.PasswordHash!).Should().BeTrue();
+        foreach (var (username, password) in new[]
+                 {
+                     (SeedCommand.SeedUsername, SeedCommand.SeedUserPassword),
+                     (SeedCommand.SeedUser2Username, SeedCommand.SeedUser2Password),
+                 })
+        {
+            var user = await verify.Users.SingleAsync(u => u.Username == username);
+            user.PasswordHash.Should().NotBeNullOrEmpty();
+            user.PasswordAlgo.Should().Be("argon2id");
+            hasher.Verify(password, user.PasswordHash!).Should().BeTrue();
+        }
     }
 
     [Fact]
@@ -154,8 +169,9 @@ public class SeedCommandTests : IAsyncLifetime
         }
 
         await using var verify = _fx.CreateContext();
-        (await verify.Users.CountAsync()).Should().Be(1);
-        var user = await verify.Users.SingleAsync();
+        // Two users total: the reused primary + the new seeduser2.
+        (await verify.Users.CountAsync()).Should().Be(2);
+        var user = await verify.Users.SingleAsync(u => u.Username == SeedCommand.SeedUsername);
         user.Id.Should().Be(preExistingId, "the existing row is reused, not replaced");
         // Seed should have attached the documented password to the reused row so /auth/login still works.
         user.PasswordHash.Should().NotBeNullOrEmpty();
@@ -179,7 +195,7 @@ public class SeedCommandTests : IAsyncLifetime
         var rotated = hasher.Hash("rotated-password-1234");
         await using (var db = _fx.CreateContext())
         {
-            var user = await db.Users.SingleAsync();
+            var user = await db.Users.SingleAsync(u => u.Username == SeedCommand.SeedUsername);
             user.PasswordHash = rotated;
             await db.SaveChangesAsync();
         }
@@ -191,7 +207,7 @@ public class SeedCommandTests : IAsyncLifetime
         }
 
         await using var verify = _fx.CreateContext();
-        var after = await verify.Users.SingleAsync();
+        var after = await verify.Users.SingleAsync(u => u.Username == SeedCommand.SeedUsername);
         after.PasswordHash.Should().Be(rotated);
     }
 
@@ -219,7 +235,7 @@ public class SeedCommandTests : IAsyncLifetime
         // Plus one placeholder cover per game in the game-covers bucket.
         storage.PutCalls.Where(p => p.Bucket == "game-covers").Should().HaveCount(gameCount);
 
-        var seedUserId = (await db.Users.SingleAsync()).Id;
+        var seedUserId = (await db.Users.SingleAsync(u => u.Username == SeedCommand.SeedUsername)).Id;
         foreach (var i in Enumerable.Range(1, SeedCommand.SeedClipCount))
         {
             var clipId = SeedCommand.SeedClipId(i);
@@ -320,7 +336,7 @@ public class SeedCommandTests : IAsyncLifetime
 
         await using (var db = _fx.CreateContext())
         {
-            var seedUserId = (await db.Users.SingleAsync()).Id;
+            var seedUserId = (await db.Users.SingleAsync(u => u.Username == SeedCommand.SeedUsername)).Id;
             foreach (var i in Enumerable.Range(1, SeedCommand.SeedClipCount))
             {
                 var clipId = SeedCommand.SeedClipId(i);

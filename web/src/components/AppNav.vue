@@ -3,18 +3,38 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, wa
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
+import { useNotificationsStore } from '@/stores/notifications'
 import { search, type SearchResponse } from '@/api/search'
 import ThemePicker from './ThemePicker.vue'
 import UserAvatar from './UserAvatar.vue'
 import GameSearchResult from './GameSearchResult.vue'
+import NotificationsDropdown from './notifications/NotificationsDropdown.vue'
 import IconSearch from './icons/IconSearch.vue'
 import IconSun from './icons/IconSun.vue'
 import IconMoon from './icons/IconMoon.vue'
 import IconPlus from './icons/IconPlus.vue'
+import IconBell from './icons/IconBell.vue'
 
 const auth = useAuthStore()
 const theme = useThemeStore()
 const router = useRouter()
+const notificationsStore = useNotificationsStore()
+
+// Start/stop polling whenever the auth state flips. Wiring it here (vs App.vue) keeps the
+// nav self-contained — every authenticated session is rendered through the nav, so the bell
+// component owns the lifetime.
+watch(
+  () => auth.isAuthenticated,
+  (isAuthed) => {
+    if (isAuthed) {
+      notificationsStore.startPolling()
+    } else {
+      notificationsStore.reset()
+    }
+  },
+  { immediate: true },
+)
+onBeforeUnmount(() => notificationsStore.stopPolling())
 
 const navLinkActive =
   "text-text-primary after:content-[''] after:absolute after:left-3.5 after:right-3.5 after:bottom-0.5 after:h-0.5 after:bg-brand-light"
@@ -158,6 +178,61 @@ function onBlur() {
     isFocused.value = false
   }, 120)
 }
+
+// --- Notifications bell + dropdown --------------------------------------------
+
+const bellRef = useTemplateRef<HTMLButtonElement>('bellRef')
+const isBellOpen = ref(false)
+const bellPopoverPos = ref({ top: 0, right: 0 })
+
+function updateBellPos() {
+  const el = bellRef.value
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  bellPopoverPos.value = {
+    top: rect.bottom + 4,
+    // Anchor to the right edge of the bell so the dropdown sits flush with the nav's right side.
+    right: Math.max(8, window.innerWidth - rect.right),
+  }
+}
+
+const bellPopoverStyle = computed(() => ({
+  top: `${bellPopoverPos.value.top}px`,
+  right: `${bellPopoverPos.value.right}px`,
+  width: '360px',
+}))
+
+async function toggleBell() {
+  isBellOpen.value = !isBellOpen.value
+  if (isBellOpen.value) {
+    await nextTick()
+    updateBellPos()
+  }
+}
+
+function closeBell() {
+  isBellOpen.value = false
+}
+
+const unreadBadge = computed(() => {
+  const n = notificationsStore.unreadCount
+  if (n <= 0) return null
+  return n > 9 ? '9+' : String(n)
+})
+
+// Close-on-outside-click. Listening on `mousedown` (not click) so the bell can swallow its own
+// open-click without immediately reclosing.
+function onDocumentMouseDown(e: MouseEvent) {
+  if (!isBellOpen.value) return
+  const target = e.target as Node | null
+  if (target && bellRef.value && bellRef.value.contains(target)) return
+  const popover = document.getElementById('nav-notifications-popover')
+  if (popover && target && popover.contains(target)) return
+  isBellOpen.value = false
+}
+
+onMounted(() => document.addEventListener('mousedown', onDocumentMouseDown))
+onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentMouseDown))
 </script>
 
 <template>
@@ -313,6 +388,26 @@ function onBlur() {
           <IconMoon v-else :size="16" />
         </button>
 
+        <!-- Notifications bell (authenticated only) -->
+        <button
+          v-if="auth.isAuthenticated"
+          ref="bellRef"
+          type="button"
+          class="relative inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border bg-transparent text-text-secondary transition-all duration-150 hover:border-border-hover hover:text-text-primary"
+          :class="isBellOpen ? 'border-brand text-text-primary' : 'border-border'"
+          :aria-label="`Notifications${unreadBadge ? ` (${unreadBadge} unread)` : ''}`"
+          :aria-expanded="isBellOpen"
+          @click="toggleBell"
+        >
+          <IconBell :size="16" />
+          <span
+            v-if="unreadBadge"
+            class="absolute -top-1 -right-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-error px-1 font-mono text-[10px] leading-none font-semibold text-white"
+          >
+            {{ unreadBadge }}
+          </span>
+        </button>
+
         <!-- Upload button -->
         <RouterLink
           v-if="auth.isAuthenticated"
@@ -344,5 +439,18 @@ function onBlur() {
         </RouterLink>
       </div>
     </div>
+
+    <!-- Bell popover — teleported to body so the header's backdrop-filter context can't trap or
+         clip it (same reasoning as the search dropdown). Positioned by updateBellPos(). -->
+    <Teleport to="body">
+      <div
+        v-if="isBellOpen"
+        id="nav-notifications-popover"
+        :style="bellPopoverStyle"
+        class="fixed z-[60]"
+      >
+        <NotificationsDropdown @close="closeBell" />
+      </div>
+    </Teleport>
   </header>
 </template>

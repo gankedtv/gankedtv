@@ -4,6 +4,7 @@ using System.Text.Json;
 using FluentAssertions;
 using GankedTV.Api.Clips;
 using GankedTV.Api.Data.Entities;
+using GankedTV.Api.Notifications;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Tests.TestSupport;
 using Microsoft.EntityFrameworkCore;
@@ -144,6 +145,40 @@ public class FollowsEndpointsTests : IAsyncLifetime
         await using var db = _fx.CreateContext();
         (await db.Follows.CountAsync(f => f.FollowerId == followerId && f.FolloweeId == followeeId))
             .Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Follow_FirstTime_RecordsNotificationForFollowee()
+    {
+        await _fx.ResetAsync();
+        var (followerId, token) = await SeedUserAndIssueTokenAsync("follower");
+        var (followeeId, _) = await SeedUserAndIssueTokenAsync("followee");
+        using var client = ClientWithBearer(token);
+
+        (await client.PostAsync("/users/followee/follow", content: null)).EnsureSuccessStatusCode();
+
+        await using var db = _fx.CreateContext();
+        var notif = await db.Notifications.SingleAsync();
+        notif.Type.Should().Be(NotificationTypes.Follow);
+        notif.RecipientId.Should().Be(followeeId);
+        notif.ActorId.Should().Be(followerId);
+        notif.ClipId.Should().BeNull();
+        notif.CommentId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Follow_DuplicateFollow_OnlyRecordsOneNotification()
+    {
+        await _fx.ResetAsync();
+        var (_, token) = await SeedUserAndIssueTokenAsync("follower");
+        await SeedUserAndIssueTokenAsync("followee");
+        using var client = ClientWithBearer(token);
+
+        (await client.PostAsync("/users/followee/follow", content: null)).EnsureSuccessStatusCode();
+        (await client.PostAsync("/users/followee/follow", content: null)).EnsureSuccessStatusCode();
+
+        await using var db = _fx.CreateContext();
+        (await db.Notifications.CountAsync()).Should().Be(1);
     }
 
     [Fact]
