@@ -42,6 +42,11 @@ const deleting = ref(false)
 const inputClass =
   'w-full rounded-md border border-border bg-surface-raised px-3.5 py-2.5 font-body text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-border-hover transition-colors duration-150'
 
+// Monotonic token guarding against stale list/loadMore responses when props.clipId
+// flips mid-request. Captured pre-await; any response whose token no longer matches
+// the latest is silently dropped so it can't overwrite the new clip's state.
+let latestRequestId = 0
+
 watch(
   () => props.clipId,
   () => load(),
@@ -49,6 +54,7 @@ watch(
 )
 
 async function load() {
+  const requestId = ++latestRequestId
   loading.value = true
   errored.value = false
   threads.value = []
@@ -56,28 +62,33 @@ async function load() {
   replyCursors.value = {}
   try {
     const page = await comments.list(props.clipId)
+    if (requestId !== latestRequestId) return
     threads.value = page.items
     nextCursor.value = page.nextCursor
     seedReplyCursors(page.items)
   } catch {
+    if (requestId !== latestRequestId) return
     errored.value = true
   } finally {
-    loading.value = false
+    if (requestId === latestRequestId) loading.value = false
   }
 }
 
 async function loadMore() {
   if (!nextCursor.value || loadingMore.value) return
+  const requestId = ++latestRequestId
   loadingMore.value = true
   try {
     const page = await comments.list(props.clipId, { cursor: nextCursor.value })
+    if (requestId !== latestRequestId) return
     threads.value.push(...page.items)
     nextCursor.value = page.nextCursor
     seedReplyCursors(page.items)
   } catch {
+    if (requestId !== latestRequestId) return
     actionError.value = 'Could not load more comments — try again.'
   } finally {
-    loadingMore.value = false
+    if (requestId === latestRequestId) loadingMore.value = false
   }
 }
 
