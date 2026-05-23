@@ -27,6 +27,14 @@ const auth = useAuthStore()
 const clip = ref<ClipDetail | null>(null)
 const loading = ref(false)
 const errored = ref(false)
+// A freshly-uploaded clip 404s until the pipeline (thumbnail + compress) finishes. Rather than
+// bounce the owner straight to not-found, we treat a 404 as "maybe still processing" and poll a
+// few times before giving up.
+const processing = ref(false)
+const PROCESSING_POLL_MS = 2500
+const MAX_PROCESSING_POLLS = 12 // ~30s — short clips finish well within this
+let processingPolls = 0
+let processingTimer: ReturnType<typeof setTimeout> | null = null
 const liked = ref(false)
 const likeCount = ref(0)
 const likeBusy = ref(false)
@@ -88,29 +96,54 @@ const shareCode = computed(() => {
   return Array.isArray(code) ? code[0] : (code as string | undefined)
 })
 
-async function loadClip() {
+async function loadClip(isPoll = false) {
   const myLoadId = ++latestLoadId
-  loading.value = true
+  if (!isPoll) {
+    loading.value = true
+    processing.value = false
+    processingPolls = 0
+    clearProcessingTimer()
+    clip.value = null
+    teardownPlayer()
+  }
   errored.value = false
-  clip.value = null
-  teardownPlayer()
   try {
     const fetched = shareCode.value
       ? await clips.getByShareCode(shareCode.value)
       : await clips.getDetail(clipId.value!)
     if (myLoadId !== latestLoadId) return
+    processing.value = false
     clip.value = fetched
     liked.value = fetched.likedByMe
     likeCount.value = fetched.likeCount
   } catch (err) {
     if (myLoadId !== latestLoadId) return
     if (err instanceof ApiError && err.status === 404) {
+      // 404 here means "not ready yet" (just uploaded, still transcoding) OR genuinely
+      // missing — the detail endpoint can't tell them apart. Poll a few times showing a
+      // processing state before falling back to not-found.
+      if (processingPolls < MAX_PROCESSING_POLLS) {
+        processingPolls++
+        processing.value = true
+        loading.value = false
+        processingTimer = setTimeout(() => {
+          if (myLoadId === latestLoadId) loadClip(true)
+        }, PROCESSING_POLL_MS)
+        return
+      }
       router.replace({ name: 'not-found' })
       return
     }
     errored.value = true
   } finally {
-    if (myLoadId === latestLoadId) loading.value = false
+    if (myLoadId === latestLoadId && !processing.value) loading.value = false
+  }
+}
+
+function clearProcessingTimer() {
+  if (processingTimer !== null) {
+    clearTimeout(processingTimer)
+    processingTimer = null
   }
 }
 
@@ -278,6 +311,7 @@ function fireToast(text: string) {
 
 onBeforeUnmount(() => {
   teardownPlayer()
+  clearProcessingTimer()
   if (toastTimer !== null) clearTimeout(toastTimer)
   window.removeEventListener('keydown', onMenuKeydown)
   window.removeEventListener('click', onMenuClickOutside, true)
@@ -427,6 +461,13 @@ async function onConfirmDelete() {
   <div class="mx-auto max-w-350 px-6 pt-8 pb-30">
     <!-- Loading -->
     <StatusPanel v-if="loading" kind="loading" message="Loading…" />
+
+    <!-- Still processing (freshly uploaded; transcoding) -->
+    <StatusPanel
+      v-else-if="processing"
+      kind="loading"
+      message="Processing your clip… this can take a moment."
+    />
 
     <!-- Error -->
     <StatusPanel v-else-if="errored" kind="error" message="Couldn't load this clip.">

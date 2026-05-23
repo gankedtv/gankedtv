@@ -99,6 +99,9 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
                 .SetProperty(c => c.Width, result.Width)
                 .SetProperty(c => c.Height, result.Height)
                 .SetProperty(c => c.ProcessingStartedAt, (DateTimeOffset?)null)
+                // Reset the attempt counter so the next stage (compress) gets its own full
+                // MaxAttempts budget rather than inheriting the thumbnail stage's count.
+                .SetProperty(c => c.ProcessingAttempts, 0)
                 .SetProperty(c => c.UpdatedAt, now), ct);
     }
 

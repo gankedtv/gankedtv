@@ -296,6 +296,8 @@ public class ClipMediaJobStoreIntegrationTests
         clip.Width.Should().Be(1920);
         clip.Height.Should().Be(1080);
         clip.ProcessingStartedAt.Should().BeNull();
+        // Attempts reset so the compress stage starts with a fresh MaxAttempts budget.
+        clip.ProcessingAttempts.Should().Be(0);
     }
 
     [Fact]
