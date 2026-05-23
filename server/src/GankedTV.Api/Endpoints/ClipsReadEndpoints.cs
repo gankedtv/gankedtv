@@ -21,6 +21,9 @@ public static class ClipsReadEndpoints
     // value) constants there. Internal so the helper is callable cross-class.
     internal const int FeedDefaultLimit = 20;
     internal const int FeedMaxLimit = 100;
+    // Trending is a single ranked page (no keyset pagination) sized for the discovery UI
+    // top-10 with headroom. Capping here keeps the in-memory scoring step bounded.
+    internal const int TrendingMaxLimit = 50;
     private static readonly TimeSpan VideoUrlLifetime = TimeSpan.FromHours(1);
     // Thumbnail URLs ride the same 1-hour signed window as video URLs — keeping the
     // two lifetimes aligned means a feed page that's still fresh enough to play the
@@ -40,6 +43,8 @@ public static class ClipsReadEndpoints
         string? cursor,
         int? limit,
         string? source,
+        string? sort,
+        string? window,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
         IObjectStorageService storage,
@@ -63,8 +68,131 @@ public static class ClipsReadEndpoints
                 db.Follows.Any(f => f.FollowerId == me && f.FolloweeId == c.UserId));
         }
 
-        var response = await BuildFeedPageAsync(baseQuery, cursor, limit, principal, db, storage, s3, ct);
-        return Results.Ok(response);
+        // Symmetric with `window`: null/empty falls through to the default (latest), but an
+        // explicit non-null value outside the known set is a 400 to surface client typos
+        // (`?sort=trendng`) instead of silently serving latest under a different label.
+        if (!string.IsNullOrEmpty(sort)
+            && !string.Equals(sort, "latest", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(sort, "trending", StringComparison.OrdinalIgnoreCase))
+        {
+            return ProblemResults.BadRequest("invalid_sort");
+        }
+
+        if (string.Equals(sort, "trending", StringComparison.OrdinalIgnoreCase))
+        {
+            // `window` is required for trending — unlike `source`, an unknown value is a
+            // 400 rather than silent fall-back because trending is meaningless without a
+            // window and we'd rather surface the typo than guess.
+            if (!TryParseTrendingWindow(window, out var since))
+            {
+                return ProblemResults.BadRequest("invalid_window");
+            }
+
+            var response = await BuildTrendingFeedAsync(baseQuery, since, limit, principal, db, storage, s3, ct);
+            return Results.Ok(response);
+        }
+
+        var latest = await BuildFeedPageAsync(baseQuery, cursor, limit, principal, db, storage, s3, ct);
+        return Results.Ok(latest);
+    }
+
+    // Per-issue: only 24h and 7d are supported in v1. Other window strings (or null) are 400 —
+    // the web client sends the value verbatim, so a 400 surfaces a UI bug instead of returning
+    // an arbitrary fallback ranking.
+    internal static bool TryParseTrendingWindow(string? window, out DateTimeOffset since)
+    {
+        var now = DateTimeOffset.UtcNow;
+        switch (window)
+        {
+            case "24h":
+                since = now.AddHours(-24);
+                return true;
+            case "7d":
+                since = now.AddDays(-7);
+                return true;
+            default:
+                since = default;
+                return false;
+        }
+    }
+
+    // Time-weighted ranked feed. Score = (likes_in_window * 3 + views_in_window) / pow(hours+2, 1.5).
+    //
+    // SQL fetches: clip + engagement counts in the window, pre-filtered to clips with ANY
+    // engagement in the window (so we don't return a count tuple for every dormant clip).
+    // Scoring + ordering happen in-memory afterwards — Postgres' EF translation doesn't have a
+    // clean `pow` over interval-hours and the candidate set is bounded by the engagement filter.
+    //
+    // Revisit if active-clips per window climbs past ~10k (early-stage assumption: << that).
+    internal static async Task<ClipFeedResponse> BuildTrendingFeedAsync(
+        IQueryable<Clip> baseQuery,
+        DateTimeOffset since,
+        int? limit,
+        ClaimsPrincipal principal,
+        GankedTvDbContext db,
+        IObjectStorageService storage,
+        IOptions<S3Options> s3,
+        CancellationToken ct)
+    {
+        var clampedLimit = Math.Clamp(limit ?? FeedDefaultLimit, 1, TrendingMaxLimit);
+
+        var candidates = await baseQuery
+            .Where(c => db.Likes.Any(l => l.ClipId == c.Id && l.CreatedAt > since)
+                     || db.ClipViews.Any(v => v.ClipId == c.Id && v.CreatedAt > since))
+            .Select(c => new
+            {
+                Clip = c,
+                LikesInWindow = db.Likes.Count(l => l.ClipId == c.Id && l.CreatedAt > since),
+                ViewsInWindow = db.ClipViews.Count(v => v.ClipId == c.Id && v.CreatedAt > since),
+            })
+            .ToListAsync(ct);
+
+        var now = DateTimeOffset.UtcNow;
+        var topIds = candidates
+            .Select(r => new
+            {
+                r.Clip,
+                Score = (r.LikesInWindow * 3 + r.ViewsInWindow)
+                    / Math.Pow(Math.Max(0, (now - r.Clip.CreatedAt).TotalHours) + 2, 1.5),
+            })
+            .OrderByDescending(r => r.Score)
+            .ThenByDescending(r => r.Clip.CreatedAt)
+            .Take(clampedLimit)
+            .Select(r => r.Clip.Id)
+            .ToList();
+
+        if (topIds.Count == 0)
+        {
+            return new ClipFeedResponse([], NextCursor: null);
+        }
+
+        // Re-hydrate with feed Includes (the candidate Select dropped them) and preserve
+        // ranking order. EF's Contains() generates IN (...) which doesn't preserve order, so
+        // we re-sort in C# after fetch using the topIds index.
+        //
+        // Visibility/status filters from `baseQuery` aren't reapplied here because `topIds` was
+        // already derived from the filtered candidate set. The micro-race window — a clip
+        // flipping to unlisted or back to processing between scoring and rehydration — could
+        // surface one stale row in a trending response; accepted as bounded and self-healing
+        // on the next request. A clip *deleted* between scoring and rehydration just drops
+        // out of the result (TryGetValue skip) rather than 500ing.
+        var ordered = await db.Clips.AsNoTracking()
+            .Where(c => topIds.Contains(c.Id))
+            .IncludeFeedRelations()
+            .ToListAsync(ct);
+
+        var byId = ordered.ToDictionary(c => c.Id);
+        var ranked = new List<Clip>(topIds.Count);
+        foreach (var id in topIds)
+        {
+            if (byId.TryGetValue(id, out var clip))
+            {
+                ranked.Add(clip);
+            }
+        }
+
+        var items = await ProjectFeedItemsAsync(ranked, principal, db, storage, s3, ct);
+        return new ClipFeedResponse(items, NextCursor: null);
     }
 
     // Shared cursor-paginated feed builder. Callers pass a pre-filtered IQueryable<Clip>

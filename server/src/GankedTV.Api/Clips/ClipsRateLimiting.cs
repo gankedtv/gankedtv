@@ -14,6 +14,7 @@ namespace GankedTV.Api.Clips;
 public static class ClipsRateLimiting
 {
     public const string ClipsWritePolicy = "clips-write";
+    public const string ClipsViewPolicy = "clips-view";
 
     // 30 writes per minute. Per-user when the caller is authenticated, per-IP otherwise.
     // Fixed window (not sliding) — same shape as the credentials policy, no extra state.
@@ -29,6 +30,13 @@ public static class ClipsRateLimiting
     // moves to a Redis-backed limiter for cluster-wide enforcement.
     public const int WritePermitLimit = 30;
     public static readonly TimeSpan WriteWindow = TimeSpan.FromMinutes(1);
+
+    // POST /clips/{id}/view is anonymous-friendly, so the bucket is per-IP only: a user-keyed
+    // partition wouldn't bound abuse from logged-out clients (the dominant case for view pings).
+    // 20/min is generous for legitimate playback (one view-ping per clip per 30 min on the dedup
+    // window above this layer) but tight enough that a single host can't run a write storm.
+    public const int ViewPermitLimit = 20;
+    public static readonly TimeSpan ViewWindow = TimeSpan.FromMinutes(1);
 
     // Machine-readable code stamped into the ProblemDetails extensions when any policy
     // rejects. Mirrors the convention from ProblemResults.* used elsewhere in the API.
@@ -65,6 +73,27 @@ public static class ClipsRateLimiting
             }));
         return options;
     }
+
+    public static RateLimiterOptions AddClipsViewPolicy(this RateLimiterOptions options)
+    {
+        options.AddPolicy<string>(ClipsViewPolicy, ctx =>
+            RateLimitPartition.GetFixedWindowLimiter(ResolveIpPartitionKey(ctx), _ => new FixedWindowRateLimiterOptions
+            {
+                AutoReplenishment = true,
+                PermitLimit = ViewPermitLimit,
+                Window = ViewWindow,
+                QueueLimit = 0,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            }));
+        return options;
+    }
+
+    // Pure per-IP key: the view endpoint is anonymous, so authenticated callers and
+    // anonymous ones share the same per-host bucket. Fallback "unknown" guarantees a
+    // total function — a missing RemoteIpAddress (test harness, broken proxy) must not
+    // collapse every caller into one bucket and bypass the limit.
+    internal static string ResolveIpPartitionKey(HttpContext ctx) =>
+        $"ip:{ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown"}";
 
     // Internal so unit tests can exercise the fallback branches that the HTTP-level integration
     // tests can't reach (RequireAuthorization rejects pre-limiter, so the per-IP and

@@ -35,6 +35,24 @@ const toastText = ref('')
 const videoEl = useTemplateRef<HTMLVideoElement>('videoEl')
 let player: Plyr | null = null
 
+// View tracking: fire POST /clips/{id}/view exactly once per mount after ~3s of
+// accumulated playback. Bounded per-tick delta caps seeking jumps (current_time can
+// jump forwards on a scrub) so a single seek doesn't trigger an instant record.
+// `viewRecordedForClipId` is intentionally never cleared: re-navigating to the same
+// clip within the SPA session won't re-ping. The server-side 30-min dedup would
+// collapse it anyway, and erring on under-count beats over-counting on remount.
+let viewRecordedForClipId: string | null = null
+let playedMs = 0
+let lastTickTime = 0
+let viewTickListener: { el: HTMLVideoElement; handler: () => void } | null = null
+
+function detachViewTracking() {
+  if (viewTickListener) {
+    viewTickListener.el.removeEventListener('timeupdate', viewTickListener.handler)
+    viewTickListener = null
+  }
+}
+
 // Monotonic request counter — guards against A→B→A races where comparing
 // `clipId.value === id` would falsely accept the first A response after the
 // second A request supersedes it.
@@ -95,11 +113,44 @@ watch(
       controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'fullscreen'],
       tooltips: { controls: true, seek: true },
     })
+    attachViewTracking(detail.id, el)
   },
   { flush: 'post' },
 )
 
+// Bind to the underlying <video> element's `timeupdate` (not Plyr's wrapper) — Plyr
+// re-fires the same DOM event but the element listener stays valid across Plyr lifecycle
+// quirks. Per-tick delta is clamped to [0, 1000ms] so a scrub forward doesn't credit the
+// gap, and a scrub backward doesn't subtract.
+function attachViewTracking(targetClipId: string, el: HTMLVideoElement) {
+  detachViewTracking()
+  playedMs = 0
+  lastTickTime = el.currentTime * 1000
+  const onTick = () => {
+    if (viewRecordedForClipId === targetClipId || el.paused) {
+      lastTickTime = el.currentTime * 1000
+      return
+    }
+    const now = el.currentTime * 1000
+    const delta = now - lastTickTime
+    lastTickTime = now
+    if (delta > 0 && delta < 1000) {
+      playedMs += delta
+    }
+    if (playedMs >= 3000) {
+      viewRecordedForClipId = targetClipId
+      void clips.recordView(targetClipId).catch(() => {
+        // Silent: view tracking is best-effort. A failed ping shouldn't surface to the user
+        // and shouldn't retry — the server's rate limit + dedup means retries hurt more than help.
+      })
+    }
+  }
+  el.addEventListener('timeupdate', onTick)
+  viewTickListener = { el, handler: onTick }
+}
+
 function teardownPlayer() {
+  detachViewTracking()
   if (player) {
     player.destroy()
     player = null

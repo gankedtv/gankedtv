@@ -75,6 +75,63 @@ describe('api/clips', () => {
       const [url] = vi.mocked(fetch).mock.calls[0] as [string]
       expect(url).not.toContain('source=')
     })
+
+    it('encodes sort and window for trending queries', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ items: [], nextCursor: null })),
+      )
+
+      await clips.feed({ sort: 'trending', window: '24h', limit: 50 })
+
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+      expect(url).toContain('sort=trending')
+      expect(url).toContain('window=24h')
+      expect(url).toContain('limit=50')
+    })
+
+    it('omits sort and window for default (latest) queries', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ items: [], nextCursor: null })),
+      )
+
+      await clips.feed({ limit: 20 })
+
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+      expect(url).not.toContain('sort=')
+      expect(url).not.toContain('window=')
+    })
+  })
+
+  describe('recordView()', () => {
+    it('POSTs to /clips/{id}/view with no body', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response(null, { status: 204 })),
+      )
+
+      const result = await clips.recordView('abc-123')
+
+      expect(result).toBeUndefined()
+      const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(url).toBe(`${BASE_URL}/clips/abc-123/view`)
+      expect(init.method).toBe('POST')
+      // No body should be sent — the server reads (clip_id, viewer) from the URL/JWT/IP only.
+      expect(init.body).toBeUndefined()
+    })
+
+    it('URI-encodes the id', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response(null, { status: 204 })),
+      )
+
+      await clips.recordView('weird id/with?chars')
+
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+      expect(url).toBe(`${BASE_URL}/clips/${encodeURIComponent('weird id/with?chars')}/view`)
+    })
   })
 
   describe('getDetail()', () => {
