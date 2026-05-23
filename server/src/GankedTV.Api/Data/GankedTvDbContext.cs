@@ -10,6 +10,7 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
     public DbSet<Game> Games => Set<Game>();
     public DbSet<Clip> Clips => Set<Clip>();
     public DbSet<Like> Likes => Set<Like>();
+    public DbSet<ClipView> ClipViews => Set<ClipView>();
     public DbSet<Follow> Follows => Set<Follow>();
     public DbSet<Comment> Comments => Set<Comment>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
@@ -147,6 +148,34 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
                 .WithMany(c => c.Likes)
                 .HasForeignKey(l => l.ClipId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // Backs the time-window like aggregation used by the trending feed
+            // (likes_in_window per clip). PK is (user_id, clip_id), so without this
+            // a 24h-window scan would table-scan likes.
+            e.HasIndex(l => new { l.CreatedAt, l.ClipId })
+                .IsDescending(true, false)
+                .HasDatabaseName("idx_likes_created_at_clip_id");
+        });
+
+        modelBuilder.Entity<ClipView>(e =>
+        {
+            e.HasKey(v => v.Id);
+            e.Property(v => v.Id).UseIdentityByDefaultColumn();
+            e.Property(v => v.CreatedAt).HasDefaultValueSql("now()");
+
+            e.HasOne(v => v.Clip)
+                .WithMany()
+                .HasForeignKey(v => v.ClipId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Time-window scan (views_in_window across all clips).
+            e.HasIndex(v => v.CreatedAt)
+                .IsDescending()
+                .HasDatabaseName("idx_clip_views_created_at");
+            // Per-clip aggregation (views_in_window for a specific clip).
+            e.HasIndex(v => new { v.ClipId, v.CreatedAt })
+                .IsDescending(false, true)
+                .HasDatabaseName("idx_clip_views_clip_id_created_at");
         });
 
         modelBuilder.Entity<Tag>(e =>

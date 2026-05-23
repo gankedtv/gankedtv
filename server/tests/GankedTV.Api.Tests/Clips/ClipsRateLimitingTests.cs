@@ -59,6 +59,26 @@ public class ClipsRateLimitingTests
     }
 
     [Fact]
+    public void ResolveIpPartitionKey_UsesRemoteIp()
+    {
+        // The view-policy partition is IP-only — auth claims are ignored so a user behind
+        // shared NAT can't burn through the per-IP bucket faster than the anon equivalent.
+        var ctx = MakeContext(
+            claims: [new Claim(JwtRegisteredClaimNames.Sub, "should-be-ignored")],
+            remoteIp: IPAddress.Parse("192.0.2.7"));
+
+        ClipsRateLimiting.ResolveIpPartitionKey(ctx).Should().Be("ip:192.0.2.7");
+    }
+
+    [Fact]
+    public void ResolveIpPartitionKey_FallsBackToUnknown_WhenRemoteIpMissing()
+    {
+        var ctx = MakeContext(claims: [], remoteIp: null);
+
+        ClipsRateLimiting.ResolveIpPartitionKey(ctx).Should().Be("ip:unknown");
+    }
+
+    [Fact]
     public void ResolvePartitionKey_TreatsEmptySubAsMissing()
     {
         // ClaimsPrincipal.FindFirst returns the claim even when its Value is empty. Treating an

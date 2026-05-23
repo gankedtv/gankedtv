@@ -430,6 +430,272 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         byId[withoutGame].GetProperty("game").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
+    // ---- GET /clips/feed?sort=trending ----
+
+    [Fact]
+    public async Task Trending_24h_OrdersByScore()
+    {
+        // Score = (likes*3 + views) / pow(hours+2, 1.5). With matching ages, more engagement wins.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var (hot, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "hot");
+        var (mid, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "mid");
+        var (cool, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "cool");
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.AddRange(
+                Enumerable.Range(0, 20).Select(_ => new ClipView { ClipId = hot, CreatedAt = now.AddMinutes(-5) }));
+            db.ClipViews.AddRange(
+                Enumerable.Range(0, 5).Select(_ => new ClipView { ClipId = mid, CreatedAt = now.AddMinutes(-5) }));
+            db.ClipViews.AddRange(
+                Enumerable.Range(0, 1).Select(_ => new ClipView { ClipId = cool, CreatedAt = now.AddMinutes(-5) }));
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/feed?sort=trending&window=24h");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var ids = body.GetProperty("items").EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid()).ToList();
+        ids.Should().Equal(hot, mid, cool);
+        body.GetProperty("nextCursor").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task Trending_LikesCountedTriple_VsViews()
+    {
+        // Score weighting locks the (likes*3 + views) coefficient: a clip with 1 like must
+        // outrank a clip with 2 views when ages match.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync("author");
+        var (likerId, _) = await SeedUserAndIssueTokenAsync("liker");
+        var now = DateTimeOffset.UtcNow;
+        var (oneLike, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "one-like");
+        var (twoViews, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "two-views");
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.Likes.Add(new Like { UserId = likerId, ClipId = oneLike, CreatedAt = now.AddMinutes(-1) });
+            db.ClipViews.Add(new ClipView { ClipId = twoViews, CreatedAt = now.AddMinutes(-1) });
+            db.ClipViews.Add(new ClipView { ClipId = twoViews, CreatedAt = now.AddMinutes(-1) });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/feed?sort=trending&window=24h");
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var ids = body.GetProperty("items").EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid()).ToList();
+        ids.Should().Equal(oneLike, twoViews);
+    }
+
+    [Fact]
+    public async Task Trending_24hExcludesOlderEngagement_7dIncludes()
+    {
+        // A 3-day-old view falls outside the 24h window but inside 7d. Same clip, two
+        // windows, different result — the time-window filter is what makes trending "real".
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var (fresh, _) = await SeedClipAsync(userId, now.AddHours(-2), title: "fresh");
+        var (stale, _) = await SeedClipAsync(userId, now.AddDays(-3), title: "stale");
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.AddRange(
+                Enumerable.Range(0, 3).Select(_ => new ClipView { ClipId = fresh, CreatedAt = now.AddMinutes(-30) }));
+            db.ClipViews.AddRange(
+                Enumerable.Range(0, 50).Select(_ => new ClipView { ClipId = stale, CreatedAt = now.AddDays(-3) }));
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+
+        var dayResp = await client.GetAsync("/clips/feed?sort=trending&window=24h");
+        var dayIds = (await dayResp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("items").EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid()).ToList();
+        dayIds.Should().Equal(fresh);
+
+        var weekResp = await client.GetAsync("/clips/feed?sort=trending&window=7d");
+        var weekIds = (await weekResp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("items").EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid()).ToHashSet();
+        weekIds.Should().Contain(fresh).And.Contain(stale);
+    }
+
+    [Fact]
+    public async Task Trending_ExcludesNonPublicAndNonReady()
+    {
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var (publicClip, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "public-ready");
+        var (unlisted, _) = await SeedClipAsync(userId, now.AddHours(-1), visibility: "unlisted", title: "unlisted");
+        var (processing, _) = await SeedClipAsync(userId, now.AddHours(-1), status: "processing", title: "processing");
+
+        await using (var db = _fx.CreateContext())
+        {
+            foreach (var id in new[] { publicClip, unlisted, processing })
+            {
+                db.ClipViews.AddRange(
+                    Enumerable.Range(0, 5).Select(_ => new ClipView { ClipId = id, CreatedAt = now.AddMinutes(-10) }));
+            }
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/feed?sort=trending&window=24h");
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var ids = body.GetProperty("items").EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid()).ToList();
+
+        ids.Should().Equal(publicClip);
+    }
+
+    [Fact]
+    public async Task Trending_OmitsClipsWithoutEngagementInWindow()
+    {
+        // The trending feed is "what people are engaging with right now" — a clip with zero
+        // likes and zero views in the window has no place on the list even if it's recent.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var (engaged, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "engaged");
+        await SeedClipAsync(userId, now.AddHours(-1), title: "dormant");
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.Add(new ClipView { ClipId = engaged, CreatedAt = now.AddMinutes(-5) });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/feed?sort=trending&window=24h");
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var ids = body.GetProperty("items").EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid()).ToList();
+
+        ids.Should().Equal(engaged);
+    }
+
+    [Fact]
+    public async Task Trending_InvalidWindow_Returns400()
+    {
+        await _fx.ResetAsync();
+        using var client = _factory!.CreateClient();
+
+        var resp = await client.GetAsync("/clips/feed?sort=trending&window=bogus");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Feed_InvalidSort_Returns400()
+    {
+        // Symmetric with the window guard: an unknown explicit sort value is a 400 so client
+        // typos like `?sort=trendng` surface loudly instead of silently serving latest.
+        await _fx.ResetAsync();
+        using var client = _factory!.CreateClient();
+
+        var resp = await client.GetAsync("/clips/feed?sort=bogus");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Trending_MissingWindow_Returns400()
+    {
+        // window is required for trending — unlike `source`, a missing value is a 400 because
+        // trending without a window has no defined meaning.
+        await _fx.ResetAsync();
+        using var client = _factory!.CreateClient();
+
+        var resp = await client.GetAsync("/clips/feed?sort=trending");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Trending_EmptyResult_Returns200WithNoItems()
+    {
+        await _fx.ResetAsync();
+        using var client = _factory!.CreateClient();
+
+        var resp = await client.GetAsync("/clips/feed?sort=trending&window=24h");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("items").GetArrayLength().Should().Be(0);
+        body.GetProperty("nextCursor").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task Trending_LimitClampedToTrendingMax()
+    {
+        // Trending caps at TrendingMaxLimit (50) regardless of requested limit, since it's a
+        // single ranked page and the in-memory scoring step must stay bounded.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var clipIds = new List<Guid>(60);
+        for (var i = 0; i < 60; i++)
+        {
+            var (id, _) = await SeedClipAsync(userId, now.AddMinutes(-i), title: $"c{i}");
+            clipIds.Add(id);
+        }
+
+        await using (var db = _fx.CreateContext())
+        {
+            for (var i = 0; i < clipIds.Count; i++)
+            {
+                db.ClipViews.Add(new ClipView { ClipId = clipIds[i], CreatedAt = now.AddMinutes(-i) });
+            }
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/feed?sort=trending&window=24h&limit=999");
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+
+        body.GetProperty("items").GetArrayLength().Should().Be(50);
+    }
+
+    [Fact]
+    public async Task Feed_DefaultSortLatest_UnchangedFromPreTrendingBehavior()
+    {
+        // Regression guard: passing sort=latest (or omitting sort) must keep the exact
+        // descending-by-created-at order + keyset cursor pagination the feed has always used.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var (a, _) = await SeedClipAsync(userId, now.AddMinutes(-3), title: "a");
+        var (b, _) = await SeedClipAsync(userId, now.AddMinutes(-2), title: "b");
+        var (c, _) = await SeedClipAsync(userId, now.AddMinutes(-1), title: "c");
+
+        using var client = _factory!.CreateClient();
+        var explicitResp = await client.GetAsync("/clips/feed?sort=latest");
+        var defaultResp = await client.GetAsync("/clips/feed");
+
+        explicitResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        defaultResp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var explicitIds = (await explicitResp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("items").EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid()).ToList();
+        var defaultIds = (await defaultResp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("items").EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid()).ToList();
+
+        explicitIds.Should().Equal(c, b, a);
+        defaultIds.Should().Equal(c, b, a);
+    }
+
     // ---- GET /clips/{id} ----
 
     [Fact]

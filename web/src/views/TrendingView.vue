@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { clips, type ClipFeedItem } from '@/api/clips'
 import { games as gamesApi, type GameListItem } from '@/api/games'
 import { formatNum } from '@/lib/format'
@@ -10,26 +10,23 @@ import StatusPanel from '@/components/StatusPanel.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import IconChevronRight from '@/components/icons/IconChevronRight.vue'
 
+// Only 24h and 7d hit the server-side trending feed today. The other windows surface the
+// UX intent (and the issue's "drop fake arrows for v1" sentiment is to ship what the
+// server actually supports), so they're rendered but aria-disabled until follow-up windows land.
+type TrendingWindow = '24h' | '7d'
 const TIME_WINDOWS = [
-  { key: '1h', label: 'Last hour' },
-  { key: '24h', label: '24 hours' },
-  { key: '7d', label: 'This week' },
-  { key: '30d', label: 'This month' },
-  { key: 'all', label: 'All time' },
+  { key: '1h', label: 'Last hour', enabled: false },
+  { key: '24h', label: '24 hours', enabled: true },
+  { key: '7d', label: 'This week', enabled: true },
+  { key: '30d', label: 'This month', enabled: false },
+  { key: 'all', label: 'All time', enabled: false },
 ] as const
 
-// The server doesn't filter by time window yet — these tabs are visual until that
-// lands. Surfacing them keeps the UX intent visible (and lets the server-side
-// follow-up just wire `?since=` without UI work).
-const timeWindow = ref<string>('24h')
+const timeWindow = ref<TrendingWindow>('24h')
 
-const allClips = ref<ClipFeedItem[]>([])
+const topClips = ref<ClipFeedItem[]>([])
 const loading = ref(false)
 const errored = ref(false)
-
-const topClips = computed(() =>
-  [...allClips.value].sort((a, b) => b.likeCount - a.likeCount).slice(0, 10),
-)
 
 const hotGames = ref<GameListItem[]>([])
 
@@ -37,8 +34,11 @@ async function load() {
   loading.value = true
   errored.value = false
   try {
-    const [feed, games] = await Promise.all([clips.feed({ limit: 100 }), gamesApi.list(8)])
-    allClips.value = feed.items
+    const [feed, games] = await Promise.all([
+      clips.feed({ sort: 'trending', window: timeWindow.value, limit: 50 }),
+      gamesApi.list(8),
+    ])
+    topClips.value = feed.items.slice(0, 10)
     hotGames.value = games
   } catch (err) {
     console.error('trending: load failed', err)
@@ -50,42 +50,33 @@ async function load() {
 
 onMounted(load)
 
-// Visual-only indicator on the leaderboard rows — *not* derived from real
-// trend data. We don't track engagement deltas yet (server has no time-window
-// query). Top 3 always show ▲, 3–5 show —, the rest alternate. Replace once a
-// real `trendDelta` field lands on the trending response.
-function trendFor(i: number): 'up' | 'hold' | 'down' {
-  if (i < 3) return 'up'
-  if (i < 6) return 'hold'
-  return i % 2 === 0 ? 'up' : 'down'
+// Window change → re-fetch. Hot games don't depend on the window, so reloading them is
+// wasted work but the simplicity wins; the request is cheap and small.
+watch(timeWindow, load)
+
+function selectWindow(key: string, enabled: boolean) {
+  if (!enabled || key === timeWindow.value) return
+  timeWindow.value = key as TrendingWindow
 }
 
 const timeBtnBase =
-  'px-3.5 py-1.5 rounded-sm font-mono text-[11px] uppercase tracking-[0.06em] border-none cursor-pointer'
-const timeBtnActive = `${timeBtnBase} bg-brand text-white transition-[background] duration-150`
-const timeBtnInactive = `${timeBtnBase} bg-transparent text-text-secondary transition-[color] duration-150`
+  'px-3.5 py-1.5 rounded-sm font-mono text-[11px] uppercase tracking-[0.06em] border-none'
+const timeBtnActive = `${timeBtnBase} bg-brand text-white cursor-pointer transition-[background] duration-150`
+const timeBtnInactiveEnabled = `${timeBtnBase} bg-transparent text-text-secondary cursor-pointer transition-[color] duration-150`
+const timeBtnInactiveDisabled = `${timeBtnBase} bg-transparent text-text-secondary opacity-50 cursor-not-allowed`
 
 const rankBase = 'font-heading font-bold text-[28px] leading-none'
 const rankTop = `${rankBase} text-brand-light`
 const rankRest = `${rankBase} text-text-muted`
-
-const trendBase = 'font-mono text-[11px] leading-none'
-const trendUp = `${trendBase} text-neon`
-const trendDown = `${trendBase} text-error`
-const trendHold = `${trendBase} text-text-muted`
 </script>
 
 <template>
   <main class="mx-auto max-w-360 px-6 pt-8 pb-30">
     <PageHeader title="Trending">
-      <template #caption>Ranked by likes (server-side trending coming soon)</template>
+      <template #caption>Ranked by recent engagement (likes × 3 + views, decayed by age)</template>
 
-      <!-- Time window toggle. Server doesn't support `?since=` yet — non-active
-           tabs are visually inert until the backend filter lands. We use
-           aria-disabled (not the native `disabled` attr) so the buttons stay
-           focusable and screen readers can announce the "coming soon" hint. -->
       <p id="time-window-hint" class="sr-only">
-        Server-side time filtering coming soon — only the active window is selectable.
+        24-hour and 7-day windows are available; the other ranges are coming soon.
       </p>
       <div
         class="mt-5 inline-flex gap-0.5 p-1 bg-surface-raised border border-border rounded-sm"
@@ -96,13 +87,17 @@ const trendHold = `${trendBase} text-text-muted`
           v-for="tw in TIME_WINDOWS"
           :key="tw.key"
           type="button"
-          :class="[
-            timeWindow === tw.key ? timeBtnActive : timeBtnInactive,
-            tw.key === timeWindow ? '' : 'opacity-50 cursor-not-allowed',
-          ]"
-          :aria-disabled="tw.key !== timeWindow"
+          :class="
+            timeWindow === tw.key
+              ? timeBtnActive
+              : tw.enabled
+                ? timeBtnInactiveEnabled
+                : timeBtnInactiveDisabled
+          "
+          :aria-disabled="!tw.enabled"
           :aria-pressed="tw.key === timeWindow"
           aria-describedby="time-window-hint"
+          @click="selectWindow(tw.key, tw.enabled)"
         >
           {{ tw.label }}
         </button>
@@ -123,7 +118,7 @@ const trendHold = `${trendBase} text-text-muted`
     <StatusPanel
       v-else-if="!loading && topClips.length === 0"
       kind="empty"
-      message="No clips yet — be the first."
+      message="No clips trending yet — check back soon."
     />
 
     <!-- Two-column layout -->
@@ -135,7 +130,7 @@ const trendHold = `${trendBase} text-text-muted`
       <div class="bg-surface-raised border border-border rounded-md overflow-hidden mt-7">
         <div class="px-4 py-3.5 border-b border-border">
           <span class="font-heading font-bold text-sm uppercase text-text-secondary tracking-wider"
-            >Top 10 by likes</span
+            >Top 10 right now</span
           >
         </div>
 
@@ -144,17 +139,9 @@ const trendHold = `${trendBase} text-text-muted`
           :key="clip.id"
           :to="{ name: 'clip', params: { id: clip.id } }"
           :aria-label="`#${i + 1}: ${clip.title}`"
-          class="grid grid-cols-[60px_120px_1fr_auto_auto] gap-4 items-center px-4 py-3 transition-[background] duration-150 border-b border-border last:border-b-0 outline-none hover:bg-surface-overlay focus-visible:bg-surface-overlay focus-visible:ring-2 focus-visible:ring-brand-light"
+          class="grid grid-cols-[40px_120px_1fr_auto_auto] gap-4 items-center px-4 py-3 transition-[background] duration-150 border-b border-border last:border-b-0 outline-none hover:bg-surface-overlay focus-visible:bg-surface-overlay focus-visible:ring-2 focus-visible:ring-brand-light"
         >
-          <div class="flex flex-col items-start gap-0.5">
-            <span :class="i < 3 ? rankTop : rankRest">#{{ i + 1 }}</span>
-            <span
-              :class="
-                trendFor(i) === 'up' ? trendUp : trendFor(i) === 'down' ? trendDown : trendHold
-              "
-              >{{ trendFor(i) === 'up' ? '▲' : trendFor(i) === 'down' ? '▼' : '—' }}</span
-            >
-          </div>
+          <span :class="i < 3 ? rankTop : rankRest">#{{ i + 1 }}</span>
 
           <div class="relative rounded-[4px] overflow-hidden aspect-video bg-surface-sunken">
             <img :src="clip.thumbnailUrl" alt="" class="w-full h-full object-cover block" />

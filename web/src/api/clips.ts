@@ -72,6 +72,10 @@ export interface ClipFeedQuery {
   cursor?: string | null
   limit?: number
   source?: 'public' | 'following'
+  // Default 'latest' (omitted). 'trending' returns a single ranked page (no cursor)
+  // and REQUIRES `window` — the server 400s on a missing/unknown window.
+  sort?: 'latest' | 'trending'
+  window?: '24h' | '7d'
 }
 
 export interface UploadUrl {
@@ -109,8 +113,17 @@ export const clips = {
     if (query.cursor) params.set('cursor', query.cursor)
     if (query.limit !== undefined) params.set('limit', String(query.limit))
     if (query.source) params.set('source', query.source)
+    if (query.sort) params.set('sort', query.sort)
+    if (query.window) params.set('window', query.window)
     const qs = params.toString()
     return api<ClipFeedPage>(`/clips/feed${qs ? `?${qs}` : ''}`)
+  },
+
+  // POST /clips/{id}/view — anonymous-friendly view ping. Server returns 204 on success,
+  // dedup hit, and not-found (silent no-op). Fire-and-forget from the player after ~3s
+  // of playback; failures don't bubble.
+  recordView(id: string): Promise<void> {
+    return api<void>(`/clips/${encodeURIComponent(id)}/view`, { method: 'POST' })
   },
 
   getDetail(id: string): Promise<ClipDetail> {

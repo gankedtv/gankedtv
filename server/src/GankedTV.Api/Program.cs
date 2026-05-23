@@ -264,7 +264,13 @@ builder.Services.AddScoped<CredentialAuthService>();
 
 builder.Services.AddRateLimiter(opts => opts
     .AddCredentialsPolicy()
-    .AddClipsWritePolicy());
+    .AddClipsWritePolicy()
+    .AddClipsViewPolicy());
+
+// Backs the view-dedup window in ClipsViewEndpoints. In-process for v1; per-pod state is
+// fine for an anti-spam dedup (the worst-case drift on restart is a single bonus view per
+// client). Phase 4 swaps for Redis when limits + dedup go multi-instance.
+builder.Services.AddMemoryCache();
 
 builder.Services.AddSingleton<IOAuthProvider, DiscordOAuthProvider>();
 builder.Services.AddSingleton<IOAuthProvider, GoogleOAuthProvider>();
@@ -371,6 +377,7 @@ app.MapClipsUploadEndpoints();
 app.MapClipsReadEndpoints();
 app.MapClipsMutateEndpoints();
 app.MapLikesEndpoints();
+app.MapClipsViewEndpoints();
 app.MapCommentsEndpoints();
 app.MapUsersEndpoints();
 app.MapFollowsEndpoints();
