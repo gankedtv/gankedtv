@@ -93,6 +93,12 @@ public static class CommentsEndpoints
             ParentId = req.ParentId,
             Body = body,
         };
+
+        // Wrap comment insert + notification so a notification failure rolls back the comment —
+        // INotificationService promises to enlist in the caller's transaction, and the comment
+        // would otherwise be visible without the notification ever being recorded.
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+
         db.Comments.Add(comment);
         await db.SaveChangesAsync(ct);
 
@@ -100,6 +106,8 @@ public static class CommentsEndpoints
         // the parent commenter is a Phase 4 follow-up. Self-comments are dropped by the service.
         await notifications.RecordAsync(
             clipOwnerId.Value, userId, NotificationTypes.Comment, clipId, comment.Id, ct);
+
+        await tx.CommitAsync(ct);
 
         // Author is needed for the response shape; the authenticated user always exists.
         comment.User = (await db.Users.FindAsync([userId], ct))!;

@@ -115,16 +115,19 @@ public static class NotificationsEndpoints
         }
 
         var now = DateTimeOffset.UtcNow;
-        // Filter on RecipientId so a caller can't reveal or mutate someone else's row. If the
-        // notification is already read, ExecuteUpdateAsync still affects the row (it overwrites
-        // ReadAt with the new timestamp) — idempotent enough for a UI action.
+        // Filter on RecipientId so a caller can't reveal or mutate someone else's row. The
+        // ReadAt == null guard preserves the original read timestamp when the row is already
+        // read — important if read_at is ever used for analytics. On zero rows we cheaply
+        // distinguish "already read" (204, idempotent) from "missing / not yours" (404).
         var updated = await db.Notifications
-            .Where(n => n.Id == id && n.RecipientId == userId)
+            .Where(n => n.Id == id && n.RecipientId == userId && n.ReadAt == null)
             .ExecuteUpdateAsync(s => s.SetProperty(n => n.ReadAt, now), ct);
 
         if (updated == 0)
         {
-            return ProblemResults.NotFound("not_found");
+            var existsForCaller = await db.Notifications
+                .AnyAsync(n => n.Id == id && n.RecipientId == userId, ct);
+            return existsForCaller ? Results.NoContent() : ProblemResults.NotFound("not_found");
         }
 
         return Results.NoContent();

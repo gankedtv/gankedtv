@@ -28,8 +28,10 @@ function destinationFor(n: NotificationItem) {
   return { name: 'user', params: { username: n.actor.username } }
 }
 
-async function onRowClick(n: NotificationItem) {
-  await store.markOneRead(n.id)
+function onRowClick(n: NotificationItem) {
+  // Fire-and-forget: the store paints the row read optimistically, so awaiting the network
+  // round-trip would only delay navigation. A failed mark-read reconciles on the next poll.
+  void store.markOneRead(n.id)
   emit('close')
   void router.push(destinationFor(n))
 }

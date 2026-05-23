@@ -231,8 +231,23 @@ function onDocumentMouseDown(e: MouseEvent) {
   isBellOpen.value = false
 }
 
-onMounted(() => document.addEventListener('mousedown', onDocumentMouseDown))
-onBeforeUnmount(() => document.removeEventListener('mousedown', onDocumentMouseDown))
+// Esc closes the popover from anywhere. Listening at the document level (not on the popover)
+// because focus may sit on the row link, the "see all" button, or the bell itself — a scoped
+// handler would miss most of those cases. Returning focus to the bell preserves keyboard flow.
+function onDocumentKeyDown(e: KeyboardEvent) {
+  if (!isBellOpen.value || e.key !== 'Escape') return
+  isBellOpen.value = false
+  bellRef.value?.focus()
+}
+
+onMounted(() => {
+  document.addEventListener('mousedown', onDocumentMouseDown)
+  document.addEventListener('keydown', onDocumentKeyDown)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', onDocumentMouseDown)
+  document.removeEventListener('keydown', onDocumentKeyDown)
+})
 </script>
 
 <template>

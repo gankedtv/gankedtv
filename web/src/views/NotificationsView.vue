@@ -28,8 +28,9 @@ function destinationFor(n: NotificationItem) {
   return { name: 'user', params: { username: n.actor.username } }
 }
 
-async function onRowClick(n: NotificationItem) {
-  await store.markOneRead(n.id)
+function onRowClick(n: NotificationItem) {
+  // Fire-and-forget — see NotificationsDropdown.onRowClick for the rationale.
+  void store.markOneRead(n.id)
   void router.push(destinationFor(n))
 }
 

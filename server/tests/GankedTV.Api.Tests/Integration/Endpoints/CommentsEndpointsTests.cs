@@ -8,8 +8,12 @@ using GankedTV.Api.Notifications;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Tests.TestSupport;
 using GankedTV.Api.Validation;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 
 namespace GankedTV.Api.Tests.Integration.Endpoints;
 
@@ -213,6 +217,39 @@ public class CommentsEndpointsTests : IAsyncLifetime
         notif.ActorId.Should().Be(commenterId);
         notif.ClipId.Should().Be(clipId);
         notif.CommentId.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Create_NotificationFailure_RollsBackCommentRow()
+    {
+        // Contract: INotificationService.RecordAsync runs inside the caller's transaction.
+        // If recording throws, the comment row must NOT remain — otherwise commenters see a
+        // failed request but their comment is silently published without notifying the owner.
+        await _fx.ResetAsync();
+        var (ownerId, _) = await SeedUserAndIssueTokenAsync("author");
+        var (_, token) = await SeedUserAndIssueTokenAsync("commenter");
+        var clipId = await SeedClipAsync(ownerId);
+
+        var throwing = Substitute.For<INotificationService>();
+        throwing.RecordAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<string>(),
+                Arg.Any<Guid?>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("simulated notification failure"));
+
+        using var factory = _factory!.WithWebHostBuilder(b => b.ConfigureServices(s =>
+        {
+            s.RemoveAll<INotificationService>();
+            s.AddScoped(_ => throwing);
+        }));
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/comments", new { body = "doomed" });
+
+        resp.IsSuccessStatusCode.Should().BeFalse();
+        await using var db = _fx.CreateContext();
+        (await db.Comments.AnyAsync(c => c.ClipId == clipId)).Should().BeFalse();
+        (await db.Notifications.AnyAsync()).Should().BeFalse();
     }
 
     [Fact]

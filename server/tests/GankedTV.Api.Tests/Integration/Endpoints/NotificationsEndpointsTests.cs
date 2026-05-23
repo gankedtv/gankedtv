@@ -272,6 +272,35 @@ public class NotificationsEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task MarkOneRead_AlreadyRead_Returns204_AndPreservesOriginalReadAt()
+    {
+        // Idempotent re-mark: a second call must NOT overwrite the original read timestamp.
+        // Important if read_at is ever used for analytics (time-to-read), and matches the
+        // 204-on-repeat semantics that the dropdown depends on for offline re-syncing.
+        await _fx.ResetAsync();
+        var (recipientId, token) = await SeedUserAndIssueTokenAsync("recipient");
+        var (actorId, _) = await SeedUserAndIssueTokenAsync("actor");
+        var originalReadAt = DateTimeOffset.UtcNow.AddMinutes(-5);
+        var notifId = await SeedNotificationAsync(
+            recipientId, actorId, NotificationTypes.Follow, readAt: originalReadAt);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsync($"/me/notifications/{notifId}/read", content: null);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        await using var db = _fx.CreateContext();
+        var storedReadAt = await db.Notifications
+            .Where(n => n.Id == notifId)
+            .Select(n => n.ReadAt)
+            .FirstAsync();
+        storedReadAt.Should().NotBeNull();
+        // Timestamp tolerance: Postgres stores µs precision, the seeded value comes from
+        // DateTimeOffset (100ns ticks), so compare with a sub-millisecond budget.
+        storedReadAt!.Value.Should().BeCloseTo(originalReadAt, TimeSpan.FromMilliseconds(1));
+    }
+
+    [Fact]
     public async Task MarkOneRead_NotMine_Returns404()
     {
         // Cross-user safety: caller should never be able to mutate another user's row.

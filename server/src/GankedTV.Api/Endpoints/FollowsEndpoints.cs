@@ -48,6 +48,12 @@ public static class FollowsEndpoints
             return ProblemResults.BadRequest("self_follow", "Cannot follow yourself.");
         }
 
+        // Wrap insert + RecordAsync so a notification failure rolls the follow back —
+        // INotificationService promises to enlist in the caller's transaction, and there's
+        // no retry path (dedup is `inserted == 1`), so an event without its notification
+        // would be lost forever.
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+
         // ON CONFLICT DO NOTHING collapses both sequential double-clicks and concurrent
         // requests from the same follower into a single row — same pattern as Like.
         var inserted = await db.Database.ExecuteSqlInterpolatedAsync(
@@ -61,6 +67,8 @@ public static class FollowsEndpoints
             await notifications.RecordAsync(
                 target.Id, followerId, NotificationTypes.Follow, null, null, ct);
         }
+
+        await tx.CommitAsync(ct);
 
         return Results.NoContent();
     }
