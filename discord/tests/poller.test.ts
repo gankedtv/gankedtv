@@ -12,9 +12,20 @@ type StubDbState = {
   postLog: Set<string>;
 };
 
-function stubDb(initial: Partial<StubDbState> = {}): Db & { _state: StubDbState } {
+// `cursor` is sugar: every poller test needs to anchor the
+// `last_clip_created_at` key, and writing the full Map literal each time made
+// the intent of each test hard to spot. Passes through to `state` if both are
+// supplied (explicit `state` wins so a test can still set arbitrary keys).
+type StubDbInit = Partial<StubDbState> & { cursor?: string };
+
+function stubDb(initial: StubDbInit = {}): Db & { _state: StubDbState } {
+  const state =
+    initial.state ??
+    (initial.cursor !== undefined
+      ? new Map([['last_clip_created_at', initial.cursor]])
+      : new Map());
   const s: StubDbState = {
-    state: initial.state ?? new Map(),
+    state,
     subs: initial.subs ?? [],
     postLog: initial.postLog ?? new Set(),
   };
@@ -129,7 +140,7 @@ describe('pollOnce', () => {
     const c2 = clip();
     const c3 = clip();
     const sub = subscription({ channelId: 'C1', pingRoleId: '555' });
-    const db = stubDb({ state: new Map([['last_clip_created_at', c2.createdAt]]), subs: [sub] });
+    const db = stubDb({ cursor: c2.createdAt, subs: [sub] });
     // Cursor at c2: with the new `>=` filter, both c2 and c3 are fresh, but c2
     // ties the cursor exactly. The post log starts empty, so both fan out.
     const fanout = okFanout();
@@ -151,7 +162,7 @@ describe('pollOnce', () => {
     const c2 = clip();
     const sub = subscription({ channelId: 'C1' });
     const db = stubDb({
-      state: new Map([['last_clip_created_at', c1.createdAt]]),
+      cursor: c1.createdAt,
       subs: [sub],
       // Pre-existing entry (crashed-mid-fanout restart): isPosted returns true,
       // so fanout is NOT called and recordPost is NOT re-issued. Cursor still
@@ -171,7 +182,7 @@ describe('pollOnce', () => {
     const c2 = clip();
     const sub = subscription({ channelId: 'C1' });
     const db = stubDb({
-      state: new Map([['last_clip_created_at', c1.createdAt]]),
+      cursor: c1.createdAt,
       subs: [sub],
     });
     const fanout: Fanout = async () => false;
@@ -190,7 +201,7 @@ describe('pollOnce', () => {
     const sub = subscription({ channelId: 'C1' });
     const errLog = mock(() => {});
     const db = stubDb({
-      state: new Map([['last_clip_created_at', c1.createdAt]]),
+      cursor: c1.createdAt,
       subs: [sub],
     });
     const fanout: Fanout = async () => {
@@ -213,7 +224,7 @@ describe('pollOnce', () => {
     const c2 = clip({ game: { id: 999, name: 'X', slug: 'x', tag: 'x' } });
     const sub = subscription({ channelId: 'C1', gameId: 7 });
     const db = stubDb({
-      state: new Map([['last_clip_created_at', c1.createdAt]]),
+      cursor: c1.createdAt,
       subs: [sub],
     });
     const fanout = okFanout();
@@ -230,7 +241,7 @@ describe('pollOnce', () => {
     const c1 = clip();
     const cursorAhead = new Date(new Date(c1.createdAt).getTime() + 60_000).toISOString();
     const listSubsSpy = mock(async () => [] as Subscription[]);
-    const db = stubDb({ state: new Map([['last_clip_created_at', cursorAhead]]) });
+    const db = stubDb({ cursor: cursorAhead });
     db.listAllSubscriptions = listSubsSpy;
 
     const res = await pollOnce({
@@ -249,7 +260,7 @@ describe('pollOnce', () => {
     const subA = subscription({ channelId: 'A' });
     const subB = subscription({ channelId: 'B' });
     const db = stubDb({
-      state: new Map([['last_clip_created_at', c1.createdAt]]),
+      cursor: c1.createdAt,
       subs: [subA, subB],
     });
     const fanout = okFanout();
@@ -270,7 +281,7 @@ describe('pollOnce', () => {
     const sub = subscription({ channelId: 'C1' });
     const warnLog = mock(() => {});
     const db = stubDb({
-      state: new Map([['last_clip_created_at', c1.createdAt]]),
+      cursor: c1.createdAt,
       subs: [sub],
     });
     db.recordPost = async () => {
@@ -294,7 +305,7 @@ describe('pollOnce', () => {
     const subA = subscription({ channelId: 'A' });
     const subB = subscription({ channelId: 'B' });
     const db = stubDb({
-      state: new Map([['last_clip_created_at', c1.createdAt]]),
+      cursor: c1.createdAt,
       subs: [subA, subB],
     });
     // Fail the first call (channel A), succeed the second (channel B).
@@ -320,7 +331,7 @@ describe('pollOnce cursor sanity', () => {
     // → silent posting outage. The fix logs and re-anchors instead.
     const warnLog = mock(() => {});
     const db = stubDb({
-      state: new Map([['last_clip_created_at', 'not-a-date']]),
+      cursor: 'not-a-date',
       subs: [subscription({ channelId: 'C1' })],
     });
 
@@ -346,7 +357,7 @@ describe('pollOnce cursor + dedupe boundary cases', () => {
     const c1 = clip();
     const sub = subscription({ channelId: 'C1' });
     const db = stubDb({
-      state: new Map([['last_clip_created_at', c1.createdAt]]),
+      cursor: c1.createdAt,
       subs: [sub],
       postLog: new Set([`C1:${c1.id}`]),
     });
@@ -377,7 +388,7 @@ describe('pollOnce pagination', () => {
     const api = stubPagedApi(pages);
     const sub = subscription({ channelId: 'C1' });
     const db = stubDb({
-      state: new Map([['last_clip_created_at', new Date(0).toISOString()]]),
+      cursor: new Date(0).toISOString(),
       subs: [sub],
     });
     const fanout = okFanout();
@@ -413,7 +424,7 @@ describe('pollOnce pagination', () => {
     const api = stubPagedApi(pages);
     const sub = subscription({ channelId: 'C1' });
     const db = stubDb({
-      state: new Map([['last_clip_created_at', cursor]]),
+      cursor: cursor,
       subs: [sub],
     });
     const fanout = okFanout();
@@ -439,7 +450,7 @@ describe('pollOnce pagination', () => {
     const api = stubPagedApi(pages);
     const sub = subscription({ channelId: 'C1' });
     const db = stubDb({
-      state: new Map([['last_clip_created_at', new Date(0).toISOString()]]),
+      cursor: new Date(0).toISOString(),
       subs: [sub],
     });
     const fanout = okFanout();
@@ -461,7 +472,7 @@ describe('pollOnce pagination', () => {
     const api = stubPagedApi(pages);
     const sub = subscription({ channelId: 'C1' });
     const db = stubDb({
-      state: new Map([['last_clip_created_at', new Date(0).toISOString()]]),
+      cursor: new Date(0).toISOString(),
       subs: [sub],
     });
     const fanout = okFanout();
@@ -475,7 +486,7 @@ describe('pollOnce pagination', () => {
 describe('startPoller', () => {
   test('runs immediately, then resolves on abort', async () => {
     const c1 = clip();
-    const db = stubDb({ state: new Map([['last_clip_created_at', c1.createdAt]]) });
+    const db = stubDb({ cursor: c1.createdAt });
     const fanout = okFanout();
     const abort = new AbortController();
     const loopDone = startPoller(

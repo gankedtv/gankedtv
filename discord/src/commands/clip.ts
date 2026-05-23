@@ -1,10 +1,10 @@
 import {
-  MessageFlags,
   SlashCommandBuilder,
   type ChatInputCommandInteraction,
   type AutocompleteInteraction,
 } from 'discord.js';
 import type { Command, CommandContext } from './index.ts';
+import { ephemeral } from './replies.ts';
 import { shareUrl } from '../lib/shareUrl.ts';
 
 const data = new SlashCommandBuilder()
@@ -40,11 +40,6 @@ const data = new SlashCommandBuilder()
       .setDescription('Search clips by keyword and post the top match.')
       .addStringOption((o) => o.setName('query').setDescription('Search terms.').setRequired(true)),
   );
-
-const ephemeral = (content: string) => ({
-  content,
-  flags: MessageFlags.Ephemeral as MessageFlags.Ephemeral,
-});
 
 async function execute(
   interaction: ChatInputCommandInteraction,

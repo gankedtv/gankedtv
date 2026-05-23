@@ -2,14 +2,7 @@
 // loadConfig reads it. Mirrors web/vite.config.ts's `envDir: '../'`.
 import './loadEnv.ts';
 
-import {
-  Client,
-  GatewayIntentBits,
-  MessageFlags,
-  REST,
-  Routes,
-  type Interaction,
-} from 'discord.js';
+import { Client, GatewayIntentBits, REST, Routes, type Interaction } from 'discord.js';
 import { loadConfig } from './config.ts';
 import { connect, createDb } from './db.ts';
 import { runMigrations } from './migrator.ts';
@@ -20,6 +13,7 @@ import {
   dispatchChatInput,
   type CommandContext,
 } from './commands/index.ts';
+import { ephemeral } from './commands/replies.ts';
 import { buildMessage, postToChannel } from './posting.ts';
 import { startPoller, type Fanout, type PollerLogger } from './poller.ts';
 
@@ -85,10 +79,7 @@ async function main(): Promise<void> {
           if (interaction.deferred || interaction.replied) {
             await interaction.editReply({ content: 'Something went wrong.' });
           } else {
-            await interaction.reply({
-              content: 'Something went wrong.',
-              flags: MessageFlags.Ephemeral,
-            });
+            await interaction.reply(ephemeral('Something went wrong.'));
           }
         } catch {
           /* swallow — original error is already logged */

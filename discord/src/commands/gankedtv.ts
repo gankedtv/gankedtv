@@ -5,6 +5,7 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import type { Command, CommandContext } from './index.ts';
+import { ephemeral } from './replies.ts';
 import { requireManageChannels } from '../lib/permissions.ts';
 import type { Subscription } from '../db.ts';
 
@@ -65,11 +66,6 @@ const data = new SlashCommandBuilder()
   .addSubcommand((s) =>
     s.setName('resume').setDescription('Resume paused subscriptions in this channel.'),
   );
-
-const ephemeral = (content: string) => ({
-  content,
-  flags: MessageFlags.Ephemeral as MessageFlags.Ephemeral,
-});
 
 async function execute(
   interaction: ChatInputCommandInteraction,

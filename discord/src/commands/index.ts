@@ -1,13 +1,13 @@
-import {
-  MessageFlags,
-  type AutocompleteInteraction,
-  type ChatInputCommandInteraction,
-  type RESTPostAPIChatInputApplicationCommandsJSONBody,
+import type {
+  AutocompleteInteraction,
+  ChatInputCommandInteraction,
+  RESTPostAPIChatInputApplicationCommandsJSONBody,
 } from 'discord.js';
 import type { ApiClient } from '../api.ts';
 import type { Db } from '../db.ts';
 import * as gankedtv from './gankedtv.ts';
 import * as clipCommand from './clip.ts';
+import { ephemeral } from './replies.ts';
 
 export type CommandContext = {
   db: Db;
@@ -44,7 +44,7 @@ export async function dispatchChatInput(
 ): Promise<void> {
   const cmd = commands[interaction.commandName];
   if (!cmd) {
-    await interaction.reply({ content: 'Unknown command.', flags: MessageFlags.Ephemeral });
+    await interaction.reply(ephemeral('Unknown command.'));
     return;
   }
   await cmd.execute(interaction, ctx);
