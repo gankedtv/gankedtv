@@ -169,6 +169,10 @@ export function connect(url: string): Sql {
     // row. `undefined: null` coerces JS `undefined` parameter values to SQL
     // NULL (porsager/postgres throws by default — the coercion saves us from
     // sprinkling `?? null` at every nullable boundary).
+    //
+    // Gotcha: this transform is GLOBAL — it applies to system catalog queries
+    // too. If we ever SELECT from information_schema or pg_catalog, read the
+    // camelCased keys on the JS side (`tableName`, not `table_name`).
     transform: { ...postgres.camel, undefined: null },
     // Server-side safety timeouts. The bot's queries are all small lookups
     // and upserts, so anything slower than 30s is a sign of trouble (lock
