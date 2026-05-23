@@ -75,12 +75,21 @@ async function main(): Promise<void> {
         commandName: 'commandName' in interaction ? interaction.commandName : null,
         err: String(err),
       });
-      if (interaction.isRepliable() && !interaction.replied) {
+      if (interaction.isRepliable()) {
         try {
-          await interaction.reply({
-            content: 'Something went wrong.',
-            flags: MessageFlags.Ephemeral,
-          });
+          // All command handlers call deferReply() first, so by the time we
+          // catch here the interaction is typically `deferred && !replied`.
+          // Calling reply() in that state throws InteractionAlreadyReplied —
+          // we have to follow up via editReply() instead. The ephemeral flag
+          // was already set at deferReply time so editReply inherits it.
+          if (interaction.deferred || interaction.replied) {
+            await interaction.editReply({ content: 'Something went wrong.' });
+          } else {
+            await interaction.reply({
+              content: 'Something went wrong.',
+              flags: MessageFlags.Ephemeral,
+            });
+          }
         } catch {
           /* swallow — original error is already logged */
         }

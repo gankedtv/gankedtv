@@ -54,13 +54,14 @@ describe('mergeFirstWins', () => {
     expect(target.A).toBe('shell');
   });
 
-  test('treats explicit undefined as absent', () => {
+  test('explicit undefined counts as present (fallback does NOT override)', () => {
     const target: Record<string, string | undefined> = { A: undefined };
     mergeFirstWins(target, { A: 'fallback' });
-    // 'A' is "in" the object but is undefined — we want fallback to apply here
-    // because that's how shell env behaves (unset vs set-to-empty differ).
-    // The simple `key in target` check intentionally keeps undefined as present
-    // to match Node's process.env semantics — document the choice with a test.
+    // `'A' in target` is true even though A === undefined, so the first-set-wins
+    // check considers A "already set" and skips the fallback. Mirrors Node's
+    // process.env: setting `process.env.X = undefined` is distinct from never
+    // setting X at all (the former keeps the slot, the latter leaves it free
+    // for a downstream merge to fill).
     expect(target.A).toBeUndefined();
   });
 });

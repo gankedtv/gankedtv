@@ -5,13 +5,7 @@ import type {
   PermissionsBitField,
 } from 'discord.js';
 import { PermissionFlagsBits } from 'discord.js';
-import type {
-  ApiClient,
-  ClipFeedItem,
-  GameListItem,
-  SearchResponse,
-  ClipFeedResponse,
-} from '../../src/api.ts';
+import type { ApiClient, GameListItem, SearchResponse, ClipFeedResponse } from '../../src/api.ts';
 import type { CommandContext } from '../../src/commands/index.ts';
 import type { Db, Subscription } from '../../src/db.ts';
 
@@ -145,8 +139,4 @@ export function ctx(over: Partial<CommandContext> = {}): CommandContext {
     api: over.api ?? fakeApi(),
     publicBase: over.publicBase ?? 'https://gankedtv.com',
   };
-}
-
-export function asClipFeedItem(c: ClipFeedItem): ClipFeedItem {
-  return c;
 }

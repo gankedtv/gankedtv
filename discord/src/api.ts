@@ -56,6 +56,13 @@ export type ApiClient = {
   }): Promise<GameListItem[]>;
 };
 
+// Caps any single API call. The bot's HTTP queries are small reads from the
+// local-network GankedTV API, so 10s is generous — anything slower is either
+// a deadlock or a stalled connection and should fail loudly rather than block
+// the poller (which would chain into overlapping ticks). Pure HTTP timeout;
+// separate from the DB statement_timeout in db.ts.
+const FETCH_TIMEOUT_MS = 10_000;
+
 export function createApi(baseUrl: string): ApiClient {
   const get = async <T>(path: string, query?: Record<string, string | number | undefined>) => {
     const url = new URL(path, ensureTrailingSlash(baseUrl));
@@ -65,7 +72,20 @@ export function createApi(baseUrl: string): ApiClient {
         url.searchParams.set(k, String(v));
       }
     }
-    const res = await fetch(url, { headers: { accept: 'application/json' } });
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        headers: { accept: 'application/json' },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
+    } catch (err) {
+      if (err instanceof Error && err.name === 'TimeoutError') {
+        throw new Error(`GET ${url.pathname} timed out after ${FETCH_TIMEOUT_MS}ms`, {
+          cause: err,
+        });
+      }
+      throw err;
+    }
     if (!res.ok) {
       throw new Error(`GET ${url.pathname} → ${res.status}`);
     }

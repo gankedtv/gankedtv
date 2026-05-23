@@ -310,6 +310,31 @@ describe('pollOnce', () => {
   });
 });
 
+describe('pollOnce cursor sanity', () => {
+  test('garbage cursor value re-anchors to a valid ISO date and logs a warning', async () => {
+    // Without the guard, `new Date('not-a-date')` is Invalid Date and every
+    // `c.createdAt >= lastSeen` returns false → entire feed treated as stale
+    // → silent posting outage. The fix logs and re-anchors instead.
+    const warnLog = mock(() => {});
+    const db = stubDb({
+      state: new Map([['last_clip_created_at', 'not-a-date']]),
+      subs: [subscription({ channelId: 'C1' })],
+    });
+
+    await pollOnce({
+      db,
+      api: stubApi([clip()]),
+      fanout: okFanout(),
+      log: { info: () => {}, warn: warnLog, error: () => {} },
+    });
+
+    expect(warnLog).toHaveBeenCalled();
+    const newCursor = db._state.state.get('last_clip_created_at');
+    expect(newCursor).toBeDefined();
+    expect(Number.isNaN(new Date(newCursor!).getTime())).toBe(false);
+  });
+});
+
 describe('pollOnce cursor + dedupe boundary cases', () => {
   test('tied-timestamp clip at the cursor boundary is reprocessed but dedupe blocks the post', async () => {
     // c1 has the exact same timestamp as the cursor; isPosted returns true
@@ -332,43 +357,26 @@ describe('pollOnce cursor + dedupe boundary cases', () => {
 
 describe('pollOnce pagination', () => {
   test('walks nextCursor when first page is full and all items are fresh', async () => {
-    // Cursor in the distant past — every clip in the feed is fresh.
-    const old = clip();
-    // Page 1: pageSize=2, all fresh, nextCursor='p2'.
+    // clip() increments a seq, so a..d have strictly increasing timestamps.
+    // The cursor is anchored at epoch so EVERY clip is fresh — the poller
+    // should walk both pages until it sees a non-full page (page 2 returns 2
+    // items but nextCursor=null, so the loop terminates after page 2).
     const a = clip();
     const b = clip();
-    // Page 2: pageSize=2, mixed (one fresh, one older than cursor) → poller
-    // stops here because the page contains an item ≤ lastSeen.
     const c = clip();
-    const d = clip(); // older than cursor (simulated by setting cursor to between c and d)
-
-    // Place cursor between c and d so d is the boundary stop.
-    const cursorTs = new Date(
-      (new Date(c.createdAt).getTime() + new Date(d.createdAt).getTime()) / 2,
-    ).toISOString();
-    // Actually: c was created last, so c.createdAt > d.createdAt? No — clip()
-    // increments seq, so later clips have LATER timestamps. Order:
-    // old < a < b < c < d (chronological). Feed is DESC, so first page returns
-    // newest first: [d, c]. Set the cursor so c < cursor < d → only d is fresh.
-    void old;
-    const lastSeen = new Date(
-      (new Date(c.createdAt).getTime() + new Date(d.createdAt).getTime()) / 2,
-    ).toISOString();
-    void cursorTs;
+    const d = clip();
 
     const pages = new Map<string, ClipFeedResponse>([
-      // Initial fetch: 2 items, both newer than cursor's reference clip 'a'
+      // Feed sort is DESC, so the newest clips appear on page 1.
       ['', { items: [d, c], nextCursor: 'p2' }],
       ['p2', { items: [b, a], nextCursor: null }],
     ]);
     const api = stubPagedApi(pages);
     const sub = subscription({ channelId: 'C1' });
-    // Anchor cursor far back so a, b, c are ALL fresh; d is fresh too.
     const db = stubDb({
       state: new Map([['last_clip_created_at', new Date(0).toISOString()]]),
       subs: [sub],
     });
-    void lastSeen;
     const fanout = okFanout();
 
     const res = await pollOnce({

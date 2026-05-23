@@ -16,6 +16,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Least-privilege default for the workflow's GITHUB_TOKEN. The discord workflow
+# only reads source and runs tests — no writes back to the repo, no comments on
+# PRs, no package publishes. If a step ever needs more, scope it locally with a
+# job- or step-level `permissions:` block rather than relaxing this one.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -24,6 +31,8 @@ jobs:
         working-directory: discord
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -44,6 +53,8 @@ jobs:
         working-directory: discord
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -67,6 +78,8 @@ jobs:
         working-directory: discord
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2

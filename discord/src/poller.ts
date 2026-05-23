@@ -60,7 +60,16 @@ export async function pollOnce({
     await db.setState(STATE_KEY, new Date().toISOString());
     return { fetched: 0, newClips: 0, posts: 0 };
   }
-  const lastSeen = new Date(lastSeenIso);
+  let lastSeen = new Date(lastSeenIso);
+  if (Number.isNaN(lastSeen.getTime())) {
+    // Garbage value in the cursor (manual DB tampering, future schema bug,
+    // truncated write). Without the guard, every clip comparison `>= lastSeen`
+    // returns false → entire feed treated as stale → silent posting outage.
+    // Re-anchor to "now" instead, log loudly, and continue.
+    log.warn('cursor value is not a valid ISO date; re-anchoring to now', { value: lastSeenIso });
+    lastSeen = new Date();
+    await db.setState(STATE_KEY, lastSeen.toISOString());
+  }
 
   // Paginate via nextCursor until a page returns at least one clip ≤ lastSeen
   // (we've walked back past the high-water mark) or we hit maxPages. The feed
@@ -174,12 +183,21 @@ export function startPoller(
   signal: AbortSignal,
 ): Promise<void> {
   return new Promise((resolve) => {
+    // Reentrancy guard: setInterval keeps firing on schedule, but a poll round
+    // can outlast `intervalSeconds` when paginating through a burst or when the
+    // API is slow. Without the guard, two overlapping ticks would re-fetch the
+    // same clips (post-log dedupe still prevents double-sends, but wastes API
+    // calls and creates avoidable DB churn).
+    let inFlight = false;
     const tick = async () => {
-      if (signal.aborted) return;
+      if (signal.aborted || inFlight) return;
+      inFlight = true;
       try {
         await pollOnce(deps);
       } catch (err) {
         deps.log.error('poll round threw', { err: String(err) });
+      } finally {
+        inFlight = false;
       }
     };
 
