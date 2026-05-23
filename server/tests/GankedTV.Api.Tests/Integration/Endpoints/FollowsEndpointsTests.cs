@@ -4,10 +4,15 @@ using System.Text.Json;
 using FluentAssertions;
 using GankedTV.Api.Clips;
 using GankedTV.Api.Data.Entities;
+using GankedTV.Api.Notifications;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Tests.TestSupport;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 
 namespace GankedTV.Api.Tests.Integration.Endpoints;
 
@@ -144,6 +149,73 @@ public class FollowsEndpointsTests : IAsyncLifetime
         await using var db = _fx.CreateContext();
         (await db.Follows.CountAsync(f => f.FollowerId == followerId && f.FolloweeId == followeeId))
             .Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Follow_FirstTime_RecordsNotificationForFollowee()
+    {
+        await _fx.ResetAsync();
+        var (followerId, token) = await SeedUserAndIssueTokenAsync("follower");
+        var (followeeId, _) = await SeedUserAndIssueTokenAsync("followee");
+        using var client = ClientWithBearer(token);
+
+        (await client.PostAsync("/users/followee/follow", content: null)).EnsureSuccessStatusCode();
+
+        await using var db = _fx.CreateContext();
+        var notif = await db.Notifications.SingleAsync();
+        notif.Type.Should().Be(NotificationTypes.Follow);
+        notif.RecipientId.Should().Be(followeeId);
+        notif.ActorId.Should().Be(followerId);
+        notif.ClipId.Should().BeNull();
+        notif.CommentId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Follow_DuplicateFollow_OnlyRecordsOneNotification()
+    {
+        await _fx.ResetAsync();
+        var (_, token) = await SeedUserAndIssueTokenAsync("follower");
+        await SeedUserAndIssueTokenAsync("followee");
+        using var client = ClientWithBearer(token);
+
+        (await client.PostAsync("/users/followee/follow", content: null)).EnsureSuccessStatusCode();
+        (await client.PostAsync("/users/followee/follow", content: null)).EnsureSuccessStatusCode();
+
+        await using var db = _fx.CreateContext();
+        (await db.Notifications.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Follow_NotificationFailure_RollsBackFollowRow()
+    {
+        // Contract: INotificationService.RecordAsync runs inside the caller's transaction.
+        // If recording throws, the follow row must NOT remain — otherwise re-follows can never
+        // produce a notification (dedup is `inserted == 1`) and the event is lost forever.
+        await _fx.ResetAsync();
+        var (followerId, token) = await SeedUserAndIssueTokenAsync("follower");
+        var (followeeId, _) = await SeedUserAndIssueTokenAsync("followee");
+
+        var throwing = Substitute.For<INotificationService>();
+        throwing.RecordAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<string>(),
+                Arg.Any<Guid?>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("simulated notification failure"));
+
+        using var factory = _factory!.WithWebHostBuilder(b => b.ConfigureServices(s =>
+        {
+            s.RemoveAll<INotificationService>();
+            s.AddScoped(_ => throwing);
+        }));
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        var resp = await client.PostAsync("/users/followee/follow", content: null);
+
+        resp.IsSuccessStatusCode.Should().BeFalse();
+        await using var db = _fx.CreateContext();
+        (await db.Follows.AnyAsync(f => f.FollowerId == followerId && f.FolloweeId == followeeId))
+            .Should().BeFalse();
+        (await db.Notifications.AnyAsync()).Should().BeFalse();
     }
 
     [Fact]

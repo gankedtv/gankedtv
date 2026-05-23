@@ -34,6 +34,15 @@ public sealed class SeedCommand(
     public const string SeedUserEmail = $"{SeedUsername}@dev.local";
     // Documented in the README so contributors can hit /auth/login directly after `make seed`.
     public const string SeedUserPassword = "testpass123!";
+
+    // Second seeded login — the "other user" for two-browser smoke tests (notifications,
+    // follows, likes-on-someone-else's-clip). Owns no clips of their own; they're the actor
+    // that creates social events against seeduser's clips.
+    public static readonly Guid SeedUser2Id = new("00000000-0000-0000-0000-00000000F00D");
+    public const string SeedUser2Username = "seeduser2";
+    public const string SeedUser2Email = $"{SeedUser2Username}@dev.local";
+    public const string SeedUser2Password = SeedUserPassword;
+
     public const int SeedClipCount = 10;
     private const int GameRotationCount = 5;
 
@@ -61,50 +70,14 @@ public sealed class SeedCommand(
 
         var now = clock.GetUtcNow();
 
-        // Match by id first, then fall back to email/username. The columns have unique
-        // indexes (idx_users_email, idx_users_username), so an id-only lookup followed by
-        // an unconditional INSERT used to crash with 23505 when a non-canonical row
-        // already occupied the seed's email or username — e.g. someone registering via
-        // /auth/register with the documented seed credentials. Reuse that row instead.
-        var user = await db.Users.FirstOrDefaultAsync(
-            u => u.Id == SeedUserId || u.Email == SeedUserEmail || u.Username == SeedUsername,
-            ct);
-        if (user is null)
-        {
-            user = new User
-            {
-                Id = SeedUserId,
-                Username = SeedUsername,
-                Email = SeedUserEmail,
-                Bio = "Seeded dev user.",
-                PasswordHash = hasher.Hash(SeedUserPassword),
-                PasswordAlgo = hasher.Algorithm,
-                CreatedAt = now,
-                UpdatedAt = now,
-            };
-            db.Users.Add(user);
-            await db.SaveChangesAsync(ct);
-            logger.LogInformation("Seed: created user {Username}", user.Username);
-        }
-        else
-        {
-            if (user.Id != SeedUserId)
-            {
-                logger.LogWarning(
-                    "Seed: existing user matches by email/username under id {Id} (expected {Expected}). Reusing existing row.",
-                    user.Id, SeedUserId);
-            }
-            if (string.IsNullOrEmpty(user.PasswordHash))
-            {
-                // Migrate older seed runs that created the user before passwords existed.
-                // Don't overwrite an existing password — a contributor may have rotated it via /auth/password.
-                user.PasswordHash = hasher.Hash(SeedUserPassword);
-                user.PasswordAlgo = hasher.Algorithm;
-                user.UpdatedAt = now;
-                await db.SaveChangesAsync(ct);
-                logger.LogInformation("Seed: attached default password to existing user {Username}", user.Username);
-            }
-        }
+        var user = await EnsureSeedUserAsync(
+            SeedUserId, SeedUsername, SeedUserEmail, SeedUserPassword, "Seeded dev user.", now, ct);
+        // seeduser2 is a second login with the same documented password — used for two-browser
+        // smoke tests (notifications, follows). They own no clips of their own; their job is to
+        // act on seeduser's content.
+        _ = await EnsureSeedUserAsync(
+            SeedUser2Id, SeedUser2Username, SeedUser2Email, SeedUser2Password,
+            "Seeded dev user (actor).", now, ct);
 
         // Ensure buckets exist before any PutObject. Seed runs via the `--seed` short-circuit
         // which doesn't start hosted services, so BucketBootstrapHostedService hasn't run.
@@ -172,6 +145,61 @@ public sealed class SeedCommand(
         {
             logger.LogInformation("Seed: already present, no changes.");
         }
+    }
+
+    /// <summary>
+    /// Idempotently materialise a seeded user. Matches by id first, then by email or username,
+    /// so a row registered through <c>/auth/register</c> under the documented credentials gets
+    /// reused instead of colliding on <c>idx_users_email</c> / <c>idx_users_username</c>.
+    /// Attaches the documented password if missing (older seed runs predate password storage).
+    /// </summary>
+    private async Task<User> EnsureSeedUserAsync(
+        Guid id,
+        string username,
+        string email,
+        string password,
+        string bio,
+        DateTimeOffset now,
+        CancellationToken ct)
+    {
+        var user = await db.Users.FirstOrDefaultAsync(
+            u => u.Id == id || u.Email == email || u.Username == username, ct);
+
+        if (user is null)
+        {
+            user = new User
+            {
+                Id = id,
+                Username = username,
+                Email = email,
+                Bio = bio,
+                PasswordHash = hasher.Hash(password),
+                PasswordAlgo = hasher.Algorithm,
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+            db.Users.Add(user);
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Seed: created user {Username}", user.Username);
+            return user;
+        }
+
+        if (user.Id != id)
+        {
+            logger.LogWarning(
+                "Seed: existing user matches by email/username under id {Id} (expected {Expected}). Reusing existing row.",
+                user.Id, id);
+        }
+        if (string.IsNullOrEmpty(user.PasswordHash))
+        {
+            // Don't overwrite an existing password — a contributor may have rotated it via /auth/password.
+            user.PasswordHash = hasher.Hash(password);
+            user.PasswordAlgo = hasher.Algorithm;
+            user.UpdatedAt = now;
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Seed: attached default password to existing user {Username}", user.Username);
+        }
+        return user;
     }
 
     /// <summary>

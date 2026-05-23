@@ -3,6 +3,7 @@ using System;
 using GankedTV.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using NpgsqlTypes;
@@ -12,9 +13,11 @@ using NpgsqlTypes;
 namespace GankedTV.Api.Data.Migrations
 {
     [DbContext(typeof(GankedTvDbContext))]
-    partial class GankedTvDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260523154640_AddNotifications")]
+    partial class AddNotifications
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -191,39 +194,6 @@ namespace GankedTV.Api.Data.Migrations
                         .HasDatabaseName("idx_clip_tags_tag");
 
                     b.ToTable("clip_tags", (string)null);
-                });
-
-            modelBuilder.Entity("GankedTV.Api.Data.Entities.ClipView", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<Guid>("ClipId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("clip_id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("now()");
-
-                    b.HasKey("Id")
-                        .HasName("pk_clip_views");
-
-                    b.HasIndex("CreatedAt")
-                        .IsDescending()
-                        .HasDatabaseName("idx_clip_views_created_at");
-
-                    b.HasIndex("ClipId", "CreatedAt")
-                        .IsDescending(false, true)
-                        .HasDatabaseName("idx_clip_views_clip_id_created_at");
-
-                    b.ToTable("clip_views", (string)null);
                 });
 
             modelBuilder.Entity("GankedTV.Api.Data.Entities.Comment", b =>
@@ -482,10 +452,6 @@ namespace GankedTV.Api.Data.Migrations
 
                     b.HasIndex("ClipId")
                         .HasDatabaseName("ix_likes_clip_id");
-
-                    b.HasIndex("CreatedAt", "ClipId")
-                        .IsDescending(true, false)
-                        .HasDatabaseName("idx_likes_created_at_clip_id");
 
                     b.ToTable("likes", (string)null);
                 });
@@ -768,18 +734,6 @@ namespace GankedTV.Api.Data.Migrations
                     b.Navigation("Clip");
 
                     b.Navigation("Tag");
-                });
-
-            modelBuilder.Entity("GankedTV.Api.Data.Entities.ClipView", b =>
-                {
-                    b.HasOne("GankedTV.Api.Data.Entities.Clip", "Clip")
-                        .WithMany()
-                        .HasForeignKey("ClipId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_clip_views_clips_clip_id");
-
-                    b.Navigation("Clip");
                 });
 
             modelBuilder.Entity("GankedTV.Api.Data.Entities.Comment", b =>

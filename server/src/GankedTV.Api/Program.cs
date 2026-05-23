@@ -10,6 +10,7 @@ using GankedTV.Api.Configuration;
 using GankedTV.Api.Data;
 using GankedTV.Api.Endpoints;
 using GankedTV.Api.Middleware;
+using GankedTV.Api.Notifications;
 using GankedTV.Api.Services.Clips;
 using GankedTV.Api.Services.Igdb;
 using GankedTV.Api.Services.Maintenance;
@@ -156,6 +157,7 @@ builder.Services.AddOptions<ClipValidationOptions>()
 
 builder.Services.AddScoped<IClipUploadService, ClipUploadService>();
 builder.Services.AddScoped<ITagsResolver, TagsResolver>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
 
 // ---- Auth configuration ----
 
@@ -381,6 +383,7 @@ app.MapClipsViewEndpoints();
 app.MapCommentsEndpoints();
 app.MapUsersEndpoints();
 app.MapFollowsEndpoints();
+app.MapNotificationsEndpoints();
 app.MapGamesEndpoints();
 app.MapTagsEndpoints();
 app.MapSearchEndpoints();

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using GankedTV.Api.Contracts.Users;
 using GankedTV.Api.Data;
+using GankedTV.Api.Notifications;
 using GankedTV.Api.Pagination;
 using GankedTV.Api.Problems;
 using Microsoft.EntityFrameworkCore;
@@ -28,6 +29,7 @@ public static class FollowsEndpoints
         string username,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
+        INotificationService notifications,
         CancellationToken ct)
     {
         if (!ClipsReadEndpoints.TryGetUserId(principal, out var followerId))
@@ -46,11 +48,27 @@ public static class FollowsEndpoints
             return ProblemResults.BadRequest("self_follow", "Cannot follow yourself.");
         }
 
+        // Wrap insert + RecordAsync so a notification failure rolls the follow back —
+        // INotificationService promises to enlist in the caller's transaction, and there's
+        // no retry path (dedup is `inserted == 1`), so an event without its notification
+        // would be lost forever.
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+
         // ON CONFLICT DO NOTHING collapses both sequential double-clicks and concurrent
         // requests from the same follower into a single row — same pattern as Like.
-        await db.Database.ExecuteSqlInterpolatedAsync(
+        var inserted = await db.Database.ExecuteSqlInterpolatedAsync(
             $"INSERT INTO follows (follower_id, followee_id) VALUES ({followerId}, {target.Id}) ON CONFLICT DO NOTHING",
             ct);
+
+        if (inserted == 1)
+        {
+            // Notify the followee. Re-following after an unfollow still produces a new
+            // notification — mirrors the like / re-like semantics elsewhere.
+            await notifications.RecordAsync(
+                target.Id, followerId, NotificationTypes.Follow, null, null, ct);
+        }
+
+        await tx.CommitAsync(ct);
 
         return Results.NoContent();
     }

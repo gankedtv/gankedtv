@@ -3,6 +3,7 @@ using System.Security.Claims;
 using GankedTV.Api.Clips;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Data;
+using GankedTV.Api.Notifications;
 using GankedTV.Api.Problems;
 using Microsoft.EntityFrameworkCore;
 
@@ -24,6 +25,7 @@ public static class LikesEndpoints
         Guid id,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
+        INotificationService notifications,
         CancellationToken ct)
     {
         if (!TryGetUserId(principal, out var userId))
@@ -33,8 +35,11 @@ public static class LikesEndpoints
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
 
-        var clipExists = await db.Clips.AnyAsync(c => c.Id == id, ct);
-        if (!clipExists)
+        var clipOwnerId = await db.Clips.AsNoTracking()
+            .Where(c => c.Id == id)
+            .Select(c => (Guid?)c.UserId)
+            .FirstOrDefaultAsync(ct);
+        if (clipOwnerId is null)
         {
             return ProblemResults.NotFound("not_found");
         }
@@ -53,6 +58,12 @@ public static class LikesEndpoints
                 .ExecuteUpdateAsync(
                     s => s.SetProperty(c => c.LikeCount, c => c.LikeCount + 1),
                     ct);
+
+            // Record only on the first like (re-likes after an unlike still register because the
+            // row was reinserted). The service drops self-likes; the surrounding transaction
+            // means a notification failure rolls back the like row too.
+            await notifications.RecordAsync(
+                clipOwnerId.Value, userId, NotificationTypes.Like, id, null, ct);
         }
 
         var count = await db.Clips.AsNoTracking()

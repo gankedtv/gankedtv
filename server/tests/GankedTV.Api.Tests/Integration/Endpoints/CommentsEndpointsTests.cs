@@ -4,10 +4,16 @@ using System.Text.Json;
 using FluentAssertions;
 using GankedTV.Api.Clips;
 using GankedTV.Api.Data.Entities;
+using GankedTV.Api.Notifications;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Tests.TestSupport;
 using GankedTV.Api.Validation;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 
 namespace GankedTV.Api.Tests.Integration.Endpoints;
 
@@ -190,6 +196,75 @@ public class CommentsEndpointsTests : IAsyncLifetime
         var createdAt = item.GetProperty("createdAt").GetDateTimeOffset();
         createdAt.Should().BeOnOrAfter(before.AddSeconds(-1));
         createdAt.Should().BeOnOrBefore(DateTimeOffset.UtcNow.AddSeconds(1));
+    }
+
+    [Fact]
+    public async Task Create_OnOthersClip_RecordsNotificationForClipOwner()
+    {
+        await _fx.ResetAsync();
+        var (ownerId, _) = await SeedUserAndIssueTokenAsync("author");
+        var (commenterId, token) = await SeedUserAndIssueTokenAsync("commenter");
+        var clipId = await SeedClipAsync(ownerId);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/comments", new { body = "great clip" });
+        resp.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        await using var db = _fx.CreateContext();
+        var notif = await db.Notifications.SingleAsync();
+        notif.Type.Should().Be(NotificationTypes.Comment);
+        notif.RecipientId.Should().Be(ownerId);
+        notif.ActorId.Should().Be(commenterId);
+        notif.ClipId.Should().Be(clipId);
+        notif.CommentId.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Create_NotificationFailure_RollsBackCommentRow()
+    {
+        // Contract: INotificationService.RecordAsync runs inside the caller's transaction.
+        // If recording throws, the comment row must NOT remain — otherwise commenters see a
+        // failed request but their comment is silently published without notifying the owner.
+        await _fx.ResetAsync();
+        var (ownerId, _) = await SeedUserAndIssueTokenAsync("author");
+        var (_, token) = await SeedUserAndIssueTokenAsync("commenter");
+        var clipId = await SeedClipAsync(ownerId);
+
+        var throwing = Substitute.For<INotificationService>();
+        throwing.RecordAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<string>(),
+                Arg.Any<Guid?>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("simulated notification failure"));
+
+        using var factory = _factory!.WithWebHostBuilder(b => b.ConfigureServices(s =>
+        {
+            s.RemoveAll<INotificationService>();
+            s.AddScoped(_ => throwing);
+        }));
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/comments", new { body = "doomed" });
+
+        resp.IsSuccessStatusCode.Should().BeFalse();
+        await using var db = _fx.CreateContext();
+        (await db.Comments.AnyAsync(c => c.ClipId == clipId)).Should().BeFalse();
+        (await db.Notifications.AnyAsync()).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Create_OnOwnClip_DoesNotRecordNotification()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync("author");
+        var clipId = await SeedClipAsync(userId);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/comments", new { body = "self" });
+        resp.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        await using var db = _fx.CreateContext();
+        (await db.Notifications.AnyAsync()).Should().BeFalse();
     }
 
     [Fact]
