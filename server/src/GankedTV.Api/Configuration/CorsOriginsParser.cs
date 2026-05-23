@@ -3,6 +3,23 @@ namespace GankedTV.Api.Configuration;
 public static class CorsOriginsParser
 {
     /// <summary>
+    /// True when <paramref name="origin"/> is a well-formed http(s) URL targeting the
+    /// local machine — <c>localhost</c>, <c>127.0.0.1</c>, or the IPv6 loopback
+    /// <c>[::1]</c>. Used by the dev-mode CORS predicate to auto-allow any local web
+    /// origin so worktrees and one-off VITE_PORT overrides don't require keeping
+    /// WEB_ORIGIN in sync. Production stays strict — this predicate is only consulted
+    /// when ASPNETCORE_ENVIRONMENT=Development.
+    /// </summary>
+    public static bool IsLocalhostOrigin(string origin)
+    {
+        if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri)) return false;
+        if (uri.Scheme is not ("http" or "https")) return false;
+        return string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase)
+            || uri.Host == "127.0.0.1"
+            || uri.Host == "[::1]";
+    }
+
+    /// <summary>
     /// Parses a comma-separated <c>CORS_ORIGINS</c> value and guarantees that
     /// <paramref name="alwaysInclude"/> (typically <c>WEB_ORIGIN</c>) is in the result,
     /// since OAuth callback redirects land on it and the browser's subsequent XHR back

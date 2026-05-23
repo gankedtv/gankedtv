@@ -67,6 +67,21 @@ const router = createRouter({
       component: () => import('@/views/UserView.vue'),
     },
     {
+      path: '/user/:username/followers',
+      name: 'user-followers',
+      component: () => import('@/views/UserFollowListView.vue'),
+      // `kind` lives on meta rather than being parsed from the path inside the
+      // view so a single component can serve both /followers and /following
+      // without URL-sniffing.
+      meta: { kind: 'followers' },
+    },
+    {
+      path: '/user/:username/following',
+      name: 'user-following',
+      component: () => import('@/views/UserFollowListView.vue'),
+      meta: { kind: 'following' },
+    },
+    {
       path: '/auth/callback',
       name: 'auth-callback',
       component: () => import('@/views/AuthCallbackView.vue'),

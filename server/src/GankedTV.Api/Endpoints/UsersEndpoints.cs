@@ -2,6 +2,7 @@ using System.Security.Claims;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Contracts.Users;
 using GankedTV.Api.Data;
+using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Problems;
 using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.EntityFrameworkCore;
@@ -20,6 +21,17 @@ public static class UsersEndpoints
         return app;
     }
 
+    // Case-insensitive username lookup shared by UsersEndpoints + FollowsEndpoints. Uses
+    // LOWER(...) rather than EF.Functions.ILike so `%` and `_` in the path segment are
+    // matched literally instead of acting as PG wildcards.
+    internal static Task<User?> FindByUsernameAsync(
+        GankedTvDbContext db, string username, CancellationToken ct)
+    {
+        var lower = username.ToLowerInvariant();
+        return db.Users.AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Username.ToLower() == lower, ct);
+    }
+
     private static async Task<IResult> GetByUsername(
         string username,
         ClaimsPrincipal principal,
@@ -33,12 +45,7 @@ public static class UsersEndpoints
             return ProblemResults.NotFound("not_found");
         }
 
-        // Case-insensitive equality via LOWER(...). Avoid EF.Functions.ILike here — `%` and `_`
-        // would be interpreted as PG wildcards, letting `/users/a%` match any name starting with a
-        // and legitimate `_` in a username become a wildcard.
-        var usernameLower = username.ToLowerInvariant();
-        var user = await db.Users.AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Username.ToLower() == usernameLower, ct);
+        var user = await FindByUsernameAsync(db, username, ct);
 
         if (user is null)
         {
@@ -62,6 +69,24 @@ public static class UsersEndpoints
                 likedIds.Contains(c.Id)))
             .ToList();
 
-        return Results.Ok(user.ToProfile(clipDtos));
+        var followerCount = await db.Follows.AsNoTracking()
+            .CountAsync(f => f.FolloweeId == user.Id, ct);
+        var followingCount = await db.Follows.AsNoTracking()
+            .CountAsync(f => f.FollowerId == user.Id, ct);
+
+        // followedByMe is intentionally nullable: the issue spec requires "null / absent"
+        // for unauthenticated callers (and we extend the same to self-views where the
+        // field would be meaningless) rather than defaulting to `false`. With ASP.NET's
+        // default Web JSON settings (no JsonIgnoreCondition.WhenWritingNull) this
+        // serializes as `"followedByMe": null` — clients should treat null and absent
+        // identically.
+        bool? followedByMe = null;
+        if (ClipsReadEndpoints.TryGetUserId(principal, out var callerId) && callerId != user.Id)
+        {
+            followedByMe = await db.Follows.AsNoTracking()
+                .AnyAsync(f => f.FollowerId == callerId && f.FolloweeId == user.Id, ct);
+        }
+
+        return Results.Ok(user.ToProfile(clipDtos, followerCount, followingCount, followedByMe));
     }
 }

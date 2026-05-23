@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { clips, type ClipFeedItem } from '@/api/clips'
+import { useAuthStore } from '@/stores/auth'
 import { formatNum, formatDuration, formatRelativeTime } from '@/lib/format'
 import ClipCard from '@/components/ClipCard.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
@@ -11,9 +12,27 @@ import DurationBadge from '@/components/DurationBadge.vue'
 import AuthorHandle from '@/components/AuthorHandle.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
 import PageHeader from '@/components/PageHeader.vue'
+import UnderlineTabs from '@/components/UnderlineTabs.vue'
+import LoadMoreButton from '@/components/LoadMoreButton.vue'
 import IconPlay from '@/components/icons/IconPlay.vue'
 
 const router = useRouter()
+const route = useRoute()
+const auth = useAuthStore()
+
+type FeedSource = 'public' | 'following'
+const TABS: { key: FeedSource; label: string }[] = [
+  { key: 'public', label: 'Latest' },
+  { key: 'following', label: 'Following' },
+]
+
+// Honour ?tab=following (used after login to bounce a viewer back to the tab they
+// clicked while signed-out). Gated on auth so a signed-out user landing on
+// `/?tab=following` directly doesn't hit a 401 and the generic error panel — they
+// fall through to public, which is the right initial state for anonymous browsing.
+const initialTab: FeedSource =
+  route.query.tab === 'following' && auth.isAuthenticated ? 'following' : 'public'
+const source = ref<FeedSource>(initialTab)
 
 const items = ref<ClipFeedItem[]>([])
 const cursor = ref<string | null>(null)
@@ -30,17 +49,31 @@ const hero = computed(() => items.value[0] ?? null)
 const secondary = computed(() => items.value.slice(1, 5))
 const grid = computed(() => items.value.slice(5))
 
+const showFollowingEmpty = computed(
+  () =>
+    source.value === 'following' && !loading.value && !errored.value && items.value.length === 0,
+)
+
 async function loadMore() {
   if (loading.value) return
   const isFirstPage = items.value.length === 0
   loading.value = true
   if (isFirstPage) errored.value = false
   paginationErrored.value = false
+  // Capture the source at request time so a tab switch mid-flight doesn't drop the
+  // response into the wrong list.
+  const requestedSource = source.value
   try {
-    const page = await clips.feed({ cursor: cursor.value, limit: 20 })
+    const page = await clips.feed({
+      cursor: cursor.value,
+      limit: 20,
+      source: requestedSource,
+    })
+    if (source.value !== requestedSource) return
     items.value.push(...page.items)
     cursor.value = page.nextCursor
   } catch (err) {
+    if (source.value !== requestedSource) return
     console.error('feed: load failed', err)
     if (isFirstPage) {
       errored.value = true
@@ -48,8 +81,32 @@ async function loadMore() {
       paginationErrored.value = true
     }
   } finally {
-    loading.value = false
+    if (source.value === requestedSource) loading.value = false
   }
+}
+
+function selectTab(next: FeedSource) {
+  if (next === source.value) return
+  // Signed-out users can browse public but not following — bounce through /login with
+  // a tab=following hint so they land back here after auth.
+  if (next === 'following' && !auth.isAuthenticated) {
+    router.push({ name: 'login', query: { redirect: '/?tab=following' } })
+    return
+  }
+  source.value = next
+  items.value = []
+  cursor.value = null
+  errored.value = false
+  paginationErrored.value = false
+  // Release ownership of the loading flag before triggering the new fetch.
+  // Without this, the loadMore() call below would early-return at its
+  // `if (loading.value) return` guard (a prior in-flight fetch for the old
+  // source has loading=true). That prior fetch's drift-detected early-return
+  // then never clears loading, leaving the UI stuck in a loading state forever.
+  // The in-flight request will discard its response via the source check, so
+  // dropping the flag here is safe.
+  loading.value = false
+  loadMore()
 }
 
 onMounted(loadMore)
@@ -63,6 +120,8 @@ onMounted(loadMore)
       <template #caption>Live Feed · {{ items.length }} clips</template>
     </PageHeader>
 
+    <UnderlineTabs class="mt-6" :tabs="TABS" :active="source" @select="selectTab" />
+
     <!-- Initial loading state — explicit so the empty-state branch doesn't flash
          in the gap between mount and the first response. -->
     <StatusPanel
@@ -71,7 +130,29 @@ onMounted(loadMore)
       message="Loading…"
     />
 
-    <!-- Empty state -->
+    <!-- Empty state — Following gets its own CTA per the issue spec; Latest falls
+         through to the original "no clips yet — be the first" path. -->
+    <StatusPanel
+      v-else-if="showFollowingEmpty"
+      kind="empty"
+      message="Follow some creators to fill your Following feed."
+    >
+      <div class="flex flex-wrap items-center justify-center gap-2">
+        <button
+          class="cursor-pointer rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+          @click="selectTab('public')"
+        >
+          Browse Latest
+        </button>
+        <RouterLink
+          to="/games"
+          class="rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+        >
+          Explore games
+        </RouterLink>
+      </div>
+    </StatusPanel>
+
     <StatusPanel
       v-else-if="!loading && items.length === 0 && !errored"
       kind="empty"
@@ -237,22 +318,13 @@ onMounted(loadMore)
         />
       </div>
 
-      <!-- Load more -->
-      <div v-if="cursor || paginationErrored" class="mt-10 flex flex-col items-center gap-2">
-        <span
-          v-if="paginationErrored"
-          class="font-mono text-[11px] uppercase tracking-widest text-text-muted"
-        >
-          Couldn't load more — try again.
-        </span>
-        <button
-          :disabled="loading"
-          @click="loadMore"
-          class="cursor-pointer rounded-sm border border-border bg-surface-raised px-6 py-2.5 font-mono text-[11px] uppercase tracking-[0.08em] text-text-primary transition-colors duration-150 hover:border-brand-light disabled:opacity-50"
-        >
-          {{ loading ? 'Loading…' : paginationErrored ? 'Retry' : 'Load more' }}
-        </button>
-      </div>
+      <LoadMoreButton
+        v-if="cursor || paginationErrored"
+        class="mt-10"
+        :loading="loading"
+        :errored="paginationErrored"
+        @load="loadMore"
+      />
     </template>
   </main>
 </template>

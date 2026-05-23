@@ -9,6 +9,7 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
     public DbSet<Game> Games => Set<Game>();
     public DbSet<Clip> Clips => Set<Clip>();
     public DbSet<Like> Likes => Set<Like>();
+    public DbSet<Follow> Follows => Set<Follow>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<ClipTag> ClipTags => Set<ClipTag>();
@@ -150,6 +151,39 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             // Supports both the autocomplete (counting clips per tag) and the
             // GET /tags/{slug}/clips query (filtering by tag id then joining clips).
             e.HasIndex(ct => new { ct.TagId, ct.ClipId }).HasDatabaseName("idx_clip_tags_tag");
+        });
+
+        modelBuilder.Entity<Follow>(e =>
+        {
+            e.HasKey(f => new { f.FollowerId, f.FolloweeId });
+            e.Property(f => f.CreatedAt).HasDefaultValueSql("now()");
+
+            e.HasOne(f => f.Follower)
+                .WithMany(u => u.Following)
+                .HasForeignKey(f => f.FollowerId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(f => f.Followee)
+                .WithMany(u => u.Followers)
+                .HasForeignKey(f => f.FolloweeId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // DB-level guarantee that prevents a self-follow even if the endpoint check
+            // is bypassed (admin SQL, future bug). Mirrors the issue spec.
+            e.ToTable(t => t.HasCheckConstraint(
+                "ck_follows_no_self",
+                "follower_id <> followee_id"));
+
+            // Backs the followers list query (FolloweeId filter, CreatedAt desc keyset).
+            e.HasIndex(f => new { f.FolloweeId, f.CreatedAt })
+                .IsDescending(false, true)
+                .HasDatabaseName("idx_follows_followee_created_at");
+            // Backs the following list query (FollowerId filter) and the per-user feed
+            // EXISTS check (FollowerId + FolloweeId is already covered by the PK, but the
+            // PK is ordered FollowerId-first which makes the EXISTS lookup index-only).
+            e.HasIndex(f => new { f.FollowerId, f.CreatedAt })
+                .IsDescending(false, true)
+                .HasDatabaseName("idx_follows_follower_created_at");
         });
 
         modelBuilder.Entity<RefreshToken>(e =>

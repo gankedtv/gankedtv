@@ -3,19 +3,30 @@ import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/client'
 import { users, type UserProfile } from '@/api/users'
+import { follows } from '@/api/follows'
+import { useAuthStore } from '@/stores/auth'
 import { safeImageUrl } from '@/lib/url'
 import { formatNum } from '@/lib/format'
 import ClipCard from '@/components/ClipCard.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
+import UnderlineTabs from '@/components/UnderlineTabs.vue'
 import IconShare from '@/components/icons/IconShare.vue'
 import IconMoreHorizontal from '@/components/icons/IconMoreHorizontal.vue'
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 
 const profile = ref<UserProfile | null>(null)
 const loading = ref(false)
 const errored = ref(false)
+const followBusy = ref(false)
+
+// Identity-based — `auth.user.id === profile.id` is more reliable than username string
+// equality (case, future username changes). When the viewer isn't signed in, this is
+// always false and the follow button shows for any profile.
+const isMe = computed(() => !!auth.user && !!profile.value && auth.user.id === profile.value.id)
+const canShowFollowButton = computed(() => auth.isAuthenticated && !!profile.value && !isMe.value)
 
 const username = computed(() => {
   const u = route.params.username
@@ -31,6 +42,10 @@ async function loadProfile(name: string) {
   loading.value = true
   errored.value = false
   profile.value = null
+  // Reset the follow-button busy state alongside the profile so a stale toggle
+  // (whose response gets dropped by the load-id fence below) can't leave the
+  // button disabled on the freshly-loaded profile.
+  followBusy.value = false
   try {
     const result = await users.getByUsername(name)
     if (myLoadId !== latestLoadId) return
@@ -96,6 +111,49 @@ const joinedDate = computed(() => {
 
 const totalPlays = computed(() => (profile.value?.clips ?? []).reduce((s, c) => s + c.viewCount, 0))
 const totalLikes = computed(() => (profile.value?.clips ?? []).reduce((s, c) => s + c.likeCount, 0))
+
+async function toggleFollow() {
+  if (!profile.value || followBusy.value) return
+  // Mirrors the like button: redirect to login when unauthenticated so the user can
+  // come back and try again rather than silently failing.
+  if (!auth.isAuthenticated) {
+    router.push({ name: 'login', query: { redirect: route.fullPath } })
+    return
+  }
+
+  const targetUsername = profile.value.username
+  // Capture the profile-load generation so A→B→A navigation (same username,
+  // different profile object) can't apply this toggle's response to a freshly
+  // loaded profile. A username-only check would falsely accept it.
+  const requestLoadId = latestLoadId
+  const wasFollowing = profile.value.followedByMe === true
+  // Optimistic flip — same pattern as ClipView's like toggle. The +/- 1 can drift
+  // out of sync with reality if the same user toggles follow state in another tab
+  // between page load and this click; a hard refresh resolves it. Multi-tab
+  // consistency isn't required for v1 and follow ops are idempotent on the server,
+  // so the worst case is a stale counter, not a state corruption.
+  profile.value.followedByMe = !wasFollowing
+  profile.value.followerCount += wasFollowing ? -1 : 1
+  followBusy.value = true
+  try {
+    if (wasFollowing) {
+      await follows.unfollow(targetUsername)
+    } else {
+      await follows.follow(targetUsername)
+    }
+    if (latestLoadId !== requestLoadId) return
+  } catch {
+    if (latestLoadId !== requestLoadId) return
+    // Roll back.
+    profile.value.followedByMe = wasFollowing
+    profile.value.followerCount += wasFollowing ? 1 : -1
+  } finally {
+    // Only clear busy when this invocation is still the latest. If the profile
+    // has been reloaded since, loadProfile already cleared followBusy and the
+    // new profile may have its own toggle in flight — don't stomp it.
+    if (latestLoadId === requestLoadId) followBusy.value = false
+  }
+}
 
 const copyMessage = ref<string | null>(null)
 let copyTimer: ReturnType<typeof setTimeout> | null = null
@@ -226,8 +284,21 @@ const TABS: { key: Tab; label: string }[] = [
           </div>
 
           <!-- Action buttons (follow + share + more) -->
-          <!-- Follow lives in Phase 3 (social-graph endpoints). Share is best-effort clipboard. -->
           <div class="flex flex-wrap items-center gap-2 pt-19">
+            <button
+              v-if="canShowFollowButton"
+              :class="[
+                'flex h-9 cursor-pointer items-center rounded-sm px-4 font-mono text-[11px] uppercase tracking-[0.08em] transition-all duration-150 disabled:opacity-60',
+                profile.followedByMe
+                  ? 'bg-brand text-white hover:bg-brand-light'
+                  : 'border border-border bg-surface-raised text-text-primary hover:border-border-hover',
+              ]"
+              :disabled="followBusy"
+              :aria-pressed="profile.followedByMe === true"
+              @click="toggleFollow"
+            >
+              {{ profile.followedByMe ? 'Following' : 'Follow' }}
+            </button>
             <button
               class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-sm border border-border bg-surface-raised text-text-secondary transition-[border-color] duration-150 hover:border-border-hover"
               aria-label="Share profile"
@@ -251,13 +322,69 @@ const TABS: { key: Tab; label: string }[] = [
           </div>
         </div>
 
-        <!-- ---- Stat block ---- -->
+        <!-- ---- Stat block ----
+             Followers + Following render as RouterLinks when their count is > 0
+             so a viewer can drill into the list. We keep a 0-count cell as a
+             plain <div> so it doesn't look (or behave) clickable when the
+             destination would just be an empty list. -->
         <div
           class="mt-7 grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-px overflow-hidden rounded-md border border-border bg-border"
         >
+          <div class="flex flex-col gap-1 bg-surface-raised px-5 py-4">
+            <span class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
+              >Clips</span
+            >
+            <span class="font-heading text-[22px] font-bold leading-none text-text-primary">{{
+              formatNum(profile.clips.length)
+            }}</span>
+          </div>
+
+          <component
+            :is="profile.followerCount > 0 ? 'RouterLink' : 'div'"
+            :to="
+              profile.followerCount > 0
+                ? { name: 'user-followers', params: { username: profile.username } }
+                : undefined
+            "
+            :class="[
+              'flex flex-col gap-1 bg-surface-raised px-5 py-4 no-underline',
+              profile.followerCount > 0
+                ? 'cursor-pointer transition-colors duration-150 hover:bg-surface-overlay'
+                : '',
+            ]"
+          >
+            <span class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
+              >Followers</span
+            >
+            <span class="font-heading text-[22px] font-bold leading-none text-text-primary">{{
+              formatNum(profile.followerCount)
+            }}</span>
+          </component>
+
+          <component
+            :is="profile.followingCount > 0 ? 'RouterLink' : 'div'"
+            :to="
+              profile.followingCount > 0
+                ? { name: 'user-following', params: { username: profile.username } }
+                : undefined
+            "
+            :class="[
+              'flex flex-col gap-1 bg-surface-raised px-5 py-4 no-underline',
+              profile.followingCount > 0
+                ? 'cursor-pointer transition-colors duration-150 hover:bg-surface-overlay'
+                : '',
+            ]"
+          >
+            <span class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
+              >Following</span
+            >
+            <span class="font-heading text-[22px] font-bold leading-none text-text-primary">{{
+              formatNum(profile.followingCount)
+            }}</span>
+          </component>
+
           <div
             v-for="stat in [
-              { label: 'Clips', value: formatNum(profile.clips.length) },
               { label: 'Total plays', value: formatNum(totalPlays) },
               { label: 'Total likes', value: formatNum(totalLikes) },
             ]"
@@ -275,23 +402,7 @@ const TABS: { key: Tab; label: string }[] = [
 
         <!-- ---- Tabs ---- -->
         <div class="mt-9">
-          <div class="flex items-center border-b border-border">
-            <div class="flex flex-1 gap-0">
-              <button
-                v-for="t in TABS"
-                :key="t.key"
-                :class="[
-                  'relative cursor-pointer border-none bg-transparent px-4.5 py-3 font-mono text-xs uppercase tracking-[0.08em] transition-colors duration-150 hover:text-text-primary',
-                  tab === t.key
-                    ? `text-text-primary after:absolute after:right-0 after:-bottom-px after:left-0 after:h-0.5 after:rounded-t-xs after:bg-brand-light after:content-['']`
-                    : 'text-text-muted',
-                ]"
-                @click="tab = t.key"
-              >
-                {{ t.label }}
-              </button>
-            </div>
-          </div>
+          <UnderlineTabs :tabs="TABS" :active="tab" @select="(k) => (tab = k)" />
 
           <!-- Tab content -->
           <div class="mt-6">

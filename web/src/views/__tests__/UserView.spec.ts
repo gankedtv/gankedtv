@@ -1,26 +1,33 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory, type Router } from 'vue-router'
+import { createPinia } from 'pinia'
 import { defineComponent, h } from 'vue'
 
 // Mock the profile API so the component can mount without a backend.
 const getByUsername = vi.fn()
 vi.mock('@/api/users', () => ({ users: { getByUsername: (u: string) => getByUsername(u) } }))
 
+// Stub the follows API — UserView imports it for the follow/unfollow button but the
+// tests below don't exercise that path (no auth.user, so the button is hidden).
+vi.mock('@/api/follows', () => ({ follows: { follow: vi.fn(), unfollow: vi.fn() } }))
+
 import UserView from '../UserView.vue'
 
 function makeRouter(): Router {
+  const stub = defineComponent({ render: () => h('div') })
   return createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: '/', name: 'home', component: defineComponent({ render: () => h('div') }) },
+      { path: '/', name: 'home', component: stub },
       { path: '/user/:username', name: 'user', component: UserView },
-      { path: '/clip/:id', name: 'clip', component: defineComponent({ render: () => h('div') }) },
-      {
-        path: '/:pathMatch(.*)*',
-        name: 'not-found',
-        component: defineComponent({ render: () => h('div') }),
-      },
+      // Registered so RouterLink resolutions inside UserView's stat cells don't
+      // emit "No match for route" warnings when followerCount/followingCount > 0
+      // in fixtures that exercise the linked path.
+      { path: '/user/:username/followers', name: 'user-followers', component: stub },
+      { path: '/user/:username/following', name: 'user-following', component: stub },
+      { path: '/clip/:id', name: 'clip', component: stub },
+      { path: '/:pathMatch(.*)*', name: 'not-found', component: stub },
     ],
   })
 }
@@ -40,7 +47,7 @@ describe('UserView (issue #92 regression)', () => {
     const router = makeRouter()
     await router.push({ name: 'user', params: { username: 'seeduser' } })
     await router.isReady()
-    const wrapper = mount(UserView, { global: { plugins: [router] } })
+    const wrapper = mount(UserView, { global: { plugins: [router, createPinia()] } })
 
     // A comment placed before the root element makes the component multi-root, so the
     // rendered output begins with the comment node. <Transition> can't drive that and its
@@ -56,6 +63,12 @@ describe('UserView (issue #92 regression)', () => {
       bio: 'Seeded dev user.',
       avatarUrl: null,
       createdAt: new Date().toISOString(),
+      // The follow-related fields are part of the UserProfile shape since #85.
+      // Including them here keeps the fixture in sync with the API contract even
+      // though this test doesn't assert against them.
+      followerCount: 0,
+      followingCount: 0,
+      followedByMe: null,
       clips: [
         {
           id: 'clp_01',
@@ -77,7 +90,7 @@ describe('UserView (issue #92 regression)', () => {
     const router = makeRouter()
     await router.push({ name: 'user', params: { username: 'seeduser' } })
     await router.isReady()
-    const wrapper = mount(UserView, { global: { plugins: [router] } })
+    const wrapper = mount(UserView, { global: { plugins: [router, createPinia()] } })
     await flushPromises()
 
     expect(wrapper.text()).toContain('Seed Clip 01')

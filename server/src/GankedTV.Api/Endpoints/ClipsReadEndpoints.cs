@@ -1,10 +1,7 @@
-using System.Buffers.Text;
-using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
 using System.Linq.Expressions;
 using System.Net;
 using System.Security.Claims;
-using System.Text;
 using GankedTV.Api.Auth;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Data;
@@ -41,6 +38,7 @@ public static class ClipsReadEndpoints
     private static async Task<IResult> GetFeed(
         string? cursor,
         int? limit,
+        string? source,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
         IObjectStorageService storage,
@@ -49,6 +47,21 @@ public static class ClipsReadEndpoints
     {
         var baseQuery = db.Clips.AsNoTracking()
             .Where(c => c.Visibility == "public" && c.Status == "ready");
+
+        // `source` is treated leniently: only the literal "following" switches behaviour;
+        // anything else (null, "public", garbage) falls through to the global feed. Matches
+        // the same forgive-and-fall-back spirit as the cursor decoder.
+        if (string.Equals(source, "following", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!TryGetUserId(principal, out var me))
+            {
+                return ProblemResults.Unauthorized("unauthorized");
+            }
+
+            baseQuery = baseQuery.Where(c =>
+                db.Follows.Any(f => f.FollowerId == me && f.FolloweeId == c.UserId));
+        }
+
         var response = await BuildFeedPageAsync(baseQuery, cursor, limit, principal, db, storage, s3, ct);
         return Results.Ok(response);
     }
@@ -70,7 +83,7 @@ public static class ClipsReadEndpoints
 
         // Invalid cursor values silently fall back to "no cursor" rather than 400-ing; the
         // client's next-page fetch shouldn't be broken by a corrupted query string.
-        var hasCursor = TryParseCursor(cursor, out var cursorCreatedAt, out var cursorId);
+        var hasCursor = FeedCursor.TryParse(cursor, out var cursorCreatedAt, out var cursorId);
 
         var query = baseQuery;
         if (hasCursor)
@@ -102,7 +115,7 @@ public static class ClipsReadEndpoints
                 BuildThumbnailUrl(storage, thumbnailsBucket, c.ThumbnailKey),
                 likedIds.Contains(c.Id)))
             .ToList();
-        var nextCursor = hasMore ? BuildCursor(page[^1].CreatedAt, page[^1].Id) : null;
+        var nextCursor = hasMore ? FeedCursor.Build(page[^1].CreatedAt, page[^1].Id) : null;
 
         return new ClipFeedResponse(items, nextCursor);
     }
@@ -115,42 +128,6 @@ public static class ClipsReadEndpoints
     {
         ArgumentException.ThrowIfNullOrEmpty(thumbnailKey);
         return storage.GetPresignedGetUrl(bucket, thumbnailKey, ThumbnailUrlLifetime);
-    }
-
-    private const char CursorSeparator = '_';
-
-    // Cursor is Base64Url-encoded so the raw token is safe to drop into a query string without
-    // client-side escaping. DateTimeOffset.ToString("O") includes `+` (which URL decoders turn
-    // into space) and `:` — encoding keeps the token opaque and URL-transport-safe.
-    private static string BuildCursor(DateTimeOffset createdAt, Guid id)
-    {
-        var payload = $"{createdAt.ToString("O", CultureInfo.InvariantCulture)}{CursorSeparator}{id:D}";
-        return Base64Url.EncodeToString(Encoding.UTF8.GetBytes(payload));
-    }
-
-    private static bool TryParseCursor(string? raw, out DateTimeOffset createdAt, out Guid id)
-    {
-        createdAt = default;
-        id = default;
-        if (string.IsNullOrWhiteSpace(raw)) return false;
-
-        byte[] bytes;
-        try
-        {
-            bytes = Base64Url.DecodeFromChars(raw);
-        }
-        catch (FormatException)
-        {
-            return false;
-        }
-
-        var decoded = Encoding.UTF8.GetString(bytes);
-        var sep = decoded.IndexOf(CursorSeparator);
-        if (sep <= 0 || sep == decoded.Length - 1) return false;
-
-        return DateTimeOffset.TryParse(
-                decoded[..sep], CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out createdAt)
-            && Guid.TryParse(decoded[(sep + 1)..], out id);
     }
 
     private static Task<IResult> GetDetail(
