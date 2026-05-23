@@ -1,5 +1,7 @@
 using System.Threading.RateLimiting;
+using GankedTV.Api.Services.Caching;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace GankedTV.Api.Auth;
 
@@ -11,9 +13,10 @@ public static class AuthRateLimiting
 {
     public const string CredentialsPolicy = "auth-credentials";
 
-    // 5 attempts per minute per remote IP. Fixed window (not sliding) — keeps the bucket
-    // arithmetic in-process with no extra state. Returns 429 when exceeded; the SPA
-    // surfaces this inline below the form. No queueing — failed limit checks short-circuit.
+    // 5 attempts per minute per remote IP. Fixed window (not sliding). Enforced cluster-wide
+    // via RedisRateLimiterFactory when REDIS_URL is set; otherwise per-pod in-process. Returns
+    // 429 when exceeded; the SPA surfaces this inline below the form. No queueing — failed limit
+    // checks short-circuit.
     public const int CredentialsPermitLimit = 5;
     public static readonly TimeSpan CredentialsWindow = TimeSpan.FromMinutes(1);
 
@@ -33,14 +36,8 @@ public static class AuthRateLimiting
             // unrecognised proxies). Without a fallback, those callers would partition
             // by null and bypass the limit entirely.
             var key = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-            return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
-            {
-                AutoReplenishment = true,
-                PermitLimit = CredentialsPermitLimit,
-                Window = CredentialsWindow,
-                QueueLimit = 0,
-                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-            });
+            var factory = ctx.RequestServices.GetRequiredService<RedisRateLimiterFactory>();
+            return RateLimitPartition.Get(key, _ => factory.Create(CredentialsPolicy, key, CredentialsPermitLimit, CredentialsWindow));
         });
         return options;
     }

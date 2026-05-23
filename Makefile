@@ -7,6 +7,7 @@
 POSTGRES_HOST_PORT ?= 5435
 MINIO_API_HOST_PORT ?= 9000
 MINIO_CONSOLE_HOST_PORT ?= 9001
+REDIS_HOST_PORT ?= 6379
 ASPNETCORE_URLS ?= http://localhost:5050
 VITE_PORT ?= 5173
 
@@ -81,6 +82,7 @@ wait-minio:
 ports:
 	@printf "postgres   localhost:%s\n" "$(POSTGRES_HOST_PORT)"
 	@printf "minio      localhost:%s  (console: localhost:%s)\n" "$(MINIO_API_HOST_PORT)" "$(MINIO_CONSOLE_HOST_PORT)"
+	@printf "redis      localhost:%s\n" "$(REDIS_HOST_PORT)"
 	@printf "api        %s\n" "$(ASPNETCORE_URLS)"
 	@printf "web        http://localhost:%s\n" "$(VITE_PORT)"
 	@test -z "$(COMPOSE_PROJECT_NAME)" || printf "project    %s\n" "$(COMPOSE_PROJECT_NAME)"

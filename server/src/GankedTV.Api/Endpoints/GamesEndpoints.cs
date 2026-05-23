@@ -1,7 +1,9 @@
 using System.Security.Claims;
+using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Contracts.Games;
 using GankedTV.Api.Data;
 using GankedTV.Api.Problems;
+using GankedTV.Api.Services.Caching;
 using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -27,10 +29,29 @@ public static class GamesEndpoints
         int? limit,
         bool? hasClips,
         GankedTvDbContext db,
+        IGamesCache gamesCache,
         CancellationToken ct)
     {
         var clampedLimit = Math.Clamp(limit ?? DefaultLimit, 1, MaxLimit);
 
+        // Only the browse list (no search) is cached — search strings are high-cardinality and
+        // the upload picker's queries don't repeat, so caching them would just churn keys.
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            return Results.Ok(await QueryGamesAsync(db, hasClips, search, clampedLimit, ct));
+        }
+
+        var key = $"games:list:hasClips={hasClips == true}:{clampedLimit}";
+        var cached = await gamesCache.GetOrCreateListAsync(
+            key,
+            async c => await QueryGamesAsync(db, hasClips, search: null, clampedLimit, c),
+            ct);
+        return Results.Ok(cached);
+    }
+
+    private static async Task<IReadOnlyList<GameListItem>> QueryGamesAsync(
+        GankedTvDbContext db, bool? hasClips, string? search, int clampedLimit, CancellationToken ct)
+    {
         var query = db.Games.AsNoTracking().AsQueryable();
 
         // The games *page* (GamesView) passes hasClips=true so it only lists games people can
@@ -56,19 +77,31 @@ public static class GamesEndpoints
                 || EF.Functions.ILike(g.Slug, pattern, @"\"));
         }
 
-        var rows = await query
+        return await query
             .OrderBy(g => g.Name)
             .Take(clampedLimit)
             .Select(g => new GameListItem(g.Id, g.Name, g.Slug, g.Tag, g.CoverUrl))
             .ToListAsync(ct);
-
-        return Results.Ok(rows);
     }
 
     private static async Task<IResult> GetBySlug(
         string slug,
         GankedTvDbContext db,
+        IGamesCache gamesCache,
         CancellationToken ct)
+    {
+        var detail = await gamesCache.GetOrCreateDetailAsync(
+            $"games:detail:{slug}",
+            async c => await QueryGameDetailAsync(db, slug, c),
+            ct);
+
+        return detail is null
+            ? ProblemResults.NotFound("not_found")
+            : Results.Ok(detail);
+    }
+
+    private static async Task<GameDetail?> QueryGameDetailAsync(
+        GankedTvDbContext db, string slug, CancellationToken ct)
     {
         // One round-trip: project the entity together with a correlated COUNT scoped
         // to the same visibility/status filter the clips list uses, so the header
@@ -83,9 +116,7 @@ public static class GamesEndpoints
             })
             .FirstOrDefaultAsync(ct);
 
-        return row is null
-            ? ProblemResults.NotFound("not_found")
-            : Results.Ok(row.Game.ToDetail(row.ClipCount));
+        return row?.Game.ToDetail(row.ClipCount);
     }
 
     private static async Task<IResult> GetClipsForGame(
@@ -96,6 +127,7 @@ public static class GamesEndpoints
         GankedTvDbContext db,
         IObjectStorageService storage,
         IOptions<S3Options> s3,
+        IFeedCache feedCache,
         CancellationToken ct)
     {
         // Distinguish "no such game" (404) from "game exists but has no clips" (200, empty page)
@@ -110,6 +142,19 @@ public static class GamesEndpoints
 
         var baseQuery = db.Clips.AsNoTracking()
             .Where(c => c.GameId == gameId && c.Visibility == "public" && c.Status == "ready");
+
+        // Cache only the first page per game (no cursor). Cursor pages bypass the cache.
+        if (cursor is null)
+        {
+            var feedLimit = Math.Clamp(limit ?? ClipsReadEndpoints.FeedDefaultLimit, 1, ClipsReadEndpoints.FeedMaxLimit);
+            var cached = await feedCache.GetOrCreateFeedAsync(
+                $"feed:game:{slug}:{feedLimit}",
+                c => new ValueTask<CachedFeedPage>(
+                    ClipsReadEndpoints.BuildAnonymousFeedPageAsync(baseQuery, null, limit, storage, s3, c)),
+                ct);
+            var items = await ClipsReadEndpoints.ApplyLikedByMeAsync(cached.Items, principal, db, ct);
+            return Results.Ok(new ClipFeedResponse(items, cached.NextCursor));
+        }
 
         var response = await ClipsReadEndpoints.BuildFeedPageAsync(
             baseQuery, cursor, limit, principal, db, storage, s3, ct);

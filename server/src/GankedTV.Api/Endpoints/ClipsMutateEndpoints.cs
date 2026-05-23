@@ -5,6 +5,7 @@ using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Problems;
+using GankedTV.Api.Services.Caching;
 using GankedTV.Api.Services.Maintenance;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Services.Tags;
@@ -44,6 +45,7 @@ public static class ClipsMutateEndpoints
         ITagsResolver tagsResolver,
         IOptions<S3Options> s3,
         IOptions<ClipValidationOptions> validation,
+        IFeedCache feedCache,
         CancellationToken ct)
     {
         if (!TryGetUserId(principal, out var userId))
@@ -142,6 +144,10 @@ public static class ClipsMutateEndpoints
         clip.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
 
+        // An edit can change anything shown in a feed item (title, thumbnail, game, tags) or move
+        // the clip in/out of the public feed (visibility), so drop the cached pages.
+        await feedCache.InvalidateFeedsAsync(ct);
+
         var expiresAt = DateTimeOffset.UtcNow.Add(VideoUrlLifetime);
         var videoUrl = storage.GetPresignedGetUrl(s3.Value.ClipsBucket, clip.VideoKey, VideoUrlLifetime);
         var thumbnailUrl = ClipsReadEndpoints.BuildThumbnailUrl(
@@ -159,6 +165,7 @@ public static class ClipsMutateEndpoints
         IObjectStorageService storage,
         IOptions<S3Options> s3,
         ILoggerFactory loggerFactory,
+        IFeedCache feedCache,
         CancellationToken ct)
     {
         if (!TryGetUserId(principal, out var userId))
@@ -179,6 +186,9 @@ public static class ClipsMutateEndpoints
 
         db.Clips.Remove(clip);
         await db.SaveChangesAsync(ct);
+
+        // A deleted clip may have been on a cached feed page; drop them so it stops being served.
+        await feedCache.InvalidateFeedsAsync(ct);
 
         // S3 cleanup is best-effort: the DB row is already gone, so a cleanup failure must not
         // surface as 500 (that would mislead the client into retrying a non-existent row).

@@ -73,6 +73,7 @@ s3=$((9000 + offset))
 s3c=$((9001 + offset))
 api=$((5050 + offset))
 vite=$((5173 + offset))
+redis=$((6379 + offset))
 
 if [[ -e "$dir" ]]; then
   echo "error: $dir already exists — remove it first with ./scripts/remove-worktree.sh $issue" >&2
@@ -85,7 +86,7 @@ fi
 # message if anything is already listening — better than a confusing compose
 # port-bind error mid-bootstrap.
 ports_in_use=()
-for p in "$pg" "$s3" "$s3c" "$api" "$vite"; do
+for p in "$pg" "$s3" "$s3c" "$api" "$vite" "$redis"; do
   if (echo >"/dev/tcp/127.0.0.1/$p") >/dev/null 2>&1; then
     ports_in_use+=("$p")
   fi
@@ -139,6 +140,7 @@ COMPOSE_PROJECT_NAME=gankedtv-issue-${issue}
 POSTGRES_HOST_PORT=${pg}
 MINIO_API_HOST_PORT=${s3}
 MINIO_CONSOLE_HOST_PORT=${s3c}
+REDIS_HOST_PORT=${redis}
 
 # host-side process bindings
 ASPNETCORE_URLS=http://localhost:${api}
@@ -148,6 +150,7 @@ VITE_PORT=${vite}
 # discord/src/loadEnv.ts already read these)
 DATABASE_URL=Host=localhost;Port=${pg};Database=gankedtv;Username=gankedtv;Password=gankedtv_dev
 S3_ENDPOINT=http://localhost:${s3}
+REDIS_URL=redis://localhost:${redis}
 VITE_API_BASE_URL=http://localhost:${api}
 # discord bot uses the standard libpq URL shape, not the dotnet semicolon form.
 # Both refer to the same Postgres; duplicated because the bot's `postgres` driver
@@ -193,7 +196,7 @@ fi
 
 echo ""
 echo "✓ worktree created: ${rel_dir} (branch $branch)"
-echo "  postgres :${pg}   minio :${s3}/:${s3c}   api :${api}   web :${vite}"
+echo "  postgres :${pg}   minio :${s3}/:${s3c}   redis :${redis}   api :${api}   web :${vite}"
 
 if [[ "${NEW_WORKTREE_SKIP_BOOTSTRAP:-0}" == "1" ]]; then
   echo ""

@@ -215,6 +215,39 @@ public class TagsEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetClipsForTag_CachedFirstPage_LikedByMeStaysPerCaller()
+    {
+        // The tag-clips first page is cached as an anonymous projection (same as latest/game feeds);
+        // likedByMe must be re-stamped per caller so a like never leaks across users via the cache.
+        await _fx.ResetAsync();
+        var (likerId, likerToken) = await AuthTestHelpers.SeedUserAndIssueTokenAsync(_fx, _factory!, "tag-liker");
+        var (clipId, _) = await SeedClipAsync(likerId, DateTimeOffset.UtcNow, tagSlugs: new[] { "clutch" });
+        await using (var db = _fx.CreateContext())
+        {
+            db.Likes.Add(new Like { UserId = likerId, ClipId = clipId, CreatedAt = DateTimeOffset.UtcNow });
+            await db.SaveChangesAsync();
+        }
+
+        // Anonymous request first → populates the shared cache entry with likedByMe=false.
+        using (var anon = _factory!.CreateClient())
+        {
+            var anonBody = await (await anon.GetAsync("/tags/clutch/clips")).Content.ReadFromJsonAsync<JsonElement>();
+            anonBody.GetProperty("items").EnumerateArray()
+                .Select(e => e.GetProperty("likedByMe").GetBoolean())
+                .Should().OnlyContain(l => l == false);
+        }
+
+        // The liker hits the same cached page within TTL but must still see likedByMe=true.
+        using (var likerClient = AuthTestHelpers.CreateBearerClient(_factory!, likerToken))
+        {
+            var likerBody = await (await likerClient.GetAsync("/tags/clutch/clips")).Content.ReadFromJsonAsync<JsonElement>();
+            likerBody.GetProperty("items").EnumerateArray()
+                .Single(e => e.GetProperty("id").GetGuid() == clipId)
+                .GetProperty("likedByMe").GetBoolean().Should().BeTrue();
+        }
+    }
+
+    [Fact]
     public async Task GetClipsForTag_UnknownSlug_Returns404()
     {
         await _fx.ResetAsync();

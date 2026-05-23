@@ -9,6 +9,7 @@ using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Pagination;
 using GankedTV.Api.Problems;
+using GankedTV.Api.Services.Caching;
 using GankedTV.Api.Services.Media;
 using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.EntityFrameworkCore;
@@ -101,6 +102,7 @@ public static class ClipsReadEndpoints
         GankedTvDbContext db,
         IObjectStorageService storage,
         IOptions<S3Options> s3,
+        IFeedCache feedCache,
         CancellationToken ct)
     {
         var baseQuery = db.Clips.AsNoTracking()
@@ -109,7 +111,8 @@ public static class ClipsReadEndpoints
         // `source` is treated leniently: only the literal "following" switches behaviour;
         // anything else (null, "public", garbage) falls through to the global feed. Matches
         // the same forgive-and-fall-back spirit as the cursor decoder.
-        if (string.Equals(source, "following", StringComparison.OrdinalIgnoreCase))
+        var isFollowing = string.Equals(source, "following", StringComparison.OrdinalIgnoreCase);
+        if (isFollowing)
         {
             if (!TryGetUserId(principal, out var me))
             {
@@ -140,8 +143,36 @@ public static class ClipsReadEndpoints
                 return ProblemResults.BadRequest("invalid_window");
             }
 
-            var response = await BuildTrendingFeedAsync(baseQuery, since, limit, principal, db, storage, s3, ct);
-            return Results.Ok(response);
+            // The personalised "following + trending" combination filters baseQuery per user,
+            // so it must never hit the shared cache; only the global trending feed is cached.
+            if (isFollowing)
+            {
+                var personalised = await BuildTrendingFeedAsync(baseQuery, since, limit, principal, db, storage, s3, ct);
+                return Results.Ok(personalised);
+            }
+
+            var trendingLimit = Math.Clamp(limit ?? FeedDefaultLimit, 1, TrendingMaxLimit);
+            var cachedTrending = await feedCache.GetOrCreateTrendingAsync(
+                $"feed:trending:{window}:{trendingLimit}",
+                c => new ValueTask<CachedFeedPage>(
+                    BuildAnonymousTrendingFeedAsync(baseQuery, since, limit, db, storage, s3, c)),
+                ct);
+            var trendingItems = await ApplyLikedByMeAsync(cachedTrending.Items, principal, db, ct);
+            return Results.Ok(new ClipFeedResponse(trendingItems, cachedTrending.NextCursor));
+        }
+
+        // Cache only the global latest first page (no cursor, not personalised). Cursor pages
+        // and following feeds bypass the cache and query Postgres directly.
+        if (cursor is null && !isFollowing)
+        {
+            var feedLimit = Math.Clamp(limit ?? FeedDefaultLimit, 1, FeedMaxLimit);
+            var cached = await feedCache.GetOrCreateFeedAsync(
+                $"feed:latest:{feedLimit}",
+                c => new ValueTask<CachedFeedPage>(
+                    BuildAnonymousFeedPageAsync(baseQuery, null, limit, storage, s3, c)),
+                ct);
+            var items = await ApplyLikedByMeAsync(cached.Items, principal, db, ct);
+            return Results.Ok(new ClipFeedResponse(items, cached.NextCursor));
         }
 
         var latest = await BuildFeedPageAsync(baseQuery, cursor, limit, principal, db, storage, s3, ct);
@@ -186,6 +217,24 @@ public static class ClipsReadEndpoints
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
+        var page = await BuildAnonymousTrendingFeedAsync(baseQuery, since, limit, db, storage, s3, ct);
+        var items = await ApplyLikedByMeAsync(page.Items, principal, db, ct);
+        return new ClipFeedResponse(items, page.NextCursor);
+    }
+
+    // Caller-independent half of BuildTrendingFeedAsync — the scoring + rehydration + anonymous
+    // projection that FeedCache stores. The window-relative ranking is inherently approximate and
+    // self-healing, so caching it behind a short TTL (rather than invalidating on every like/view)
+    // is sufficient: a cache entry just freezes `since`/scores for one TTL.
+    internal static async Task<CachedFeedPage> BuildAnonymousTrendingFeedAsync(
+        IQueryable<Clip> baseQuery,
+        DateTimeOffset since,
+        int? limit,
+        GankedTvDbContext db,
+        IObjectStorageService storage,
+        IOptions<S3Options> s3,
+        CancellationToken ct)
+    {
         var clampedLimit = Math.Clamp(limit ?? FeedDefaultLimit, 1, TrendingMaxLimit);
 
         var candidates = await baseQuery
@@ -215,7 +264,7 @@ public static class ClipsReadEndpoints
 
         if (topIds.Count == 0)
         {
-            return new ClipFeedResponse([], NextCursor: null);
+            return new CachedFeedPage([], NextCursor: null);
         }
 
         // Re-hydrate with feed Includes (the candidate Select dropped them) and preserve
@@ -243,8 +292,8 @@ public static class ClipsReadEndpoints
             }
         }
 
-        var items = await ProjectFeedItemsAsync(ranked, principal, db, storage, s3, ct);
-        return new ClipFeedResponse(items, NextCursor: null);
+        var items = ProjectAnonymousFeedItems(ranked, storage, s3);
+        return new CachedFeedPage(items, NextCursor: null);
     }
 
     // Shared cursor-paginated feed builder. Callers pass a pre-filtered IQueryable<Clip>
@@ -256,6 +305,23 @@ public static class ClipsReadEndpoints
         int? limit,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
+        IObjectStorageService storage,
+        IOptions<S3Options> s3,
+        CancellationToken ct)
+    {
+        var page = await BuildAnonymousFeedPageAsync(baseQuery, cursor, limit, storage, s3, ct);
+        var items = await ApplyLikedByMeAsync(page.Items, principal, db, ct);
+        return new ClipFeedResponse(items, page.NextCursor);
+    }
+
+    // Caller-independent half of BuildFeedPageAsync: runs the keyset query + ordering + includes
+    // + thumbnail signing into an anonymous page (no likedByMe). This is what FeedCache stores,
+    // so the cached entry never holds personalised data. No ClaimsPrincipal/DbContext needed
+    // for the likes lookup — that happens after the cache, per caller, in ApplyLikedByMeAsync.
+    internal static async Task<CachedFeedPage> BuildAnonymousFeedPageAsync(
+        IQueryable<Clip> baseQuery,
+        string? cursor,
+        int? limit,
         IObjectStorageService storage,
         IOptions<S3Options> s3,
         CancellationToken ct)
@@ -288,10 +354,10 @@ public static class ClipsReadEndpoints
         var hasMore = rows.Count > clampedLimit;
         var page = hasMore ? rows.GetRange(0, clampedLimit) : rows;
 
-        var items = await ProjectFeedItemsAsync(page, principal, db, storage, s3, ct);
+        var items = ProjectAnonymousFeedItems(page, storage, s3);
         var nextCursor = hasMore ? KeysetCursor.Build(page[^1].CreatedAt, page[^1].Id) : null;
 
-        return new ClipFeedResponse(items, nextCursor);
+        return new CachedFeedPage(items, nextCursor);
     }
 
     // Shared DTO projector for any pre-ordered, pre-included Clip list. Splits out the
@@ -305,16 +371,50 @@ public static class ClipsReadEndpoints
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
+        var anonymous = ProjectAnonymousFeedItems(clips, storage, s3);
+        return await ApplyLikedByMeAsync(anonymous, principal, db, ct);
+    }
+
+    // Caller-independent projection: thumbnail signing only, LikedByMe left false. This is the
+    // shape the feed cache stores — never personalised — so one user's likes can't leak to
+    // another via a shared cache entry. likedByMe is re-stamped per request by ApplyLikedByMeAsync.
+    internal static List<ClipFeedItem> ProjectAnonymousFeedItems(
+        IReadOnlyList<Clip> clips,
+        IObjectStorageService storage,
+        IOptions<S3Options> s3)
+    {
         if (clips.Count == 0)
         {
             return [];
         }
 
-        var likedIds = await LoadLikedClipIdsAsync(db, principal, clips.Select(c => c.Id), ct);
         var thumbnailsBucket = s3.Value.ThumbnailsBucket;
         return [.. clips.Select(c => c.ToFeedItem(
             BuildThumbnailUrl(storage, thumbnailsBucket, c.ThumbnailKey),
-            likedIds.Contains(c.Id)))];
+            likedByMe: false))];
+    }
+
+    // Re-stamps the per-caller LikedByMe flag onto an anonymous (possibly cached) item list.
+    // Anonymous callers and callers with no likes among these clips get the list back unchanged
+    // (items already carry LikedByMe=false), so the only cost is one indexed Likes lookup.
+    internal static async Task<List<ClipFeedItem>> ApplyLikedByMeAsync(
+        IReadOnlyList<ClipFeedItem> items,
+        ClaimsPrincipal principal,
+        GankedTvDbContext db,
+        CancellationToken ct)
+    {
+        if (items.Count == 0)
+        {
+            return [.. items];
+        }
+
+        var likedIds = await LoadLikedClipIdsAsync(db, principal, items.Select(i => i.Id), ct);
+        if (likedIds.Count == 0)
+        {
+            return [.. items];
+        }
+
+        return [.. items.Select(i => likedIds.Contains(i.Id) ? i with { LikedByMe = true } : i)];
     }
 
     // Public Ready clips always have a thumbnail (the worker is the only path to Ready

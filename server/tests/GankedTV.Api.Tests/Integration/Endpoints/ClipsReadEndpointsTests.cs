@@ -378,6 +378,40 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Feed_CachedFirstPage_LikedByMeStaysPerCaller()
+    {
+        // The first-page anonymous projection is cached and shared; likedByMe must be re-stamped
+        // per caller so one user's like never leaks to another through the cache.
+        await _fx.ResetAsync();
+        var (likerId, likerToken) = await SeedUserAndIssueTokenAsync("liker");
+        var (authorId, _) = await SeedUserAndIssueTokenAsync("author2");
+        var (clipId, _) = await SeedClipAsync(authorId, DateTimeOffset.UtcNow);
+        await using (var db = _fx.CreateContext())
+        {
+            db.Likes.Add(new Like { UserId = likerId, ClipId = clipId, CreatedAt = DateTimeOffset.UtcNow });
+            await db.SaveChangesAsync();
+        }
+
+        // Anonymous request first → populates the shared cache entry with likedByMe=false.
+        using (var anon = _factory!.CreateClient())
+        {
+            var anonBody = await (await anon.GetAsync("/clips/feed")).Content.ReadFromJsonAsync<JsonElement>();
+            anonBody.GetProperty("items").EnumerateArray()
+                .Select(e => e.GetProperty("likedByMe").GetBoolean())
+                .Should().OnlyContain(l => l == false);
+        }
+
+        // The liker hits the same cached page within TTL but must still see likedByMe=true.
+        using (var likerClient = ClientWithBearer(likerToken))
+        {
+            var likerBody = await (await likerClient.GetAsync("/clips/feed")).Content.ReadFromJsonAsync<JsonElement>();
+            likerBody.GetProperty("items").EnumerateArray()
+                .Single(e => e.GetProperty("id").GetGuid() == clipId)
+                .GetProperty("likedByMe").GetBoolean().Should().BeTrue();
+        }
+    }
+
+    [Fact]
     public async Task Feed_FeedItemShape_ContainsAuthorAndThumbnailUrl()
     {
         await _fx.ResetAsync();
