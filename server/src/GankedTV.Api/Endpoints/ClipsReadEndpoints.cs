@@ -6,6 +6,7 @@ using GankedTV.Api.Auth;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
+using GankedTV.Api.Pagination;
 using GankedTV.Api.Problems;
 using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.EntityFrameworkCore;
@@ -83,7 +84,7 @@ public static class ClipsReadEndpoints
 
         // Invalid cursor values silently fall back to "no cursor" rather than 400-ing; the
         // client's next-page fetch shouldn't be broken by a corrupted query string.
-        var hasCursor = FeedCursor.TryParse(cursor, out var cursorCreatedAt, out var cursorId);
+        var hasCursor = KeysetCursor.TryParse(cursor, out var cursorCreatedAt, out var cursorId);
 
         var query = baseQuery;
         if (hasCursor)
@@ -108,7 +109,7 @@ public static class ClipsReadEndpoints
         var page = hasMore ? rows.GetRange(0, clampedLimit) : rows;
 
         var items = await ProjectFeedItemsAsync(page, principal, db, storage, s3, ct);
-        var nextCursor = hasMore ? FeedCursor.Build(page[^1].CreatedAt, page[^1].Id) : null;
+        var nextCursor = hasMore ? KeysetCursor.Build(page[^1].CreatedAt, page[^1].Id) : null;
 
         return new ClipFeedResponse(items, nextCursor);
     }

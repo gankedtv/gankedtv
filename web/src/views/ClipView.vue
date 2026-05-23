@@ -14,6 +14,7 @@ import AuthorHandle from '@/components/AuthorHandle.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
 import ClipEditDialog from '@/components/ClipEditDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import CommentsSection from '@/components/CommentsSection.vue'
 import IconHeart from '@/components/icons/IconHeart.vue'
 import IconShare from '@/components/icons/IconShare.vue'
 import IconMoreVertical from '@/components/icons/IconMoreVertical.vue'
@@ -429,6 +430,9 @@ async function onConfirmDelete() {
         </div>
         <p class="text-sm leading-[1.6] text-text-secondary">{{ clip.description }}</p>
       </div>
+
+      <!-- Comments -->
+      <CommentsSection :clip-id="clip.id" />
     </div>
 
     <ClipEditDialog
