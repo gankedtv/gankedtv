@@ -44,9 +44,10 @@ fi
 
 touched_server=$(echo "$changed_files" | grep -E '^server/' || true)
 touched_web=$(echo "$changed_files" | grep -E '^web/' || true)
+touched_discord=$(echo "$changed_files" | grep -E '^discord/' || true)
 
-if [ -z "$touched_server" ] && [ -z "$touched_web" ]; then
-  echo "pre-push: no changes under server/ or web/ — skipping."
+if [ -z "$touched_server" ] && [ -z "$touched_web" ] && [ -z "$touched_discord" ]; then
+  echo "pre-push: no changes under server/, web/, or discord/ — skipping."
   exit 0
 fi
 
@@ -67,6 +68,18 @@ if [ -n "$touched_web" ]; then
   echo "pre-push: formatting web…"
   (
     cd web
+    if [ -n "$manifest_changed" ]; then
+      bun install --frozen-lockfile
+    fi
+    bun run format
+  )
+fi
+
+if [ -n "$touched_discord" ]; then
+  manifest_changed=$(echo "$changed_files" | grep -E '^discord/(package\.json|bun\.lock)$' || true)
+  echo "pre-push: formatting discord…"
+  (
+    cd discord
     if [ -n "$manifest_changed" ]; then
       bun install --frozen-lockfile
     fi
@@ -96,6 +109,16 @@ if [ -n "$touched_web" ]; then
     cd web
     bun run lint:check
     bun run build
+    bun run test:coverage
+  )
+fi
+
+if [ -n "$touched_discord" ]; then
+  echo "pre-push: running discord checks…"
+  (
+    cd discord
+    bun run lint:check
+    bun run type-check
     bun run test:coverage
   )
 fi

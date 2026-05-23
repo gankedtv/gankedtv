@@ -102,6 +102,27 @@ cd web && bun run test:coverage  # Run with coverage + threshold gate (scoped)
 
 Web coverage gate: **85% line / 85% branch**, scoped to `src/api/**`, `src/router/**`, `src/stores/**` (HTTP client, auth, routing). Components, views, `App.vue`, `main.ts`, and `assets/` are deliberately excluded — the goal is protecting auth/network/routing logic, not display code. Coverage config lives in [web/vitest.config.ts](web/vitest.config.ts).
 
+### Discord bot (from repository root)
+```bash
+make discord-install          # Install dependencies (bun install)
+make discord                  # Run in watch mode (talks to host API + host Postgres)
+make discord-test             # Run tests (bun test)
+make discord-lint             # Lint (oxlint + eslint with auto-fix)
+make ci-discord               # Full CI mirror (format/lint/type-check/coverage)
+```
+
+The bot lives in [discord/](discord/) as a sibling of `server/` and `web/`. It's **off by default** — without `DISCORD_BOT_TOKEN` + `DISCORD_BOT_APP_ID` it logs `disabled; exiting` on boot and no-ops (same contract as `IgdbSyncHostedService`). The compose service is gated behind the `discord` profile (`docker compose --profile discord up`) so `make up` doesn't build the Bun image by default. Stack is **TypeScript + Bun + discord.js**, with `postgres` for direct DB access. The bot owns its own tables (`discord_subscriptions`, `discord_post_log`, `discord_bot_state`) — EF Core does NOT model them, so they live in the shared Postgres without colliding with API migrations. The bot applies its own SQL migrations from `discord/src/migrations/*.sql` on boot.
+
+Detection is **polling** (`GET /clips/feed` every `DISCORD_POLL_INTERVAL_SECONDS`, default 30s). Each round tracks a high-water-mark by `created_at` and uses a per-`(channel_id, clip_id)` post-log row as the dedupe guard, so a crash mid-fanout doesn't double-post on restart. A future upgrade to push-based delivery (webhook on `clip.ready`) would only swap the poller's entry-point — fanout, filters, dedupe, and command surface stay identical.
+
+Slash commands ship in two namespaces:
+- `/gankedtv subscribe|unsubscribe|subscriptions|pause|resume` — subscription CRUD per channel (gated to `ManageChannels`).
+- `/clip latest|top|search` — on-demand clip pulls; works in any guild even without a subscription.
+
+**Env loading:** the bot reads shared values from the repo-root [.env](.env) (mirrors web's `envDir: '../'` convention), then layers `discord/.env` on top (auto-loaded by Bun), then shell env wins. Precedence is first-set-wins, so the same `DATABASE_URL` you have at the root works automatically. See [discord/src/loadEnv.ts](discord/src/loadEnv.ts).
+
+Discord coverage gate: **85% line / 85% function** — enforced by [discord/scripts/check-coverage.ts](discord/scripts/check-coverage.ts), which parses `coverage/lcov.info` and exits non-zero when under threshold (Bun's own `coverageThreshold` setting in [discord/bunfig.toml](discord/bunfig.toml) is documentation-only on Bun 1.3.13 — it prints but doesn't enforce). The script also emits a markdown summary to `$GITHUB_STEP_SUMMARY` in CI. Excluded from the denominator: `src/index.ts` (boot wiring, covered indirectly), `src/db.ts` + `src/api.ts` (I/O wrappers; integration tests would need testcontainers), `src/migrator.ts`, `src/migrations/`.
+
 ## Architecture
 
 ```
@@ -111,6 +132,9 @@ gankedtv/
 │   └── tests/GankedTV.Api.Tests/  # xUnit tests with FluentAssertions
 ├── web/                      # Vue 3 frontend (Bun + Vite)
 │   └── src/
+├── discord/                  # Discord bot (Bun + discord.js, off by default)
+│   ├── src/
+│   └── tests/
 ├── docker-compose.dev.yml    # PostgreSQL + MinIO for local dev
 └── Makefile                  # Development commands
 ```

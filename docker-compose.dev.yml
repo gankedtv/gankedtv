@@ -45,6 +45,40 @@ services:
       timeout: 5s
       retries: 5
 
+  # Discord bot — off-by-default. Gated behind the `discord` compose profile so
+  # `make up` (plain dev) doesn't build the Bun image until you opt in with
+  # `make up-discord`. Without DISCORD_BOT_TOKEN the container still no-ops
+  # cleanly — the profile gate is purely a build-time skip.
+  discord:
+    profiles: ["discord"]
+    build:
+      context: ./discord
+      dockerfile: Dockerfile
+    environment:
+      # Distinct from the API's DATABASE_URL because the API uses dotnet
+      # semicolon form, which porsager's `postgres` driver can't parse.
+      DISCORD_DATABASE_URL: postgres://gankedtv:gankedtv_dev@postgres:5432/gankedtv
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      DISCORD_BOT_APP_ID: ${DISCORD_BOT_APP_ID:-}
+      DISCORD_BOT_GUILD_ID: ${DISCORD_BOT_GUILD_ID:-}
+      DISCORD_POLL_INTERVAL_SECONDS: ${DISCORD_POLL_INTERVAL_SECONDS:-30}
+      # Inside the docker network the API is reachable via host.docker.internal
+      # (since the API runs on the host via `dotnet watch`, not in compose).
+      # `bun dev` from the discord/ directory uses a local .env to talk to
+      # http://localhost:5050 directly.
+      GANKEDTV_API_BASE: ${GANKEDTV_API_BASE:-http://host.docker.internal:5050}
+      GANKEDTV_PUBLIC_BASE: ${GANKEDTV_PUBLIC_BASE:-http://localhost:5173}
+    # Native Linux Docker doesn't auto-resolve host.docker.internal (only Docker
+    # Desktop / WSL2 do); the host-gateway alias is the cross-platform way to
+    # let the container reach the host-running API. Without this the in-container
+    # bot can't hit GANKEDTV_API_BASE in dev on Linux.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   minio_data:

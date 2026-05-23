@@ -144,10 +144,17 @@ MINIO_CONSOLE_HOST_PORT=${s3c}
 ASPNETCORE_URLS=http://localhost:${api}
 VITE_PORT=${vite}
 
-# cross-process wiring (Program.cs:48,56-66 + web/src/api/client.ts:2 already read these)
+# cross-process wiring (Program.cs:48,56-66 + web/src/api/client.ts:2 +
+# discord/src/loadEnv.ts already read these)
 DATABASE_URL=Host=localhost;Port=${pg};Database=gankedtv;Username=gankedtv;Password=gankedtv_dev
 S3_ENDPOINT=http://localhost:${s3}
 VITE_API_BASE_URL=http://localhost:${api}
+# discord bot uses the standard libpq URL shape, not the dotnet semicolon form.
+# Both refer to the same Postgres; duplicated because the bot's `postgres` driver
+# can't parse the dotnet variant.
+DISCORD_DATABASE_URL=postgres://gankedtv:gankedtv_dev@localhost:${pg}/gankedtv
+GANKEDTV_API_BASE=http://localhost:${api}
+GANKEDTV_PUBLIC_BASE=http://localhost:${vite}
 
 # CORS + OAuth redirect target. Program.cs always allows WEB_ORIGIN through CORS,
 # so the worktree's web (port ${vite}) needs this set or browser→api requests get
@@ -203,6 +210,7 @@ echo "→ bootstrapping stack (this mirrors 'make setup' minus the destructive c
   make wait-minio
   make server-install
   make web-install
+  make discord-install
   make migrate
   make seed
 )
