@@ -26,7 +26,7 @@ This wraps `scripts/new-worktree.sh`. Each worktree is created at `.worktrees/is
 
 5. **After all worktrees are created:**
    - Print a combined summary: one line per worktree with its ports.
-   - If `OPEN_ITERM=true`, invoke the `gankedtv-worktree-tabs` skill with the issue list. The skill opens one iTerm tab per worktree, each split into four side-by-side panes (`make web`, `make server`, `claude`, `make up`).
+   - If `OPEN_ITERM=true`, invoke the `open-worktrees` skill with the issue list. The skill opens one iTerm tab per worktree, each split into four side-by-side panes (`make web`, `make server`, `claude`, `make up`).
    - Otherwise, print the manual next-step commands (`cd .worktrees/issue-<n> && make dev-all`) for each worktree.
 
 6. **On failure**, surface stderr and stop. Common failures:

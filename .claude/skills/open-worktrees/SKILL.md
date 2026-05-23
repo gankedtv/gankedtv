@@ -1,9 +1,9 @@
 ---
-name: gankedtv-worktree-tabs
-description: Use when the user wants to open one iTerm2 tab per GankedTV worktree (`.worktrees/issue-<n>/`) with four side-by-side panes running `make web`, `make server`, `claude`, and `make up` (then idle so the user can `code .`). Triggers on phrases like "open worktree tabs", "spin up panes for issues X Y Z", "set up iTerm splits for these worktrees", or when `/worktree` is invoked with an `iterm` keyword. macOS + iTerm2 only.
+name: open-worktrees
+description: Use when the user wants to open one iTerm2 tab per GankedTV worktree (`.worktrees/issue-<n>/`) with four side-by-side panes running `make web`, `make server`, `claude`, and `make up` (then idle so the user can `code .`). Triggers on phrases like "open worktrees for X Y Z", "open worktree tabs", "spin up panes for these issues", "set up iTerm splits for these worktrees", or when `/worktree` is invoked with an `iterm` keyword. macOS + iTerm2 only.
 ---
 
-# GankedTV worktree tabs
+# Open worktrees
 
 ## What it does
 
