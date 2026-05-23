@@ -58,7 +58,7 @@ namespace GankedTV.Api.Data.Migrations
                 columns: new[] { "parent_id", "created_at" });
 
             migrationBuilder.CreateIndex(
-                name: "ix_comments_user_id",
+                name: "idx_comments_user_id",
                 table: "comments",
                 column: "user_id");
         }

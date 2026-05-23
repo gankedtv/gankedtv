@@ -175,6 +175,7 @@ public class CommentsEndpointsTests : IAsyncLifetime
         var clipId = await SeedClipAsync(userId);
         using var client = ClientWithBearer(token);
 
+        var before = DateTimeOffset.UtcNow;
         var resp = await client.PostAsJsonAsync($"/clips/{clipId}/comments", new { body = "  first!  " });
 
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
@@ -184,6 +185,11 @@ public class CommentsEndpointsTests : IAsyncLifetime
         item.GetProperty("replyCount").GetInt32().Should().Be(0);
         item.GetProperty("deleted").GetBoolean().Should().BeFalse();
         item.GetProperty("author").GetProperty("username").GetString().Should().Be("author");
+        // Lock down that the response carries a DB-generated createdAt (not the default value)
+        // — easy to regress if HasDefaultValueSql wiring is ever changed.
+        var createdAt = item.GetProperty("createdAt").GetDateTimeOffset();
+        createdAt.Should().BeOnOrAfter(before.AddSeconds(-1));
+        createdAt.Should().BeOnOrBefore(DateTimeOffset.UtcNow.AddSeconds(1));
     }
 
     [Fact]
@@ -294,6 +300,34 @@ public class CommentsEndpointsTests : IAsyncLifetime
         first.GetProperty("replies").GetArrayLength().Should().Be(3);
         // Inline preview is oldest-first.
         first.GetProperty("replies")[0].GetProperty("body").GetString().Should().Be("r0");
+        // With more replies than fit in the preview, the response carries a cursor that pages
+        // forward from the last preview row — letting the UI fetch r3 without re-fetching r0..r2.
+        var nextCursor = first.GetProperty("repliesNextCursor").GetString();
+        nextCursor.Should().NotBeNullOrEmpty();
+        var nextPage = await (await client.GetAsync($"/comments/{top}/replies?cursor={nextCursor}"))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        nextPage.GetProperty("items").GetArrayLength().Should().Be(1);
+        nextPage.GetProperty("items")[0].GetProperty("body").GetString().Should().Be("r3");
+    }
+
+    [Fact]
+    public async Task List_RepliesFitInPreview_RepliesNextCursorIsNull()
+    {
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId);
+        var baseTime = DateTimeOffset.UtcNow;
+        var top = await SeedCommentAsync(clipId, userId, "top", createdAt: baseTime);
+        // 2 replies fit in the preview (cap 3) — the response should not surface a "more" cursor.
+        for (var i = 0; i < 2; i++)
+            await SeedCommentAsync(clipId, userId, $"r{i}", parentId: top, createdAt: baseTime.AddSeconds(i + 1));
+        using var client = _factory!.CreateClient();
+
+        var body = await (await client.GetAsync($"/clips/{clipId}/comments"))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        var first = body.GetProperty("items")[0];
+        first.GetProperty("replyCount").GetInt32().Should().Be(2);
+        first.GetProperty("repliesNextCursor").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     [Fact]
@@ -353,6 +387,31 @@ public class CommentsEndpointsTests : IAsyncLifetime
         secondPage.GetProperty("nextCursor").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
+    [Fact]
+    public async Task List_LimitOutOfRange_IsClamped()
+    {
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId);
+        var baseTime = DateTimeOffset.UtcNow;
+        for (var i = 0; i < 3; i++)
+            await SeedCommentAsync(clipId, userId, $"c{i}", createdAt: baseTime.AddSeconds(i));
+        using var client = _factory!.CreateClient();
+
+        // limit=0 clamps up to the minimum (1) — the endpoint shouldn't 400 on degenerate input.
+        var low = await (await client.GetAsync($"/clips/{clipId}/comments?limit=0"))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        low.GetProperty("items").GetArrayLength().Should().Be(1);
+        low.GetProperty("nextCursor").GetString().Should().NotBeNullOrEmpty();
+
+        // limit=10000 clamps down to MaxLimit (100); seeded data is well under that, so we expect
+        // the endpoint to accept the request and return everything without paging.
+        var high = await (await client.GetAsync($"/clips/{clipId}/comments?limit=10000"))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        high.GetProperty("items").GetArrayLength().Should().Be(3);
+        high.GetProperty("nextCursor").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
     // ---- GET /comments/{id}/replies ----
 
     [Fact]
@@ -380,6 +439,29 @@ public class CommentsEndpointsTests : IAsyncLifetime
             .Content.ReadFromJsonAsync<JsonElement>();
         secondPage.GetProperty("items").GetArrayLength().Should().Be(1); // r2 only; dead excluded
         secondPage.GetProperty("items")[0].GetProperty("body").GetString().Should().Be("r2");
+    }
+
+    [Fact]
+    public async Task ListReplies_LimitOutOfRange_IsClamped()
+    {
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId);
+        var top = await SeedCommentAsync(clipId, userId, "top");
+        var baseTime = DateTimeOffset.UtcNow;
+        for (var i = 0; i < 3; i++)
+            await SeedCommentAsync(clipId, userId, $"r{i}", parentId: top, createdAt: baseTime.AddSeconds(i));
+        using var client = _factory!.CreateClient();
+
+        var low = await (await client.GetAsync($"/comments/{top}/replies?limit=0"))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        low.GetProperty("items").GetArrayLength().Should().Be(1);
+        low.GetProperty("nextCursor").GetString().Should().NotBeNullOrEmpty();
+
+        var high = await (await client.GetAsync($"/comments/{top}/replies?limit=10000"))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        high.GetProperty("items").GetArrayLength().Should().Be(3);
+        high.GetProperty("nextCursor").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     // ---- DELETE /comments/{id} ----

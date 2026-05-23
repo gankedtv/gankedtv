@@ -1,3 +1,4 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using GankedTV.Api.Clips;
 using GankedTV.Api.Contracts.Comments;
@@ -45,7 +46,7 @@ public static class CommentsEndpoints
         GankedTvDbContext db,
         CancellationToken ct)
     {
-        if (!ClipsReadEndpoints.TryGetUserId(principal, out var userId))
+        if (!TryGetUserId(principal, out var userId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }
@@ -134,8 +135,15 @@ public static class CommentsEndpoints
         var items = page.Select(c =>
         {
             var entry = repliesByParent.GetValueOrDefault(c.Id);
-            var preview = (entry.Preview ?? []).Select(r => r.ToItem()).ToList();
-            return c.ToItem(replyCount: entry.Count, replies: preview);
+            var previewRows = entry.Preview ?? [];
+            var preview = previewRows.Select(r => r.ToItem()).ToList();
+            // When the thread has more replies than fit in the inline preview, hand back a
+            // cursor anchored on the last preview row. The web client seeds its per-thread
+            // cursor from this so "show more replies" doesn't re-fetch the preview rows.
+            var repliesNextCursor = entry.Count > previewRows.Count && previewRows.Count > 0
+                ? KeysetCursor.Build(previewRows[^1].CreatedAt, previewRows[^1].Id)
+                : null;
+            return c.ToItem(replyCount: entry.Count, replies: preview, repliesNextCursor: repliesNextCursor);
         }).ToList();
 
         var nextCursor = hasMore ? KeysetCursor.Build(page[^1].CreatedAt, page[^1].Id) : null;
@@ -185,7 +193,7 @@ public static class CommentsEndpoints
         GankedTvDbContext db,
         CancellationToken ct)
     {
-        if (!ClipsReadEndpoints.TryGetUserId(principal, out var userId))
+        if (!TryGetUserId(principal, out var userId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }
@@ -259,5 +267,16 @@ public static class CommentsEndpoints
         return counts.ToDictionary(
             c => c.ParentId,
             c => (c.Count, previewsByParent.GetValueOrDefault(c.ParentId) ?? []));
+    }
+
+    // Mirrors the local helper in every other endpoint module (ClipsRead/Mutate, Likes, Auth, Me).
+    // Lifting this into a shared auth helper is a worthwhile follow-up across all callers, but
+    // this PR keeps the change scoped — comments no longer reach across to ClipsReadEndpoints.
+    private static bool TryGetUserId(ClaimsPrincipal principal, out Guid userId)
+    {
+        userId = default;
+        var sub = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
+            ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        return Guid.TryParse(sub, out userId);
     }
 }

@@ -238,6 +238,9 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             // Drives the top-level listing for a clip (ordered by created_at) and reply lookups.
             e.HasIndex(c => new { c.ClipId, c.CreatedAt }).HasDatabaseName("idx_comments_clip_id");
             e.HasIndex(c => new { c.ParentId, c.CreatedAt }).HasDatabaseName("idx_comments_parent_id");
+            // EF auto-generates an index on the UserId FK; name it explicitly to match the
+            // `idx_*` convention used elsewhere (otherwise it lands as `ix_comments_user_id`).
+            e.HasIndex(c => c.UserId).HasDatabaseName("idx_comments_user_id");
         });
 
         modelBuilder.Entity<RefreshToken>(e =>

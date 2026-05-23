@@ -13,6 +13,10 @@ export interface CommentItem {
   replyCount: number
   // First page of inline replies on a top-level comment (oldest-first; empty for replies).
   replies: CommentItem[]
+  // Cursor to fetch the next page of replies (oldest-first) when more exist beyond the
+  // inline preview; null when the preview is exhaustive. Lets the UI page from after the
+  // preview instead of re-fetching it.
+  repliesNextCursor: string | null
   deleted: boolean
 }
 

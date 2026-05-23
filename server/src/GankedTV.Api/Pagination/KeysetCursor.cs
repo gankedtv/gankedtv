@@ -40,8 +40,10 @@ public static class KeysetCursor
         {
             bytes = Base64Url.DecodeFromChars(raw);
         }
-        catch (FormatException)
+        catch (Exception ex) when (ex is FormatException or ArgumentException)
         {
+            // FormatException covers invalid Base64Url; ArgumentException covers overflow paths
+            // some runtimes can surface. Either way, treat a corrupt cursor as "no cursor".
             return false;
         }
 

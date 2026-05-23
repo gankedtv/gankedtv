@@ -53,10 +53,12 @@ async function load() {
   errored.value = false
   threads.value = []
   nextCursor.value = null
+  replyCursors.value = {}
   try {
     const page = await comments.list(props.clipId)
     threads.value = page.items
     nextCursor.value = page.nextCursor
+    seedReplyCursors(page.items)
   } catch {
     errored.value = true
   } finally {
@@ -71,6 +73,7 @@ async function loadMore() {
     const page = await comments.list(props.clipId, { cursor: nextCursor.value })
     threads.value.push(...page.items)
     nextCursor.value = page.nextCursor
+    seedReplyCursors(page.items)
   } catch {
     actionError.value = 'Could not load more comments — try again.'
   } finally {
@@ -82,6 +85,35 @@ function goLogin() {
   router.push({ name: 'login', query: { redirect: route.fullPath } })
 }
 
+// `crypto.randomUUID` keeps temp ids unique even on rapid double-submits (the previous
+// `temp-${Date.now()}` collides at millisecond granularity).
+function buildOptimistic(body: string, parentId: string | null): CommentItem {
+  // postComment / postReply both gate on `auth.user` before calling this, so `auth.user!`
+  // is safe here.
+  const user = auth.user!
+  return {
+    id: `temp-${crypto.randomUUID()}`,
+    body,
+    author: { id: user.id, username: user.username, avatarUrl: user.avatarUrl },
+    parentId,
+    createdAt: new Date().toISOString(),
+    replyCount: 0,
+    replies: [],
+    repliesNextCursor: null,
+    deleted: false,
+  }
+}
+
+// Seed the per-thread "show more replies" cursor from each thread's inline preview so the
+// first click pages forward instead of re-fetching the preview rows the server already sent.
+function seedReplyCursors(threadsToSeed: CommentItem[]) {
+  for (const thread of threadsToSeed) {
+    if (thread.repliesNextCursor) {
+      replyCursors.value[thread.id] = thread.repliesNextCursor
+    }
+  }
+}
+
 async function postComment() {
   const body = newBody.value.trim()
   if (!body || posting.value || !auth.user) return
@@ -89,26 +121,16 @@ async function postComment() {
   posting.value = true
   actionError.value = ''
   // Optimistic: show the comment immediately under a temp id, reconcile on response.
-  const tempId = `temp-${Date.now()}`
-  const optimistic: CommentItem = {
-    id: tempId,
-    body,
-    author: { id: auth.user.id, username: auth.user.username, avatarUrl: auth.user.avatarUrl },
-    parentId: null,
-    createdAt: new Date().toISOString(),
-    replyCount: 0,
-    replies: [],
-    deleted: false,
-  }
+  const optimistic = buildOptimistic(body, null)
   threads.value.unshift(optimistic)
   newBody.value = ''
 
   try {
     const created = await comments.create(props.clipId, { body })
-    const idx = threads.value.findIndex((c) => c.id === tempId)
+    const idx = threads.value.findIndex((c) => c.id === optimistic.id)
     if (idx !== -1) threads.value[idx] = created
   } catch {
-    threads.value = threads.value.filter((c) => c.id !== tempId)
+    threads.value = threads.value.filter((c) => c.id !== optimistic.id)
     newBody.value = body
     actionError.value = 'Could not post your comment — try again.'
   } finally {
@@ -124,20 +146,31 @@ function toggleReply(commentId: string) {
 
 async function postReply(parentId: string) {
   const body = replyBody.value.trim()
-  if (!body || replyPosting.value) return
+  if (!body || replyPosting.value || !auth.user) return
+
+  const thread = threads.value.find((c) => c.id === parentId)
+  if (!thread) return
 
   replyPosting.value = true
   actionError.value = ''
+  // Optimistic: render the reply immediately and reconcile on response, matching postComment.
+  const optimistic = buildOptimistic(body, parentId)
+  thread.replies.push(optimistic)
+  thread.replyCount += 1
+  replyingTo.value = null
+  replyBody.value = ''
+
   try {
     const created = await comments.create(props.clipId, { body, parentId })
-    const thread = threads.value.find((c) => c.id === parentId)
-    if (thread) {
-      thread.replies.push(created)
-      thread.replyCount += 1
-    }
-    replyingTo.value = null
-    replyBody.value = ''
+    const idx = thread.replies.findIndex((r) => r.id === optimistic.id)
+    if (idx !== -1) thread.replies[idx] = created
   } catch {
+    const idx = thread.replies.findIndex((r) => r.id === optimistic.id)
+    if (idx !== -1) thread.replies.splice(idx, 1)
+    thread.replyCount = Math.max(0, thread.replyCount - 1)
+    // Reopen the composer with the failed body so the user can retry without retyping.
+    replyingTo.value = parentId
+    replyBody.value = body
     actionError.value = 'Could not post your reply — try again.'
   } finally {
     replyPosting.value = false
@@ -221,6 +254,7 @@ function markDeleted(id: string) {
           rows="2"
           maxlength="2000"
           placeholder="Add a comment…"
+          aria-label="Add a comment"
           :class="inputClass"
           class="resize-y"
         />
@@ -278,6 +312,7 @@ function markDeleted(id: string) {
             rows="2"
             maxlength="2000"
             placeholder="Write a reply…"
+            aria-label="Write a reply"
             :class="inputClass"
             class="resize-y"
           />

@@ -210,7 +210,7 @@ namespace GankedTV.Api.Data.Migrations
                         .HasName("pk_comments");
 
                     b.HasIndex("UserId")
-                        .HasDatabaseName("ix_comments_user_id");
+                        .HasDatabaseName("idx_comments_user_id");
 
                     b.HasIndex("ClipId", "CreatedAt")
                         .HasDatabaseName("idx_comments_clip_id");
