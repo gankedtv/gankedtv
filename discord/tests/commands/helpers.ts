@@ -15,6 +15,7 @@ import type { Db, Subscription } from '../../src/db.ts';
 export type FakeChatInputOpts = {
   subcommand: string;
   strings?: Record<string, string | null>;
+  booleans?: Record<string, boolean | null>;
   roles?: Record<string, { id: string } | null>;
   guildId?: string | null;
   channelId?: string;
@@ -47,6 +48,11 @@ export function fakeChatInput(opts: FakeChatInputOpts) {
       getString: (name: string, required?: boolean) => {
         const v = opts.strings?.[name] ?? null;
         if (required && v === null) throw new Error(`required string '${name}' missing`);
+        return v;
+      },
+      getBoolean: (name: string, required?: boolean) => {
+        const v = opts.booleans?.[name] ?? null;
+        if (required && v === null) throw new Error(`required boolean '${name}' missing`);
         return v;
       },
       getRole: (name: string) => opts.roles?.[name] ?? null,
@@ -110,6 +116,9 @@ export function fakeDb(overrides: Partial<Db> = {}): Db {
       return null;
     },
     async removeSubscription() {
+      return 0;
+    },
+    async removeAllSubscriptionsForChannel() {
       return 0;
     },
     async listSubscriptionsForChannel() {

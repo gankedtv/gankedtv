@@ -33,6 +33,7 @@ export type Db = {
   close(): Promise<void>;
   addSubscription(input: CreateSubscriptionInput): Promise<Subscription | null>;
   removeSubscription(input: RemoveSubscriptionInput): Promise<number>;
+  removeAllSubscriptionsForChannel(channelId: string): Promise<number>;
   listSubscriptionsForChannel(channelId: string): Promise<Subscription[]>;
   listAllSubscriptions(): Promise<Subscription[]>;
   setPaused(channelId: string, paused: boolean): Promise<number>;
@@ -77,6 +78,18 @@ export function createDb(sql: Sql): Db {
         WHERE channel_id = ${input.channelId}
           AND game_id IS NOT DISTINCT FROM ${input.gameId}::int
           AND creator_id IS NOT DISTINCT FROM ${input.creatorId}::uuid
+        RETURNING id
+      `;
+      return rows.length;
+    },
+
+    async removeAllSubscriptionsForChannel(channelId) {
+      // Unconditional channel-scoped delete. Callers (the /gankedtv unsubscribe
+      // all:true path) are responsible for confirming user intent — this method
+      // makes no judgements.
+      const rows = await sql`
+        DELETE FROM discord_subscriptions
+        WHERE channel_id = ${channelId}
         RETURNING id
       `;
       return rows.length;

@@ -28,6 +28,9 @@ function stubDb(initial: Partial<StubDbState> = {}): Db & { _state: StubDbState 
     async removeSubscription() {
       return 0;
     },
+    async removeAllSubscriptionsForChannel() {
+      return 0;
+    },
     async listSubscriptionsForChannel() {
       return [];
     },

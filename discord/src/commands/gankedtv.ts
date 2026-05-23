@@ -35,7 +35,7 @@ const data = new SlashCommandBuilder()
   .addSubcommand((s) =>
     s
       .setName('unsubscribe')
-      .setDescription('Remove a subscription from this channel.')
+      .setDescription('Remove a subscription from this channel. Pass all:true to wipe everything.')
       .addStringOption((o) =>
         o
           .setName('game')
@@ -47,6 +47,12 @@ const data = new SlashCommandBuilder()
         o
           .setName('creator')
           .setDescription('Creator filter of the subscription to remove (uuid).')
+          .setRequired(false),
+      )
+      .addBooleanOption((o) =>
+        o
+          .setName('all')
+          .setDescription('Remove EVERY subscription in this channel. Cannot combine with filters.')
           .setRequired(false),
       ),
   )
@@ -182,6 +188,29 @@ async function handleUnsubscribe(
 
   const gameRaw = interaction.options.getString('game');
   const creatorRaw = interaction.options.getString('creator');
+  const all = interaction.options.getBoolean('all') ?? false;
+
+  // Reject ambiguous input rather than silently dropping the filters — a user
+  // who passed both clearly meant one of them and shouldn't get a wipe by
+  // accident.
+  if (all && (gameRaw !== null || creatorRaw !== null)) {
+    await interaction.editReply(
+      'Cannot combine `all:true` with `game`/`creator` filters. Use one or the other.',
+    );
+    return;
+  }
+
+  if (all) {
+    const removed = await ctx.db.removeAllSubscriptionsForChannel(interaction.channelId);
+    if (removed === 0) {
+      await interaction.editReply('No subscriptions in this channel.');
+      return;
+    }
+    await interaction.editReply(
+      `Removed all ${removed} subscription${removed === 1 ? '' : 's'} in this channel.`,
+    );
+    return;
+  }
 
   const { gameId, error: gameErr } = await resolveGameId(ctx, gameRaw);
   if (gameErr) {
@@ -213,20 +242,43 @@ async function handleList(
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const subs = await ctx.db.listSubscriptionsForChannel(interaction.channelId);
   if (subs.length === 0) {
-    await interaction.editReply('No subscriptions in this channel.');
+    await interaction.editReply(
+      'No subscriptions in this channel. Use `/gankedtv subscribe` to add one.',
+    );
     return;
   }
-  const lines = subs.map(formatSubscription);
-  await interaction.editReply(`**Subscriptions in this channel:**\n${lines.join('\n')}`);
+
+  // Single batched lookup so we can show names/slugs instead of raw numeric
+  // ids — formatSubscription falls back to the id when a game isn't in the
+  // cache (covers catalogs > listGames's 50-item cap).
+  const games = await ctx.api.listGames({ limit: 50 });
+  const byId = new Map(games.map((g) => [g.id, g] as const));
+
+  const lines = subs.map((s, i) => formatSubscription(s, i + 1, byId));
+  const count = subs.length === 1 ? '1 subscription' : `${subs.length} subscriptions`;
+  await interaction.editReply(
+    `**${count} in this channel:**\n${lines.join('\n')}\n\n` +
+      '_Remove with `/gankedtv unsubscribe game:<slug>` (or `/gankedtv unsubscribe all:true` to wipe all)._',
+  );
 }
 
-function formatSubscription(sub: Subscription): string {
+function formatSubscription(
+  sub: Subscription,
+  index: number,
+  byId: Map<number, { name: string; slug: string }>,
+): string {
   const parts: string[] = [];
-  parts.push(sub.gameId !== null ? `game=${sub.gameId}` : 'game=any');
-  parts.push(sub.creatorId !== null ? `creator=${sub.creatorId}` : 'creator=any');
-  if (sub.pingRoleId) parts.push(`ping=<@&${sub.pingRoleId}>`);
+  if (sub.gameId !== null) {
+    const g = byId.get(sub.gameId);
+    parts.push(g ? `game **${g.name}** (\`${g.slug}\`)` : `game id \`${sub.gameId}\``);
+  }
+  if (sub.creatorId !== null) parts.push(`creator \`${sub.creatorId}\``);
+  if (sub.pingRoleId) parts.push(`ping <@&${sub.pingRoleId}>`);
   if (sub.paused) parts.push('**paused**');
-  return `• ${parts.join(' · ')}`;
+  // If no filters were set this is the firehose — say so explicitly rather
+  // than printing an empty bullet.
+  const body = parts.length ? parts.join(' · ') : '_all clips_';
+  return `${index}. ${body}`;
 }
 
 async function handlePauseToggle(

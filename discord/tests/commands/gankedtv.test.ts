@@ -168,6 +168,44 @@ describe('/gankedtv unsubscribe', () => {
     await command.execute(f.interaction, ctx({ db }));
     expect(f.replies[0]?.payload).toMatch(/must be a UUID/);
   });
+
+  test('all:true wipes every subscription in the channel', async () => {
+    const f = fakeChatInput({ subcommand: 'unsubscribe', booleans: { all: true } });
+    const db = fakeDb({ removeAllSubscriptionsForChannel: async () => 3 });
+    await command.execute(f.interaction, ctx({ db }));
+    expect(f.replies[0]?.payload).toBe('Removed all 3 subscriptions in this channel.');
+  });
+
+  test('all:true on an empty channel says nothing was removed', async () => {
+    const f = fakeChatInput({ subcommand: 'unsubscribe', booleans: { all: true } });
+    await command.execute(f.interaction, ctx());
+    expect(f.replies[0]?.payload).toBe('No subscriptions in this channel.');
+  });
+
+  test('all:true combined with filters is rejected', async () => {
+    const f = fakeChatInput({
+      subcommand: 'unsubscribe',
+      booleans: { all: true },
+      strings: { game: 'valorant' },
+    });
+    const db = fakeDb({
+      removeAllSubscriptionsForChannel: async () => {
+        throw new Error('should not be called');
+      },
+      removeSubscription: async () => {
+        throw new Error('should not be called');
+      },
+    });
+    await command.execute(f.interaction, ctx({ db }));
+    expect(f.replies[0]?.payload).toMatch(/Cannot combine `all:true` with/);
+  });
+
+  test('all:false falls through to filtered delete', async () => {
+    const f = fakeChatInput({ subcommand: 'unsubscribe', booleans: { all: false } });
+    const db = fakeDb({ removeSubscription: async () => 1 });
+    await command.execute(f.interaction, ctx({ db }));
+    expect(f.replies[0]?.payload).toBe('Removed 1 subscription.');
+  });
 });
 
 describe('/gankedtv subscriptions', () => {
@@ -177,26 +215,55 @@ describe('/gankedtv subscriptions', () => {
     expect(f.replies[0]?.payload).toMatch(/No subscriptions/);
   });
 
-  test('formats subscription rows', async () => {
+  test('resolves game id to name + slug via the API', async () => {
     const f = fakeChatInput({ subcommand: 'subscriptions' });
     const db = fakeDb({
       listSubscriptionsForChannel: async () => [
+        subscription({ gameId: 42, pingRoleId: '555', paused: true }),
         subscription({
-          gameId: 42,
-          creatorId: '99999999-0000-0000-0000-000000000001',
-          pingRoleId: '555',
-          paused: true,
+          gameId: 99,
+          creatorId: '11111111-2222-3333-4444-555555555555',
         }),
-        subscription(),
+        subscription(), // firehose
       ],
     });
-    await command.execute(f.interaction, ctx({ db }));
+    const api = fakeApi({
+      listGames: async () => [
+        { id: 42, name: 'Valorant', slug: 'valorant', tag: 'val', coverUrl: null },
+        // 99 deliberately missing — exercise the unresolved-id fallback path
+      ],
+    });
+    await command.execute(f.interaction, ctx({ db, api }));
     const text = String(f.replies[0]?.payload);
-    expect(text).toMatch(/game=42/);
-    expect(text).toMatch(/creator=99999999/);
-    expect(text).toMatch(/ping=<@&555>/);
+
+    // Count header
+    expect(text).toMatch(/3 subscriptions in this channel/);
+    // Resolved game (#42)
+    expect(text).toMatch(/Valorant.*valorant/);
+    // Unresolved game (#99) falls back to id
+    expect(text).toMatch(/game id `99`/);
+    // Creator + ping + paused
+    expect(text).toMatch(/creator `11111111/);
+    expect(text).toMatch(/ping <@&555>/);
     expect(text).toMatch(/paused/);
-    expect(text).toMatch(/game=any/);
+    // Firehose row
+    expect(text).toMatch(/all clips/);
+    // Actionable hint mentions both single + bulk removal
+    expect(text).toMatch(/unsubscribe game:<slug>/);
+    expect(text).toMatch(/unsubscribe all:true/);
+  });
+
+  test('singular "1 subscription" header when only one row', async () => {
+    const f = fakeChatInput({ subcommand: 'subscriptions' });
+    const db = fakeDb({ listSubscriptionsForChannel: async () => [subscription()] });
+    await command.execute(f.interaction, ctx({ db }));
+    expect(String(f.replies[0]?.payload)).toMatch(/1 subscription in this channel/);
+  });
+
+  test('empty channel hint mentions /gankedtv subscribe', async () => {
+    const f = fakeChatInput({ subcommand: 'subscriptions' });
+    await command.execute(f.interaction, ctx());
+    expect(String(f.replies[0]?.payload)).toMatch(/Use `\/gankedtv subscribe`/);
   });
 });
 
