@@ -174,14 +174,22 @@ public static class ClipsReadEndpoints
         // already derived from the filtered candidate set. The micro-race window — a clip
         // flipping to unlisted or back to processing between scoring and rehydration — could
         // surface one stale row in a trending response; accepted as bounded and self-healing
-        // on the next request.
+        // on the next request. A clip *deleted* between scoring and rehydration just drops
+        // out of the result (TryGetValue skip) rather than 500ing.
         var ordered = await db.Clips.AsNoTracking()
             .Where(c => topIds.Contains(c.Id))
             .IncludeFeedRelations()
             .ToListAsync(ct);
 
         var byId = ordered.ToDictionary(c => c.Id);
-        var ranked = topIds.Select(id => byId[id]).ToList();
+        var ranked = new List<Clip>(topIds.Count);
+        foreach (var id in topIds)
+        {
+            if (byId.TryGetValue(id, out var clip))
+            {
+                ranked.Add(clip);
+            }
+        }
 
         var items = await ProjectFeedItemsAsync(ranked, principal, db, storage, s3, ct);
         return new ClipFeedResponse(items, NextCursor: null);

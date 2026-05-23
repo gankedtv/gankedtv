@@ -7,7 +7,7 @@ How `POST /clips/{id}/view`, the `clip_views` event table, and the trending feed
 
 ## Pipeline at a glance
 
-```
+```text
   ┌─────────────────┐   ≥3s playback   ┌──────────────────────┐
   │  ClipView.vue   │ ───────────────► │ POST /clips/{id}/view │
   └─────────────────┘                  └──────────┬───────────┘
@@ -55,7 +55,7 @@ Files:
 
 Each view is keyed and looked up in `IMemoryCache`:
 
-```
+```text
 key = "view:{clipId}:{viewerKey}"
 viewerKey = "u:{jwt_sub}"   // authenticated
           | "ip:{remoteIp}" // anonymous
@@ -154,7 +154,7 @@ Handler: `GetFeed` → `BuildTrendingFeedAsync` in
 
 ### Score formula
 
-```
+```text
 score = (likes_in_window × 3 + views_in_window) / (max(0, hours_since_post) + 2) ^ 1.5
 ```
 

@@ -30,7 +30,13 @@ const errored = ref(false)
 
 const hotGames = ref<GameListItem[]>([])
 
+// Monotonic token so rapid `timeWindow` toggles (24h → 7d → 24h …) don't let a slow
+// earlier response overwrite a newer one. Without this, the user can land on `7d` and
+// see `24h` results blink in a moment later.
+let latestLoadId = 0
+
 async function load() {
+  const loadId = ++latestLoadId
   loading.value = true
   errored.value = false
   try {
@@ -38,13 +44,15 @@ async function load() {
       clips.feed({ sort: 'trending', window: timeWindow.value, limit: 50 }),
       gamesApi.list(8),
     ])
+    if (loadId !== latestLoadId) return
     topClips.value = feed.items.slice(0, 10)
     hotGames.value = games
   } catch (err) {
+    if (loadId !== latestLoadId) return
     console.error('trending: load failed', err)
     errored.value = true
   } finally {
-    loading.value = false
+    if (loadId === latestLoadId) loading.value = false
   }
 }
 

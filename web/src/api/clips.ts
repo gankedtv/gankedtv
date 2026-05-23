@@ -68,15 +68,18 @@ export interface ClipFeedPage {
   nextCursor: string | null
 }
 
-export interface ClipFeedQuery {
+interface ClipFeedQueryBase {
   cursor?: string | null
   limit?: number
   source?: 'public' | 'following'
-  // Default 'latest' (omitted). 'trending' returns a single ranked page (no cursor)
-  // and REQUIRES `window` — the server 400s on a missing/unknown window.
-  sort?: 'latest' | 'trending'
-  window?: '24h' | '7d'
 }
+
+// Discriminated union: trending REQUIRES a window (server 400s without one) and
+// `latest` is the default omitted shape, so `window` is meaningless there. Encoding
+// this in the type stops callers from constructing combos the server will reject.
+export type ClipFeedQuery =
+  | (ClipFeedQueryBase & { sort?: 'latest'; window?: never })
+  | (ClipFeedQueryBase & { sort: 'trending'; window: '24h' | '7d' })
 
 export interface UploadUrl {
   url: string
@@ -113,8 +116,13 @@ export const clips = {
     if (query.cursor) params.set('cursor', query.cursor)
     if (query.limit !== undefined) params.set('limit', String(query.limit))
     if (query.source) params.set('source', query.source)
-    if (query.sort) params.set('sort', query.sort)
-    if (query.window) params.set('window', query.window)
+    // Only serialize sort/window when trending — `sort=latest` is the default
+    // and the latest variant has no window. The type union enforces this shape
+    // statically; the runtime check just mirrors it for the emitted JS.
+    if (query.sort === 'trending') {
+      params.set('sort', 'trending')
+      params.set('window', query.window)
+    }
     const qs = params.toString()
     return api<ClipFeedPage>(`/clips/feed${qs ? `?${qs}` : ''}`)
   },
