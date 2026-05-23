@@ -23,6 +23,20 @@ describe('loadConfig', () => {
     expect(cfg.enabled).toBe(true);
   });
 
+  test('disabled when token is explicitly empty (shell `VAR=` syntax)', () => {
+    // Reproduces `env DISCORD_BOT_TOKEN= bun run src/index.ts` — shells encode
+    // "unset" as an empty string. The schema must accept this and the enabled
+    // check must treat it as off, otherwise the disabled-boot contract from
+    // .env.example (which ships empty placeholders) throws ZodError at startup.
+    const cfg = loadConfig({ ...baseEnv, DISCORD_BOT_TOKEN: '', DISCORD_BOT_APP_ID: '' });
+    expect(cfg.enabled).toBe(false);
+  });
+
+  test('disabled when only one of the credentials is empty', () => {
+    const cfg = loadConfig({ ...baseEnv, DISCORD_BOT_TOKEN: 't', DISCORD_BOT_APP_ID: '' });
+    expect(cfg.enabled).toBe(false);
+  });
+
   test('poll interval defaults to 30s', () => {
     const cfg = loadConfig({ ...baseEnv });
     expect(cfg.DISCORD_POLL_INTERVAL_SECONDS).toBe(30);

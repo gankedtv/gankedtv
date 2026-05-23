@@ -1,9 +1,15 @@
 import { z } from 'zod';
 
 const Schema = z.object({
-  DISCORD_BOT_TOKEN: z.string().min(1).optional(),
-  DISCORD_BOT_APP_ID: z.string().min(1).optional(),
-  DISCORD_BOT_GUILD_ID: z.string().min(1).optional(),
+  // No .min(1) on the bot-credential triple: shell envs and root .env both
+  // represent "unset" as the empty string ("DISCORD_BOT_TOKEN=" with nothing
+  // after the equals). Rejecting empty strings would force users to delete
+  // the env var entirely just to get the "disabled" boot path — that breaks
+  // the contract from .env.example which ships these as empty placeholders.
+  // The `enabled` check below uses Boolean() which already treats "" as false.
+  DISCORD_BOT_TOKEN: z.string().optional(),
+  DISCORD_BOT_APP_ID: z.string().optional(),
+  DISCORD_BOT_GUILD_ID: z.string().optional(),
   DISCORD_POLL_INTERVAL_SECONDS: z.coerce.number().int().positive().default(30),
   // Distinct from the API's DATABASE_URL because the API stores its connection
   // string in dotnet semicolon form (Host=...;Port=...;...) which porsager's
