@@ -1,3 +1,5 @@
+using NpgsqlTypes;
+
 namespace GankedTV.Api.Data.Entities;
 
 public class Clip
@@ -26,6 +28,11 @@ public class Clip
     // gates the row out of the queue once it exceeds the configured maximum.
     public DateTimeOffset? ProcessingStartedAt { get; set; }
     public int ProcessingAttempts { get; set; }
+
+    // Postgres-managed `tsvector` (GENERATED ALWAYS AS … STORED). Populated by the DB from
+    // title (weight A) + description (weight B); never set by application code. Used by
+    // SearchEndpoints for full-text matching/ranking against `plainto_tsquery('simple', q)`.
+    public NpgsqlTsVector SearchVector { get; private set; } = null!;
 
     public User User { get; set; } = null!;
     public Game? Game { get; set; }

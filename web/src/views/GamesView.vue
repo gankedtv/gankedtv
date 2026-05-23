@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { games as gamesApi, type GameListItem } from '@/api/games'
 import { clips, type ClipFeedItem } from '@/api/clips'
 import ClipCard from '@/components/ClipCard.vue'
-import GameTag from '@/components/GameTag.vue'
+import GameCoverTile from '@/components/GameCoverTile.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
 import PageHeader from '@/components/PageHeader.vue'
 
@@ -69,46 +69,21 @@ onMounted(load)
     </StatusPanel>
 
     <template v-else>
-      <!-- Box-art wall — portrait (3:4) game covers, each links to /game/:slug. Covers are
-           native portrait art, so we show them full-bleed instead of cropping to a landscape band. -->
+      <!-- Box-art wall — portrait (3:4) game covers, each links to /game/:slug.
+           Tile rendering lives in GameCoverTile so SearchView's games section
+           stays visually identical. -->
       <div
         class="mt-8 grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-4 max-[640px]:grid-cols-[repeat(auto-fill,minmax(8rem,1fr))] max-[640px]:gap-3"
       >
-        <RouterLink
-          v-for="g in allGames"
-          :key="g.id"
-          :to="{ name: 'game-detail', params: { slug: g.slug } }"
-          class="group relative block aspect-3/4 overflow-hidden rounded-md border border-border bg-surface-raised no-underline transition-[border-color,box-shadow,transform] duration-150 hover:-translate-y-0.5 hover:border-brand hover:shadow-[0_14px_40px_-14px_var(--color-brand-glow)]"
-        >
-          <!-- Cover as <img> (not background-image) so a hostile coverUrl can't break out of a
-               CSS url() string. Lazy-loaded — the catalog can grow to hundreds of tiles. -->
-          <!-- alt="" — decorative: the game name is rendered as visible text in this same link,
-               so a non-empty alt would make screen readers announce it twice. -->
-          <img
-            v-if="g.coverUrl"
-            :src="g.coverUrl"
-            alt=""
-            loading="lazy"
-            decoding="async"
-            class="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-          />
-          <!-- Bottom scrim: fade to near-solid surface so the label stays legible over any art. -->
-          <div
-            class="absolute inset-x-0 bottom-0 top-1/3 bg-[linear-gradient(180deg,transparent_0%,color-mix(in_srgb,var(--color-surface-sunken)_85%,transparent)_60%,var(--color-surface-sunken)_100%)]"
-            aria-hidden="true"
-          ></div>
-          <div class="absolute inset-x-0 bottom-0 flex flex-col gap-1.5 p-3">
-            <span class="font-heading text-lg font-bold uppercase leading-none text-text-primary">
-              {{ g.name }}
+        <GameCoverTile v-for="g in allGames" :key="g.id" :game="g">
+          <template #footer-extra>
+            <!-- Per-game clip counts are derived from the loaded feed page (rough
+                 indicator); the authoritative count is on the game-detail page. -->
+            <span class="font-mono text-[10px] tracking-[0.08em] text-text-secondary">
+              {{ clipCountByGame.get(g.slug) ?? 0 }} clips
             </span>
-            <div class="flex items-center gap-2">
-              <GameTag :tag="g.tag" tone="subtle" />
-              <span class="font-mono text-[10px] tracking-[0.08em] text-text-secondary">
-                {{ clipCountByGame.get(g.slug) ?? 0 }} clips
-              </span>
-            </div>
-          </div>
-        </RouterLink>
+          </template>
+        </GameCoverTile>
       </div>
 
       <!-- Featured clips teaser -->

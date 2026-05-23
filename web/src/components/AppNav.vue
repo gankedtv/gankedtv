@@ -1,8 +1,12 @@
 <script setup lang="ts">
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
+import { search, type SearchResponse } from '@/api/search'
 import ThemePicker from './ThemePicker.vue'
 import UserAvatar from './UserAvatar.vue'
+import GameSearchResult from './GameSearchResult.vue'
 import IconSearch from './icons/IconSearch.vue'
 import IconSun from './icons/IconSun.vue'
 import IconMoon from './icons/IconMoon.vue'
@@ -10,9 +14,150 @@ import IconPlus from './icons/IconPlus.vue'
 
 const auth = useAuthStore()
 const theme = useThemeStore()
+const router = useRouter()
 
 const navLinkActive =
   "text-text-primary after:content-[''] after:absolute after:left-3.5 after:right-3.5 after:bottom-0.5 after:h-0.5 after:bg-brand-light"
+
+// --- Search box state ---------------------------------------------------------
+//
+// Decorative input until now (issue #86). Wires to GET /search via api/search.ts.
+// Layout: combobox-pattern input with a popover listbox below, top 5 clips + top
+// 3 games. Enter navigates to the full /search results view.
+//
+// Tokens used: kept the existing `border-border bg-surface-overlay` shell from
+// the prior decorative div so the visual mass of the navbar doesn't shift.
+
+const SEARCH_DEBOUNCE_MS = 250
+const DROPDOWN_CLIP_LIMIT = 5
+const DROPDOWN_GAME_LIMIT = 3
+
+const query = ref('')
+const isFocused = ref(false)
+const results = ref<SearchResponse>({ clips: [], games: [] })
+const loading = ref(false)
+
+// The dropdown is teleported to <body> so it doesn't get clipped/stack-trapped by
+// the header's `backdrop-filter` paint context — which was rendering page content
+// over the dropdown's bottom rows and breaking hit-testing for clicks. Living in
+// the root stacking context means it just needs a high z-index to beat the header.
+const inputWrapperRef = useTemplateRef<HTMLDivElement>('inputWrapperRef')
+// Coordinates the teleported popover anchors to. Recomputed on focus + on resize
+// while the popover is visible — scroll isn't tracked because the header is sticky,
+// so the input's viewport position is stable.
+const popoverPos = ref({ top: 0, left: 0, width: 0 })
+
+function updatePopoverPos() {
+  const el = inputWrapperRef.value
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  popoverPos.value = {
+    top: rect.bottom + 4, // matches the previous mt-1 (4px) gap
+    left: rect.left,
+    width: rect.width,
+  }
+}
+
+const popoverStyle = computed(() => ({
+  top: `${popoverPos.value.top}px`,
+  left: `${popoverPos.value.left}px`,
+  width: `${popoverPos.value.width}px`,
+}))
+
+const showPopover = computed(() => isFocused.value && query.value.trim().length > 0)
+
+watch(showPopover, async (open) => {
+  if (!open) return
+  await nextTick()
+  updatePopoverPos()
+})
+
+function onResize() {
+  if (showPopover.value) updatePopoverPos()
+}
+
+onMounted(() => window.addEventListener('resize', onResize))
+onBeforeUnmount(() => window.removeEventListener('resize', onResize))
+
+let debounceTimer: ReturnType<typeof setTimeout> | undefined
+// requestSeq ensures a slow earlier response can't overwrite a fast later one.
+let requestSeq = 0
+
+async function runSearch(raw: string) {
+  const trimmed = raw.trim()
+  if (!trimmed) {
+    results.value = { clips: [], games: [] }
+    loading.value = false
+    return
+  }
+  const seq = ++requestSeq
+  loading.value = true
+  try {
+    // Backend caps games to whatever the user gets via `limit`; we ask for the
+    // larger of the two visual caps and slice in the template. One request,
+    // simplest contract.
+    const resp = await search.query(trimmed, {
+      type: 'all',
+      limit: Math.max(DROPDOWN_CLIP_LIMIT, DROPDOWN_GAME_LIMIT),
+    })
+    if (seq !== requestSeq) return
+    results.value = resp
+  } catch {
+    if (seq !== requestSeq) return
+    // Silent failure in the dropdown is intentional: typing-on-every-keystroke
+    // would otherwise turn a transient network blip into a flashing toast.
+    results.value = { clips: [], games: [] }
+  } finally {
+    if (seq === requestSeq) loading.value = false
+  }
+}
+
+watch(query, (q) => {
+  // cancelInFlight bumps requestSeq so any pending fetch resolves into the stale
+  // branch — without this, the next keystroke would only clear the debounce timer
+  // and an in-flight response could land between debounces, briefly painting stale
+  // results for the previous query.
+  cancelInFlight()
+  if (!q.trim()) {
+    results.value = { clips: [], games: [] }
+    return
+  }
+  debounceTimer = setTimeout(() => runSearch(q), SEARCH_DEBOUNCE_MS)
+})
+
+onBeforeUnmount(() => clearTimeout(debounceTimer))
+
+// Bumps requestSeq so any in-flight fetch resolves into a stale-branch and
+// can't overwrite `results` after we navigate. Also clears the debounce timer
+// so a queued search doesn't fire after the user has already moved on.
+function cancelInFlight() {
+  clearTimeout(debounceTimer)
+  requestSeq++
+  loading.value = false
+}
+
+function onSubmit() {
+  const trimmed = query.value.trim()
+  if (!trimmed) return
+  cancelInFlight()
+  isFocused.value = false
+  void router.push({ name: 'search', query: { q: trimmed } })
+}
+
+function onResultClick(to: { name: string; params: Record<string, string> }) {
+  // Clear focus so the dropdown closes; navigate after the focus state settles.
+  cancelInFlight()
+  isFocused.value = false
+  query.value = ''
+  void router.push(to)
+}
+
+// Slight blur delay so a click on a result still fires before the dropdown unmounts.
+function onBlur() {
+  setTimeout(() => {
+    isFocused.value = false
+  }, 120)
+}
 </script>
 
 <template>
@@ -54,14 +199,101 @@ const navLinkActive =
         </RouterLink>
       </nav>
 
-      <!-- Search (desktop only, decorative) -->
-      <div
-        class="hidden h-9 w-60 max-w-60 min-w-0 shrink items-center gap-2 overflow-hidden rounded-md border border-border bg-surface-overlay px-3 font-mono text-xs whitespace-nowrap text-text-muted min-[1281px]:flex"
-        aria-hidden="true"
-      >
-        <IconSearch :size="14" :stroke-width="2.2" class="shrink-0" />
-        <span class="min-w-0 flex-1 truncate">search clips, players, games</span>
-        <kbd class="shrink-0">⌘K</kbd>
+      <!-- Search (desktop only) -->
+      <div class="hidden min-w-0 shrink min-[1281px]:block">
+        <div
+          ref="inputWrapperRef"
+          class="flex h-9 w-60 max-w-60 items-center gap-2 overflow-hidden rounded-md border bg-surface-overlay px-3 font-mono text-xs whitespace-nowrap transition-colors duration-150"
+          :class="isFocused ? 'border-brand text-text-primary' : 'border-border text-text-muted'"
+        >
+          <IconSearch :size="14" :stroke-width="2.2" class="shrink-0" />
+          <input
+            v-model="query"
+            type="search"
+            role="combobox"
+            aria-controls="nav-search-results"
+            aria-autocomplete="list"
+            :aria-expanded="isFocused && query.trim().length > 0"
+            placeholder="search clips, games"
+            class="min-w-0 flex-1 border-0 bg-transparent font-mono text-xs text-text-primary placeholder:text-text-muted focus:outline-none"
+            @focus="isFocused = true"
+            @blur="onBlur"
+            @keydown.enter.prevent="onSubmit"
+            @keydown.escape="($event.target as HTMLInputElement).blur()"
+          />
+        </div>
+
+        <!-- Dropdown — teleported to body so the header's backdrop-filter context
+             can't trap or clip its rendering. Position is computed from the input
+             wrapper's bounding rect (see updatePopoverPos). Panel bg uses
+             surface-raised so the row-hover surface-overlay reads as a brighter band. -->
+        <Teleport to="body">
+          <div
+            v-if="showPopover"
+            id="nav-search-results"
+            :style="popoverStyle"
+            class="fixed z-[60] overflow-hidden rounded-md border border-border-strong bg-surface-raised shadow-[0_18px_50px_-18px_rgba(0,0,0,0.6)]"
+            @mousedown.prevent
+          >
+            <div
+              v-if="loading && results.clips.length === 0 && results.games.length === 0"
+              class="px-3.5 py-3 font-mono text-[11px] uppercase tracking-widest text-text-muted"
+            >
+              Searching…
+            </div>
+            <template v-else>
+              <div v-if="results.games.length > 0">
+                <div
+                  class="px-3.5 pt-2.5 pb-1 font-mono text-[10px] uppercase tracking-widest text-text-muted"
+                >
+                  Games
+                </div>
+                <ul role="listbox" class="m-0 list-none p-0">
+                  <GameSearchResult
+                    v-for="g in results.games.slice(0, DROPDOWN_GAME_LIMIT)"
+                    :key="g.id"
+                    :tag="g.tag"
+                    :name="g.name"
+                    @select="onResultClick({ name: 'game-detail', params: { slug: g.slug } })"
+                  />
+                </ul>
+              </div>
+              <div v-if="results.clips.length > 0">
+                <div
+                  class="px-3.5 pt-2.5 pb-1 font-mono text-[10px] uppercase tracking-widest text-text-muted"
+                  :class="{ 'border-t border-border': results.games.length > 0 }"
+                >
+                  Clips
+                </div>
+                <ul role="listbox" class="m-0 list-none p-0">
+                  <li
+                    v-for="c in results.clips.slice(0, DROPDOWN_CLIP_LIMIT)"
+                    :key="c.id"
+                    role="option"
+                    :aria-selected="false"
+                    class="flex cursor-pointer items-center gap-3 px-3.5 py-2 transition-colors duration-150 hover:bg-surface-overlay"
+                    @mousedown.prevent="onResultClick({ name: 'clip', params: { id: c.id } })"
+                  >
+                    <img
+                      :src="c.thumbnailUrl"
+                      alt=""
+                      class="h-9 w-16 shrink-0 rounded-sm object-cover"
+                    />
+                    <span class="min-w-0 flex-1 truncate font-body text-sm text-text-primary">
+                      {{ c.title }}
+                    </span>
+                  </li>
+                </ul>
+              </div>
+              <div
+                v-if="!loading && results.clips.length === 0 && results.games.length === 0"
+                class="px-3.5 py-3 font-mono text-[11px] uppercase tracking-widest text-text-muted"
+              >
+                No matches
+              </div>
+            </template>
+          </div>
+        </Teleport>
       </div>
 
       <!-- Actions -->

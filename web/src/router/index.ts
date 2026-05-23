@@ -52,6 +52,11 @@ const router = createRouter({
       component: () => import('@/views/TrendingView.vue'),
     },
     {
+      path: '/search',
+      name: 'search',
+      component: () => import('@/views/SearchView.vue'),
+    },
+    {
       path: '/clip/:id',
       name: 'clip',
       component: () => import('@/views/ClipView.vue'),
