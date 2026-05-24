@@ -11,6 +11,7 @@ using GankedTV.Api.Data;
 using GankedTV.Api.Endpoints;
 using GankedTV.Api.Middleware;
 using GankedTV.Api.Notifications;
+using GankedTV.Api.Services.Caching;
 using GankedTV.Api.Services.Clips;
 using GankedTV.Api.Services.Igdb;
 using GankedTV.Api.Services.Maintenance;
@@ -307,6 +308,17 @@ builder.Services.AddSingleton<IPasswordHasher, Argon2idPasswordHasher>();
 builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
 builder.Services.AddScoped<UserUpsertService>();
 builder.Services.AddScoped<CredentialAuthService>();
+
+// Redis-backed shared cache (hot feeds + trending) + cluster-wide rate limiting. OPTIONAL:
+// AddGankedCaching falls back to an in-process cache + per-instance limiters when REDIS_URL
+// is unset/malformed, so local dev needs no Redis. Config binding only — logic lives in the
+// Services/Caching/* services to stay inside the coverage denominator.
+var redisOptions = new RedisOptions
+{
+    Url = Environment.GetEnvironmentVariable("REDIS_URL") ?? builder.Configuration["Redis:Url"],
+};
+builder.Services.AddSingleton(redisOptions);
+builder.Services.AddGankedCaching(redisOptions);
 
 builder.Services.AddRateLimiter(opts => opts
     .AddCredentialsPolicy()

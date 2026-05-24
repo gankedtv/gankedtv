@@ -3,7 +3,9 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
 using GankedTV.Api.Problems;
+using GankedTV.Api.Services.Caching;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace GankedTV.Api.Clips;
 
@@ -25,9 +27,10 @@ public static class ClipsRateLimiting
     // A happy-path upload burns 3 (create + upload-url + complete), so the floor is ~10 clips/min
     // per user before the bucket exhausts. Pinned by ClipsRateLimitTests.MixedWrites_ShareBucket.
     //
-    // SCALING CAVEAT: this is in-process, per-instance state. Once the API runs on more than
-    // one pod the effective limit becomes 30 × pod_count per user. Phase 4 (issue #74 out-of-scope)
-    // moves to a Redis-backed limiter for cluster-wide enforcement.
+    // Enforced cluster-wide via RedisRateLimiterFactory when REDIS_URL is set — all pods share
+    // one Redis bucket per partition key, so the 30/min ceiling holds regardless of pod count.
+    // Without Redis (or during a Redis outage) it degrades to the original in-process fixed
+    // window, which is per-pod — fine for single-instance dev.
     public const int WritePermitLimit = 30;
     public static readonly TimeSpan WriteWindow = TimeSpan.FromMinutes(1);
 
@@ -55,22 +58,28 @@ public static class ClipsRateLimiting
         {
             if (ctx.Lease.TryGetMetadata(MetadataName.RetryAfter, out TimeSpan retryAfter))
             {
+                // Round up to whole seconds, floored at 1. The in-process FixedWindowRateLimiter
+                // fallback reports the *remaining* window as a sub-second TimeSpan, so a plain
+                // (int) cast would emit `Retry-After: 0` late in a window — and RFC 7231 lets
+                // clients retry immediately on 0, defeating the limiter. (The Redis path already
+                // rounds up, so this is a no-op there.)
+                var seconds = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds));
                 ctx.HttpContext.Response.Headers.RetryAfter =
-                    ((int)retryAfter.TotalSeconds).ToString(CultureInfo.InvariantCulture);
+                    seconds.ToString(CultureInfo.InvariantCulture);
             }
             return new ValueTask(ProblemResults.TooManyRequests(RateLimitedCode)
                 .ExecuteAsync(ctx.HttpContext));
         };
 
         options.AddPolicy<string>(ClipsWritePolicy, ctx =>
-            RateLimitPartition.GetFixedWindowLimiter(ResolvePartitionKey(ctx), _ => new FixedWindowRateLimiterOptions
-            {
-                AutoReplenishment = true,
-                PermitLimit = WritePermitLimit,
-                Window = WriteWindow,
-                QueueLimit = 0,
-                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-            }));
+        {
+            // RedisRateLimiterFactory returns a Redis-backed limiter (shared across pods) when
+            // REDIS_URL is configured, else the in-process fixed window. The framework caches
+            // the returned limiter per partition key, so the factory runs once per bucket.
+            var key = ResolvePartitionKey(ctx);
+            var factory = ctx.RequestServices.GetRequiredService<RedisRateLimiterFactory>();
+            return RateLimitPartition.Get(key, _ => factory.Create(ClipsWritePolicy, key, WritePermitLimit, WriteWindow));
+        });
         return options;
     }
 

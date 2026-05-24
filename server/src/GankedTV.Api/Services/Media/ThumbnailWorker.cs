@@ -37,5 +37,12 @@ public sealed class ThumbnailWorker : ClipStageWorker
         // otherwise the thumbnail is the last step and the clip is ready (stores the upload).
         var toStatus = opts.TranscodeEnabled ? ClipStatuses.Transcoding : ClipStatuses.Ready;
         await store.AdvanceThumbnailAsync(job.ClipId, job.AttemptNumber, result, toStatus, ct);
+
+        // Only the thumbnail-is-final path makes the clip feed-visible; when it hands off to the
+        // compress stage, CompressWorker invalidates once it reaches 'ready'.
+        if (toStatus == ClipStatuses.Ready)
+        {
+            await InvalidateFeedsBestEffortAsync(scope, ct);
+        }
     }
 }

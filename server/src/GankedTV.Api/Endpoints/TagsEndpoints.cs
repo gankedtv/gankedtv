@@ -1,7 +1,9 @@
 using System.Security.Claims;
+using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Contracts.Tags;
 using GankedTV.Api.Data;
 using GankedTV.Api.Problems;
+using GankedTV.Api.Services.Caching;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Services.Tags;
 using Microsoft.EntityFrameworkCore;
@@ -107,6 +109,7 @@ public static class TagsEndpoints
         GankedTvDbContext db,
         IObjectStorageService storage,
         IOptions<S3Options> s3,
+        IFeedCache feedCache,
         CancellationToken ct)
     {
         // Distinguish "no such tag" (404) from "tag exists but has no clips" (200, empty page)
@@ -124,6 +127,21 @@ public static class TagsEndpoints
             .Where(c => c.ClipTags.Any(ct => ct.TagId == resolvedTagId)
                 && c.Visibility == "public"
                 && c.Status == "ready");
+
+        // Cache only the first page per tag (no cursor). Cursor pages bypass. Same pattern as
+        // GamesEndpoints.GetClipsForGame — the entry rides the shared clips-feed tag, so any clip
+        // create/ready/delete/visibility/tag change invalidates it.
+        if (cursor is null)
+        {
+            var feedLimit = Math.Clamp(limit ?? ClipsReadEndpoints.FeedDefaultLimit, 1, ClipsReadEndpoints.FeedMaxLimit);
+            var cached = await feedCache.GetOrCreateFeedAsync(
+                $"feed:tag:{slug}:{feedLimit}",
+                c => new ValueTask<CachedFeedPage>(
+                    ClipsReadEndpoints.BuildAnonymousFeedPageAsync(baseQuery, null, limit, storage, s3, c)),
+                ct);
+            var items = await ClipsReadEndpoints.ApplyLikedByMeAsync(cached.Items, principal, db, ct);
+            return Results.Ok(new ClipFeedResponse(items, cached.NextCursor));
+        }
 
         var response = await ClipsReadEndpoints.BuildFeedPageAsync(
             baseQuery, cursor, limit, principal, db, storage, s3, ct);

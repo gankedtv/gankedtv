@@ -39,6 +39,9 @@ public sealed class CompressWorker : ClipStageWorker
         var result = await compressor.CompressAsync(job, ct);
         await store.CompleteCompressionAsync(job.ClipId, job.AttemptNumber, result.VideoKey, result.VideoCodec, ct);
 
+        // The clip is now 'ready' (feed-visible) — drop cached feed pages so it appears promptly.
+        await InvalidateFeedsBestEffortAsync(scope, ct);
+
         // Delete the original only now that the row points at the compressed master. The clip
         // is already 'ready', so a delete failure must NOT bubble up: that would log a bogus
         // "compress failed" and trigger a pointless retry on a row that's no longer claimable.
