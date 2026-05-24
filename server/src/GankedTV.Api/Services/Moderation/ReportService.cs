@@ -137,6 +137,12 @@ public sealed class ReportService(GankedTvDbContext db, TimeProvider clock) : IR
         var now = clock.GetUtcNow();
         // ExecuteUpdateAsync emits a single UPDATE so closing a hot queue of reports for
         // one bad actor doesn't materialize every row into the change tracker.
+        //
+        // The `reason == null` branch is evaluated client-side by EF at translation time —
+        // when `reason` is null the predicate collapses to TRUE and the column filter drops
+        // out of the generated SQL; when set, it becomes `AND r.reason = @reason`. So the
+        // "all reasons" and "one reason" paths each produce the minimal WHERE clause, no
+        // CASE expression or runtime branch in the DB.
         return await db.Reports
             .Where(r => r.TargetType == targetType
                 && r.TargetId == targetId

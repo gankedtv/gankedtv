@@ -35,7 +35,7 @@ public class AdminEndpointsTests : IAsyncLifetime
     private Task<(Guid userId, string token)> SeedUserAsync(string username, string role = UserRoles.User) =>
         AuthTestHelpers.SeedUserAndIssueTokenAsync(_fx, _factory!, username, u => u.Role = role);
 
-    private async Task<Guid> SeedClipAsync(Guid ownerId, string visibility = "public")
+    private async Task<Guid> SeedClipAsync(Guid ownerId, string visibility = "public", int? gameId = null)
     {
         var id = Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
@@ -44,6 +44,7 @@ public class AdminEndpointsTests : IAsyncLifetime
         {
             Id = id,
             UserId = ownerId,
+            GameId = gameId,
             Title = "target",
             VideoKey = $"clips/{ownerId}/{id}.mp4",
             ThumbnailKey = $"thumbs/{id}.jpg",
@@ -388,10 +389,12 @@ public class AdminEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task SetClipGame_NullGameId_ClearsTag()
     {
+        // Seed with a non-null GameId so the assertion actually pins the transition (a clip
+        // that was never tagged would trivially pass even if the endpoint did nothing).
         await _fx.ResetAsync();
         var (_, modToken) = await SeedUserAsync("mod", UserRoles.Moderator);
         var (ownerId, _) = await SeedUserAsync("owner");
-        var clipId = await SeedClipAsync(ownerId);
+        var clipId = await SeedClipAsync(ownerId, gameId: 2);
 
         using var client = AuthTestHelpers.CreateBearerClient(_factory!, modToken);
         var resp = await client.PostAsJsonAsync($"/admin/clips/{clipId}/game", new { gameId = (int?)null });
