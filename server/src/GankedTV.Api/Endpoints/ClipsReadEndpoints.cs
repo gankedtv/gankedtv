@@ -38,12 +38,41 @@ public static class ClipsReadEndpoints
         var group = app.MapGroup("/clips");
         group.MapGet("/feed", GetFeed);
         group.MapGet("/{id:guid}", GetDetail);
+        // Owner-scoped status probe. Lets the upload/import UI poll for status transitions
+        // (importing → processing → transcoding → ready/failed) without needing the full
+        // detail payload, which only exists once status='ready'.
+        group.MapGet("/{id:guid}/status", GetStatus).RequireAuthorization();
         // Anonymous like GetDetail, but each call does a DB lookup + S3 HEAD (+ enqueue on
         // miss), so it rides the same per-IP view rate limit to bound abuse.
         group.MapGet("/{id:guid}/stream", GetStream)
             .RequireRateLimiting(ClipsRateLimiting.ClipsViewPolicy);
         app.MapGet("/c/{code:length(6,12)}", GetByShareCode);
         return app;
+    }
+
+    // Returns the wizard's polling payload for the requesting user's own clip. Carries the
+    // clip's status, share code, and (when failed) the structured failure reason + the
+    // observed duration + the configured cap, so the front-end can show "your clip is X
+    // seconds; max is Y" instead of a generic error.
+    private static async Task<IResult> GetStatus(
+        Guid id,
+        ClaimsPrincipal principal,
+        GankedTvDbContext db,
+        IOptions<GankedTV.Api.Validation.ClipValidationOptions> validationOptions,
+        CancellationToken ct)
+    {
+        if (!TryGetUserId(principal, out var userId))
+        {
+            return ProblemResults.Unauthorized("unauthorized");
+        }
+
+        var cap = validationOptions.Value.MaxClipDurationSecs;
+        var row = await db.Clips.AsNoTracking()
+            .Where(c => c.Id == id && c.UserId == userId)
+            .Select(c => new ClipStatusResponse(c.Id, c.Status, c.ShareCode, c.FailureReason, c.DurationSecs, cap))
+            .SingleOrDefaultAsync(ct);
+
+        return row is null ? ProblemResults.NotFound("not_found") : Results.Ok(row);
     }
 
     // Just-in-time H.264 stream for devices that can't decode a clip's stored master (e.g.

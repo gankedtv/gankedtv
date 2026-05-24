@@ -47,6 +47,11 @@ The dev workflow runs `dotnet watch` on the host, which means the API process �
   - Debian/Ubuntu: `sudo apt install ffmpeg`
   - macOS: `brew install ffmpeg`
   - Override the binary location with `FFMPEG_PATH` / `FFPROBE_PATH` env vars when not on `$PATH`.
+- **`yt-dlp`** — required for the URL-import worker (issue #106) that fetches Medal.tv / YouTube clips on behalf of `POST /clips/import`. Without it, imports stay in `status='importing'` and eventually land in `status='failed'`; you can also disable the feature with `MEDIA_IMPORT_ENABLED=false` (the endpoint then 503s).
+  - Arch/CachyOS: `sudo pacman -S yt-dlp`
+  - Debian/Ubuntu: `sudo apt install yt-dlp`
+  - macOS: `brew install yt-dlp`
+  - Override the binary location with `YTDLP_PATH` when not on `$PATH`.
 - **`bun`** for the web app.
 
 [server/Dockerfile.api](server/Dockerfile.api) ships an API image with ffmpeg pre-installed — it's there for production / CI parity builds, not used by the dev compose stack.

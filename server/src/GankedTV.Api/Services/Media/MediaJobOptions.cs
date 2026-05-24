@@ -97,6 +97,44 @@ public sealed class MediaJobOptions
         new HlsRung { Height = 720, VideoKbps = 2800, MaxrateKbps = 2996, AudioKbps = 128 },
         new HlsRung { Height = 480, VideoKbps = 1400, MaxrateKbps = 1498, AudioKbps = 96 },
     ];
+
+    // --- URL import (issue #106) --------------------------------------------------------
+    // The /clips/import endpoint inserts a row with status='importing' and returns. The
+    // ImportWorker claims it, shells out to yt-dlp to fetch the source, writes the bytes to
+    // the clips bucket, and advances the row to 'processing' — at which point the existing
+    // thumbnail → compress → ready pipeline takes over with zero downstream changes. Size
+    // and duration caps come from ClipValidationOptions (same caps as direct upload).
+    public ImportOptions Import { get; set; } = new();
+}
+
+public sealed class ImportOptions
+{
+    // Pipeline-level toggle (parallels TranscodeEnabled). When false the endpoint 503s and the
+    // worker exits at startup. Lets operators disable URL ingestion entirely without removing
+    // yt-dlp from the host.
+    public bool Enabled { get; set; } = true;
+
+    // Whether this instance runs the ImportWorker BackgroundService. The fetch is I/O-bound
+    // (network + S3 PUT), so it belongs on the API host; the GPU box leaves this off.
+    public bool WorkerEnabled { get; set; } = true;
+
+    // Host-only allow-list (case-insensitive). The validator rejects any URL whose host isn't
+    // a member, both at the endpoint (fast 400) and inside the worker (defence in depth
+    // against config drift between submit and dequeue).
+    public List<string> AllowedHosts { get; set; } =
+    [
+        "youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be",
+        "medal.tv", "www.medal.tv",
+    ];
+
+    // Path to the yt-dlp binary — overridable via YTDLP_PATH for hosts where it lives outside
+    // the default PATH (e.g. a sidecar virtualenv install).
+    public string YtdlpPath { get; set; } = "yt-dlp";
+
+    // Hard ceiling on a single fetch — far larger than ProcessTimeout because a 500 MB pull
+    // over a slow extractor can legitimately take several minutes. A hung yt-dlp is killed
+    // and the row is released for retry.
+    public TimeSpan FetchTimeout { get; set; } = TimeSpan.FromMinutes(15);
 }
 
 public sealed class HlsRung

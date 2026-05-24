@@ -103,7 +103,7 @@ public sealed class ClipUploadService : IClipUploadService
             // Namespace by user id (immutable — username can change via PATCH /auth/me)
             // and by game slug so listing the bucket groups one user's clips per title.
             // No-game uploads omit the slug segment (no `null/` placeholder).
-            VideoKey = BuildVideoKey(userId, id, gameSlug),
+            VideoKey = ClipKeys.BuildVideoKey(userId, id, gameSlug),
             ShareCode = shareCode,
             Status = ClipStatuses.Draft,
             Visibility = visibility,
@@ -221,18 +221,6 @@ public sealed class ClipUploadService : IClipUploadService
 
         return ClipResult<CompleteClipResult>.Ok(new CompleteClipResult(clipId, meta.SizeBytes));
     }
-
-    internal static string BuildVideoKey(Guid userId, Guid clipId, string? gameSlug) =>
-        gameSlug is { Length: > 0 }
-            ? $"{userId}/{gameSlug}/{clipId}.mp4"
-            : $"{userId}/{clipId}.mp4";
-
-    // Mirrors BuildVideoKey so the thumbnail and video for a given clip live at parallel
-    // paths in their respective buckets — keeps manual inspection / GDPR purges simple.
-    internal static string BuildThumbnailKey(Guid userId, Guid clipId, string? gameSlug) =>
-        gameSlug is { Length: > 0 }
-            ? $"{userId}/{gameSlug}/{clipId}.jpg"
-            : $"{userId}/{clipId}.jpg";
 
     private bool IsAllowedContentType(string? contentType)
     {

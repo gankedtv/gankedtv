@@ -31,6 +31,13 @@ public enum ClipUploadError
     UnsupportedContentType,
     TooManyTags,
     InvalidTag,
+    // URL-import only (issue #106). Live in the same enum so the import endpoint can reuse
+    // the existing MapError table (visibility/game/tag errors are shared with /clips create).
+    InvalidUrl,
+    UnsupportedHost,
+    ImportDisabled,
+    SourceUnavailable,
+    FetchFailed,
 }
 
 public readonly record struct ClipResult<T>(T? Value, ClipUploadError? Error)

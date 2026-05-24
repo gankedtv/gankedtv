@@ -15,8 +15,12 @@ COPY src/ src/
 RUN dotnet publish src/GankedTV.Api/GankedTV.Api.csproj -c Release -o /app/publish --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:${DOTNET_VERSION} AS runtime
+# yt-dlp is required by the URL-import worker (issue #106) on the same instance that runs
+# ImportWorker — i.e. the API host, not the GPU box (which leaves MEDIA_IMPORT_WORKER_ENABLED
+# off). It's a single-file Python script with no runtime deps beyond python3, so apt's
+# packaged version is the cheapest path to a reproducible build.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get install -y --no-install-recommends ffmpeg yt-dlp \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 1001 gankedtv \
     && useradd --system --uid 1001 --gid gankedtv --home-dir /app --shell /usr/sbin/nologin gankedtv

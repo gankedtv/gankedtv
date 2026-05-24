@@ -45,7 +45,8 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         string visibility = "public",
         string? title = null,
         int? gameId = null,
-        string? videoCodec = null)
+        string? videoCodec = null,
+        string? importSourceUrl = null)
     {
         var id = Guid.NewGuid();
         var shareCode = ShareCodeGenerator.Next();
@@ -66,6 +67,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
             Width = 1920,
             Height = 1080,
             FileSizeBytes = 1_000_000,
+            ImportSourceUrl = importSourceUrl,
             CreatedAt = createdAt,
             UpdatedAt = createdAt,
         });
@@ -840,6 +842,51 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
             Arg.Any<string>(),
             $"{userId}/{clipId}.mp4",
             Arg.Is<TimeSpan?>(ts => ts.HasValue && ts.Value == TimeSpan.FromHours(1)));
+    }
+
+    [Fact]
+    public async Task Detail_ImportedClip_ReturnsImportSourceUrl()
+    {
+        // Imported clips carry the original URL on Clip.ImportSourceUrl. The detail endpoint
+        // must expose it so the web "Imported from {host}" attribution badge can render.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync("importer");
+        var (clipId, _) = await SeedClipAsync(
+            userId, DateTimeOffset.UtcNow,
+            importSourceUrl: "https://www.youtube.com/watch?v=abc123");
+
+        _storage.GetPresignedGetUrl(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan?>())
+            .Returns("https://minio.local/x");
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync($"/clips/{clipId}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("importSourceUrl").GetString()
+            .Should().Be("https://www.youtube.com/watch?v=abc123");
+    }
+
+    [Fact]
+    public async Task Detail_DirectUpload_ReturnsNullImportSourceUrl()
+    {
+        // Direct-upload clips never set ImportSourceUrl. The detail response field must be
+        // present (so the front-end's null-guard works) and explicitly null — JSON `null`,
+        // not an omitted property.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync("uploader");
+        var (clipId, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow);
+
+        _storage.GetPresignedGetUrl(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan?>())
+            .Returns("https://minio.local/x");
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync($"/clips/{clipId}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.TryGetProperty("importSourceUrl", out var prop).Should().BeTrue();
+        prop.ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     [Fact]

@@ -19,6 +19,12 @@ public static class ClipMappings
     public static CompleteClipResponse ToCompleteClipResponse(this CompleteClipResult result) =>
         new(result.ClipId, result.FileSizeBytes);
 
+    public static ImportClipResponse ToImportClipResponse(this ImportClipResult result) =>
+        new(result.ClipId, result.Status);
+
+    public static PreviewImportResponse ToPreviewResponse(this ImportClipPreviewResult result) =>
+        new(result.Title, result.DurationSecs, result.Width, result.Height, result.ThumbnailUrl, result.MaxClipDurationSecs);
+
     public static ClipFeedItem ToFeedItem(this Clip clip, string thumbnailUrl, bool likedByMe) =>
         new(
             clip.Id,
@@ -60,7 +66,8 @@ public static class ClipMappings
             clip.Game?.ToGameSummary(),
             clip.ToTagSummaries(),
             likedByMe,
-            clip.Visibility);
+            clip.Visibility,
+            clip.ImportSourceUrl);
 
     // Tag projection used by both ToFeedItem and ToDetail. Sorted by slug so cards
     // render deterministically regardless of clip_tags insertion order. Callers must

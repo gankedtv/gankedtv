@@ -8,6 +8,18 @@ public sealed record ClaimedMediaJob(
     short? SourceHeight,
     int AttemptNumber);
 
+// Import-stage variant — extends ClaimedMediaJob with the source URL the fetcher needs.
+// Kept as a record-with-extra-property rather than a brand-new shape so the import worker
+// can still share the base MediaStageWorker plumbing.
+public sealed record ClaimedImportJob(
+    Guid ClipId,
+    Guid UserId,
+    int? GameId,
+    string VideoKey,
+    string ImportSourceUrl,
+    string Title,
+    int AttemptNumber);
+
 public sealed record FinalizedMediaJob(
     string ThumbnailKey,
     short? DurationSecs,
@@ -55,12 +67,35 @@ public interface IClipMediaJobStore
 
     // Marks the claimed job permanently failed (status fromStatus → 'failed'). Called only
     // after attempts >= max. The expectedAttempt + fromStatus guards prevent a late failure
-    // from killing a row that another worker has since re-claimed or advanced.
-    Task MarkFailedAsync(Guid clipId, int expectedAttempt, string fromStatus, CancellationToken ct);
+    // from killing a row that another worker has since re-claimed or advanced. Optional
+    // `reason` (one of ClipFailureReasons.*) lets the status endpoint surface a specific
+    // user-facing message instead of a generic "failed".
+    Task MarkFailedAsync(Guid clipId, int expectedAttempt, string fromStatus, CancellationToken ct, string? reason = null);
 
     // Releases a lease without changing status by clearing ProcessingStartedAt, so the
     // row becomes immediately eligible for re-claim by any worker on the next tick.
     // Used after a transient failure that hasn't yet exhausted attempts. The expectedAttempt
     // + fromStatus guards prevent this worker from releasing another worker's lease.
     Task ReleaseLeaseAsync(Guid clipId, int expectedAttempt, string fromStatus, CancellationToken ct);
+
+    // Atomically claims one row in status 'importing' that isn't currently leased and hasn't
+    // exhausted its retry budget. Same SKIP LOCKED + lease bump as ClaimNextAsync but returns
+    // the import URL alongside (the worker needs it for the fetch).
+    Task<ClaimedImportJob?> ClaimNextImportAsync(
+        TimeSpan leaseDuration,
+        int maxAttempts,
+        CancellationToken ct);
+
+    // Import stage success: writes file size + (optionally) the extractor's title onto the
+    // row, clears the lease, and advances status 'importing' → 'processing'. The title is
+    // overwritten only when the current value still equals `placeholderTitle` — so users who
+    // typed a real title before submitting keep it, and the worker fills in extractor titles
+    // for the placeholder-only path.
+    Task AdvanceImportAsync(
+        Guid clipId,
+        int expectedAttempt,
+        long fileSizeBytes,
+        string? extractorTitle,
+        string placeholderTitle,
+        CancellationToken ct);
 }

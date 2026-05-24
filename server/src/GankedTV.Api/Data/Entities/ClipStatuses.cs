@@ -1,8 +1,25 @@
 namespace GankedTV.Api.Data.Entities;
 
+// Short, machine-readable codes persisted in clips.failure_reason. The web wizard maps
+// these to human copy ("clip is too long…"). Adding a code is safe; never rename.
+public static class ClipFailureReasons
+{
+    public const string SourceTooLong = "source_too_long";
+    public const string SourceTooLarge = "source_too_large";
+    public const string SourceUnavailable = "source_unavailable";
+    public const string FetchFailed = "fetch_failed";
+    public const string TranscodeFailed = "transcode_failed";
+    public const string ThumbnailFailed = "thumbnail_failed";
+}
+
 public static class ClipStatuses
 {
     public const string Draft = "draft";
+    // URL-import stage: the row exists, but the server-side fetcher (yt-dlp) hasn't pulled
+    // the source bytes into the clips bucket yet. ImportWorker advances 'importing' →
+    // 'processing' after a successful fetch, mirroring how /clips/{id}/complete flips a
+    // drafted upload from 'draft' → 'processing'.
+    public const string Importing = "importing";
     public const string Processing = "processing";
     public const string Transcoding = "transcoding";
     public const string Ready = "ready";

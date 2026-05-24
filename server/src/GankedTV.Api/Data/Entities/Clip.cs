@@ -36,6 +36,16 @@ public class Clip
     public DateTimeOffset? ProcessingStartedAt { get; set; }
     public int ProcessingAttempts { get; set; }
 
+    // Set on rows ingested via POST /clips/import — preserves the original Medal.tv /
+    // YouTube URL the fetcher pulled from. Stays populated after the clip reaches 'ready'
+    // (cheap audit trail + lets us short-circuit a re-import of the same URL).
+    public string? ImportSourceUrl { get; set; }
+
+    // Machine-readable code set by the worker when status flips to 'failed'. Lets the web
+    // wizard surface a specific message ("clip too long") instead of a generic "failed".
+    // Null while in flight or once the clip lands 'ready'. Short codes — never raw stderr.
+    public string? FailureReason { get; set; }
+
     // Postgres-managed `tsvector` (GENERATED ALWAYS AS … STORED). Populated by the DB from
     // title (weight A) + description (weight B); never set by application code. Used by
     // SearchEndpoints for full-text matching/ranking against `plainto_tsquery('simple', q)`.

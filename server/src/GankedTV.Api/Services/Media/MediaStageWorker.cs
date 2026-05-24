@@ -102,13 +102,15 @@ public abstract class MediaStageWorker<TJob> : BackgroundService
         }
     }
 
-    private async Task ProbeBinariesAsync(MediaJobOptions opts, CancellationToken ct)
+    // Virtual so stages with extra binaries (e.g. ImportWorker → yt-dlp) can extend the
+    // boot probe without duplicating the loop / lease machinery.
+    protected virtual async Task ProbeBinariesAsync(MediaJobOptions opts, CancellationToken ct)
     {
         await ProbeOneAsync(opts.FfmpegPath, ct);
         await ProbeOneAsync(opts.FfprobePath, ct);
     }
 
-    private async Task ProbeOneAsync(string executable, CancellationToken ct)
+    protected async Task ProbeOneAsync(string executable, CancellationToken ct)
     {
         try
         {
