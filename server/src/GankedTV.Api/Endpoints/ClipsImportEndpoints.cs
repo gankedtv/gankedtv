@@ -80,7 +80,10 @@ public static class ClipsImportEndpoints
         ClipUploadError.InvalidUrl => ProblemResults.BadRequest("invalid_url"),
         ClipUploadError.UnsupportedHost => ProblemResults.BadRequest("unsupported_host"),
         ClipUploadError.SourceUnavailable => ProblemResults.BadRequest("source_unavailable"),
-        ClipUploadError.FetchFailed => ProblemResults.BadRequest("fetch_failed"),
+        // 503, not 400: fetch_failed is "yt-dlp / network / extractor infra broke", which is
+        // a server-side problem the caller can retry — not a malformed request. Pairs with
+        // the same code surfaced by the worker on retry exhaustion.
+        ClipUploadError.FetchFailed => ProblemResults.ServiceUnavailable("fetch_failed"),
         ClipUploadError.ImportDisabled => ProblemResults.ServiceUnavailable("import_disabled"),
         ClipUploadError.InvalidTitle => ProblemResults.BadRequest("invalid_title"),
         ClipUploadError.InvalidDescription => ProblemResults.BadRequest("invalid_description"),

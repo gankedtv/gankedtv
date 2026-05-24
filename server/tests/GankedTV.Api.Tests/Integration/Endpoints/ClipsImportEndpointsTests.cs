@@ -230,20 +230,30 @@ public class ClipsImportEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task Preview_UnsupportedHost_Returns400_WithoutInvokingSource()
     {
-        // URL allow-list runs BEFORE the import source is touched. Verifies callers can't
-        // burn yt-dlp invocations on disallowed hosts by spamming /preview.
+        // URL allow-list runs BEFORE the import source is touched. Register a substitute
+        // IClipImportSource and assert ProbeAsync was never called — otherwise a future
+        // refactor that accidentally reorders the validator and the probe would let
+        // attackers burn yt-dlp invocations on disallowed hosts by spamming /preview.
         await _fx.ResetAsync();
         var (_, token) = await SeedUserAndIssueTokenAsync();
-        using var client = ClientWithBearer(token);
+
+        var source = Substitute.For<GankedTV.Api.Services.Media.Import.IClipImportSource>();
+        await using var factory = new AuthApiFactory(
+            _fx.ConnectionString,
+            _storage,
+            configureServices: s =>
+            {
+                s.RemoveAll<GankedTV.Api.Services.Media.Import.IClipImportSource>();
+                s.AddSingleton(source);
+            });
+        using var client = AuthTestHelpers.CreateBearerClient(factory, token);
 
         var resp = await client.PostAsJsonAsync("/clips/import/preview", new { url = "https://vimeo.com/x" });
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         body.GetProperty("code").GetString().Should().Be("unsupported_host");
-        // ProbeAsync was never wired in this factory (the default uses YtDlpImportSource),
-        // and the host check short-circuits before yt-dlp would be invoked — so the test
-        // doesn't need a custom source registration to assert correctness of the gate.
+        await source.DidNotReceive().ProbeAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

@@ -472,16 +472,16 @@ function fmtSeconds(s: number): string {
 // user-facing copy and the wizard stays on step 1.
 async function runImportPreview(): Promise<boolean> {
   if (!isImportUrlValid.value) return false
+  // Capture the URL the user clicked Continue on. If they edit the field mid-await, the
+  // response that lands belongs to a stale request — applying its title/poster/error to
+  // the new URL would be wrong. Compare and bail if it changed.
+  const targetUrl = importUrl.value.trim()
   previewLoading.value = true
   previewError.value = null
   previewData.value = null
   try {
-    const preview = await clips.previewImport(importUrl.value.trim())
-    // Surfaced in the browser console so users (and developers) can see exactly what the
-    // server's metadata probe returned. If durationSecs is null here, the extractor didn't
-    // report it — in that case the worker's authoritative ffprobe check (post-download)
-    // is the only enforcement, so a clip over the cap will still fail there.
-    console.log('[import] preview response', preview)
+    const preview = await clips.previewImport(targetUrl)
+    if (importUrl.value.trim() !== targetUrl) return false
     previewData.value = preview
     if (preview.durationSecs != null && preview.durationSecs > preview.maxClipDurationSecs) {
       previewError.value =
@@ -510,6 +510,10 @@ async function runImportPreview(): Promise<boolean> {
     }
     return true
   } catch (err) {
+    // Same stale-request guard as the success path — a 4xx that lands after the user has
+    // already typed a different URL belongs to the previous probe and must not overwrite
+    // the new URL's state.
+    if (importUrl.value.trim() !== targetUrl) return false
     if (err instanceof ApiError) {
       const code = (err.body as { code?: string } | null)?.code
       previewError.value =
@@ -527,7 +531,9 @@ async function runImportPreview(): Promise<boolean> {
     }
     return false
   } finally {
-    previewLoading.value = false
+    // Only clear loading when we're still the current request. Otherwise a stale response
+    // landing AFTER a newer request started would reset the spinner mid-flight.
+    if (importUrl.value.trim() === targetUrl) previewLoading.value = false
   }
 }
 

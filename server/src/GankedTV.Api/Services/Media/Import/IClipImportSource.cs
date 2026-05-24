@@ -41,10 +41,17 @@ public sealed class ImportSourceRejectedException : Exception
 public interface IClipImportSource
 {
     // Pulls the source video at `url` into `destinationFilePath`. Returns metadata parsed
-    // from the extractor's JSON dump. Throws ImportFetchException on any non-recoverable
-    // error (exit code, timeout, file missing, size/duration cap exceeded). The base
-    // worker turns the throw into a release-for-retry or permanent fail per its retry
-    // budget — same contract as the thumbnail/compress stages.
+    // from the extractor's JSON dump.
+    //
+    // Exception contract — implementations MUST classify failures so the worker can
+    // distinguish retry-worthy from terminal:
+    //   * <see cref="ImportFetchException"/>: transient / retryable — network errors,
+    //     timeouts, non-zero exit, "exited 0 but no file produced". The MediaStageWorker
+    //     loop releases the lease and another attempt picks the clip back up.
+    //   * <see cref="ImportSourceRejectedException"/>: non-retryable — duration/size cap
+    //     exceeded, or the extractor reports the source as private/geo-blocked/removed.
+    //     Retrying won't change the outcome; the worker marks the clip 'failed' with the
+    //     exception's structured Reason code on the first attempt.
     Task<ImportedMedia> FetchAsync(
         string url,
         string destinationFilePath,

@@ -128,9 +128,13 @@ public abstract class MediaStageWorker<TJob> : BackgroundService
         }
         catch (Exception ex)
         {
+            // Generic message: this probe runs for every binary a stage depends on (ffmpeg,
+            // ffprobe, yt-dlp, …). Stage-specific remediation lives in the per-stage config
+            // (CLAUDE.md "Host requirements" lists the *_PATH envs) — here we just point at
+            // the missing executable + which stage needs it.
             _logger.LogWarning(ex,
-                "Could not invoke '{Executable}'. The {Stage} worker is enabled but jobs will fail until this is fixed. "
-                + "Install ffmpeg or set MediaJobs:FfmpegPath / MediaJobs:FfprobePath (env: FFMPEG_PATH / FFPROBE_PATH).",
+                "Could not invoke '{Executable}'. The {Stage} worker is enabled but jobs will fail "
+                + "until this binary is installed or the configured path is corrected.",
                 executable, StageName);
         }
     }

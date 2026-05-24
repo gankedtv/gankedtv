@@ -54,7 +54,7 @@ The dev workflow runs `dotnet watch` on the host, which means the API process �
   - Override the binary location with `YTDLP_PATH` when not on `$PATH`.
 - **`bun`** for the web app.
 
-[server/Dockerfile.api](server/Dockerfile.api) ships an API image with ffmpeg pre-installed — it's there for production / CI parity builds, not used by the dev compose stack.
+[server/Dockerfile.api](server/Dockerfile.api) ships an API image with both **ffmpeg** and **yt-dlp** pre-installed (`YTDLP_PATH` overrides the binary location) — it's there for production / CI parity builds, not used by the dev compose stack.
 
 ### Media pipeline: compress-in-place + just-in-time playback (issue #102)
 
