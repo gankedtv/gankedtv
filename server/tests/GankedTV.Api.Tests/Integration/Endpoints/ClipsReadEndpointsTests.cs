@@ -1483,4 +1483,41 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         var secondResp = await client.GetAsync("/clips/featured");
         secondResp.StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
+
+    [Fact]
+    public async Task Featured_LikedByMe_ReflectsCallingUserDespiteCachedPick()
+    {
+        // The cache stores only the Guid, so likedByMe is recomputed every request.
+        // Same pick, two callers, different likedByMe.
+        await _fx.ResetAsync();
+        var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
+        var (likerId, likerToken) = await SeedUserAndIssueTokenAsync("liker");
+        var now = DateTimeOffset.UtcNow;
+        var todayStart = now.Date;
+        var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
+
+        var (clipId, _) = await SeedClipAsync(authorId, now.AddHours(-1), title: "liked");
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.Add(new ClipView { ClipId = clipId, CreatedAt = engagementAt });
+            db.Likes.Add(new Like { UserId = likerId, ClipId = clipId, CreatedAt = engagementAt });
+            await db.SaveChangesAsync();
+        }
+
+        // First call: anonymous → likedByMe should be false
+        using var anonClient = _factory!.CreateClient();
+        var anonResp = await anonClient.GetAsync("/clips/featured");
+        anonResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var anonBody = await anonResp.Content.ReadFromJsonAsync<JsonElement>();
+        anonBody.GetProperty("likedByMe").GetBoolean().Should().BeFalse();
+
+        // Second call: liker (same cached pick) → likedByMe should be true
+        using var likerClient = ClientWithBearer(likerToken);
+        var likerResp = await likerClient.GetAsync("/clips/featured");
+        likerResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var likerBody = await likerResp.Content.ReadFromJsonAsync<JsonElement>();
+        likerBody.GetProperty("id").GetGuid().Should().Be(clipId, "cached pick is shared across callers");
+        likerBody.GetProperty("likedByMe").GetBoolean().Should().BeTrue();
+    }
 }
