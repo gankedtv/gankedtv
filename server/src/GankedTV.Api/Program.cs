@@ -385,6 +385,7 @@ app.MapUsersEndpoints();
 app.MapFollowsEndpoints();
 app.MapNotificationsEndpoints();
 app.MapGamesEndpoints();
+app.MapLeaderboardsEndpoints();
 app.MapTagsEndpoints();
 app.MapSearchEndpoints();
 
