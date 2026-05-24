@@ -1405,4 +1405,45 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         body.GetProperty("id").GetGuid().Should().Be(expectedWinner);
     }
+
+    [Fact]
+    public async Task Featured_CachedWithinSameDay_ReturnsSameClipEvenAfterBetterContender()
+    {
+        // First call computes the winner and caches under featured:{yyyy-MM-dd}.
+        // A new clip inserted afterwards with much higher engagement should NOT
+        // become the featured pick on a second call within the same day.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var todayStart = now.Date;
+        var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
+
+        var (original, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "original");
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.Add(new ClipView { ClipId = original, CreatedAt = engagementAt });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var firstResp = await client.GetAsync("/clips/featured");
+        firstResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var firstBody = await firstResp.Content.ReadFromJsonAsync<JsonElement>();
+        firstBody.GetProperty("id").GetGuid().Should().Be(original);
+
+        // Insert a clip with overwhelming engagement.
+        var (challenger, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "challenger");
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.AddRange(
+                Enumerable.Range(0, 1000).Select(_ => new ClipView { ClipId = challenger, CreatedAt = engagementAt }));
+            await db.SaveChangesAsync();
+        }
+
+        var secondResp = await client.GetAsync("/clips/featured");
+        secondResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var secondBody = await secondResp.Content.ReadFromJsonAsync<JsonElement>();
+        secondBody.GetProperty("id").GetGuid().Should().Be(original, "the cache pins the pick within the UTC day");
+    }
 }
