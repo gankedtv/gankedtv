@@ -13,8 +13,8 @@ Phase 4 (Scale & Grow) stretch item: a full-screen, vertical-swipe "reels" feed 
 | Deep-link | `/feed/reels/:id` — dedicated route; `router.replace` per active clip; no history entries per snap |
 | Entry point | Floating action button on HomeView (bottom-right, position:fixed) |
 | View tracking | 3-second accumulator, identical to `ClipView.vue` (`POST /clips/{id}/view`) |
-| Overlay actions | Like, mute, author handle (→ `/user/:username`), open-in-detail (→ `/clip/:id`) |
-| Out of scope (v1) | Keyboard nav, swipe gestures, comments, share button, game-tag chip, preload tuning knob, virtualization |
+| Overlay actions | Like, mute, comments (opens bottom sheet), author handle (→ `/user/:username`). Open-in-detail (→ `/clip/:id`) is reachable from the sheet header as a "View full clip →" link. |
+| Out of scope (v1) | Keyboard nav, swipe gestures, share button, game-tag chip, preload tuning knob, virtualization. (Comments: bottom-sheet `CommentsSection` is in v1; truly inline comments — no sheet — are deferred.) |
 
 ## Files
 
@@ -23,7 +23,9 @@ Phase 4 (Scale & Grow) stretch item: a full-screen, vertical-swipe "reels" feed 
 - `web/src/components/reels/ReelClip.vue` — single snap slot (thumbnail/video + overlay + view tracking)
 - `web/src/components/reels/ReelsFab.vue` — FAB on HomeView
 - `web/src/components/icons/IconVolumeMute.vue` — speaker-with-slash variant for the mute overlay
-- `web/src/components/icons/IconExternalLink.vue` — open-in-detail affordance
+- `web/src/components/icons/IconMessageCircle.vue` — comments button glyph in the right-rail
+- `web/src/components/icons/IconX.vue` — close affordance on the comments bottom sheet
+- `web/src/components/icons/IconReels.vue` — FAB glyph on HomeView
 
 **Edited**
 - `web/src/router/index.ts` — two routes (`reels`, `reel-clip`) pointing at `ReelsView.vue`
@@ -123,8 +125,8 @@ Children register/unregister via a callback ref: `:ref="(el) => registerClip(cli
 Right-rail column (TikTok convention) inside the portrait frame:
 - Like: heart icon + count (formatNum). Optimistic flip, rolls back on error (lift `toggleLike` from ClipView). Anonymous tap → `router.push({ name: 'login', query: { redirect: '/feed/reels/' + clip.id } })`.
 - Mute: speaker icon (or speaker-slash when muted). Emits `toggle-mute` → parent flips `globalMuted`.
+- Comments: message-circle icon. Opens a `<Teleport>`-ed bottom sheet hosting `CommentsSection.vue`. Sheet header has a "View full clip →" link (open-in-detail) and an X close button. Dismiss on backdrop click or `Esc` (window-level listener).
 - Author: avatar + `@username` → `/user/:username`.
-- Open-in-detail: external-link icon → `/clip/:id`.
 
 Plus a top-left game/title strip (subtle) and a bottom safe-area for OS chrome on mobile.
 
@@ -142,7 +144,9 @@ Plus a top-left game/title strip (subtle) and a bottom safe-area for OS chrome o
 
 ## FAB (`ReelsFab.vue`)
 
-Position: `fixed`, `bottom: max(safe-area-inset-bottom, 24px)`, `right: 24px`, `z-50`. Circular, brand-filled, IconPlay glyph (or a custom "stacked" reels glyph; defer to design later). `RouterLink to="/feed/reels"`. No scroll-hiding behavior in v1.
+Position: `fixed`, `bottom: calc(env(safe-area-inset-bottom, 0px) + 24px)`, `right: 24px`, `z-50`. Circular, brand-filled, `IconReels` glyph. `RouterLink to="/feed/reels"`. No scroll-hiding behavior in v1.
+
+Note on bottom positioning: we use `calc(safe-area + 24px)` rather than `max(safe-area, 24px)` so the FAB always sits 24px *above* the home indicator on devices with one, instead of resting directly on it.
 
 Mounted once in `HomeView.vue` at the root template level, outside the `<main>` flow (so it doesn't shift page padding). Visible to authenticated and anonymous users alike.
 
@@ -162,7 +166,7 @@ We mock `clips.feed`, `clips.getDetail`, `clips.recordView`, `clips.like`, `clip
 - Virtualization (DOM stays full for v1 — cursor pages of 20 mean ~5 pages = 100 nodes max, which is fine).
 - Tab UX (public-only).
 - Keyboard nav (J/K, arrows).
-- Inline comments (open-in-detail bridges this).
+- Inline comments rendered directly in the overlay (deferred — the bottom-sheet `CommentsSection` covers the use case for v1).
 - Share button (open-in-detail then share from there).
 - Preload-window tuning knob (hardcoded ±1).
 - Trending sort in reels.

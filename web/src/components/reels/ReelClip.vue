@@ -426,7 +426,7 @@ function closeComments() {
           v-if="commentsOpen"
           class="fixed inset-0 z-50 bg-black/55"
           @click.self="closeComments"
-          @keydown.esc="closeComments"
+          @keydown.esc.window="closeComments"
         >
           <Transition
             enter-active-class="transition-transform duration-200 ease-out"
