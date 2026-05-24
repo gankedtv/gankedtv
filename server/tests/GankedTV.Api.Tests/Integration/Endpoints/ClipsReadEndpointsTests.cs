@@ -1271,4 +1271,32 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         body.GetProperty("id").GetGuid().Should().Be(ready);
     }
+
+    [Fact]
+    public async Task Featured_NoEngagementToday_Returns204()
+    {
+        // Clips exist but none have likes/views since 00:00 UTC today. Server returns
+        // 204; the web client is responsible for falling back to "newest clip" so the
+        // hero never goes blank.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var (clipId, _) = await SeedClipAsync(userId, now.AddDays(-10), title: "old");
+
+        await using (var db = _fx.CreateContext())
+        {
+            // Engagement strictly before today's UTC start. Construct as a UTC
+            // DateTimeOffset explicitly so Npgsql will bind it to `timestamp with
+            // time zone` (DateTime.Date returns Kind=Unspecified, which on a non-UTC
+            // host produces a non-zero offset DateTimeOffset on implicit conversion).
+            var utcMidnight = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
+            db.ClipViews.Add(new ClipView { ClipId = clipId, CreatedAt = utcMidnight.AddSeconds(-1) });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/featured");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
 }
