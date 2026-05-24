@@ -99,8 +99,13 @@ public static class LeaderboardsEndpoints
             .ToList();
 
         var topIds = ranked.Select(r => r.ClipId).ToList();
+        // Re-apply the public+ready predicate as a belt-and-braces guard: a clip can flip
+        // to private/unlisted or out of `ready` between the candidate fetch above and this
+        // hydrate. Trending tolerates that race ("self-healing on the next request"), but
+        // a leaderboard surfacing an unlisted clip in a "Most Liked This Week" board is
+        // more user-visible/confusing, and the extra WHERE clause is free.
         var hydrated = await db.Clips.AsNoTracking()
-            .Where(c => topIds.Contains(c.Id))
+            .Where(c => topIds.Contains(c.Id) && c.Visibility == "public" && c.Status == "ready")
             .IncludeFeedRelations()
             .ToListAsync(ct);
         var byId = hydrated.ToDictionary(c => c.Id);
@@ -111,8 +116,8 @@ public static class LeaderboardsEndpoints
 
         // Walk ranked + feedItems in lockstep: feedItems was built from ranked-ordered
         // clips, so index i corresponds to the same clip in both lists. A clip dropped
-        // between candidate fetch and hydrate (rare but possible mid-delete) just falls
-        // out of both lists together.
+        // between candidate fetch and hydrate (mid-delete, or filtered out by the
+        // re-applied visibility/status guard above) just falls out of both lists together.
         var entries = new List<LeaderboardEntry>(feedItems.Count);
         var rank = 0;
         var feedIndex = 0;
