@@ -7,8 +7,8 @@ const props = withDefaults(
   defineProps<{
     slug: string
     window?: LeaderboardWindow
-    // Mini view shows the top-3 only — fits a sidebar/embed nicely. The full /leaderboards
-    // page uses the row component directly with its own limit.
+    // Embedded mini-board on GameView. The full /leaderboards page uses the row
+    // component directly with its own limit.
     limit?: number
   }>(),
   { window: 'week', limit: 5 },

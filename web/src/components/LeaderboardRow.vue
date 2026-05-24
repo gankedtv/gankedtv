@@ -9,17 +9,9 @@ import IconChevronRight from '@/components/icons/IconChevronRight.vue'
 
 const props = defineProps<{
   entry: LeaderboardEntry
-  // When true, surfaces the entry's own `windowLikes` (counted within the window)
-  // instead of the clip's all-time `likeCount`. The standalone /leaderboards page
-  // wants the windowed number — that's what makes the ranking meaningful — while
-  // a global "popular this week" embed can opt back into the all-time count.
-  showWindowLikes?: boolean
 }>()
 
 const isTopThree = computed(() => props.entry.rank <= 3)
-const displayedLikes = computed(() =>
-  props.showWindowLikes === false ? props.entry.clip.likeCount : props.entry.windowLikes,
-)
 </script>
 
 <template>
@@ -53,7 +45,7 @@ const displayedLikes = computed(() =>
     <div
       class="flex flex-col gap-1 text-right font-mono text-[11px] whitespace-nowrap text-text-secondary"
     >
-      <span>♥ {{ formatNum(displayedLikes) }}</span>
+      <span>♥ {{ formatNum(entry.windowLikes) }}</span>
       <span class="text-text-muted">{{ formatNum(entry.clip.viewCount) }} plays</span>
     </div>
 

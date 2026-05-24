@@ -157,6 +157,15 @@ const timeBtnInactive = `${timeBtnBase} bg-transparent text-text-secondary curso
               >#{{ entry.rank }}</span
             >
 
+            <div class="aspect-[3/4] w-10 shrink-0 overflow-hidden rounded-[3px] bg-surface-sunken">
+              <img
+                v-if="entry.coverUrl"
+                :src="entry.coverUrl"
+                alt=""
+                class="block h-full w-full object-cover"
+              />
+            </div>
+
             <div class="min-w-0 flex-1 flex flex-col gap-px">
               <span class="font-body text-[13px] font-medium text-text-primary truncate">
                 {{ entry.game.name }}

@@ -118,15 +118,13 @@ public static class LeaderboardsEndpoints
         // clips, so index i corresponds to the same clip in both lists. A clip dropped
         // between candidate fetch and hydrate (mid-delete, or filtered out by the
         // re-applied visibility/status guard above) just falls out of both lists together.
+        // `entries.Count` doubles as both the next rank (1-based after +1) and the next
+        // feedItems index, since each addition increments them together.
         var entries = new List<LeaderboardEntry>(feedItems.Count);
-        var rank = 0;
-        var feedIndex = 0;
         foreach (var r in ranked)
         {
             if (!byId.ContainsKey(r.ClipId)) continue;
-            rank++;
-            entries.Add(feedItems[feedIndex].ToEntry(rank, r.WindowLikes));
-            feedIndex++;
+            entries.Add(feedItems[entries.Count].ToEntry(entries.Count + 1, r.WindowLikes));
         }
         return entries;
     }

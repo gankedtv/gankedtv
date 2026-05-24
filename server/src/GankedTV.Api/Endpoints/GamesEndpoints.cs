@@ -136,9 +136,11 @@ public static class GamesEndpoints
 
         // Resolve game first so "no such game" stays a 404 even when there are no likes in
         // the window — otherwise an unknown slug would silently return an empty board.
+        // Inline the GameSummary columns so EF projects rather than materializing the full
+        // entity (extension-method calls inside Select can't be translated).
         var game = await db.Games.AsNoTracking()
             .Where(g => g.Slug == slug)
-            .Select(g => new { g.Id, Summary = g.ToGameSummary() })
+            .Select(g => new { g.Id, Summary = new GameSummary(g.Id, g.Name, g.Slug, g.Tag) })
             .FirstOrDefaultAsync(ct);
 
         if (game is null)
