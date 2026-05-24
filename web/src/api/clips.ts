@@ -135,6 +135,15 @@ export const clips = {
     return api<ClipFeedPage>(`/clips/feed${qs ? `?${qs}` : ''}`)
   },
 
+  // GET /clips/featured — daily "Clip of the Day" pick. Returns null on 204
+  // (no eligible clip today). HomeView falls back to the newest clip from
+  // /clips/feed when this is null so the hero never goes blank.
+  featured(): Promise<ClipFeedItem | null> {
+    // The api() client returns undefined for 204 (see client.ts); normalize to
+    // null so callers can use the explicit `null` sentinel.
+    return api<ClipFeedItem | undefined>('/clips/featured').then((r) => r ?? null)
+  },
+
   // POST /clips/{id}/view — anonymous-friendly view ping. Server returns 204 on success,
   // dedup hit, and not-found (silent no-op). Fire-and-forget from the player after ~3s
   // of playback; failures don't bubble.

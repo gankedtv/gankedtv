@@ -1346,4 +1346,361 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         body.Should().NotContain("<script>alert");
         body.Should().Contain("&lt;script&gt;");
     }
+
+    // ---- GET /clips/featured ----
+
+    [Fact]
+    public async Task Featured_EmptyDb_Returns204()
+    {
+        await _fx.ResetAsync();
+        using var client = _factory!.CreateClient();
+
+        var resp = await client.GetAsync("/clips/featured");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
+    public async Task Featured_PicksHighestScoringClip()
+    {
+        // Three clips of identical age — engagement alone decides. The clip with the
+        // most views in today's UTC window wins.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var todayStart = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
+        // Use a timestamp inside today's UTC day AND within trending's typical recency
+        // (5 min ago). If `now` is within 5 minutes of UTC midnight, snap to todayStart
+        // so the test isn't time-of-day fragile.
+        var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
+
+        var (hot, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "hot");
+        var (mid, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "mid");
+        var (cool, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "cool");
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.AddRange(
+                Enumerable.Range(0, 20).Select(_ => new ClipView { ClipId = hot, CreatedAt = engagementAt }));
+            db.ClipViews.AddRange(
+                Enumerable.Range(0, 5).Select(_ => new ClipView { ClipId = mid, CreatedAt = engagementAt }));
+            db.ClipViews.AddRange(
+                Enumerable.Range(0, 1).Select(_ => new ClipView { ClipId = cool, CreatedAt = engagementAt }));
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/featured");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("id").GetGuid().Should().Be(hot);
+        body.GetProperty("title").GetString().Should().Be("hot");
+    }
+
+    [Fact]
+    public async Task Featured_SkipsNonPublicClips()
+    {
+        // An unlisted clip with overwhelming engagement is never the featured pick.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var todayStart = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
+        var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
+
+        var (unlisted, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "unlisted", visibility: "unlisted");
+        var (publicClip, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "public");
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.AddRange(
+                Enumerable.Range(0, 50).Select(_ => new ClipView { ClipId = unlisted, CreatedAt = engagementAt }));
+            db.ClipViews.Add(new ClipView { ClipId = publicClip, CreatedAt = engagementAt });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/featured");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("id").GetGuid().Should().Be(publicClip);
+    }
+
+    [Fact]
+    public async Task Featured_SkipsNonReadyClips()
+    {
+        // A processing/failed clip with overwhelming engagement is never the featured pick.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var todayStart = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
+        var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
+
+        var (processing, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "processing", status: "processing");
+        var (ready, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "ready");
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.AddRange(
+                Enumerable.Range(0, 50).Select(_ => new ClipView { ClipId = processing, CreatedAt = engagementAt }));
+            db.ClipViews.Add(new ClipView { ClipId = ready, CreatedAt = engagementAt });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/featured");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("id").GetGuid().Should().Be(ready);
+    }
+
+    [Fact]
+    public async Task Featured_NoEngagementToday_Returns204()
+    {
+        // Clips exist but none have likes/views since 00:00 UTC today. Server returns
+        // 204; the web client is responsible for falling back to "newest clip" so the
+        // hero never goes blank.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var (clipId, _) = await SeedClipAsync(userId, now.AddDays(-10), title: "old");
+
+        await using (var db = _fx.CreateContext())
+        {
+            // Engagement strictly before today's UTC start. Construct as a UTC
+            // DateTimeOffset explicitly so Npgsql will bind it to `timestamp with
+            // time zone` (DateTime.Date returns Kind=Unspecified, which on a non-UTC
+            // host produces a non-zero offset DateTimeOffset on implicit conversion).
+            var utcMidnight = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
+            db.ClipViews.Add(new ClipView { ClipId = clipId, CreatedAt = utcMidnight.AddSeconds(-1) });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/featured");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
+    public async Task Featured_TieBreak_HigherLikeCountWins()
+    {
+        // Two clips with identical engagement-in-window (identical score) and identical
+        // ages. Total LikeCount (denormalized, includes pre-today likes) is the next
+        // tie-breaker per the issue contract.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var (likerA, _) = await SeedUserAndIssueTokenAsync("liker-a");
+        var (likerB, _) = await SeedUserAndIssueTokenAsync("liker-b");
+        var now = DateTimeOffset.UtcNow;
+        var todayStart = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
+        var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
+        var sharedCreatedAt = now.AddHours(-1);
+
+        var (lowLikes, _) = await SeedClipAsync(userId, sharedCreatedAt, title: "low-likes");
+        var (highLikes, _) = await SeedClipAsync(userId, sharedCreatedAt, title: "high-likes");
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.Add(new ClipView { ClipId = lowLikes, CreatedAt = engagementAt });
+            db.ClipViews.Add(new ClipView { ClipId = highLikes, CreatedAt = engagementAt });
+
+            // Bump the denormalized LikeCount on highLikes only. Pre-today like rows
+            // exist on this clip but don't affect today's score; they DO affect
+            // LikeCount, which is the tie-breaker.
+            var highClip = await db.Clips.FirstAsync(c => c.Id == highLikes);
+            highClip.LikeCount = 5;
+            var lowClip = await db.Clips.FirstAsync(c => c.Id == lowLikes);
+            lowClip.LikeCount = 1;
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/featured");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("id").GetGuid().Should().Be(highLikes);
+    }
+
+    [Fact]
+    public async Task Featured_TieBreak_NewerCreatedAtWinsWhenLikesEqual()
+    {
+        // Identical score, identical LikeCount → newer CreatedAt wins.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var todayStart = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
+        var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
+
+        // Both clips have CreatedAt within the same hour so the (hours+2)^1.5 denominator
+        // is identical to 4+ decimal places — scores match. (Different CreatedAt values
+        // produce slightly different scores in principle; pick values close enough that
+        // the score difference is < double precision noise. 1 second apart at ~1h age:
+        // score delta is ~1e-10, well below tie-break sensitivity.)
+        var (older, _) = await SeedClipAsync(userId, now.AddHours(-1).AddSeconds(-1), title: "older");
+        var (newer, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "newer");
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.Add(new ClipView { ClipId = older, CreatedAt = engagementAt });
+            db.ClipViews.Add(new ClipView { ClipId = newer, CreatedAt = engagementAt });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/featured");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("id").GetGuid().Should().Be(newer);
+    }
+
+    [Fact]
+    public async Task Featured_TieBreak_HigherIdWinsWhenAllElseEqual()
+    {
+        // Identical score, LikeCount, AND CreatedAt → higher Guid wins. Final
+        // deterministic tie-breaker so the daily pick is always reproducible.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var todayStart = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
+        var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
+        var sharedCreatedAt = now.AddHours(-1);
+
+        var (a, _) = await SeedClipAsync(userId, sharedCreatedAt, title: "a");
+        var (b, _) = await SeedClipAsync(userId, sharedCreatedAt, title: "b");
+        var expectedWinner = a.CompareTo(b) > 0 ? a : b;
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.Add(new ClipView { ClipId = a, CreatedAt = engagementAt });
+            db.ClipViews.Add(new ClipView { ClipId = b, CreatedAt = engagementAt });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/featured");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("id").GetGuid().Should().Be(expectedWinner);
+    }
+
+    [Fact]
+    public async Task Featured_CachedWithinSameDay_ReturnsSameClipEvenAfterBetterContender()
+    {
+        // First call computes the winner and caches under featured:{yyyy-MM-dd}.
+        // A new clip inserted afterwards with much higher engagement should NOT
+        // become the featured pick on a second call within the same day.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var todayStart = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
+        var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
+
+        var (original, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "original");
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.Add(new ClipView { ClipId = original, CreatedAt = engagementAt });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var firstResp = await client.GetAsync("/clips/featured");
+        firstResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var firstBody = await firstResp.Content.ReadFromJsonAsync<JsonElement>();
+        firstBody.GetProperty("id").GetGuid().Should().Be(original);
+
+        // Insert a clip with overwhelming engagement.
+        var (challenger, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "challenger");
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.AddRange(
+                Enumerable.Range(0, 1000).Select(_ => new ClipView { ClipId = challenger, CreatedAt = engagementAt }));
+            await db.SaveChangesAsync();
+        }
+
+        var secondResp = await client.GetAsync("/clips/featured");
+        secondResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var secondBody = await secondResp.Content.ReadFromJsonAsync<JsonElement>();
+        secondBody.GetProperty("id").GetGuid().Should().Be(original, "the cache pins the pick within the UTC day");
+    }
+
+    [Fact]
+    public async Task Featured_StaleCachedClip_EvictsAndReturns204()
+    {
+        // First call caches the winner. Then the clip is hard-deleted. The next call
+        // should detect the stale cache (rehydration finds nothing), evict the key,
+        // and return 204. (A follow-up call would then re-pick from current state.)
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var todayStart = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
+        var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
+
+        var (clipId, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "doomed");
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.Add(new ClipView { ClipId = clipId, CreatedAt = engagementAt });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var firstResp = await client.GetAsync("/clips/featured");
+        firstResp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Hard-delete the cached winner. Delete ClipViews + Clip in order to satisfy FK.
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.RemoveRange(db.ClipViews.Where(v => v.ClipId == clipId));
+            await db.SaveChangesAsync();
+            db.Clips.Remove(await db.Clips.FirstAsync(c => c.Id == clipId));
+            await db.SaveChangesAsync();
+        }
+
+        var secondResp = await client.GetAsync("/clips/featured");
+        secondResp.StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
+    public async Task Featured_LikedByMe_ReflectsCallingUserDespiteCachedPick()
+    {
+        // The cache stores only the Guid, so likedByMe is recomputed every request.
+        // Same pick, two callers, different likedByMe.
+        await _fx.ResetAsync();
+        var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
+        var (likerId, likerToken) = await SeedUserAndIssueTokenAsync("liker");
+        var now = DateTimeOffset.UtcNow;
+        var todayStart = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
+        var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
+
+        var (clipId, _) = await SeedClipAsync(authorId, now.AddHours(-1), title: "liked");
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.Add(new ClipView { ClipId = clipId, CreatedAt = engagementAt });
+            db.Likes.Add(new Like { UserId = likerId, ClipId = clipId, CreatedAt = engagementAt });
+            await db.SaveChangesAsync();
+        }
+
+        // First call: anonymous → likedByMe should be false
+        using var anonClient = _factory!.CreateClient();
+        var anonResp = await anonClient.GetAsync("/clips/featured");
+        anonResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var anonBody = await anonResp.Content.ReadFromJsonAsync<JsonElement>();
+        anonBody.GetProperty("likedByMe").GetBoolean().Should().BeFalse();
+
+        // Second call: liker (same cached pick) → likedByMe should be true
+        using var likerClient = ClientWithBearer(likerToken);
+        var likerResp = await likerClient.GetAsync("/clips/featured");
+        likerResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var likerBody = await likerResp.Content.ReadFromJsonAsync<JsonElement>();
+        likerBody.GetProperty("id").GetGuid().Should().Be(clipId, "cached pick is shared across callers");
+        likerBody.GetProperty("likedByMe").GetBoolean().Should().BeTrue();
+    }
 }
