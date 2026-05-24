@@ -104,6 +104,50 @@ describe('api/clips', () => {
     })
   })
 
+  describe('featured()', () => {
+    it('GETs /clips/featured and returns the parsed item on 200', async () => {
+      const featured = {
+        id: 'clip-1',
+        title: 'Hot Pick',
+        description: null,
+        thumbnailUrl: 'https://example.test/thumb.jpg',
+        durationSecs: 30,
+        viewCount: 100,
+        likeCount: 10,
+        createdAt: '2026-05-24T00:00:00Z',
+        author: { id: 'u-1', username: 'alice', avatarUrl: null },
+        game: null,
+        tags: [],
+        likedByMe: false,
+        shareCode: 'abc123',
+      }
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse(featured)),
+      )
+
+      const result = await clips.featured()
+
+      expect(result).toEqual(featured)
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+      expect(url).toBe(`${BASE_URL}/clips/featured`)
+    })
+
+    it('returns null when the server responds with 204 No Content', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () =>
+            new Response(null, { status: 204, headers: { 'content-length': '0' } }),
+        ),
+      )
+
+      const result = await clips.featured()
+
+      expect(result).toBeNull()
+    })
+  })
+
   describe('recordView()', () => {
     it('POSTs to /clips/{id}/view with no body', async () => {
       vi.stubGlobal(
