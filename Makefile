@@ -24,7 +24,7 @@ export
 COMPOSE_ENV_FILE := $(if $(wildcard .env.worktree.local),--env-file .env.worktree.local,)
 COMPOSE := docker-compose -f docker-compose.dev.yml $(COMPOSE_ENV_FILE)
 
-.PHONY: setup server-install wait-postgres wait-minio up down clean logs server server-build server-test migrate migrate-add seed import-games web web-install web-build web-test web-lint dev-all hooks ci ci-server ci-web ports
+.PHONY: setup server-install wait-postgres wait-minio up down clean logs server server-build server-test migrate migrate-add seed import-games web web-install web-build web-test web-lint discord discord-install discord-test discord-lint dev-all hooks ci ci-server ci-web ci-discord ports
 
 # One-command dev bootstrap. DESTRUCTIVE: wipes the local Postgres + MinIO volumes
 # so every run lands you on a known-good state from migrations + seed. Steps:
@@ -159,13 +159,30 @@ dev-all: up
 	ASPNETCORE_URLS=$(ASPNETCORE_URLS) dotnet watch --project server/src/GankedTV.Api & \
 	cd web && bun dev --port $(VITE_PORT)
 
+# Discord bot. Run on the host (talks to host Postgres + host API) so iteration
+# is fast and you don't have to rebuild the container on every code change. The
+# compose service exists for parity / staging deploys, gated behind the
+# `discord` profile so `make up` doesn't pull the Bun image by default.
+discord-install:
+	cd discord && bun install
+
+discord:
+	cd discord && bun run dev
+
+discord-test:
+	cd discord && bun test
+
+discord-lint:
+	cd discord && bun run lint
+
 # CI mirror: runs the same checks the GitHub workflows run, in verify-only mode.
-# Mirrors `.github/workflows/server.yml` and `.github/workflows/web.yml` step-for-step
+# Mirrors `.github/workflows/server.yml`, `web.yml`, and `discord.yml` step-for-step
 # so contributors can reproduce CI locally with one command.
 #
 # Pre-push hook is intentionally NOT wired through here — it scopes to changed dirs
-# (server/ vs web/), `make ci` runs the full matrix. Use sub-targets for partial runs.
-ci: ci-server ci-web
+# (server/ vs web/ vs discord/), `make ci` runs the full matrix. Use sub-targets
+# for partial runs.
+ci: ci-server ci-web ci-discord
 
 ci-server:
 	cd server && dotnet format --verify-no-changes
@@ -178,6 +195,13 @@ ci-web:
 	cd web && bun run lint:check
 	cd web && bun run build
 	cd web && bun run test:coverage
+
+ci-discord:
+	cd discord && bun install --frozen-lockfile
+	cd discord && bun run format:check
+	cd discord && bun run lint:check
+	cd discord && bun run type-check
+	cd discord && bun run test:coverage
 
 # Git hooks — point git at the tracked .githooks/ directory.
 hooks:
