@@ -62,6 +62,16 @@ const router = createRouter({
       component: () => import('@/views/ClipView.vue'),
     },
     {
+      path: '/feed/reels',
+      name: 'reels',
+      component: () => import('@/views/ReelsView.vue'),
+    },
+    {
+      path: '/feed/reels/:id',
+      name: 'reel-clip',
+      component: () => import('@/views/ReelsView.vue'),
+    },
+    {
       path: '/c/:code',
       name: 'clip-share',
       component: () => import('@/views/ClipView.vue'),
