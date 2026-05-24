@@ -287,6 +287,13 @@ onBeforeUnmount(() => {
         >
           Trending
         </RouterLink>
+        <RouterLink
+          to="/leaderboards"
+          class="relative rounded-sm px-3.5 py-2 text-[13px] font-medium uppercase tracking-[0.04em] text-text-secondary no-underline transition-colors duration-150 hover:bg-surface-overlay hover:text-text-primary max-tablet:hidden"
+          :active-class="navLinkActive"
+        >
+          Leaderboards
+        </RouterLink>
       </nav>
 
       <!-- Search (desktop only) -->

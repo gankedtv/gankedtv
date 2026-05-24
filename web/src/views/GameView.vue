@@ -7,6 +7,7 @@ import { ApiError } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import ClipCard from '@/components/ClipCard.vue'
 import GameTag from '@/components/GameTag.vue'
+import GameLeaderboardBlock from '@/components/GameLeaderboardBlock.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
 
@@ -248,6 +249,10 @@ watch(slug, () => {
           </PageHeader>
         </div>
       </section>
+
+      <!-- Top this week — block self-hides when the game has no likes in the window
+           so empty games don't carry a phantom leaderboard header. -->
+      <GameLeaderboardBlock :slug="game.slug" window="week" :limit="5" />
 
       <!-- Clip grid -->
       <div v-if="items.length" class="feed-grid">

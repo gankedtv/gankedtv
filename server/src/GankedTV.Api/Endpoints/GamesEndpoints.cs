@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Contracts.Games;
+using GankedTV.Api.Contracts.Leaderboards;
 using GankedTV.Api.Data;
 using GankedTV.Api.Problems;
 using GankedTV.Api.Services.Caching;
@@ -21,6 +22,7 @@ public static class GamesEndpoints
         group.MapGet("/", GetGames);
         group.MapGet("/{slug}", GetBySlug);
         group.MapGet("/{slug}/clips", GetClipsForGame);
+        group.MapGet("/{slug}/leaderboard", GetLeaderboardForGame);
         return app;
     }
 
@@ -159,5 +161,43 @@ public static class GamesEndpoints
         var response = await ClipsReadEndpoints.BuildFeedPageAsync(
             baseQuery, cursor, limit, principal, db, storage, s3, ct);
         return Results.Ok(response);
+    }
+
+    private static async Task<IResult> GetLeaderboardForGame(
+        string slug,
+        string? window,
+        int? limit,
+        ClaimsPrincipal principal,
+        GankedTvDbContext db,
+        IObjectStorageService storage,
+        IOptions<S3Options> s3,
+        CancellationToken ct)
+    {
+        var windowKey = window ?? LeaderboardWindow.Default;
+        if (!LeaderboardWindow.TryParse(windowKey, out var since))
+        {
+            return ProblemResults.BadRequest("invalid_window");
+        }
+
+        // Resolve game first so "no such game" stays a 404 even when there are no likes in
+        // the window — otherwise an unknown slug would silently return an empty board.
+        // Inline the GameSummary columns so EF projects rather than materializing the full
+        // entity (extension-method calls inside Select can't be translated).
+        var game = await db.Games.AsNoTracking()
+            .Where(g => g.Slug == slug)
+            .Select(g => new { g.Id, Summary = new GameSummary(g.Id, g.Name, g.Slug, g.Tag) })
+            .FirstOrDefaultAsync(ct);
+
+        if (game is null)
+            return ProblemResults.NotFound("not_found");
+
+        var cap = Math.Clamp(limit ?? LeaderboardsEndpoints.DefaultClipsLimit, 1, LeaderboardsEndpoints.MaxClipsLimit);
+        var baseQuery = db.Clips.AsNoTracking()
+            .Where(c => c.GameId == game.Id && c.Visibility == "public" && c.Status == "ready");
+
+        var entries = await LeaderboardsEndpoints.BuildEntriesAsync(
+            baseQuery, since, cap, principal, db, storage, s3, ct);
+
+        return Results.Ok(new GameLeaderboardResponse(windowKey, game.Summary, entries));
     }
 }

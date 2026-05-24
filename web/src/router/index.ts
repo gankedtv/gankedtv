@@ -52,6 +52,11 @@ const router = createRouter({
       component: () => import('@/views/TrendingView.vue'),
     },
     {
+      path: '/leaderboards',
+      name: 'leaderboards',
+      component: () => import('@/views/LeaderboardsView.vue'),
+    },
+    {
       path: '/search',
       name: 'search',
       component: () => import('@/views/SearchView.vue'),
