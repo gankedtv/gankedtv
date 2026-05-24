@@ -22,12 +22,29 @@ const FUNCTION_THRESHOLD = 0.85;
 // Files included in test discovery but excluded from the coverage denominator —
 // kept in sync with bunfig.toml's coveragePathIgnorePatterns. Listed by prefix
 // match against the SF: path emitted by bun's lcov reporter.
+//
+// What's NOT here on purpose:
+//   - src/api.ts — pure URL building + fetch + JSON parse, mockable via the
+//     injected fetchImpl param (tests/api.test.ts). Reviewer M1 from PR #111.
+//   - src/poller.ts, commands/**, filters.ts, lib/**, loadEnv.ts, config.ts,
+//     posting.ts, replies.ts — all testable with pure-function or fake-injection
+//     patterns; live in the denominator.
+//
+// What IS excluded (deliberately):
+//   - src/index.ts — boot wiring (Discord client login, signal handlers,
+//     compose-time env reads). Covered indirectly when the bot boots.
+//   - src/db.ts — postgres-js queries that need a real Postgres to validate
+//     SQL syntax. Bun lacks a first-class testcontainers story; the smoke
+//     script that previously covered this was deleted (one-time validation,
+//     wasn't maintained). Real fix is a Postgres service container in CI
+//     plus integration tests in the regular suite — separate piece of work.
+//   - src/migrator.ts — same reason as db.ts; SQL execution against a real DB.
+//   - src/migrations/ — SQL files, not TS.
 const EXCLUDE_PREFIXES = [
   'src/index.ts',
   'src/migrations/',
   'src/migrator.ts',
   'src/db.ts',
-  'src/api.ts',
   'tests/',
 ];
 

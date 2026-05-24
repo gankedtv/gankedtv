@@ -113,25 +113,46 @@ export async function pollOnce({
 
   const subs = await db.listAllSubscriptions();
   let posts = 0;
+  // Index of the first clip (in oldest-first order) that had ANY post failure.
+  // We keep processing remaining clips so we don't artificially halt newer
+  // work, but the cursor only advances to the predecessor of this clip — so
+  // the failed (clip, sub) pair is re-evaluated next round. Without this, a
+  // transient channel failure would silently drop the clip forever (cursor
+  // moved past it, post log has no row, isPosted-pre-check finds nothing,
+  // but the feed no longer returns it because lastSeen >= its createdAt).
+  let firstFailureIdx = -1;
 
-  for (const clip of fresh) {
+  for (let i = 0; i < fresh.length; i++) {
+    const clip = fresh[i]!;
     const matched = matchingSubscriptions(subs, clip);
     for (const sub of matched) {
-      const ok = await postOne(clip, sub, db, fanout, log);
-      if (ok) posts++;
+      const outcome = await postOne(clip, sub, db, fanout, log);
+      if (outcome === 'sent') posts++;
+      else if (outcome === 'failed' && firstFailureIdx === -1) firstFailureIdx = i;
     }
   }
 
-  // Cursor moves to the newest clip we processed. If any post failed for a
-  // (clip, sub) pair, the failure was logged but doesn't block the cursor —
-  // the post-log dedupe handles retry next round when isPosted() returns
-  // false because we never recorded.
-  const newest = fresh[fresh.length - 1];
-  if (newest) await db.setState(STATE_KEY, newest.createdAt);
+  // Cursor advancement:
+  //   - all clips fully done → advance to the newest clip's createdAt
+  //   - partial failure → advance only to the clip BEFORE the failure boundary
+  //     (so the failed clip is re-fetched next round; isPosted dedupes the subs
+  //     that already succeeded; only the failed sub retries)
+  //   - first clip in the round failed → don't advance at all
+  const advanceIdx = firstFailureIdx === -1 ? fresh.length - 1 : firstFailureIdx - 1;
+  if (advanceIdx >= 0) {
+    await db.setState(STATE_KEY, fresh[advanceIdx]!.createdAt);
+  }
 
-  log.info('poll round complete', { fetched, newClips: fresh.length, posts });
+  log.info('poll round complete', {
+    fetched,
+    newClips: fresh.length,
+    posts,
+    haltedAtIdx: firstFailureIdx === -1 ? null : firstFailureIdx,
+  });
   return { fetched, newClips: fresh.length, posts };
 }
+
+type PostOutcome = 'sent' | 'skipped' | 'failed';
 
 async function postOne(
   clip: ClipFeedItem,
@@ -139,24 +160,24 @@ async function postOne(
   db: Db,
   fanout: Fanout,
   log: PollerLogger,
-): Promise<boolean> {
+): Promise<PostOutcome> {
   // Read-only pre-check skips clips we've already posted to this channel
   // (idempotence on restart with an un-advanced cursor, or at the tied-
   // timestamp cursor boundary when `>=` re-includes processed clips).
-  if (await db.isPosted(sub.channelId, clip.id)) return false;
+  if (await db.isPosted(sub.channelId, clip.id)) return 'skipped';
 
   let posted: boolean;
   try {
     posted = await fanout(clip, { channelId: sub.channelId, pingRoleId: sub.pingRoleId });
   } catch (err) {
     log.error('post threw', { channelId: sub.channelId, clipId: clip.id, err: String(err) });
-    return false;
+    return 'failed';
   }
   if (!posted) {
     // fanout swallowed the failure (e.g. channel unavailable) and returned
     // false — same retry semantics as a throw: skip recording, next round
     // tries again.
-    return false;
+    return 'failed';
   }
 
   // Record AFTER a successful send. If a crash happens between send and
@@ -172,7 +193,7 @@ async function postOne(
       err: String(err),
     });
   }
-  return true;
+  return 'sent';
 }
 
 // Long-lived loop. Resolves only when stop() is called (or the abort signal

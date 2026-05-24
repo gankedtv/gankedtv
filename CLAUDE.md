@@ -113,6 +113,8 @@ make ci-discord               # Full CI mirror (format/lint/type-check/coverage)
 
 The bot lives in [discord/](discord/) as a sibling of `server/` and `web/`. It's **off by default** — without `DISCORD_BOT_TOKEN` + `DISCORD_BOT_APP_ID` it logs `disabled; exiting` on boot and no-ops (same contract as `IgdbSyncHostedService`). The compose service is gated behind the `discord` profile (`docker compose --profile discord up`) so `make up` doesn't build the Bun image by default. Stack is **TypeScript + Bun + discord.js**, with `postgres` for direct DB access. The bot owns its own tables (`discord_subscriptions`, `discord_post_log`, `discord_bot_state`) — EF Core does NOT model them, so they live in the shared Postgres without colliding with API migrations. The bot applies its own SQL migrations from `discord/src/migrations/*.sql` on boot.
 
+**Postgres ≥ 15 required.** The initial migration uses `UNIQUE NULLS NOT DISTINCT` (added in PG15) to keep `(channel_id, NULL, NULL)` firehose subscriptions from duplicating. The dev compose stack runs PG18 so this is invisible locally; operators on shared older clusters need to upgrade or fork the migration.
+
 Detection is **polling** (`GET /clips/feed` every `DISCORD_POLL_INTERVAL_SECONDS`, default 30s). Each round tracks a high-water-mark by `created_at` and uses a per-`(channel_id, clip_id)` post-log row as the dedupe guard, so a crash mid-fanout doesn't double-post on restart. A future upgrade to push-based delivery (webhook on `clip.ready`) would only swap the poller's entry-point — fanout, filters, dedupe, and command surface stay identical.
 
 Slash commands ship in two namespaces:

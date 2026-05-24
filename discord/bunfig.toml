@@ -6,5 +6,4 @@ coveragePathIgnorePatterns = [
   "src/migrations/",
   "src/migrator.ts",
   "src/db.ts",
-  "src/api.ts",
 ]

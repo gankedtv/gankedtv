@@ -37,23 +37,36 @@ export type SearchResponse = {
   games: GameListItem[];
 };
 
+// Optional per-call timeout in ms. Defaults to FETCH_TIMEOUT_MS (10s) which is
+// fine for poll-loop calls but too long for slash-command autocomplete, which
+// Discord deadlines at 3 seconds — overshoot and `interaction.respond` throws
+// UnknownInteraction. Autocomplete handlers pass a tighter value (~2.5s).
+export type RequestOptions = { timeoutMs?: number };
+
 export type ApiClient = {
-  getFeed(opts?: {
-    cursor?: string;
-    limit?: number;
-    sort?: 'latest' | 'trending';
-    window?: '24h' | '7d';
-  }): Promise<ClipFeedResponse>;
-  getClipsForGame(slug: string, opts?: { limit?: number }): Promise<ClipFeedResponse>;
+  getFeed(
+    opts?: {
+      cursor?: string;
+      limit?: number;
+      sort?: 'latest' | 'trending';
+      window?: '24h' | '7d';
+    } & RequestOptions,
+  ): Promise<ClipFeedResponse>;
+  getClipsForGame(
+    slug: string,
+    opts?: { limit?: number } & RequestOptions,
+  ): Promise<ClipFeedResponse>;
   search(
     q: string,
-    opts?: { type?: 'all' | 'clips' | 'games'; limit?: number },
+    opts?: { type?: 'all' | 'clips' | 'games'; limit?: number } & RequestOptions,
   ): Promise<SearchResponse>;
-  listGames(opts?: {
-    search?: string;
-    limit?: number;
-    hasClips?: boolean;
-  }): Promise<GameListItem[]>;
+  listGames(
+    opts?: {
+      search?: string;
+      limit?: number;
+      hasClips?: boolean;
+    } & RequestOptions,
+  ): Promise<GameListItem[]>;
 };
 
 // Caps any single API call. The bot's HTTP queries are small reads from the
@@ -63,8 +76,12 @@ export type ApiClient = {
 // separate from the DB statement_timeout in db.ts.
 const FETCH_TIMEOUT_MS = 10_000;
 
-export function createApi(baseUrl: string): ApiClient {
-  const get = async <T>(path: string, query?: Record<string, string | number | undefined>) => {
+export function createApi(baseUrl: string, fetchImpl: typeof fetch = fetch): ApiClient {
+  const get = async <T>(
+    path: string,
+    query?: Record<string, string | number | undefined>,
+    opts?: RequestOptions,
+  ) => {
     const url = new URL(path, ensureTrailingSlash(baseUrl));
     if (query) {
       for (const [k, v] of Object.entries(query)) {
@@ -72,17 +89,16 @@ export function createApi(baseUrl: string): ApiClient {
         url.searchParams.set(k, String(v));
       }
     }
+    const timeoutMs = opts?.timeoutMs ?? FETCH_TIMEOUT_MS;
     let res: Response;
     try {
-      res = await fetch(url, {
+      res = await fetchImpl(url, {
         headers: { accept: 'application/json' },
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (err) {
       if (err instanceof Error && err.name === 'TimeoutError') {
-        throw new Error(`GET ${url.pathname} timed out after ${FETCH_TIMEOUT_MS}ms`, {
-          cause: err,
-        });
+        throw new Error(`GET ${url.pathname} timed out after ${timeoutMs}ms`, { cause: err });
       }
       throw err;
     }
@@ -94,28 +110,33 @@ export function createApi(baseUrl: string): ApiClient {
 
   return {
     getFeed: (opts = {}) =>
-      get<ClipFeedResponse>('clips/feed', {
-        cursor: opts.cursor,
-        limit: opts.limit,
-        sort: opts.sort,
-        window: opts.window,
-      }),
+      get<ClipFeedResponse>(
+        'clips/feed',
+        { cursor: opts.cursor, limit: opts.limit, sort: opts.sort, window: opts.window },
+        { timeoutMs: opts.timeoutMs },
+      ),
     getClipsForGame: (slug, opts = {}) =>
-      get<ClipFeedResponse>(`games/${encodeURIComponent(slug)}/clips`, {
-        limit: opts.limit,
-      }),
+      get<ClipFeedResponse>(
+        `games/${encodeURIComponent(slug)}/clips`,
+        { limit: opts.limit },
+        { timeoutMs: opts.timeoutMs },
+      ),
     search: (q, opts = {}) =>
-      get<SearchResponse>('search', {
-        q,
-        type: opts.type ?? 'clips',
-        limit: opts.limit,
-      }),
+      get<SearchResponse>(
+        'search',
+        { q, type: opts.type ?? 'clips', limit: opts.limit },
+        { timeoutMs: opts.timeoutMs },
+      ),
     listGames: (opts = {}) =>
-      get<GameListItem[]>('games', {
-        search: opts.search,
-        limit: opts.limit,
-        hasClips: opts.hasClips ? 'true' : undefined,
-      }),
+      get<GameListItem[]>(
+        'games',
+        {
+          search: opts.search,
+          limit: opts.limit,
+          hasClips: opts.hasClips ? 'true' : undefined,
+        },
+        { timeoutMs: opts.timeoutMs },
+      ),
   };
 }
 

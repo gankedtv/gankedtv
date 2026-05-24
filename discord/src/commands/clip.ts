@@ -117,12 +117,20 @@ async function autocomplete(
   if (focused.name !== 'game') return;
   const query = focused.value?.toString() ?? '';
   // Autocomplete sends slugs (matching what /games/{slug}/clips expects) so the
-  // returned value can flow straight back into the API call.
-  const games = await ctx.api.listGames({
-    search: query.length > 0 ? query : undefined,
-    limit: 25,
-    hasClips: true,
-  });
+  // returned value can flow straight back into the API call. Tighter timeout
+  // than the default 10s because Discord deadlines autocomplete at 3s — if the
+  // games API is slow we'd rather respond with [] than throw UnknownInteraction.
+  let games: { name: string; slug: string }[];
+  try {
+    games = await ctx.api.listGames({
+      search: query.length > 0 ? query : undefined,
+      limit: 25,
+      hasClips: true,
+      timeoutMs: 2500,
+    });
+  } catch {
+    games = [];
+  }
   await interaction.respond(games.slice(0, 25).map((g) => ({ name: g.name, value: g.slug })));
 }
 

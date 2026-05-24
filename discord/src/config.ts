@@ -29,6 +29,24 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   // Without it, boot logs "disabled" and exits — the compose service still starts,
   // it just no-ops. App ID is required alongside the token because slash command
   // registration uses the REST API and addresses commands by application id.
-  const enabled = Boolean(parsed.DISCORD_BOT_TOKEN && parsed.DISCORD_BOT_APP_ID);
+  const hasToken = Boolean(parsed.DISCORD_BOT_TOKEN);
+  const hasAppId = Boolean(parsed.DISCORD_BOT_APP_ID);
+
+  // Operator misconfiguration guard: if one half of the credential pair is set
+  // but the other isn't, the bot would silently disable with no visible signal
+  // that something was forgotten. Log a single warn line so it appears in any
+  // structured-log search before the disable message.
+  if (hasToken !== hasAppId) {
+    console.warn(
+      JSON.stringify({
+        level: 'warn',
+        msg: 'Discord bot config is partial — both DISCORD_BOT_TOKEN and DISCORD_BOT_APP_ID are required; bot will stay disabled',
+        hasToken,
+        hasAppId,
+      }),
+    );
+  }
+
+  const enabled = hasToken && hasAppId;
   return { ...parsed, enabled };
 }

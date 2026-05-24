@@ -306,11 +306,19 @@ async function autocomplete(
   // than nothing. Non-empty: case-insensitive substring search via the games API.
   // Returns slug values (matching /clip autocomplete) so resolveGameId can take
   // an exact-slug shortcut over the noisier name search.
-  const games = await ctx.api.listGames({
-    search: query.length > 0 ? query : undefined,
-    limit: 25,
-    hasClips: true,
-  });
+  // Tight 2.5s timeout: Discord deadlines autocomplete at 3s — a slow games
+  // API would otherwise leave the interaction token expired (UnknownInteraction).
+  let games: { name: string; slug: string }[];
+  try {
+    games = await ctx.api.listGames({
+      search: query.length > 0 ? query : undefined,
+      limit: 25,
+      hasClips: true,
+      timeoutMs: 2500,
+    });
+  } catch {
+    games = [];
+  }
   await interaction.respond(games.slice(0, 25).map((g) => ({ name: g.name, value: g.slug })));
 }
 

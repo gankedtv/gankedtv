@@ -23,32 +23,41 @@ export async function runMigrations(sql: Sql): Promise<string[]> {
     )
   `);
 
-  // pg_advisory_lock serialises concurrent boots so two instances can't race
-  // through the apply loop (which would otherwise double-run a migration's
-  // DDL before either gets to INSERT the filename). Session-scoped, so a
-  // crashed instance auto-releases. Lock is held only for the apply loop,
-  // not for the lifetime of the connection.
-  await sql`SELECT pg_advisory_lock(${MIGRATION_LOCK_ID})`;
+  // Reserve a single backend connection for the entire lock → apply → unlock
+  // sequence. PG advisory locks are session-scoped (per-backend); without
+  // sql.reserve() the three queries can land on different pooled connections
+  // and the lock provides zero protection: two concurrent boots would each
+  // acquire the lock on their own connection (PG sees them as separate
+  // sessions, both get the lock), race through the apply loop, and the
+  // INSERT INTO discord_migrations PK collision would crash one of them.
+  const conn = await sql.reserve();
   try {
-    const all = (await readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith('.sql')).sort();
+    await conn`SELECT pg_advisory_lock(${MIGRATION_LOCK_ID})`;
+    try {
+      const all = (await readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith('.sql')).sort();
 
-    const applied = await sql<{ filename: string }[]>`
-      SELECT filename FROM discord_migrations
-    `;
-    const appliedSet = new Set(applied.map((r) => r.filename));
+      const applied = await conn<{ filename: string }[]>`
+        SELECT filename FROM discord_migrations
+      `;
+      const appliedSet = new Set(applied.map((r) => r.filename));
 
-    const ranNow: string[] = [];
-    for (const filename of all) {
-      if (appliedSet.has(filename)) continue;
-      const body = await readFile(join(MIGRATIONS_DIR, filename), 'utf8');
-      await sql.begin(async (tx) => {
-        await tx.unsafe(body);
-        await tx`INSERT INTO discord_migrations (filename) VALUES (${filename})`;
-      });
-      ranNow.push(filename);
+      const ranNow: string[] = [];
+      for (const filename of all) {
+        if (appliedSet.has(filename)) continue;
+        const body = await readFile(join(MIGRATIONS_DIR, filename), 'utf8');
+        // begin() on the reserved connection inherits the same session, so the
+        // advisory lock held above also covers the DDL transaction.
+        await conn.begin(async (tx) => {
+          await tx.unsafe(body);
+          await tx`INSERT INTO discord_migrations (filename) VALUES (${filename})`;
+        });
+        ranNow.push(filename);
+      }
+      return ranNow;
+    } finally {
+      await conn`SELECT pg_advisory_unlock(${MIGRATION_LOCK_ID})`;
     }
-    return ranNow;
   } finally {
-    await sql`SELECT pg_advisory_unlock(${MIGRATION_LOCK_ID})`;
+    conn.release();
   }
 }

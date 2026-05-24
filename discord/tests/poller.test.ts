@@ -177,33 +177,28 @@ describe('pollOnce', () => {
     expect(db._state.state.get('last_clip_created_at')).toBe(c2.createdAt);
   });
 
-  test('fanout returning false does NOT record the post (retry next round)', async () => {
+  test('fanout returning false does NOT record the post AND halts cursor (M2 from review)', async () => {
+    // The only fresh clip failed → cursor must stay at its predecessor (c1)
+    // so the next round re-evaluates c2. Without the halt, the cursor would
+    // jump past c2 and the failed post would be lost forever.
     const c1 = clip();
     const c2 = clip();
     const sub = subscription({ channelId: 'C1' });
-    const db = stubDb({
-      cursor: c1.createdAt,
-      subs: [sub],
-    });
+    const db = stubDb({ cursor: c1.createdAt, subs: [sub] });
     const fanout: Fanout = async () => false;
 
     const res = await pollOnce({ db, api: stubApi([c2]), fanout, log: silentLog });
     expect(res.posts).toBe(0);
     expect(db._state.postLog.has(`C1:${c2.id}`)).toBe(false);
-    // Cursor still advances — failed sends are retried via isPosted next round
-    // (which will still return false because we never recorded).
-    expect(db._state.state.get('last_clip_created_at')).toBe(c2.createdAt);
+    expect(db._state.state.get('last_clip_created_at')).toBe(c1.createdAt);
   });
 
-  test('fanout throwing is caught, logged, and treated as a failed send', async () => {
+  test('fanout throwing halts the cursor too (same retry semantics as returning false)', async () => {
     const c1 = clip();
     const c2 = clip();
     const sub = subscription({ channelId: 'C1' });
     const errLog = mock(() => {});
-    const db = stubDb({
-      cursor: c1.createdAt,
-      subs: [sub],
-    });
+    const db = stubDb({ cursor: c1.createdAt, subs: [sub] });
     const fanout: Fanout = async () => {
       throw new Error('discord 502');
     };
@@ -217,6 +212,42 @@ describe('pollOnce', () => {
     expect(res.posts).toBe(0);
     expect(errLog).toHaveBeenCalled();
     expect(db._state.postLog.has(`C1:${c2.id}`)).toBe(false);
+    expect(db._state.state.get('last_clip_created_at')).toBe(c1.createdAt);
+  });
+
+  test('partial-failure mid-round: cursor halts at predecessor, later clips still processed', async () => {
+    // Three clips: c1 (succeeds), c2 (fails), c3 (succeeds).
+    // Cursor must halt at c1 so c2 re-runs next round; c3 is still processed
+    // and recorded so we don't artificially drop newer work.
+    const cursor = new Date(0).toISOString();
+    const c1 = clip();
+    const c2 = clip();
+    const c3 = clip();
+    const sub = subscription({ channelId: 'C1' });
+    const db = stubDb({ cursor, subs: [sub] });
+
+    const fanout: Fanout = async (clip) => clip.id !== c2.id;
+
+    const res = await pollOnce({ db, api: stubApi([c3, c2, c1]), fanout, log: silentLog });
+
+    expect(res.posts).toBe(2); // c1 + c3 sent
+    expect(db._state.postLog.has(`C1:${c1.id}`)).toBe(true);
+    expect(db._state.postLog.has(`C1:${c2.id}`)).toBe(false);
+    expect(db._state.postLog.has(`C1:${c3.id}`)).toBe(true);
+    // Cursor moves to c1 only — c2 will be re-evaluated next round; c3's
+    // isPosted check then short-circuits because we recorded it above.
+    expect(db._state.state.get('last_clip_created_at')).toBe(c1.createdAt);
+  });
+
+  test('failure on the very first clip: cursor does NOT advance at all', async () => {
+    const cursor = new Date(0).toISOString();
+    const c1 = clip();
+    const sub = subscription({ channelId: 'C1' });
+    const db = stubDb({ cursor, subs: [sub] });
+    const fanout: Fanout = async () => false;
+
+    await pollOnce({ db, api: stubApi([c1]), fanout, log: silentLog });
+    expect(db._state.state.get('last_clip_created_at')).toBe(cursor);
   });
 
   test('clips matching no subscription advance the cursor without fanout', async () => {
@@ -299,15 +330,12 @@ describe('pollOnce', () => {
     expect(warnLog).toHaveBeenCalled();
   });
 
-  test('partial failure: one sub succeeds, another fails — only the success is recorded', async () => {
+  test('partial failure across subs for the same clip: success recorded, cursor halts', async () => {
     const c1 = clip();
     const c2 = clip();
     const subA = subscription({ channelId: 'A' });
     const subB = subscription({ channelId: 'B' });
-    const db = stubDb({
-      cursor: c1.createdAt,
-      subs: [subA, subB],
-    });
+    const db = stubDb({ cursor: c1.createdAt, subs: [subA, subB] });
     // Fail the first call (channel A), succeed the second (channel B).
     let n = 0;
     const fanout: Fanout = async () => {
@@ -319,8 +347,9 @@ describe('pollOnce', () => {
     expect(res.posts).toBe(1);
     expect(db._state.postLog.has(`A:${c2.id}`)).toBe(false);
     expect(db._state.postLog.has(`B:${c2.id}`)).toBe(true);
-    // Cursor advances — A will be retried next round (isPosted returns false).
-    expect(db._state.state.get('last_clip_created_at')).toBe(c2.createdAt);
+    // Cursor stays at c1 so c2 is re-evaluated next round; B's isPosted check
+    // will short-circuit (already recorded), only A retries.
+    expect(db._state.state.get('last_clip_created_at')).toBe(c1.createdAt);
   });
 });
 

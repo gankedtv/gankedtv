@@ -36,6 +36,12 @@ CREATE TABLE IF NOT EXISTS discord_subscriptions (
     -- NULLS DISTINCT treats (C, NULL, NULL) and (C, NULL, NULL) as distinct).
     -- The semantics we want: (C, NULL, NULL) collides with itself, but
     -- (C, 42, NULL) is still distinct from (C, NULL, NULL) because 42 ≠ NULL.
+    --
+    -- HARD MINIMUM: PostgreSQL 15. Older versions will reject this statement.
+    -- The dev compose stack runs PG18 (docker-compose.dev.yml). Operators
+    -- targeting a shared older cluster need either a PG upgrade OR a fork of
+    -- this migration that emulates NULLS NOT DISTINCT via a partial unique
+    -- index (CREATE UNIQUE INDEX … WHERE …) plus app-side guards.
     UNIQUE NULLS NOT DISTINCT (channel_id, game_id, creator_id)
 );
 
