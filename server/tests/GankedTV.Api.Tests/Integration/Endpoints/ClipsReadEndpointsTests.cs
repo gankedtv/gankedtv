@@ -6,6 +6,7 @@ using GankedTV.Api.Clips;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Tests.TestSupport;
+using Microsoft.EntityFrameworkCore;
 using NSubstitute;
 
 namespace GankedTV.Api.Tests.Integration.Endpoints;
@@ -1298,5 +1299,110 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         var resp = await client.GetAsync("/clips/featured");
 
         resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
+    public async Task Featured_TieBreak_HigherLikeCountWins()
+    {
+        // Two clips with identical engagement-in-window (identical score) and identical
+        // ages. Total LikeCount (denormalized, includes pre-today likes) is the next
+        // tie-breaker per the issue contract.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var (likerA, _) = await SeedUserAndIssueTokenAsync("liker-a");
+        var (likerB, _) = await SeedUserAndIssueTokenAsync("liker-b");
+        var now = DateTimeOffset.UtcNow;
+        var todayStart = now.Date;
+        var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
+        var sharedCreatedAt = now.AddHours(-1);
+
+        var (lowLikes, _) = await SeedClipAsync(userId, sharedCreatedAt, title: "low-likes");
+        var (highLikes, _) = await SeedClipAsync(userId, sharedCreatedAt, title: "high-likes");
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.Add(new ClipView { ClipId = lowLikes, CreatedAt = engagementAt });
+            db.ClipViews.Add(new ClipView { ClipId = highLikes, CreatedAt = engagementAt });
+
+            // Bump the denormalized LikeCount on highLikes only. Pre-today like rows
+            // exist on this clip but don't affect today's score; they DO affect
+            // LikeCount, which is the tie-breaker.
+            var highClip = await db.Clips.FirstAsync(c => c.Id == highLikes);
+            highClip.LikeCount = 5;
+            var lowClip = await db.Clips.FirstAsync(c => c.Id == lowLikes);
+            lowClip.LikeCount = 1;
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/featured");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("id").GetGuid().Should().Be(highLikes);
+    }
+
+    [Fact]
+    public async Task Featured_TieBreak_NewerCreatedAtWinsWhenLikesEqual()
+    {
+        // Identical score, identical LikeCount → newer CreatedAt wins.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var todayStart = now.Date;
+        var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
+
+        // Both clips have CreatedAt within the same hour so the (hours+2)^1.5 denominator
+        // is identical to 4+ decimal places — scores match. (Different CreatedAt values
+        // produce slightly different scores in principle; pick values close enough that
+        // the score difference is < double precision noise. 1 second apart at ~1h age:
+        // score delta is ~1e-10, well below tie-break sensitivity.)
+        var (older, _) = await SeedClipAsync(userId, now.AddHours(-1).AddSeconds(-1), title: "older");
+        var (newer, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "newer");
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.Add(new ClipView { ClipId = older, CreatedAt = engagementAt });
+            db.ClipViews.Add(new ClipView { ClipId = newer, CreatedAt = engagementAt });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/featured");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("id").GetGuid().Should().Be(newer);
+    }
+
+    [Fact]
+    public async Task Featured_TieBreak_HigherIdWinsWhenAllElseEqual()
+    {
+        // Identical score, LikeCount, AND CreatedAt → higher Guid wins. Final
+        // deterministic tie-breaker so the daily pick is always reproducible.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var todayStart = now.Date;
+        var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
+        var sharedCreatedAt = now.AddHours(-1);
+
+        var (a, _) = await SeedClipAsync(userId, sharedCreatedAt, title: "a");
+        var (b, _) = await SeedClipAsync(userId, sharedCreatedAt, title: "b");
+        var expectedWinner = a.CompareTo(b) > 0 ? a : b;
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.Add(new ClipView { ClipId = a, CreatedAt = engagementAt });
+            db.ClipViews.Add(new ClipView { ClipId = b, CreatedAt = engagementAt });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/featured");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("id").GetGuid().Should().Be(expectedWinner);
     }
 }
