@@ -438,11 +438,7 @@ onBeforeUnmount(() => {
         enter-from-class="opacity-0"
         leave-to-class="opacity-0"
       >
-        <div
-          v-if="commentsOpen"
-          class="fixed inset-0 z-50 bg-black/55"
-          @click.self="closeComments"
-        >
+        <div v-if="commentsOpen" class="fixed inset-0 z-50 bg-black/55" @click.self="closeComments">
           <Transition
             enter-active-class="transition-transform duration-200 ease-out"
             leave-active-class="transition-transform duration-150 ease-in"
