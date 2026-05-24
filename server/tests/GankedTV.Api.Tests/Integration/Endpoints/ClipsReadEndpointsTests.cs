@@ -1175,4 +1175,42 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
 
         resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
+
+    [Fact]
+    public async Task Featured_PicksHighestScoringClip()
+    {
+        // Three clips of identical age — engagement alone decides. The clip with the
+        // most views in today's UTC window wins.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var todayStart = now.Date;
+        // Use a timestamp inside today's UTC day AND within trending's typical recency
+        // (5 min ago). If `now` is within 5 minutes of UTC midnight, snap to todayStart
+        // so the test isn't time-of-day fragile.
+        var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
+
+        var (hot, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "hot");
+        var (mid, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "mid");
+        var (cool, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "cool");
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.AddRange(
+                Enumerable.Range(0, 20).Select(_ => new ClipView { ClipId = hot, CreatedAt = engagementAt }));
+            db.ClipViews.AddRange(
+                Enumerable.Range(0, 5).Select(_ => new ClipView { ClipId = mid, CreatedAt = engagementAt }));
+            db.ClipViews.AddRange(
+                Enumerable.Range(0, 1).Select(_ => new ClipView { ClipId = cool, CreatedAt = engagementAt }));
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/featured");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("id").GetGuid().Should().Be(hot);
+        body.GetProperty("title").GetString().Should().Be("hot");
+    }
 }
