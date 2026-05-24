@@ -9,8 +9,15 @@ public class Clip
     public int? GameId { get; set; }
     public required string Title { get; set; }
     public string? Description { get; set; }
+    // Key of the playable master in the private clips bucket. Initially the raw upload;
+    // after the compress stage runs it points at the compressed master (and the original
+    // object is deleted), so there is exactly one video file per clip on disk.
     public required string VideoKey { get; set; }
     public string? ThumbnailKey { get; set; }
+    // Codec of the stored master ("av1", "h264", …). Lets the web player decide whether to
+    // play VideoKey directly or fall back to a just-in-time H.264 stream. Null until the
+    // compress stage has run.
+    public string? VideoCodec { get; set; }
     public required string ShareCode { get; set; }
     public short? DurationSecs { get; set; }
     public short? Width { get; set; }

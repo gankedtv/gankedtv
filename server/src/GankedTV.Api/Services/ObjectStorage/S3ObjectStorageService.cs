@@ -32,7 +32,7 @@ public sealed class S3ObjectStorageService : IObjectStorageService
         // Deduplicate so an aliased config (e.g. GameCoversBucket == ClipsBucket) doesn't issue
         // a duplicate PutBucketAsync for the same name.
         var required = new HashSet<string>(
-            new[] { _options.ClipsBucket, _options.ThumbnailsBucket, _options.GameCoversBucket },
+            new[] { _options.ClipsBucket, _options.ThumbnailsBucket, _options.GameCoversBucket, _options.StreamCacheBucket },
             StringComparer.Ordinal);
 
         foreach (var name in required)
@@ -46,23 +46,71 @@ public sealed class S3ObjectStorageService : IObjectStorageService
             await _s3.PutBucketAsync(new PutBucketRequest { BucketName = name }, ct);
         }
 
-        // Game covers are public art served as stable cover_url values (no presigning), so the
-        // bucket gets an anonymous s3:GetObject policy (idempotent). Guard against a misconfig
-        // that aliases the covers bucket onto clips/thumbnails — applying the policy there would
-        // silently expose private media to anonymous reads.
-        if (_options.GameCoversBucket == _options.ClipsBucket
-            || _options.GameCoversBucket == _options.ThumbnailsBucket)
+        // Game covers and the stream cache are public media served as stable URLs (no
+        // presigning), so each gets an anonymous s3:GetObject policy (idempotent). Guard
+        // against a misconfig that aliases a public bucket onto clips/thumbnails — applying
+        // the policy there would silently expose private media to anonymous reads.
+        await ApplyPublicReadIfSafeAsync(_options.GameCoversBucket, "GameCoversBucket", ct);
+        await ApplyPublicReadIfSafeAsync(_options.StreamCacheBucket, "StreamCacheBucket", ct);
+
+        // The stream cache is transient: a lifecycle rule expires cached renditions so the JIT
+        // output never accumulates indefinitely. Skipped when aliased onto a private bucket.
+        if (_options.StreamCacheBucket != _options.ClipsBucket
+            && _options.StreamCacheBucket != _options.ThumbnailsBucket
+            && _options.StreamCacheBucket != _options.GameCoversBucket)
+        {
+            await ApplyStreamCacheLifecycleAsync(ct);
+        }
+    }
+
+    private async Task ApplyStreamCacheLifecycleAsync(CancellationToken ct)
+    {
+        var days = Math.Max(1, _options.StreamCacheTtlDays);
+        try
+        {
+            await _s3.PutLifecycleConfigurationAsync(new PutLifecycleConfigurationRequest
+            {
+                BucketName = _options.StreamCacheBucket,
+                Configuration = new LifecycleConfiguration
+                {
+                    Rules =
+                    [
+                        new LifecycleRule
+                        {
+                            Id = "expire-cached-renditions",
+                            Status = LifecycleRuleStatus.Enabled,
+                            // Empty-prefix filter = applies to every object in the bucket.
+                            Filter = new LifecycleFilter { LifecycleFilterPredicate = new LifecyclePrefixPredicate { Prefix = "" } },
+                            Expiration = new LifecycleRuleExpiration { Days = days },
+                        },
+                    ],
+                },
+            }, ct);
+        }
+        catch (AmazonS3Exception ex)
+        {
+            // Eviction is an optimization, not correctness — a backend that doesn't support the
+            // lifecycle API must not abort startup. Cached renditions just won't auto-expire.
+            _logger.LogWarning(ex,
+                "Could not set lifecycle expiry on '{Bucket}'; cached renditions will not auto-evict.",
+                _options.StreamCacheBucket);
+        }
+    }
+
+    private async Task ApplyPublicReadIfSafeAsync(string bucket, string optionName, CancellationToken ct)
+    {
+        if (bucket == _options.ClipsBucket || bucket == _options.ThumbnailsBucket)
         {
             _logger.LogWarning(
-                "GameCoversBucket '{Bucket}' aliases a private bucket; skipping the anonymous-read "
-                + "policy to avoid exposing clips/thumbnails.", _options.GameCoversBucket);
+                "{OptionName} '{Bucket}' aliases a private bucket; skipping the anonymous-read "
+                + "policy to avoid exposing clips/thumbnails.", optionName, bucket);
             return;
         }
 
         await _s3.PutBucketPolicyAsync(new PutBucketPolicyRequest
         {
-            BucketName = _options.GameCoversBucket,
-            Policy = BuildPublicReadPolicy(_options.GameCoversBucket),
+            BucketName = bucket,
+            Policy = BuildPublicReadPolicy(bucket),
         }, ct);
     }
 
@@ -122,6 +170,35 @@ public sealed class S3ObjectStorageService : IObjectStorageService
             BucketName = bucket,
             Key = key,
         }, ct);
+    }
+
+    public async Task DeleteByPrefixAsync(string bucket, string prefix, CancellationToken ct = default)
+    {
+        // List + batch-delete in pages. A clip's cached ladder is a handful of files, but page
+        // defensively in case of many segments. DeleteObjects caps at 1000 keys per call, which
+        // matches ListObjectsV2's default page size.
+        string? token = null;
+        do
+        {
+            var listed = await _s3.ListObjectsV2Async(new ListObjectsV2Request
+            {
+                BucketName = bucket,
+                Prefix = prefix,
+                ContinuationToken = token,
+            }, ct);
+
+            if (listed.S3Objects is { Count: > 0 } objects)
+            {
+                await _s3.DeleteObjectsAsync(new DeleteObjectsRequest
+                {
+                    BucketName = bucket,
+                    Objects = objects.Select(o => new KeyVersion { Key = o.Key }).ToList(),
+                }, ct);
+            }
+
+            token = listed.IsTruncated == true ? listed.NextContinuationToken : null;
+        }
+        while (token is not null);
     }
 
     public async Task PutObjectAsync(

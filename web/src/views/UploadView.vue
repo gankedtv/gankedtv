@@ -28,6 +28,14 @@ const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 type Step = 1 | 2 | 3
 const step = ref<Step>(1)
 const file = ref<File | null>(null)
+// Client-side poster (data URL) captured from the picked file so the Preview card shows a real
+// frame while the user fills in title/game/tags — no server round-trip. Best-effort: stays null
+// if the browser can't decode the source.
+const posterUrl = ref<string | null>(null)
+// Monotonic token so a slow capture from an earlier pick can't overwrite a newer one's poster.
+let posterRequestId = 0
+// Cap the preview canvas so a 4K/8K source doesn't allocate a huge bitmap for a small thumbnail.
+const MAX_PREVIEW_DIM = 1280
 const title = ref('')
 const desc = ref('')
 const visibility = ref<'public' | 'unlisted'>('public')
@@ -50,20 +58,83 @@ onUnmounted(() => {
 
 function pickFile(f: File | null) {
   if (!f) return
+  // Bump on every pick (valid or not) so any in-flight capture from a prior pick is ignored.
+  const requestId = ++posterRequestId
   if (!f.type.startsWith('video/')) {
     // Clear any prior valid selection — leaving the old file as the "current"
     // pick alongside an error about a different file is confusing.
     file.value = null
+    posterUrl.value = null
     errorMsg.value = `Unsupported file type "${f.type || 'unknown'}" — pick a video.`
     return
   }
   if (f.size > MAX_UPLOAD_BYTES) {
     file.value = null
+    posterUrl.value = null
     errorMsg.value = `File is ${formatSize(f.size)} — limit is ${MAX_UPLOAD_MB} MB.`
     return
   }
   errorMsg.value = null
   file.value = f
+  void generatePoster(f, requestId)
+}
+
+// Capture a representative frame from the picked file via an offscreen <video> + <canvas>.
+// Resolves to a JPEG data URL, or null if the browser can't decode/draw the source. Only
+// assigns posterUrl if this is still the latest pick (requestId guard).
+async function generatePoster(f: File, requestId: number): Promise<void> {
+  posterUrl.value = null
+  const objectUrl = URL.createObjectURL(f)
+  try {
+    const url = await capturePosterFrame(objectUrl)
+    if (requestId === posterRequestId) posterUrl.value = url
+  } catch {
+    // best-effort — the preview just falls back to the filename
+  } finally {
+    URL.revokeObjectURL(objectUrl)
+  }
+}
+
+function capturePosterFrame(src: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video')
+    video.muted = true
+    video.preload = 'auto'
+    video.src = src
+
+    const cleanup = () => {
+      video.removeAttribute('src')
+      video.load()
+    }
+
+    video.onloadeddata = () => {
+      // Seek a little in (or the midpoint of a very short clip) for a non-black frame.
+      const target = Math.min(1, (Number.isFinite(video.duration) ? video.duration : 2) / 2)
+      video.currentTime = Number.isFinite(target) ? target : 0
+    }
+    video.onseeked = () => {
+      try {
+        if (!video.videoWidth || !video.videoHeight) throw new Error('no video frame')
+        // Downscale so a 4K/8K source doesn't allocate a giant bitmap for a small preview.
+        const scale = Math.min(1, MAX_PREVIEW_DIM / Math.max(video.videoWidth, video.videoHeight))
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.round(video.videoWidth * scale)
+        canvas.height = Math.round(video.videoHeight * scale)
+        const ctx = canvas.getContext('2d')
+        if (!ctx) throw new Error('no 2d context')
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL('image/jpeg', 0.7))
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error('poster capture failed'))
+      } finally {
+        cleanup()
+      }
+    }
+    video.onerror = () => {
+      cleanup()
+      reject(new Error('video decode failed'))
+    }
+  })
 }
 
 function handleFileSelect(e: Event) {
@@ -418,7 +489,14 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
           <label :class="labelClass + ' mb-3'">Preview</label>
           <div class="overflow-hidden rounded-md border border-border bg-surface-raised">
             <div class="relative aspect-video bg-surface-sunken">
+              <img
+                v-if="posterUrl"
+                :src="posterUrl"
+                alt="Clip preview"
+                class="absolute inset-0 h-full w-full object-cover"
+              />
               <div
+                v-else
                 class="absolute inset-0 flex items-center justify-center font-mono text-[10px] uppercase tracking-widest text-text-muted"
               >
                 {{ file?.name ?? 'No file' }}

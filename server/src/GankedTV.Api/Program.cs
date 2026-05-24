@@ -67,9 +67,13 @@ builder.Services.Configure<S3Options>(opts =>
     var clips = builder.Configuration["S3:ClipsBucket"];
     var thumbs = builder.Configuration["S3:ThumbnailsBucket"];
     var covers = builder.Configuration["S3:GameCoversBucket"];
+    var streamCache = builder.Configuration["S3:StreamCacheBucket"];
     if (!string.IsNullOrWhiteSpace(clips)) opts.ClipsBucket = clips;
     if (!string.IsNullOrWhiteSpace(thumbs)) opts.ThumbnailsBucket = thumbs;
     if (!string.IsNullOrWhiteSpace(covers)) opts.GameCoversBucket = covers;
+    if (!string.IsNullOrWhiteSpace(streamCache)) opts.StreamCacheBucket = streamCache;
+    var streamTtl = builder.Configuration["S3:StreamCacheTtlDays"];
+    if (int.TryParse(streamTtl, out var ttl) && ttl > 0) opts.StreamCacheTtlDays = ttl;
 });
 
 builder.Services.AddSingleton<IAmazonS3>(sp =>
@@ -123,19 +127,59 @@ builder.Services.AddOptions<MediaJobOptions>()
         if (!string.IsNullOrWhiteSpace(ffmpeg)) opts.FfmpegPath = ffmpeg;
         var ffprobe = Environment.GetEnvironmentVariable("FFPROBE_PATH");
         if (!string.IsNullOrWhiteSpace(ffprobe)) opts.FfprobePath = ffprobe;
+        // Two-stage pipeline + GPU-split toggles (issue #102). TranscodeEnabled controls
+        // whether the pipeline includes the HLS stage; the *_WORKER_ENABLED flags control
+        // which workers run on *this* instance so the GPU-heavy transcode work can live on
+        // a separate host.
+        var transcodeEnabled = Environment.GetEnvironmentVariable("MEDIA_TRANSCODE_ENABLED");
+        if (bool.TryParse(transcodeEnabled, out var te)) opts.TranscodeEnabled = te;
+        var thumbWorker = Environment.GetEnvironmentVariable("MEDIA_THUMBNAIL_WORKER_ENABLED");
+        if (bool.TryParse(thumbWorker, out var tw)) opts.ThumbnailWorkerEnabled = tw;
+        var transWorker = Environment.GetEnvironmentVariable("MEDIA_TRANSCODE_WORKER_ENABLED");
+        if (bool.TryParse(transWorker, out var trw)) opts.TranscodeWorkerEnabled = trw;
+        // Master compression (stored) + JIT ladder (transient) encoders.
+        var encoder = Environment.GetEnvironmentVariable("MEDIA_VIDEO_ENCODER");
+        if (!string.IsNullOrWhiteSpace(encoder)) opts.VideoEncoder = encoder;
+        var codec = Environment.GetEnvironmentVariable("MEDIA_VIDEO_CODEC");
+        if (!string.IsNullOrWhiteSpace(codec)) opts.VideoCodec = codec;
+        var jitEncoder = Environment.GetEnvironmentVariable("MEDIA_JIT_VIDEO_ENCODER");
+        if (!string.IsNullOrWhiteSpace(jitEncoder)) opts.JitVideoEncoder = jitEncoder;
+        var maxHeight = Environment.GetEnvironmentVariable("MEDIA_MAX_HEIGHT");
+        if (int.TryParse(maxHeight, out var mh) && mh > 0) opts.MaxHeight = mh;
+        var crf = Environment.GetEnvironmentVariable("MEDIA_CRF");
+        if (int.TryParse(crf, out var cr) && cr > 0) opts.Crf = cr;
+        var segType = Environment.GetEnvironmentVariable("MEDIA_HLS_SEGMENT_TYPE");
+        if (!string.IsNullOrWhiteSpace(segType)) opts.SegmentType = segType;
+        var segDur = Environment.GetEnvironmentVariable("MEDIA_HLS_SEGMENT_SECONDS");
+        if (int.TryParse(segDur, out var sd) && sd > 0) opts.SegmentDuration = TimeSpan.FromSeconds(sd);
+        var transcodeMin = Environment.GetEnvironmentVariable("MEDIA_TRANSCODE_TIMEOUT_MINUTES");
+        if (int.TryParse(transcodeMin, out var tm) && tm > 0) opts.TranscodeTimeout = TimeSpan.FromMinutes(tm);
     })
     .Validate(o => o.PollInterval > TimeSpan.Zero, "MediaJobs.PollInterval must be positive.")
     .Validate(o => o.LeaseDuration > TimeSpan.Zero, "MediaJobs.LeaseDuration must be positive.")
     .Validate(o => o.ProcessTimeout > TimeSpan.Zero, "MediaJobs.ProcessTimeout must be positive.")
+    .Validate(o => o.TranscodeTimeout > TimeSpan.Zero, "MediaJobs.TranscodeTimeout must be positive.")
+    .Validate(o => o.SegmentDuration > TimeSpan.Zero, "MediaJobs.SegmentDuration must be positive.")
     .Validate(o => o.MaxAttempts > 0, "MediaJobs.MaxAttempts must be positive.")
     .Validate(o => o.MaxDrainPerTick > 0, "MediaJobs.MaxDrainPerTick must be positive.")
+    .Validate(o => o.MaxHeight > 0, "MediaJobs.MaxHeight must be positive.")
+    .Validate(o => o.Crf > 0, "MediaJobs.Crf must be positive.")
     .Validate(o => !string.IsNullOrWhiteSpace(o.FfmpegPath), "MediaJobs.FfmpegPath must be set.")
     .Validate(o => !string.IsNullOrWhiteSpace(o.FfprobePath), "MediaJobs.FfprobePath must be set.")
+    .Validate(o => !string.IsNullOrWhiteSpace(o.VideoEncoder), "MediaJobs.VideoEncoder must be set.")
+    .Validate(o => !string.IsNullOrWhiteSpace(o.VideoCodec), "MediaJobs.VideoCodec must be set.")
+    .Validate(o => !string.IsNullOrWhiteSpace(o.JitVideoEncoder), "MediaJobs.JitVideoEncoder must be set.")
+    .Validate(o => o.Ladder is { Count: > 0 }, "MediaJobs.Ladder must define at least one rung.")
     .ValidateOnStart();
 builder.Services.AddSingleton<IFfmpegRunner, FfmpegRunner>();
 builder.Services.AddScoped<IClipMediaJobStore, ClipMediaJobStore>();
+builder.Services.AddScoped<IClipStreamJobStore, ClipStreamJobStore>();
 builder.Services.AddScoped<IThumbnailJobService, ThumbnailJobService>();
-builder.Services.AddHostedService<MediaJobHostedService>();
+builder.Services.AddScoped<ICompressJobService, CompressJobService>();
+builder.Services.AddScoped<IJitLadderService, JitLadderService>();
+builder.Services.AddHostedService<ThumbnailWorker>();
+builder.Services.AddHostedService<CompressWorker>();
+builder.Services.AddHostedService<StreamRenditionWorker>();
 
 builder.Services.AddOptions<ClipValidationOptions>()
     .Configure(opts =>

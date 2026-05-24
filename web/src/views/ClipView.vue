@@ -3,6 +3,7 @@ import { ref, computed, watch, onBeforeUnmount, useTemplateRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Plyr from 'plyr'
 import 'plyr/dist/plyr.css'
+import Hls from 'hls.js'
 import { ApiError } from '@/api/client'
 import { clips, type ClipDetail } from '@/api/clips'
 import { formatNum, formatRelativeTime } from '@/lib/format'
@@ -26,6 +27,20 @@ const auth = useAuthStore()
 const clip = ref<ClipDetail | null>(null)
 const loading = ref(false)
 const errored = ref(false)
+// Distinct copy for the two failure modes: a detail-load failure vs. a JIT transcode that
+// hasn't finished / failed. The latter looks fine (thumbnail loaded) so a generic message is
+// confusing.
+const DEFAULT_ERROR = "Couldn't load this clip."
+const JIT_ERROR = 'This clip is still being prepared for your device — try again in a moment.'
+const errorMessage = ref(DEFAULT_ERROR)
+// A freshly-uploaded clip 404s until the pipeline (thumbnail + compress) finishes. Rather than
+// bounce the owner straight to not-found, we treat a 404 as "maybe still processing" and poll a
+// few times before giving up.
+const processing = ref(false)
+const PROCESSING_POLL_MS = 2500
+const MAX_PROCESSING_POLLS = 12 // ~30s — short clips finish well within this
+let processingPolls = 0
+let processingTimer: ReturnType<typeof setTimeout> | null = null
 const liked = ref(false)
 const likeCount = ref(0)
 const likeBusy = ref(false)
@@ -34,6 +49,26 @@ const toastText = ref('')
 
 const videoEl = useTemplateRef<HTMLVideoElement>('videoEl')
 let player: Plyr | null = null
+let hls: Hls | null = null
+// Bumped on every teardown so an in-flight JIT poll loop knows to stop (clip switched away
+// or component unmounted).
+let playerToken = 0
+// A representative AV1 codec string for capability detection.
+const AV1_MIME = 'video/mp4; codecs="av01.0.05M.08"'
+const JIT_POLL_MS = 2000
+// Give up polling after ~3 minutes so a stuck/disabled transcoder doesn't poll forever.
+const JIT_MAX_POLLS = 90
+
+const BASE_CONTROLS = [
+  'play-large',
+  'play',
+  'progress',
+  'current-time',
+  'mute',
+  'volume',
+  'settings',
+  'fullscreen',
+]
 
 // View tracking: fire POST /clips/{id}/view exactly once per mount after ~3s of
 // accumulated playback. Bounded per-tick delta caps seeking jumps (current_time can
@@ -67,29 +102,58 @@ const shareCode = computed(() => {
   return Array.isArray(code) ? code[0] : (code as string | undefined)
 })
 
-async function loadClip() {
+async function loadClip(isPoll = false) {
   const myLoadId = ++latestLoadId
-  loading.value = true
+  if (!isPoll) {
+    loading.value = true
+    processing.value = false
+    processingPolls = 0
+    clearProcessingTimer()
+    clip.value = null
+    errorMessage.value = DEFAULT_ERROR
+    teardownPlayer()
+  }
   errored.value = false
-  clip.value = null
-  teardownPlayer()
   try {
     const fetched = shareCode.value
       ? await clips.getByShareCode(shareCode.value)
       : await clips.getDetail(clipId.value!)
     if (myLoadId !== latestLoadId) return
+    processing.value = false
     clip.value = fetched
     liked.value = fetched.likedByMe
     likeCount.value = fetched.likeCount
   } catch (err) {
     if (myLoadId !== latestLoadId) return
     if (err instanceof ApiError && err.status === 404) {
+      // 404 here means "not ready yet" (just uploaded, still transcoding) OR genuinely
+      // missing — the detail endpoint can't tell them apart. Poll a few times showing a
+      // processing state before falling back to not-found.
+      if (processingPolls < MAX_PROCESSING_POLLS) {
+        processingPolls++
+        processing.value = true
+        loading.value = false
+        processingTimer = setTimeout(() => {
+          if (myLoadId === latestLoadId) loadClip(true)
+        }, PROCESSING_POLL_MS)
+        return
+      }
       router.replace({ name: 'not-found' })
       return
     }
+    // A non-404 error during a processing poll must clear `processing` so the error panel
+    // (rendered after the processing panel) actually shows instead of being masked.
+    processing.value = false
     errored.value = true
   } finally {
-    if (myLoadId === latestLoadId) loading.value = false
+    if (myLoadId === latestLoadId && !processing.value) loading.value = false
+  }
+}
+
+function clearProcessingTimer() {
+  if (processingTimer !== null) {
+    clearTimeout(processingTimer)
+    processingTimer = null
   }
 }
 
@@ -108,11 +172,7 @@ watch(
   [clip, videoEl],
   ([detail, el]) => {
     if (!detail || !el || player) return
-    el.src = detail.videoUrl
-    player = new Plyr(el, {
-      controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'fullscreen'],
-      tooltips: { controls: true, seek: true },
-    })
+    setupPlayer(detail, el)
     attachViewTracking(detail.id, el)
   },
   { flush: 'post' },
@@ -149,11 +209,110 @@ function attachViewTracking(targetClipId: string, el: HTMLVideoElement) {
   viewTickListener = { el, handler: onTick }
 }
 
+// Decide how to play a clip. If the browser can decode the stored master directly (H.264
+// always; AV1 only on capable devices), play it as a plain progressive file. Otherwise fall
+// back to a just-in-time H.264 HLS stream the server transcodes on demand.
+function setupPlayer(detail: ClipDetail, el: HTMLVideoElement) {
+  if (canPlayMaster(detail.videoCodec, el)) {
+    el.src = detail.videoUrl
+    player = new Plyr(el, { controls: BASE_CONTROLS, tooltips: { controls: true, seek: true } })
+    return
+  }
+  void startJitStream(detail.id, el)
+}
+
+function canPlayMaster(codec: string | null, el: HTMLVideoElement): boolean {
+  if (!codec || codec === 'h264') return true
+  if (codec === 'av1') return el.canPlayType(AV1_MIME) !== ''
+  // Unknown codec: optimistically try direct playback rather than forcing a transcode.
+  return true
+}
+
+// Poll the JIT stream endpoint until a cached H.264 ladder is ready, then attach it. The
+// captured playerToken aborts the loop if the user navigates away or the component unmounts.
+async function startJitStream(id: string, el: HTMLVideoElement) {
+  const myToken = playerToken
+  for (let polls = 0; polls < JIT_MAX_POLLS; polls++) {
+    let res
+    try {
+      res = await clips.getStream(id)
+    } catch {
+      if (myToken === playerToken) failJitPlayback()
+      return
+    }
+    if (myToken !== playerToken) return
+    if (res.status === 'ready' && res.hlsUrl) {
+      attachHlsStream(el, res.hlsUrl)
+      return
+    }
+    await new Promise((r) => setTimeout(r, JIT_POLL_MS))
+    if (myToken !== playerToken) return
+  }
+  // Exhausted the poll budget without a ready rendition — surface an error rather than hang.
+  failJitPlayback()
+}
+
+// Surface a JIT-specific error. Retry (the error panel button) re-runs loadClip, which tears
+// down the player and re-enters setupPlayer → startJitStream for a fresh attempt.
+function failJitPlayback() {
+  errorMessage.value = JIT_ERROR
+  errored.value = true
+}
+
+// Attach an HLS stream: native on Safari, hls.js (with a Plyr quality menu) elsewhere.
+function attachHlsStream(el: HTMLVideoElement, hlsUrl: string) {
+  if (el.canPlayType('application/vnd.apple.mpegurl') !== '') {
+    el.src = hlsUrl
+    player = new Plyr(el, { controls: BASE_CONTROLS, tooltips: { controls: true, seek: true } })
+    return
+  }
+
+  if (Hls.isSupported()) {
+    const instance = new Hls()
+    hls = instance
+    instance.loadSource(hlsUrl)
+    instance.attachMedia(el)
+    instance.on(Hls.Events.MANIFEST_PARSED, () => {
+      // Highest-first list of distinct rendition heights for the quality menu.
+      const heights = [...new Set(instance.levels.map((l) => l.height))].sort((a, b) => b - a)
+      player = new Plyr(el, {
+        controls: BASE_CONTROLS,
+        tooltips: { controls: true, seek: true },
+        // 0 = Plyr's "Auto" sentinel: let hls.js pick the level by bandwidth.
+        quality: {
+          default: 0,
+          options: [0, ...heights],
+          forced: true,
+          onChange: (newQuality: number) => {
+            if (newQuality === 0) {
+              instance.currentLevel = -1 // -1 = ABR auto
+              return
+            }
+            const levelIndex = instance.levels.findIndex((l) => l.height === newQuality)
+            if (levelIndex !== -1) instance.currentLevel = levelIndex
+          },
+        },
+        i18n: { qualityLabel: { 0: 'Auto' } },
+      })
+    })
+    return
+  }
+
+  // No native HLS and no MSE — nothing left to try.
+  failJitPlayback()
+}
+
 function teardownPlayer() {
   detachViewTracking()
+  // Invalidate any in-flight JIT poll loop.
+  playerToken++
   if (player) {
     player.destroy()
     player = null
+  }
+  if (hls) {
+    hls.destroy()
+    hls = null
   }
 }
 
@@ -169,6 +328,7 @@ function fireToast(text: string) {
 
 onBeforeUnmount(() => {
   teardownPlayer()
+  clearProcessingTimer()
   if (toastTimer !== null) clearTimeout(toastTimer)
   window.removeEventListener('keydown', onMenuKeydown)
   window.removeEventListener('click', onMenuClickOutside, true)
@@ -319,8 +479,15 @@ async function onConfirmDelete() {
     <!-- Loading -->
     <StatusPanel v-if="loading" kind="loading" message="Loading…" />
 
+    <!-- Still processing (freshly uploaded; transcoding) -->
+    <StatusPanel
+      v-else-if="processing"
+      kind="loading"
+      message="Processing your clip… this can take a moment."
+    />
+
     <!-- Error -->
-    <StatusPanel v-else-if="errored" kind="error" message="Couldn't load this clip.">
+    <StatusPanel v-else-if="errored" kind="error" :message="errorMessage">
       <button
         class="cursor-pointer rounded-sm border border-border bg-surface-raised px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
         @click="(clipId || shareCode) && loadClip()"

@@ -3,11 +3,13 @@ using System.Linq.Expressions;
 using System.Net;
 using System.Security.Claims;
 using GankedTV.Api.Auth;
+using GankedTV.Api.Clips;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Pagination;
 using GankedTV.Api.Problems;
+using GankedTV.Api.Services.Media;
 using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -35,8 +37,58 @@ public static class ClipsReadEndpoints
         var group = app.MapGroup("/clips");
         group.MapGet("/feed", GetFeed);
         group.MapGet("/{id:guid}", GetDetail);
+        // Anonymous like GetDetail, but each call does a DB lookup + S3 HEAD (+ enqueue on
+        // miss), so it rides the same per-IP view rate limit to bound abuse.
+        group.MapGet("/{id:guid}/stream", GetStream)
+            .RequireRateLimiting(ClipsRateLimiting.ClipsViewPolicy);
         app.MapGet("/c/{code:length(6,12)}", GetByShareCode);
         return app;
+    }
+
+    // Just-in-time H.264 stream for devices that can't decode a clip's stored master (e.g.
+    // AV1). Cache hit → 200 with the public master-playlist URL; miss → enqueue a JIT build
+    // and return 202 (client polls); a failed build → 503.
+    private static async Task<IResult> GetStream(
+        Guid id,
+        GankedTvDbContext db,
+        IObjectStorageService storage,
+        IOptions<S3Options> s3,
+        IClipStreamJobStore streamJobs,
+        CancellationToken ct)
+    {
+        // Same visibility rule as the detail endpoint: any ready clip is reachable by link.
+        var clip = await db.Clips.AsNoTracking()
+            .Where(c => c.Id == id && c.Status == "ready")
+            .Select(c => new { c.VideoCodec })
+            .SingleOrDefaultAsync(ct);
+        if (clip is null)
+            return ProblemResults.NotFound("not_found");
+
+        // H.264 masters play directly in every browser — the detail contract tells clients to
+        // use videoUrl. Refuse JIT here so /stream can't be abused to pile on avoidable
+        // transcode load for clips that never need it.
+        if (string.Equals(clip.VideoCodec, "h264", StringComparison.Ordinal))
+            return ProblemResults.BadRequest("stream_not_required");
+
+        var masterKey = $"{JitLadderService.BuildCachePrefix(id)}/master.m3u8";
+        var cached = await storage.GetObjectMetadataAsync(s3.Value.StreamCacheBucket, masterKey, ct);
+        if (cached is not null)
+        {
+            var url = S3PublicUrls.BuildUrl(s3.Value, s3.Value.StreamCacheBucket, masterKey);
+            return Results.Ok(new StreamResponse(url, "ready"));
+        }
+
+        // Enqueue first: this inserts a pending job, or recovers a stale 'failed' row (past the
+        // retry cooldown) back to pending so a transient GPU outage doesn't permanently block
+        // the clip. A still-fresh 'failed' row is left untouched and surfaced as 503 below.
+        await streamJobs.EnqueueAsync(id, ct);
+        if (await streamJobs.GetStatusAsync(id, ct) == ClipStreamJobStatuses.Failed)
+            return Results.Problem(
+                statusCode: StatusCodes.Status503ServiceUnavailable,
+                title: "stream_unavailable",
+                detail: "Just-in-time transcode failed for this clip.");
+
+        return Results.Json(new StreamResponse(null, "pending"), statusCode: StatusCodes.Status202Accepted);
     }
 
     private static async Task<IResult> GetFeed(
@@ -353,6 +405,8 @@ public static class ClipsReadEndpoints
         if (clip is null)
             return null;
 
+        // videoUrl presigns the stored master (the compressed file). The web player decides
+        // from VideoCodec whether to play it directly or request a JIT H.264 stream.
         var videoUrl = storage.GetPresignedGetUrl(s3.Value.ClipsBucket, clip.VideoKey, VideoUrlLifetime);
         var thumbnailUrl = BuildThumbnailUrl(storage, s3.Value.ThumbnailsBucket, clip.ThumbnailKey);
 

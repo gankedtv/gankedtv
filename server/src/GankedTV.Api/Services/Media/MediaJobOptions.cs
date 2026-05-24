@@ -8,11 +8,12 @@ public sealed class MediaJobOptions
     // partial idx_clips_processing_updated_at index, so a tight loop is fine.
     public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(2);
 
-    // A claimed row is hidden from other workers until ProcessingStartedAt expires.
-    // Set comfortably above the longest expected ffmpeg run so a healthy job is never
-    // double-claimed; if a worker crashes mid-job, the next worker picks it up after
-    // this window.
-    public TimeSpan LeaseDuration { get; set; } = TimeSpan.FromMinutes(5);
+    // A claimed row is hidden from other workers until ProcessingStartedAt expires. MUST stay
+    // comfortably above the longest expected ffmpeg run (TranscodeTimeout, 10min) so an
+    // in-flight compress/JIT encode is never re-claimed mid-run — two workers writing the same
+    // deterministic output key would otherwise flap the object and waste GPU. Trade-off: a
+    // genuinely crashed job isn't retried until this window elapses.
+    public TimeSpan LeaseDuration { get; set; } = TimeSpan.FromMinutes(15);
 
     // Maximum number of times a row is claimed before it lands in 'failed'. The first
     // run is attempt 1, so MaxAttempts=3 means up to two retries after the initial try.
@@ -37,4 +38,73 @@ public sealed class MediaJobOptions
     // Where in the clip to grab the thumbnail frame. Falls back to the keyframe at 0
     // if the clip is shorter than this.
     public TimeSpan ThumbnailFrameOffset { get; set; } = TimeSpan.FromSeconds(1);
+
+    // --- Compression + just-in-time playback (issue #102) -------------------------------
+    // The pipeline runs as two upload-time queue stages — thumbnail (status 'processing') and
+    // compress (status 'transcoding') — plus a watch-time JIT stage (clip_stream_jobs). The
+    // GPU-heavy work (compress + JIT) is gated by TranscodeWorkerEnabled so it can run on a
+    // separate host: the DB queues use FOR UPDATE SKIP LOCKED, so the main API server can run
+    // the thumbnail worker only while a GPU box runs the compress + JIT workers.
+
+    // Whether compression is part of the pipeline. Controls the thumbnail stage's success
+    // transition: true → 'transcoding' (compress stage runs next); false → straight to 'ready'
+    // (store the raw upload as-is). Independent of whether *this* instance runs the workers.
+    public bool TranscodeEnabled { get; set; } = true;
+
+    // Whether this instance runs the thumbnail BackgroundService (claims 'processing').
+    public bool ThumbnailWorkerEnabled { get; set; } = true;
+
+    // Whether this instance runs the GPU workers — the compress stage (claims 'transcoding')
+    // and the JIT stream-rendition stage (claims pending clip_stream_jobs).
+    public bool TranscodeWorkerEnabled { get; set; } = true;
+
+    // Hard ceiling on a single ffmpeg encode (compress or a JIT ladder). Far larger than
+    // ProcessTimeout because a full encode takes much longer than a one-frame thumbnail.
+    public TimeSpan TranscodeTimeout { get; set; } = TimeSpan.FromMinutes(10);
+
+    // --- Compressed master (stored, the disk win) ---
+    // Encoder for the single stored master. 'libx264' for dev/GPU-less; the GPU box overrides
+    // to 'av1_nvenc' (max savings) or 'libsvtav1' for software AV1. Audio is always AAC.
+    public string VideoEncoder { get; set; } = "libx264";
+
+    // Codec label persisted on the clip (drives the web player's native-vs-JIT decision).
+    // Should match VideoEncoder's output family — e.g. 'av1' for av1_nvenc/libsvtav1.
+    public string VideoCodec { get; set; } = "h264";
+
+    // Cap the master's height (never upscale); oversized uploads (4K phone clips) shrink to
+    // this. Quality target: CRF for libx264/libsvtav1, mapped to -cq for *_nvenc.
+    public int MaxHeight { get; set; } = 1080;
+    public int Crf { get; set; } = 30;
+
+    // --- JIT H.264 ladder (transient, watch-time) ---
+    // Encoder for the on-demand compatibility ladder — always an H.264 family for universal
+    // playback ('libx264' dev, 'h264_nvenc' on the GPU box).
+    public string JitVideoEncoder { get; set; } = "libx264";
+
+    // Target segment length for the JIT HLS renditions (ffmpeg -hls_time).
+    public TimeSpan SegmentDuration { get; set; } = TimeSpan.FromSeconds(6);
+
+    // HLS segment container for the JIT ladder (ffmpeg -hls_segment_type). 'mpegts' (.ts) is
+    // the universal H.264 choice. (Cache eviction TTL lives on S3Options.StreamCacheTtlDays —
+    // it's a bucket-lifecycle concern.)
+    public string SegmentType { get; set; } = "mpegts";
+
+    // JIT rendition ladder, highest-first. Source-capped at transcode time: rungs taller than
+    // the source are skipped (never upscale). Defaults to a 1080/720/480 H.264 ladder.
+    public List<HlsRung> Ladder { get; set; } =
+    [
+        new HlsRung { Height = 1080, VideoKbps = 5000, MaxrateKbps = 5350, AudioKbps = 128 },
+        new HlsRung { Height = 720, VideoKbps = 2800, MaxrateKbps = 2996, AudioKbps = 128 },
+        new HlsRung { Height = 480, VideoKbps = 1400, MaxrateKbps = 1498, AudioKbps = 96 },
+    ];
+}
+
+public sealed class HlsRung
+{
+    // Target rendition height in pixels; width is derived from the source aspect ratio
+    // (scale=-2:{Height}) so it stays even and undistorted.
+    public int Height { get; set; }
+    public int VideoKbps { get; set; }
+    public int MaxrateKbps { get; set; }
+    public int AudioKbps { get; set; }
 }

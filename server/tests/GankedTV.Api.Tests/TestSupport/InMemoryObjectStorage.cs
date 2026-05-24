@@ -38,6 +38,15 @@ public sealed class InMemoryObjectStorage : IObjectStorageService
         return Task.CompletedTask;
     }
 
+    public Task DeleteByPrefixAsync(string bucket, string prefix, CancellationToken ct = default)
+    {
+        foreach (var k in Objects.Keys.Where(k => k.Item1 == bucket && k.Item2.StartsWith(prefix, StringComparison.Ordinal)).ToList())
+        {
+            Objects.Remove(k);
+        }
+        return Task.CompletedTask;
+    }
+
     public string GetPresignedPutUrl(string bucket, string key, string contentType, TimeSpan? expiry = null) => string.Empty;
     public string GetPresignedGetUrl(string bucket, string key, TimeSpan? expiry = null) => string.Empty;
 }

@@ -33,6 +33,25 @@ public static class ClipBlobCleanup
                 clip.Id, clip.VideoKey);
         }
 
+        // Drop any cached JIT HLS rendition. The stream-cache bucket is public-read with a
+        // 14-day lifecycle TTL, so without this a deleted clip's HLS stays publicly fetchable
+        // (by clip GUID) until the TTL elapses. Keyed by the clip GUID — see JitLadderService.
+        try
+        {
+            await storage.DeleteByPrefixAsync(buckets.StreamCacheBucket, $"{clip.Id:N}/", ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(
+                ex,
+                "Failed to delete cached HLS rendition for clip {ClipId}",
+                clip.Id);
+        }
+
         if (string.IsNullOrEmpty(clip.ThumbnailKey))
         {
             return;

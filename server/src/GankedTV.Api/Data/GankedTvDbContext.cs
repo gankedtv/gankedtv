@@ -17,6 +17,7 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<ClipTag> ClipTags => Set<ClipTag>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<ClipStreamJob> ClipStreamJobs => Set<ClipStreamJob>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -119,6 +120,11 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             e.HasIndex(c => new { c.Status, c.UpdatedAt })
                 .HasFilter("status = 'processing'")
                 .HasDatabaseName("idx_clips_processing_updated_at");
+            // NOTE: the sibling partial index idx_clips_transcoding_updated_at (drives the
+            // compress stage's claim query) is created via raw SQL in the
+            // AddVideoCompressionAndStreamJobs migration — EF keys indexes by column set, so a
+            // second HasIndex on { Status, UpdatedAt } would overwrite the 'processing' one
+            // rather than add a second partial index. It is intentionally not modeled here.
             e.HasIndex(c => c.ShareCode).IsUnique().HasDatabaseName("idx_clips_share_code");
             e.Property(c => c.ShareCode).HasMaxLength(12);
             // Title gets weight 'A' so exact title matches outrank description-only hits;
@@ -133,6 +139,28 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             e.HasIndex(c => c.SearchVector)
                 .HasMethod("GIN")
                 .HasDatabaseName("idx_clips_search_vector");
+        });
+
+        modelBuilder.Entity<ClipStreamJob>(e =>
+        {
+            // One JIT rendition job per clip — the clip id is the natural key, so concurrent
+            // /stream requests for the same clip touch one row instead of stacking duplicates.
+            e.HasKey(j => j.ClipId);
+            e.Property(j => j.Status).HasMaxLength(20).HasDefaultValue(ClipStreamJobStatuses.Pending);
+            e.Property(j => j.ProcessingAttempts).HasDefaultValue(0);
+            e.Property(j => j.CreatedAt).HasDefaultValueSql("now()");
+            e.Property(j => j.UpdatedAt).HasDefaultValueSql("now()");
+
+            e.HasOne(j => j.Clip)
+                .WithMany()
+                .HasForeignKey(j => j.ClipId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Drives the JIT worker's claim query (pending rows, oldest first). Partial filter
+            // keeps it scoped to the in-flight queue.
+            e.HasIndex(j => new { j.Status, j.UpdatedAt })
+                .HasFilter("status = 'pending'")
+                .HasDatabaseName("idx_clip_stream_jobs_pending_updated_at");
         });
 
         modelBuilder.Entity<Like>(e =>

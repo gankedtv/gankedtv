@@ -13,4 +13,14 @@ public sealed class S3Options
     // presigned URLs) this bucket is made anonymous-read so cover_url can hold a stable,
     // CDN-cacheable public URL — see S3ObjectStorageService.EnsureBucketsAsync.
     public string GameCoversBucket { get; set; } = "game-covers";
+
+    // Transient, just-in-time H.264 HLS renditions (master.m3u8 + variant playlists + segments)
+    // produced on demand for devices that can't decode a clip's stored master. Anonymous-read
+    // like game-covers so the master playlist is a stable public URL and relative segment URIs
+    // resolve without per-segment presigning. Auto-evicted by a lifecycle rule after
+    // StreamCacheTtlDays — these renditions are a cache, not a system of record.
+    public string StreamCacheBucket { get; set; } = "stream-cache";
+
+    // Days a cached rendition survives before the bucket's lifecycle expiry removes it.
+    public int StreamCacheTtlDays { get; set; } = 14;
 }

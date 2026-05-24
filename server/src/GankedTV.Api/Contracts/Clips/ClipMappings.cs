@@ -48,6 +48,7 @@ public static class ClipMappings
             clip.Description,
             videoUrl,
             videoUrlExpiresAt,
+            clip.VideoCodec,
             thumbnailUrl,
             clip.DurationSecs,
             clip.Width,
