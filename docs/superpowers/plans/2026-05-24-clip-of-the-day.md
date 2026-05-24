@@ -270,7 +270,11 @@ Replace the `GetFeatured` stub from Task 2 with:
         GankedTvDbContext db,
         CancellationToken ct)
     {
-        var todayStart = DateTimeOffset.UtcNow.Date;
+        // Anchor to UTC midnight as a true DateTimeOffset. DateTimeOffset.UtcNow.Date
+        // returns a DateTime with Kind=Unspecified, which Npgsql refuses to bind to a
+        // `timestamp with time zone` column (it can only translate UTC-kind DateTimes
+        // implicitly). Constructing the DateTimeOffset explicitly avoids the routing.
+        var todayStart = new DateTimeOffset(DateTimeOffset.UtcNow.Date, TimeSpan.Zero);
 
         var candidates = await db.Clips.AsNoTracking()
             .Where(c => c.Visibility == "public" && c.Status == "ready")
@@ -434,8 +438,11 @@ git commit -m "test: featured skips non-public and non-ready clips"
 
         await using (var db = _fx.CreateContext())
         {
-            // Engagement strictly before today's UTC start.
-            db.ClipViews.Add(new ClipView { ClipId = clipId, CreatedAt = now.Date.AddSeconds(-1) });
+            // Engagement strictly before today's UTC start. Anchor to UTC explicitly
+            // because DateTimeOffset.Date returns a DateTime with Kind=Unspecified, and
+            // Npgsql rejects non-UTC offsets when binding to `timestamp with time zone`.
+            var utcMidnight = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
+            db.ClipViews.Add(new ClipView { ClipId = clipId, CreatedAt = utcMidnight.AddSeconds(-1) });
             await db.SaveChangesAsync();
         }
 
@@ -467,6 +474,11 @@ git commit -m "test: featured returns 204 when no engagement falls in today's UT
 
 **Files:**
 - Modify: `server/tests/GankedTV.Api.Tests/Integration/Endpoints/ClipsReadEndpointsTests.cs`
+
+> **Add this using** if not already present (required for `FirstAsync` in the LikeCount tie-break test):
+> ```csharp
+> using Microsoft.EntityFrameworkCore;
+> ```
 
 - [ ] **Step 7.1: Add three tie-break tests**
 
@@ -686,8 +698,13 @@ Replace the existing `GetFeatured` handler with:
         IMemoryCache cache,
         CancellationToken ct)
     {
-        var today = DateTimeOffset.UtcNow.Date;
-        var cacheKey = $"featured:{today:yyyy-MM-dd}";
+        // Construct todayStart as a true DateTimeOffset at UTC midnight (see
+        // BuildFeaturedClipIdAsync for the rationale — Kind=Unspecified DateTimes
+        // don't bind to Npgsql's `timestamp with time zone`, and AbsoluteExpiration
+        // takes a DateTimeOffset so we need one with an explicit UTC offset for the
+        // cache to roll over at actual UTC midnight regardless of host TZ).
+        var todayStart = new DateTimeOffset(DateTimeOffset.UtcNow.Date, TimeSpan.Zero);
+        var cacheKey = $"featured:{todayStart:yyyy-MM-dd}";
 
         Guid? winnerId;
         if (cache.TryGetValue(cacheKey, out Guid cachedId))
@@ -703,7 +720,7 @@ Replace the existing `GetFeatured` handler with:
                 // clips from surfacing within the day.
                 cache.Set(cacheKey, winnerId.Value, new MemoryCacheEntryOptions
                 {
-                    AbsoluteExpiration = today.AddDays(1), // next UTC midnight
+                    AbsoluteExpiration = todayStart.AddDays(1), // next UTC midnight
                 });
             }
         }
@@ -965,7 +982,7 @@ Insert immediately after the closing `})` of `describe('feed()', () => {...})`:
 - [ ] **Step 13.2: Run the new tests, confirm FAIL**
 
 ```bash
-cd web && bun run test:unit -- --filter="featured"
+cd web && bun run test:unit -- -t "featured"
 ```
 
 Expected: FAIL — `clips.featured is not a function`.
@@ -1002,7 +1019,7 @@ Insert immediately after the existing `feed(...)` method (just before `recordVie
 - [ ] **Step 14.2: Run the featured tests, confirm PASS**
 
 ```bash
-cd web && bun run test:unit -- --filter="featured"
+cd web && bun run test:unit -- -t "featured"
 ```
 
 Expected: 2 passing.
