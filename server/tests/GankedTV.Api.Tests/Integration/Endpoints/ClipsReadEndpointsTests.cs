@@ -1162,4 +1162,17 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         body.Should().NotContain("<script>alert");
         body.Should().Contain("&lt;script&gt;");
     }
+
+    // ---- GET /clips/featured ----
+
+    [Fact]
+    public async Task Featured_EmptyDb_Returns204()
+    {
+        await _fx.ResetAsync();
+        using var client = _factory!.CreateClient();
+
+        var resp = await client.GetAsync("/clips/featured");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
 }
