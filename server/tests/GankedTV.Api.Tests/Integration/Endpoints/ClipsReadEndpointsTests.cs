@@ -1446,4 +1446,41 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         var secondBody = await secondResp.Content.ReadFromJsonAsync<JsonElement>();
         secondBody.GetProperty("id").GetGuid().Should().Be(original, "the cache pins the pick within the UTC day");
     }
+
+    [Fact]
+    public async Task Featured_StaleCachedClip_EvictsAndReturns204()
+    {
+        // First call caches the winner. Then the clip is hard-deleted. The next call
+        // should detect the stale cache (rehydration finds nothing), evict the key,
+        // and return 204. (A follow-up call would then re-pick from current state.)
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var todayStart = now.Date;
+        var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
+
+        var (clipId, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "doomed");
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.Add(new ClipView { ClipId = clipId, CreatedAt = engagementAt });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var firstResp = await client.GetAsync("/clips/featured");
+        firstResp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Hard-delete the cached winner. Delete ClipViews + Clip in order to satisfy FK.
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.RemoveRange(db.ClipViews.Where(v => v.ClipId == clipId));
+            await db.SaveChangesAsync();
+            db.Clips.Remove(await db.Clips.FirstAsync(c => c.Id == clipId));
+            await db.SaveChangesAsync();
+        }
+
+        var secondResp = await client.GetAsync("/clips/featured");
+        secondResp.StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
 }
