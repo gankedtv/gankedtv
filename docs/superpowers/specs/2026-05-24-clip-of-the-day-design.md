@@ -44,7 +44,7 @@ In a new `BuildFeaturedClipIdAsync` helper alongside `BuildTrendingFeedAsync`:
 - Key: `featured:{yyyy-MM-dd}` using `DateTimeOffset.UtcNow.Date`.
 - Cached value: `Guid` only — *not* the hydrated DTO. Hydration runs every request so `likedByMe` and signed URLs are always per-caller / fresh.
 - Expiration: `AbsoluteExpiration = nextUtcMidnight`. The next-day request misses, recomputes, and reseats the key under the new date.
-- Stale-clip handling: if the cached `Guid` no longer resolves to a `public`+`ready` clip on rehydration (deleted, unpublished, taken back to processing), evict the key and recompute once. If recomputation produces nothing, return 204.
+- Stale-clip handling: if the cached `Guid` no longer resolves to a `public`+`ready` clip on rehydration (deleted, unpublished, taken back to processing), evict the key and return 204 for this request. The next request misses, recomputes against current DB state, and reseats the cache. Trades one transient "fallback to newest" render for handler simplicity (no retry loop, single code path).
 - No 204-caching: an empty result is *not* cached (would prevent newly-eligible clips from surfacing within the day).
 
 ### Hydration
