@@ -16,6 +16,11 @@ public sealed class RedisRateLimiterFactory(IServiceProvider services, ILoggerFa
 {
     /// <param name="policy">Namespaces the Redis key so the two policies never share a bucket.</param>
     /// <param name="partitionKey">The caller bucket (e.g. <c>u:{userId}</c> / <c>ip:{ip}</c>).</param>
+    /// <remarks>
+    /// Callers must acquire with <c>permitCount &lt;= permitLimit</c>. The Redis path increments
+    /// before checking, so a single over-limit acquisition would poison the window for its whole
+    /// duration. Every current caller acquires exactly 1 permit, well under both policies' limits.
+    /// </remarks>
     public RateLimiter Create(string policy, string partitionKey, int permitLimit, TimeSpan window)
     {
         var multiplexer = services.GetService<IConnectionMultiplexer>();
@@ -110,13 +115,15 @@ internal sealed class RedisFixedWindowRateLimiter : RateLimiter
         try
         {
             var db = _multiplexer.GetDatabase();
-            var result = await db.ScriptEvaluateAsync(
-                Script,
-                [_key],
-                [permitCount, _windowMs]).ConfigureAwait(false);
+            // ScriptEvaluateAsync has no CancellationToken overload, so WaitAsync releases the
+            // request when the client aborts (e.g. a stuck Redis) instead of pinning it until
+            // AsyncTimeout. OperationCanceledException then propagates — deliberately not caught.
+            var result = await db.ScriptEvaluateAsync(Script, [_key], [permitCount, _windowMs])
+                .WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
             return Evaluate(result);
         }
-        catch (Exception ex) when (ex is RedisException or RedisTimeoutException)
+        catch (Exception ex) when (IsRedisFailure(ex))
         {
             LogDegraded(ex);
             return await _fallback.Value.AcquireAsync(permitCount, cancellationToken).ConfigureAwait(false);
@@ -132,15 +139,26 @@ internal sealed class RedisFixedWindowRateLimiter : RateLimiter
             var result = db.ScriptEvaluate(Script, [_key], [permitCount, _windowMs]);
             return Evaluate(result);
         }
-        catch (Exception ex) when (ex is RedisException or RedisTimeoutException)
+        catch (Exception ex) when (IsRedisFailure(ex))
         {
             LogDegraded(ex);
             return _fallback.Value.AttemptAcquire(permitCount);
         }
     }
 
+    // Any infra-level failure must degrade to the in-process limiter rather than 500. Besides the
+    // Redis exception types, GetDatabase() throws ObjectDisposedException when the multiplexer is
+    // torn down during a graceful-shutdown / test-teardown race. Cancellation is NOT a failure —
+    // it must propagate so an aborted request stops promptly.
+    private static bool IsRedisFailure(Exception ex) =>
+        ex is RedisException or RedisTimeoutException or ObjectDisposedException or TimeoutException;
+
     private RateLimitLease Evaluate(RedisResult result)
     {
+        // A successful round trip means Redis is back; re-arm the degraded warning so a later
+        // outage logs again (otherwise a flapping Redis logs only once for the life of the pod).
+        Interlocked.Exchange(ref _degradedLogged, 0);
+
         var values = (RedisResult[])result!;
         var current = (long)values[0];
         var ttlMs = (long)values[1];

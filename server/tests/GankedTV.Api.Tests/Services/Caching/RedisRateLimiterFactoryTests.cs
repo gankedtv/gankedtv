@@ -53,12 +53,19 @@ public class RedisRateLimiterFactoryTests
     [Fact]
     public async Task Redis_WithinLimit_IsAcquired()
     {
-        var (mux, _) = MuxReturning(ScriptReply(current: 1, ttlMs: 60_000));
+        var (mux, db) = MuxReturning(ScriptReply(current: 1, ttlMs: 60_000));
         var limiter = FactoryWith(mux).Create("clips-write", "u:1", permitLimit: 30, TimeSpan.FromMinutes(1));
 
         using var lease = await limiter.AcquireAsync(1);
 
         lease.IsAcquired.Should().BeTrue();
+        // Pin the Lua contract: a regression that swaps INCRBY/PEXPIRE, reorders KEYS/ARGV, or
+        // reshapes the call would otherwise slip past the lease-only assertions.
+        await db.Received(1).ScriptEvaluateAsync(
+            Arg.Is<string>(s => s.Contains("INCRBY") && s.Contains("PEXPIRE")),
+            Arg.Is<RedisKey[]>(k => k.Length == 1 && k[0] == "rl:clips-write:u:1"),
+            Arg.Is<RedisValue[]>(v => v.Length == 2 && (long)v[0] == 1 && (long)v[1] == 60_000),
+            Arg.Any<CommandFlags>());
     }
 
     [Fact]

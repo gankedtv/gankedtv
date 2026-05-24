@@ -412,6 +412,40 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Feed_CachedFirstPage_FilledByAuthedUser_DoesNotLeakToAnother()
+    {
+        // Symmetric to the test above, guarding the riskier direction: an *authenticated* caller
+        // (who liked the clip) warms the cache, then a different user reads the same entry. Because
+        // only the anonymous projection is cached, the filler's likedByMe must never leak — a future
+        // refactor routing an authed caller through a non-anonymous factory would trip this.
+        await _fx.ResetAsync();
+        var (likerId, likerToken) = await SeedUserAndIssueTokenAsync("liker-fills");
+        var (_, otherToken) = await SeedUserAndIssueTokenAsync("other-reads");
+        var (clipId, _) = await SeedClipAsync(likerId, DateTimeOffset.UtcNow);
+        await using (var db = _fx.CreateContext())
+        {
+            db.Likes.Add(new Like { UserId = likerId, ClipId = clipId, CreatedAt = DateTimeOffset.UtcNow });
+            await db.SaveChangesAsync();
+        }
+
+        // Liker warms the cache via the authenticated path → sees their own like.
+        using (var likerClient = ClientWithBearer(likerToken))
+        {
+            var body = await (await likerClient.GetAsync("/clips/feed")).Content.ReadFromJsonAsync<JsonElement>();
+            body.GetProperty("items").EnumerateArray().Single(e => e.GetProperty("id").GetGuid() == clipId)
+                .GetProperty("likedByMe").GetBoolean().Should().BeTrue();
+        }
+
+        // A different user reads the same cached page and must NOT inherit the liker's flag.
+        using (var otherClient = ClientWithBearer(otherToken))
+        {
+            var body = await (await otherClient.GetAsync("/clips/feed")).Content.ReadFromJsonAsync<JsonElement>();
+            body.GetProperty("items").EnumerateArray().Single(e => e.GetProperty("id").GetGuid() == clipId)
+                .GetProperty("likedByMe").GetBoolean().Should().BeFalse();
+        }
+    }
+
+    [Fact]
     public async Task Feed_FeedItemShape_ContainsAuthorAndThumbnailUrl()
     {
         await _fx.ResetAsync();

@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Caching.Hybrid;
+using Microsoft.Extensions.Caching.StackExchangeRedis;
+using Microsoft.Extensions.DependencyInjection;
 using StackExchange.Redis;
 
 namespace GankedTV.Api.Services.Caching;
@@ -26,13 +28,17 @@ public static class RedisRegistration
 
         if (options.TryBuildConfiguration(out var configuration))
         {
-            // AbortOnConnectFail=false (set in TryBuildConfiguration) means Connect returns a
-            // multiplexer immediately even if Redis is down at boot; it reconnects in the
-            // background. A single shared multiplexer backs both the L2 cache and the limiter.
-            var multiplexer = ConnectionMultiplexer.Connect(configuration);
-            services.AddSingleton<IConnectionMultiplexer>(multiplexer);
-            services.AddStackExchangeRedisCache(o =>
-                o.ConnectionMultiplexerFactory = () => Task.FromResult<IConnectionMultiplexer>(multiplexer));
+            // Lazy, container-owned singleton: Connect runs on first resolve (first cache op or
+            // rate-limited request), not at boot — so a slow/unreachable Redis never delays
+            // startup (AbortOnConnectFail=false also keeps it non-throwing). Registering the
+            // factory (not a pre-built instance) lets the DI container dispose it on shutdown,
+            // giving Redis a clean QUIT instead of a dropped TCP connection. Both the L2 cache and
+            // the limiter resolve this same instance, so there's still exactly one connection.
+            services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(configuration));
+            services.AddStackExchangeRedisCache(_ => { });
+            services.AddOptions<RedisCacheOptions>().Configure<IServiceProvider>((cacheOptions, sp) =>
+                cacheOptions.ConnectionMultiplexerFactory =
+                    () => Task.FromResult(sp.GetRequiredService<IConnectionMultiplexer>()));
         }
 
         return services;

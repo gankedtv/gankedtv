@@ -75,6 +75,12 @@ public sealed class FeedCache(HybridCache cache) : IFeedCache
     /// Drop every cached feed page. Called best-effort on clip create/complete/delete and on
     /// visibility/game changes — any of which can alter the global latest page, so we clear the
     /// whole <see cref="FeedTag"/> rather than reason about which specific pages changed.
+    /// <para>
+    /// Deliberately NOT called on like/unlike: a cached card's <c>LikeCount</c> is therefore
+    /// TTL-bounded-stale (≤ the entry's expiration), the same accepted tradeoff as trending.
+    /// Likes are high-frequency, so invalidating on each would defeat the cache; the clip detail
+    /// view and like button reflect the true count immediately.
+    /// </para>
     /// </summary>
     public ValueTask InvalidateFeedsAsync(CancellationToken ct) =>
         cache.RemoveByTagAsync(FeedTag, ct);
