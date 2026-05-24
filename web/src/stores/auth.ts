@@ -49,6 +49,13 @@ export const useAuthStore = defineStore('auth', {
 
   getters: {
     isAuthenticated: (state): boolean => !!state.user,
+    // Admin is a strict superset of moderator — every admin endpoint a mod can hit, the
+    // admin can hit too, plus the user-disable ones. The two getters mirror the server
+    // policy registration in RoleAuthorization.AddRolePolicies so the UI never offers a
+    // path the server would 403.
+    isAdmin: (state): boolean => state.user?.role === 'admin',
+    isModerator: (state): boolean =>
+      state.user?.role === 'admin' || state.user?.role === 'moderator',
   },
 
   actions: {

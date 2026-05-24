@@ -1,5 +1,7 @@
 import { api, BASE_URL } from './client'
 
+export type UserRole = 'user' | 'moderator' | 'admin'
+
 export interface MeResponse {
   id: string
   username: string
@@ -11,6 +13,8 @@ export interface MeResponse {
   // OAuth-then-attached accounts). SettingsPasswordView uses this to switch between
   // "Set password" (first-time) and "Change password" (rotation) copy.
   hasPassword: boolean
+  // Authorization role. The router guard and AppNav gate the admin surface off this.
+  role: UserRole
 }
 
 export interface RefreshResponse {

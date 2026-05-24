@@ -3,6 +3,7 @@ using System;
 using GankedTV.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using NpgsqlTypes;
@@ -12,9 +13,11 @@ using NpgsqlTypes;
 namespace GankedTV.Api.Data.Migrations
 {
     [DbContext(typeof(GankedTvDbContext))]
-    partial class GankedTvDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260524141621_AddModerationRolesReports")]
+    partial class AddModerationRolesReports
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -45,10 +48,6 @@ namespace GankedTV.Api.Data.Migrations
                         .HasColumnType("smallint")
                         .HasColumnName("duration_secs");
 
-                    b.Property<string>("FailureReason")
-                        .HasColumnType("text")
-                        .HasColumnName("failure_reason");
-
                     b.Property<long?>("FileSizeBytes")
                         .HasColumnType("bigint")
                         .HasColumnName("file_size_bytes");
@@ -60,10 +59,6 @@ namespace GankedTV.Api.Data.Migrations
                     b.Property<short?>("Height")
                         .HasColumnType("smallint")
                         .HasColumnName("height");
-
-                    b.Property<string>("ImportSourceUrl")
-                        .HasColumnType("text")
-                        .HasColumnName("import_source_url");
 
                     b.Property<int>("LikeCount")
                         .ValueGeneratedOnAdd()
@@ -740,7 +735,7 @@ namespace GankedTV.Api.Data.Migrations
 
                     b.ToTable("reports", null, t =>
                         {
-                            t.HasCheckConstraint("ck_reports_reason", "reason IN ('spam','harassment','hate','nsfw','violence','wrong_game','other')");
+                            t.HasCheckConstraint("ck_reports_reason", "reason IN ('spam','harassment','hate','nsfw','violence','other')");
 
                             t.HasCheckConstraint("ck_reports_status", "status IN ('open','resolved','dismissed')");
 

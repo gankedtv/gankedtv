@@ -43,6 +43,13 @@ public sealed class SeedCommand(
     public const string SeedUser2Email = $"{SeedUser2Username}@dev.local";
     public const string SeedUser2Password = SeedUserPassword;
 
+    // Third seeded login — a pre-promoted admin so `make seed` ships a ready
+    // admin account for local moderation testing.
+    public static readonly Guid SeedAdminId = new("00000000-0000-0000-0000-00000000BEEF");
+    public const string SeedAdminUsername = "seedadmin";
+    public const string SeedAdminEmail = $"{SeedAdminUsername}@dev.local";
+    public const string SeedAdminPassword = SeedUserPassword;
+
     public const int SeedClipCount = 10;
     private const int GameRotationCount = 5;
 
@@ -78,6 +85,12 @@ public sealed class SeedCommand(
         _ = await EnsureSeedUserAsync(
             SeedUser2Id, SeedUser2Username, SeedUser2Email, SeedUser2Password,
             "Seeded dev user (actor).", now, ct);
+        // seedadmin gives `make seed` a pre-promoted admin so moderation flows can be tested
+        // locally without manually editing the DB. Role is enforced idempotently — if a
+        // contributor demoted the account, the next seed restores it to admin.
+        _ = await EnsureSeedUserAsync(
+            SeedAdminId, SeedAdminUsername, SeedAdminEmail, SeedAdminPassword,
+            "Seeded dev admin.", now, ct, role: UserRoles.Admin);
 
         // Ensure buckets exist before any PutObject. Seed runs via the `--seed` short-circuit
         // which doesn't start hosted services, so BucketBootstrapHostedService hasn't run.
@@ -160,7 +173,8 @@ public sealed class SeedCommand(
         string password,
         string bio,
         DateTimeOffset now,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? role = null)
     {
         var user = await db.Users.FirstOrDefaultAsync(
             u => u.Id == id || u.Email == email || u.Username == username, ct);
@@ -175,6 +189,7 @@ public sealed class SeedCommand(
                 Bio = bio,
                 PasswordHash = hasher.Hash(password),
                 PasswordAlgo = hasher.Algorithm,
+                Role = role ?? UserRoles.User,
                 CreatedAt = now,
                 UpdatedAt = now,
             };
@@ -198,6 +213,15 @@ public sealed class SeedCommand(
             user.UpdatedAt = now;
             await db.SaveChangesAsync(ct);
             logger.LogInformation("Seed: attached default password to existing user {Username}", user.Username);
+        }
+        // Re-assert the expected role on every run so a contributor who downgraded the
+        // seedadmin account locally gets it restored to admin on the next seed.
+        if (role is not null && user.Role != role)
+        {
+            user.Role = role;
+            user.UpdatedAt = now;
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Seed: set role={Role} on user {Username}", role, user.Username);
         }
         return user;
     }

@@ -68,6 +68,13 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("GOOGLE_CLIENT_ID", "test-google-client");
         Environment.SetEnvironmentVariable("GOOGLE_CLIENT_SECRET", "test-google-secret");
         Environment.SetEnvironmentVariable("GOOGLE_REDIRECT_URI", "http://localhost:5000/auth/google/callback");
+        // Force the in-process rate limiter inside the test rig. Without this, a worktree that
+        // sets REDIS_URL (per the `parallel worktrees` workflow) makes every AuthApiFactory
+        // instance share one Redis-backed rate-limit bucket — `[Collection("Postgres")]`
+        // serialises tests within a class but each test still creates a fresh factory, and the
+        // 5-req/min credentials bucket collapses across all of them, surfacing as cascading 429s
+        // and downstream 401s in tests that depend on a successful register.
+        Environment.SetEnvironmentVariable("REDIS_URL", null);
 
         builder.UseEnvironment(_environment);
         builder.ConfigureServices(services =>

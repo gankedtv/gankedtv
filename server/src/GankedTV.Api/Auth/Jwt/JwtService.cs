@@ -62,6 +62,12 @@ public sealed class JwtService : IJwtService
         {
             claims.Add(new Claim(JwtRegisteredClaimNames.Email, user.Email));
         }
+        // Emit the role claim unconditionally — defaults to "user" so authorization policies
+        // can always assert on its presence without distinguishing default-vs-elevated paths.
+        if (!string.IsNullOrWhiteSpace(user.Role))
+        {
+            claims.Add(new Claim(JwtClaims.Role, user.Role));
+        }
 
         var token = new JwtSecurityToken(
             issuer: _options.Issuer,
@@ -96,9 +102,13 @@ public sealed class JwtService : IJwtService
     }
 }
 
+// Bearer auth in Program.cs sets MapInboundClaims=false so these short claim names land on the
+// principal as-is. Read roles via principal.HasClaim(JwtClaims.Role, "...") — DO NOT use
+// ClaimTypes.Role or principal.IsInRole(), which expect the long URI mapping we've turned off.
 public static class JwtClaims
 {
     public const string Sub = JwtRegisteredClaimNames.Sub;
     public const string Name = "name";
     public const string Email = JwtRegisteredClaimNames.Email;
+    public const string Role = "role";
 }

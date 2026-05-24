@@ -14,6 +14,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   delete: [id: string]
   reply: [id: string]
+  report: [id: string]
 }>()
 
 const isOwn = computed(
@@ -63,6 +64,14 @@ const isOwn = computed(
           @click="emit('delete', comment.id)"
         >
           Delete
+        </button>
+        <button
+          v-if="!isOwn && currentUserId && !comment.deleted"
+          type="button"
+          class="cursor-pointer font-mono text-[11px] uppercase tracking-wider text-text-muted transition-colors duration-150 hover:text-[color:var(--color-error)]"
+          @click="emit('report', comment.id)"
+        >
+          Report
         </button>
       </div>
     </div>

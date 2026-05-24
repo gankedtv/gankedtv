@@ -1,6 +1,7 @@
 using FluentAssertions;
 using GankedTV.Api.Auth.Passwords;
 using GankedTV.Api.Data;
+using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Services.Media;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Tests.TestSupport;
@@ -42,7 +43,7 @@ public class SeedCommandTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task FreshDb_CreatesTwoUsersAndTenClips()
+    public async Task FreshDb_CreatesThreeUsersAndTenClips()
     {
         await using var db = _fx.CreateContext();
         var seed = NewSeed(db, out _, out _);
@@ -50,14 +51,21 @@ public class SeedCommandTests : IAsyncLifetime
         await seed.RunAsync(CancellationToken.None);
 
         await using var verify = _fx.CreateContext();
-        (await verify.Users.CountAsync()).Should().Be(2);
+        (await verify.Users.CountAsync()).Should().Be(3);
         (await verify.Clips.CountAsync()).Should().Be(SeedCommand.SeedClipCount);
         var usernames = await verify.Users.Select(u => u.Username).ToListAsync();
-        usernames.Should().Contain([SeedCommand.SeedUsername, SeedCommand.SeedUser2Username]);
-        // Clips all belong to the primary seeded user; seeduser2 has none — they're the
-        // "actor" persona used by two-browser smoke tests, not a content owner.
+        usernames.Should().Contain([
+            SeedCommand.SeedUsername,
+            SeedCommand.SeedUser2Username,
+            SeedCommand.SeedAdminUsername,
+        ]);
+        // Clips all belong to the primary seeded user; seeduser2 and seedadmin have none —
+        // they're the "actor" / "moderator" personas for smoke tests, not content owners.
         (await verify.Clips.CountAsync(c => c.UserId == SeedCommand.SeedUserId))
             .Should().Be(SeedCommand.SeedClipCount);
+        // seedadmin ships pre-promoted so /admin flows can be smoke-tested via `make seed`.
+        var admin = await verify.Users.SingleAsync(u => u.Username == SeedCommand.SeedAdminUsername);
+        admin.Role.Should().Be(UserRoles.Admin);
     }
 
     [Fact]
@@ -74,7 +82,7 @@ public class SeedCommandTests : IAsyncLifetime
         }
 
         await using var verify = _fx.CreateContext();
-        (await verify.Users.CountAsync()).Should().Be(2);
+        (await verify.Users.CountAsync()).Should().Be(3);
         (await verify.Clips.CountAsync()).Should().Be(SeedCommand.SeedClipCount);
     }
 
@@ -169,8 +177,8 @@ public class SeedCommandTests : IAsyncLifetime
         }
 
         await using var verify = _fx.CreateContext();
-        // Two users total: the reused primary + the new seeduser2.
-        (await verify.Users.CountAsync()).Should().Be(2);
+        // Three users total: the reused primary + the new seeduser2 + the new seedadmin.
+        (await verify.Users.CountAsync()).Should().Be(3);
         var user = await verify.Users.SingleAsync(u => u.Username == SeedCommand.SeedUsername);
         user.Id.Should().Be(preExistingId, "the existing row is reused, not replaced");
         // Seed should have attached the documented password to the reused row so /auth/login still works.

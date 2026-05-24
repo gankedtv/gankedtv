@@ -11,7 +11,8 @@ import ClipCard from '@/components/ClipCard.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
 import UnderlineTabs from '@/components/UnderlineTabs.vue'
 import IconShare from '@/components/icons/IconShare.vue'
-import IconMoreHorizontal from '@/components/icons/IconMoreHorizontal.vue'
+import KebabMenu, { type KebabMenuItem } from '@/components/KebabMenu.vue'
+import ReportDialog from '@/components/ReportDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -27,6 +28,8 @@ const followBusy = ref(false)
 // always false and the follow button shows for any profile.
 const isMe = computed(() => !!auth.user && !!profile.value && auth.user.id === profile.value.id)
 const canShowFollowButton = computed(() => auth.isAuthenticated && !!profile.value && !isMe.value)
+
+const reportOpen = ref(false)
 
 const username = computed(() => {
   const u = route.params.username
@@ -179,6 +182,12 @@ onBeforeUnmount(() => {
   if (copyTimer !== null) clearTimeout(copyTimer)
 })
 
+// Own-profile kebab — currently just Sign out. Reusable `KebabMenu` handles open/close,
+// outside-click, and Esc; this view only declares the items.
+const ownProfileMenuItems = computed<KebabMenuItem[]>(() => [
+  { label: 'Sign out', variant: 'danger', onClick: () => auth.logout() },
+])
+
 type Tab = 'clips' | 'liked'
 const tab = ref<Tab>('clips')
 
@@ -307,11 +316,22 @@ const TABS: { key: Tab; label: string }[] = [
               <IconShare :size="14" />
             </button>
             <button
-              class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-sm border border-border bg-surface-raised text-text-secondary transition-[border-color] duration-150 hover:border-border-hover"
-              aria-label="More options"
+              v-if="canShowFollowButton"
+              class="flex h-9 cursor-pointer items-center rounded-sm border border-border bg-surface-raised px-3 font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary transition-colors duration-150 hover:border-[color:var(--color-error)] hover:text-[color:var(--color-error)]"
+              aria-label="Report user"
+              @click="reportOpen = true"
             >
-              <IconMoreHorizontal :size="14" />
+              Report
             </button>
+            <!-- Kebab menu (own profile only): houses Sign out. Foreign profiles get the
+                 Report button above instead, so the kebab would have no contents — we hide
+                 it rather than render an empty/placeholder button. -->
+            <KebabMenu
+              v-if="isMe"
+              :items="ownProfileMenuItems"
+              icon-orientation="horizontal"
+              trigger-variant="outlined"
+            />
             <span
               v-if="copyMessage"
               aria-live="polite"
@@ -432,5 +452,14 @@ const TABS: { key: Tab; label: string }[] = [
         </div>
       </div>
     </main>
+
+    <ReportDialog
+      v-if="profile"
+      :open="reportOpen"
+      target-type="user"
+      :target-id="profile.id"
+      @cancel="reportOpen = false"
+      @submitted="reportOpen = false"
+    />
   </div>
 </template>

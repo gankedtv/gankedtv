@@ -107,6 +107,7 @@ describe('useAuthStore', () => {
       avatarUrl: null,
       createdAt: '',
       hasPassword: true,
+      role: 'user',
     })
 
     expect(auth.user?.username).toBe('zoe')
@@ -240,5 +241,34 @@ describe('useAuthStore', () => {
       errSpy.mockRestore()
       routerMod.default.isReady = originalIsReady
     }
+  })
+
+  it('isAdmin / isModerator track the user role claim', () => {
+    const auth = useAuthStore()
+    expect(auth.isAdmin).toBe(false)
+    expect(auth.isModerator).toBe(false)
+
+    const base = {
+      id: '1',
+      username: 'u',
+      email: null,
+      bio: null,
+      avatarUrl: null,
+      createdAt: '',
+      hasPassword: false,
+    } as const
+
+    auth.setUser({ ...base, role: 'user' })
+    expect(auth.isAdmin).toBe(false)
+    expect(auth.isModerator).toBe(false)
+
+    auth.setUser({ ...base, role: 'moderator' })
+    expect(auth.isAdmin).toBe(false)
+    expect(auth.isModerator).toBe(true)
+
+    // Admin is a superset of moderator — both getters return true.
+    auth.setUser({ ...base, role: 'admin' })
+    expect(auth.isAdmin).toBe(true)
+    expect(auth.isModerator).toBe(true)
   })
 })

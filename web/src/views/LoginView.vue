@@ -86,13 +86,15 @@ const isDev = import.meta.env.DEV
 const devLoading = ref(false)
 const devError = ref<string | null>(null)
 
-async function devSignIn(username = 'seeduser') {
+async function devSignIn(username = 'seeduser', role?: 'user' | 'moderator' | 'admin') {
   devLoading.value = true
   devError.value = null
   try {
     const res = await api<{ token: string; refresh: string }>('/dev/token', {
       method: 'POST',
-      body: { username },
+      // `role` is honoured server-side only in Development; the API ignores unknown values
+      // and falls back to "user". Omitting it preserves the existing seeduser behavior.
+      body: role ? { username, role } : { username },
     })
     auth.setSession(res.token, res.refresh)
     await auth.fetchMe()
@@ -232,6 +234,14 @@ async function devSignIn(username = 'seeduser') {
           @click="devSignIn()"
         >
           {{ devLoading ? 'Signing in…' : 'Sign in as seeduser' }}
+        </button>
+        <button
+          type="button"
+          :disabled="devLoading"
+          class="mt-2 flex w-full items-center justify-center gap-2 rounded-md border border-[color:var(--color-neon)] bg-[color:var(--color-neon-dim)] px-5 py-2.5 font-heading text-[13px] font-bold uppercase tracking-[0.06em] text-[color:var(--color-neon)] transition-[background-color,border-color] duration-150 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+          @click="devSignIn('seedadmin', 'admin')"
+        >
+          {{ devLoading ? 'Signing in…' : 'Sign in as seedadmin' }}
         </button>
         <p v-if="devError" class="m-0 mt-2 text-center font-mono text-[10px] text-error">
           {{ devError }}

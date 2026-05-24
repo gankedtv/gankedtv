@@ -9,6 +9,7 @@ using GankedTV.Api.Clips;
 using GankedTV.Api.Configuration;
 using GankedTV.Api.Data;
 using GankedTV.Api.Endpoints;
+using GankedTV.Api.HostedServices;
 using GankedTV.Api.Middleware;
 using GankedTV.Api.Notifications;
 using GankedTV.Api.Services.Caching;
@@ -16,6 +17,7 @@ using GankedTV.Api.Services.Clips;
 using GankedTV.Api.Services.Igdb;
 using GankedTV.Api.Services.Maintenance;
 using GankedTV.Api.Services.Media;
+using GankedTV.Api.Services.Moderation;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Services.Tags;
 using GankedTV.Api.Tools;
@@ -47,7 +49,10 @@ builder.Services.AddOpenApi();
 // errors go through ProblemResults.*.
 builder.Services.AddProblemDetails();
 builder.Services.AddTransient<ErrorHandlingMiddleware>();
+builder.Services.AddTransient<BannedUserMiddleware>();
 builder.Services.AddScoped<SeedCommand>();
+builder.Services.AddScoped<IReportService, ReportService>();
+builder.Services.AddHostedService<AdminBootstrap>();
 
 var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL")
     ?? builder.Configuration.GetConnectionString("DefaultConnection")
@@ -368,14 +373,21 @@ builder.Services
 
 // Reuse the same TokenValidationParameters instance JwtService uses so the two sides
 // can't drift (NameClaimType, ClockSkew, issuer/audience, signing key).
+//
+// MapInboundClaims=false stops the bearer handler from rewriting short JWT claim names
+// (sub, role, email, ...) into the long ClaimTypes.* URIs at validation time. Without this,
+// the "role" claim we emit lands on the principal as ClaimTypes.Role, and RequireClaim("role", ...)
+// in the admin/moderator policies fails to match. JwtService.Issue is the authoritative
+// shape of the claim set; the bearer should expose it identically.
 builder.Services
     .AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
     .Configure<IOptions<JwtOptions>>((bearer, jwtOptions) =>
     {
         bearer.TokenValidationParameters = JwtService.BuildValidationParameters(jwtOptions.Value);
+        bearer.MapInboundClaims = false;
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(opts => opts.AddRolePolicies());
 
 const string corsPolicy = "WebOrigin";
 // Allowed origins = CORS_ORIGINS (comma-separated) ∪ WebOrigin. WebOrigin is always included
@@ -454,6 +466,10 @@ if (!app.Environment.IsDevelopment())
 }
 app.UseCors(corsPolicy);
 app.UseAuthentication();
+// Banned-user gate sits between authentication and authorization so a still-valid JWT can't
+// reach any protected handler once the account is disabled. Authenticated requests pay one
+// cheap row lookup per call; anonymous requests short-circuit before the DB hit.
+app.UseMiddleware<BannedUserMiddleware>();
 app.UseAuthorization();
 app.UseRateLimiter();
 
@@ -473,6 +489,8 @@ app.MapGamesEndpoints();
 app.MapLeaderboardsEndpoints();
 app.MapTagsEndpoints();
 app.MapSearchEndpoints();
+app.MapReportsEndpoints();
+app.MapAdminEndpoints();
 
 if (app.Environment.IsDevelopment())
 {

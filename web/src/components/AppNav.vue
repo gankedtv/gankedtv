@@ -430,6 +430,15 @@ onBeforeUnmount(() => {
           </span>
         </button>
 
+        <!-- Admin link (moderator / admin only) -->
+        <RouterLink
+          v-if="auth.isModerator"
+          to="/admin"
+          class="inline-flex h-9 cursor-pointer items-center rounded-md border border-border bg-transparent px-3 font-heading text-[12px] font-bold uppercase tracking-wider text-text-secondary no-underline transition-colors duration-150 hover:border-border-hover hover:text-text-primary"
+        >
+          Admin
+        </RouterLink>
+
         <!-- Upload button -->
         <RouterLink
           v-if="auth.isAuthenticated"

@@ -127,6 +127,15 @@ public static class AuthEndpoints
         }
 
         var user = await users.UpsertFromOAuthAsync(oauth.Name, info, ct);
+        if (user.BannedAt is not null)
+        {
+            // OAuth round-trips already burned the authorization code, so failing here means
+            // the user has to start sign-in from scratch — that's intended. Sending a redirect
+            // with the error code lets the SPA surface a banned-account screen instead of a
+            // generic OAuth-failed toast.
+            var webOriginBanned = oauthOptions.Value.WebOrigin.TrimEnd('/');
+            return Results.Redirect($"{webOriginBanned}/auth/callback?error=account_banned");
+        }
         var token = jwt.Issue(user);
         var refresh = await refreshTokens.IssueAsync(user.Id, ct);
 
@@ -185,6 +194,13 @@ public static class AuthEndpoints
             // and "wrong password". TryLoginAsync runs a constant-time-equivalent dummy
             // verify in the missing-user / no-password paths to keep the timing flat.
             return ProblemResults.Unauthorized("invalid_credentials");
+        }
+        if (user.BannedAt is not null)
+        {
+            // Bypass the generic-401 collapse: the user authenticated, so leaking the ban
+            // signal is intended — the SPA needs to render a "your account has been disabled"
+            // screen instead of "wrong password".
+            return ProblemResults.Forbidden("account_banned");
         }
 
         return await IssueTokenResponseAsync(user, jwt, refreshTokens, jwtOptions, ct);
@@ -250,6 +266,12 @@ public static class AuthEndpoints
         try
         {
             var result = await refreshTokens.RotateAsync(req.Refresh, ct);
+            if (result.User.BannedAt is not null)
+            {
+                // The token rotation already burned the previous refresh; the freshly-issued
+                // successor is unusable to a banned account, so just refuse to mint a JWT.
+                return ProblemResults.Forbidden("account_banned");
+            }
             var token = jwt.Issue(result.User);
             return Results.Ok(result.ToTokenResponse(
                 token,
