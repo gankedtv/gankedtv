@@ -11,6 +11,7 @@ using GankedTV.Api.Pagination;
 using GankedTV.Api.Problems;
 using GankedTV.Api.Services.Caching;
 using GankedTV.Api.Services.Media;
+using GankedTV.Api.Validation;
 using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -58,7 +59,7 @@ public static class ClipsReadEndpoints
         Guid id,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
-        IOptions<GankedTV.Api.Validation.ClipValidationOptions> validationOptions,
+        IOptions<ClipValidationOptions> validationOptions,
         CancellationToken ct)
     {
         if (!TryGetUserId(principal, out var userId))

@@ -1,5 +1,6 @@
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
+using GankedTV.Api.Validation;
 using Microsoft.EntityFrameworkCore;
 
 namespace GankedTV.Api.Services.Media;
@@ -245,8 +246,12 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
 
         // Only swap the title if it still equals the user-supplied placeholder. A user who
         // typed a real title before submit keeps it; the placeholder-only path picks up the
-        // extractor's title here. Truncate to MaxTitleLength to honor the validator's cap.
-        var truncated = trimmedExtractor.Length > 255 ? trimmedExtractor[..255] : trimmedExtractor;
+        // extractor's title here. Truncate to the shared ClipValidationLimits ceiling so the
+        // hard cap stays single-sourced — the upload path also clamps against it via
+        // DataAnnotations.
+        var truncated = trimmedExtractor.Length > ClipValidationLimits.MaxTitleLength
+            ? trimmedExtractor[..ClipValidationLimits.MaxTitleLength]
+            : trimmedExtractor;
         await _db.Clips
             .Where(c => c.Id == clipId && c.Title == placeholderTitle)
             .ExecuteUpdateAsync(setters => setters

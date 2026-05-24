@@ -433,7 +433,7 @@ async function pollImportStatus(clipId: string, tick: number): Promise<void> {
     }
     if (status.status === 'failed') {
       stage.value = 'error'
-      errorMsg.value = describeImportFailure(status)
+      errorMsg.value = describePipelineFailure(status)
       return
     }
     // Translate server stages → UI stages for the checklist + progress bar.
@@ -536,7 +536,11 @@ async function continueFromImportStep1() {
   if (ok) step.value = 2
 }
 
-function describeImportFailure(status: ClipStatus): string {
+// Maps the structured failureReason set by the pipeline (any stage — import, thumbnail,
+// compress) to user-facing copy. Currently only consumed by the import wizard's polling,
+// but the codes cover the full post-submit pipeline so this lives at module scope rather
+// than guessing "it was an import error".
+function describePipelineFailure(status: ClipStatus): string {
   switch (status.failureReason) {
     case 'source_too_long': {
       const actual = status.durationSecs ? fmtSeconds(status.durationSecs) : 'too long'
@@ -550,8 +554,14 @@ function describeImportFailure(status: ClipStatus): string {
       return 'The source is unavailable — it may be private, geo-blocked, or removed.'
     case 'fetch_failed':
       return 'The server could not fetch this clip. Double-check the URL or try a different source.'
+    case 'thumbnail_failed':
+      return "We couldn't generate a thumbnail for this clip. Try again — if it persists, the source may be corrupted."
+    case 'transcode_failed':
+      return "We couldn't process this clip's video. Try again — if it persists, the source may be in an unsupported format."
     default:
-      return 'Import failed. Double-check the URL or try a different source.'
+      // No structured code, or one this build doesn't recognise — neutral wording that
+      // doesn't pretend to know whether it was an import or a direct upload.
+      return 'Processing failed. Please try again.'
   }
 }
 

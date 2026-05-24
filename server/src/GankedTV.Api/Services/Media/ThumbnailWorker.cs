@@ -20,6 +20,7 @@ public sealed class ThumbnailWorker : ClipStageWorker
 
     protected override string ClaimStatus => ClipStatuses.Processing;
     protected override string StageName => "thumbnail";
+    protected override string? TerminalFailureReason => ClipFailureReasons.ThumbnailFailed;
     protected override bool IsWorkerEnabled(MediaJobOptions opts) => opts.ThumbnailWorkerEnabled;
 
     protected override async Task ProcessAsync(

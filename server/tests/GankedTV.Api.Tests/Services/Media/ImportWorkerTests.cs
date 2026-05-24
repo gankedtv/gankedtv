@@ -22,7 +22,12 @@ public class ImportWorkerTests
         IObjectStorageService Storage,
         IClipImportUrlValidator Validator);
 
-    private static Harness Build(MediaJobOptions? options = null, ClipValidationOptions? validation = null)
+    // ffprobeStdout, when non-null, replaces the default empty-JSON ffmpeg/ffprobe stdout —
+    // lets tests simulate "ffprobe says duration=240s" without rebuilding the harness.
+    private static Harness Build(
+        MediaJobOptions? options = null,
+        ClipValidationOptions? validation = null,
+        string? ffprobeStdout = null)
     {
         var store = Substitute.For<IClipMediaJobStore>();
         var source = Substitute.For<IClipImportSource>();
@@ -49,7 +54,7 @@ public class ImportWorkerTests
         // simulate an actual ffprobe duration.
         var ffmpeg = Substitute.For<IFfmpegRunner>();
         ffmpeg.RunAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
-            .Returns(new FfmpegResult(0, "ok", ""));
+            .Returns(new FfmpegResult(0, ffprobeStdout ?? "ok", ""));
 
         var services = new ServiceCollection();
         services.AddScoped(_ => store);
@@ -156,8 +161,12 @@ public class ImportWorkerTests
 
         await h.Worker.TryProcessOneAsync(CancellationToken.None);
 
+        // Retry-exhaustion terminal failure → 'fetch_failed' so the wizard surfaces a useful
+        // message instead of the neutral fallback. Pre-flight rejections (too long /
+        // unavailable) write their own codes via the ProcessAsync catch.
         await h.Store.Received(1).MarkFailedAsync(
-            job.ClipId, job.AttemptNumber, ClipStatuses.Importing, Arg.Any<CancellationToken>());
+            job.ClipId, job.AttemptNumber, ClipStatuses.Importing, Arg.Any<CancellationToken>(),
+            reason: ClipFailureReasons.FetchFailed);
     }
 
     [Fact]
@@ -209,5 +218,37 @@ public class ImportWorkerTests
             reason: ClipFailureReasons.SourceTooLong);
         await h.Store.DidNotReceive().ReleaseLeaseAsync(
             Arg.Any<Guid>(), Arg.Any<int>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ImportWorker_FfprobeReportsDurationOverCap_FailsImmediately()
+    {
+        // The authoritative post-download cap check: yt-dlp's metadata may have lied (or
+        // omitted duration), but ffprobe on the actual file is impossible to bypass. When
+        // ffprobe reports duration > cap, the worker must fail-fast with 'source_too_long'
+        // — no S3 upload, no retry, no AdvanceImportAsync.
+        var h = Build(ffprobeStdout: """{"format":{"duration":"240.0"}}""");
+        var job = ImportJob();
+        h.Store.ClaimNextImportAsync(Arg.Any<TimeSpan>(), Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(job);
+        h.Source
+            .FetchAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<ImportFetchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                var dest = (string)call[1];
+                File.WriteAllBytes(dest, new byte[1024]);
+                // Metadata says null duration — extractor lied / omitted. ffprobe is the gate.
+                return Task.FromResult(new ImportedMedia(null, null, null, null, null));
+            });
+
+        await h.Worker.TryProcessOneAsync(CancellationToken.None);
+
+        await h.Storage.DidNotReceive().PutObjectAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await h.Store.Received(1).MarkFailedAsync(
+            job.ClipId, job.AttemptNumber, ClipStatuses.Importing, Arg.Any<CancellationToken>(),
+            reason: ClipFailureReasons.SourceTooLong);
+        await h.Store.DidNotReceive().AdvanceImportAsync(
+            Arg.Any<Guid>(), Arg.Any<int>(), Arg.Any<long>(), Arg.Any<string?>(),
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 }

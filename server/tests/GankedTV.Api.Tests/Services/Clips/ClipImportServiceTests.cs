@@ -51,7 +51,8 @@ public class ClipImportServiceTests
             source,
             Microsoft.Extensions.Options.Options.Create(new ClipValidationOptions()),
             mediaOpts,
-            TimeProvider.System);
+            TimeProvider.System,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<ClipImportService>.Instance);
         return (svc, db, source, userId);
     }
 

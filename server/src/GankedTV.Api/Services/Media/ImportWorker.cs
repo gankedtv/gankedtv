@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.Json;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Services.Clips;
@@ -61,7 +63,11 @@ public sealed class ImportWorker : MediaStageWorker<ClaimedImportJob>
 
     protected override Task FailAsync(IServiceProvider scope, ClaimedImportJob job, CancellationToken ct) =>
         scope.GetRequiredService<IClipMediaJobStore>()
-            .MarkFailedAsync(job.ClipId, job.AttemptNumber, ClipStatuses.Importing, ct);
+            // Retries exhausted with a non-rejection error (timeout, transient extractor
+            // failure, etc.) — surface as 'fetch_failed'. Pre-flight rejections (too long /
+            // unavailable) write their own structured reasons via the catch in ProcessAsync.
+            .MarkFailedAsync(job.ClipId, job.AttemptNumber, ClipStatuses.Importing, ct,
+                reason: ClipFailureReasons.FetchFailed);
 
     protected override async Task ProcessAsync(
         IServiceProvider scope,
@@ -125,8 +131,13 @@ public sealed class ImportWorker : MediaStageWorker<ClaimedImportJob>
                 {
                     try
                     {
+                        // Status filter mirrors MarkFailedAsync's attempt+status guard: if a
+                        // racing worker has already moved the row past 'failed' (unlikely but
+                        // possible during shutdown / re-claim windows), we must not clobber
+                        // its duration. The row was just flipped to 'failed' above, so the
+                        // common path matches.
                         await scope.GetRequiredService<GankedTvDbContext>()
-                            .Clips.Where(c => c.Id == job.ClipId)
+                            .Clips.Where(c => c.Id == job.ClipId && c.Status == ClipStatuses.Failed)
                             .ExecuteUpdateAsync(s => s
                                 .SetProperty(c => c.DurationSecs, (short)actualDur), ct);
                     }
@@ -222,13 +233,12 @@ public sealed class ImportWorker : MediaStageWorker<ClaimedImportJob>
         {
             var result = await ffmpeg.RunAsync(opts.FfprobePath, args, opts.ProcessTimeout, ct);
             if (result.ExitCode != 0) return null;
-            using var doc = System.Text.Json.JsonDocument.Parse(result.Stdout);
+            using var doc = JsonDocument.Parse(result.Stdout);
             if (!doc.RootElement.TryGetProperty("format", out var format)) return null;
             if (!format.TryGetProperty("duration", out var prop)) return null;
             // ffprobe emits duration as a string in JSON ("123.456").
-            var raw = prop.ValueKind == System.Text.Json.JsonValueKind.String ? prop.GetString() : null;
-            return double.TryParse(raw, System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out var seconds)
+            var raw = prop.ValueKind == JsonValueKind.String ? prop.GetString() : null;
+            return double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds)
                 ? (int)Math.Ceiling(seconds)
                 : null;
         }

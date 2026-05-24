@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Globalization;
 using System.Text.Json;
 using GankedTV.Api.Data.Entities;
@@ -92,7 +93,7 @@ public sealed class YtDlpImportSource : IClipImportSource
             throw new ImportFetchException(
                 $"yt-dlp timed out fetching the source after {snapshot.Import.FetchTimeout.TotalMinutes:F0} min.", ex);
         }
-        catch (System.ComponentModel.Win32Exception ex)
+        catch (Win32Exception ex)
         {
             _logger.LogError(ex,
                 "yt-dlp binary '{Path}' could not be launched. Install yt-dlp or set YTDLP_PATH.",
@@ -161,7 +162,7 @@ public sealed class YtDlpImportSource : IClipImportSource
             // the worker retries (transient network issues sometimes cause this).
             throw new ImportFetchException("yt-dlp metadata probe timed out.", ex);
         }
-        catch (System.ComponentModel.Win32Exception ex)
+        catch (Win32Exception ex)
         {
             _logger.LogError(ex,
                 "yt-dlp binary '{Path}' could not be launched (probe). Install yt-dlp or set YTDLP_PATH.",

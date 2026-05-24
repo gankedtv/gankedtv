@@ -7,6 +7,7 @@ using GankedTV.Api.Services.Media.Import;
 using GankedTV.Api.Services.Tags;
 using GankedTV.Api.Validation;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace GankedTV.Api.Services.Clips;
@@ -23,6 +24,7 @@ public sealed class ClipImportService : IClipImportService
     private readonly ClipValidationOptions _validation;
     private readonly IOptionsMonitor<MediaJobOptions> _mediaOptions;
     private readonly TimeProvider _clock;
+    private readonly ILogger<ClipImportService> _logger;
 
     public ClipImportService(
         GankedTvDbContext db,
@@ -31,7 +33,8 @@ public sealed class ClipImportService : IClipImportService
         IClipImportSource source,
         IOptions<ClipValidationOptions> validation,
         IOptionsMonitor<MediaJobOptions> mediaOptions,
-        TimeProvider clock)
+        TimeProvider clock,
+        ILogger<ClipImportService> logger)
     {
         _db = db;
         _urlValidator = urlValidator;
@@ -40,6 +43,7 @@ public sealed class ClipImportService : IClipImportService
         _validation = validation.Value;
         _mediaOptions = mediaOptions;
         _clock = clock;
+        _logger = logger;
     }
 
     public async Task<ClipResult<ImportClipPreviewResult>> PreviewAsync(string? url, CancellationToken ct)
@@ -69,14 +73,22 @@ public sealed class ClipImportService : IClipImportService
                 ThumbnailUrl: media.ThumbnailUrl,
                 MaxClipDurationSecs: _validation.MaxClipDurationSecs));
         }
-        catch (ImportSourceRejectedException)
+        catch (ImportSourceRejectedException ex)
         {
-            // Reuse UnsupportedHost? No — we want a distinct "source unavailable" surface.
-            // Map onto a new error code below (private/geo-blocked/removed).
+            // Info, not Warning: this is the normal "private / removed / geo-blocked" path,
+            // not an infra failure. Keeps operator dashboards quiet but leaves a trail.
+            _logger.LogInformation(
+                "Preview for {Url} rejected by source: {Reason} ({Message})",
+                normalisedUrl, ex.Reason, ex.Message);
             return ClipResult<ImportClipPreviewResult>.Fail(ClipUploadError.SourceUnavailable);
         }
-        catch (ImportFetchException)
+        catch (ImportFetchException ex)
         {
+            // Warning: yt-dlp infra problem (binary missing, timeout, network). Operators
+            // need visibility — "every preview fails for everyone" should surface in logs
+            // rather than as a stream of opaque 400s.
+            _logger.LogWarning(ex,
+                "Preview probe failed for {Url}: {Message}", normalisedUrl, ex.Message);
             return ClipResult<ImportClipPreviewResult>.Fail(ClipUploadError.FetchFailed);
         }
     }

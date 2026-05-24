@@ -20,6 +20,13 @@ public abstract class ClipStageWorker : MediaStageWorker<ClaimedMediaJob>
     // The clip status this stage claims ('processing' or 'transcoding').
     protected abstract string ClaimStatus { get; }
 
+    // Machine-readable code persisted to clips.failure_reason when this stage exhausts its
+    // retry budget. Lets the wizard surface specific copy per stage instead of a generic
+    // "import failed" default. Null falls back to "no reason recorded" — kept null on the
+    // base for safety so a new stage that forgets to override doesn't accidentally inherit
+    // a misleading code.
+    protected virtual string? TerminalFailureReason => null;
+
     protected override Task<ClaimedMediaJob?> ClaimAsync(IServiceProvider scope, MediaJobOptions opts, CancellationToken ct) =>
         scope.GetRequiredService<IClipMediaJobStore>().ClaimNextAsync(ClaimStatus, opts.LeaseDuration, opts.MaxAttempts, ct);
 
@@ -30,7 +37,8 @@ public abstract class ClipStageWorker : MediaStageWorker<ClaimedMediaJob>
         scope.GetRequiredService<IClipMediaJobStore>().ReleaseLeaseAsync(job.ClipId, job.AttemptNumber, ClaimStatus, ct);
 
     protected override Task FailAsync(IServiceProvider scope, ClaimedMediaJob job, CancellationToken ct) =>
-        scope.GetRequiredService<IClipMediaJobStore>().MarkFailedAsync(job.ClipId, job.AttemptNumber, ClaimStatus, ct);
+        scope.GetRequiredService<IClipMediaJobStore>()
+            .MarkFailedAsync(job.ClipId, job.AttemptNumber, ClaimStatus, ct, reason: TerminalFailureReason);
 
     // Drop cached feed pages once a clip becomes feed-visible (reaches 'ready'). Best-effort: the
     // status transition has already committed, so a cache failure (e.g. Redis down) must NOT bubble

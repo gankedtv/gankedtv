@@ -146,7 +146,11 @@ public class MediaStageWorkerTests
 
         await svc.TryProcessOneAsync(CancellationToken.None);
 
-        await store.Received(1).MarkFailedAsync(job.ClipId, 3, ClipStatuses.Processing, CancellationToken.None);
+        // Terminal failure carries the stage's structured reason so the status endpoint can
+        // surface "we couldn't generate a thumbnail" instead of a generic "failed" message.
+        await store.Received(1).MarkFailedAsync(
+            job.ClipId, 3, ClipStatuses.Processing, CancellationToken.None,
+            reason: ClipFailureReasons.ThumbnailFailed);
     }
 
     [Fact]
@@ -318,7 +322,11 @@ public class MediaStageWorkerTests
 
         await svc.TryProcessOneAsync(CancellationToken.None);
 
-        await store.Received(1).MarkFailedAsync(job.ClipId, 3, ClipStatuses.Transcoding, CancellationToken.None);
+        // Same structured-reason contract as the thumbnail stage — the compress stage uses
+        // 'transcode_failed' so the wizard can render stage-specific copy.
+        await store.Received(1).MarkFailedAsync(
+            job.ClipId, 3, ClipStatuses.Transcoding, CancellationToken.None,
+            reason: ClipFailureReasons.TranscodeFailed);
     }
 
     // --- JIT stream stage ---------------------------------------------------------------
