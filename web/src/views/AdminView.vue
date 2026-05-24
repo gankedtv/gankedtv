@@ -47,21 +47,30 @@ watch(
 onMounted(load)
 watch([status, page], load)
 
+// Monotonic request token. Switching tabs or paging triggers a new load() before the
+// previous request resolves; without the fence, a slow earlier response can land after
+// the fast later one and overwrite the freshly-painted page. Mirrors the same pattern
+// in UserView (latestLoadId) and CommentsSection (latestRequestId).
+let latestLoadId = 0
+
 async function load() {
+  const myLoadId = ++latestLoadId
   loading.value = true
   error.value = null
   try {
     const page$ = await listReports({ status: status.value, page: page.value })
+    if (myLoadId !== latestLoadId) return
     items.value = page$.items
     total.value = page$.total
   } catch (err) {
+    if (myLoadId !== latestLoadId) return
     if (err instanceof ApiError) {
       error.value = `Could not load reports (${err.status}).`
     } else {
       error.value = 'Could not load reports.'
     }
   } finally {
-    loading.value = false
+    if (myLoadId === latestLoadId) loading.value = false
   }
 }
 

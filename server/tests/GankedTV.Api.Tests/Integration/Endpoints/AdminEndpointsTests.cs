@@ -307,6 +307,24 @@ public class AdminEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task BanUser_ReasonOverMaxLength_Returns400()
+    {
+        // The DB column is varchar(500); WithValidation<BanUserRequest> on the endpoint
+        // should surface that as a 400 ValidationProblem instead of letting the request
+        // through and triggering a DbUpdateException on save.
+        await _fx.ResetAsync();
+        var (_, adminToken) = await SeedUserAsync("admin", UserRoles.Admin);
+        var (targetId, _) = await SeedUserAsync("target");
+        using var client = AuthTestHelpers.CreateBearerClient(_factory!, adminToken);
+
+        var resp = await client.PostAsJsonAsync(
+            $"/admin/users/{targetId}/ban",
+            new { reason = new string('x', 501) });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task BanUser_Self_Returns400()
     {
         await _fx.ResetAsync();
@@ -432,6 +450,19 @@ public class AdminEndpointsTests : IAsyncLifetime
     }
 
     // ---- Edge cases / error branches ----
+
+    [Fact]
+    public async Task ListReports_PageTooLarge_Returns400()
+    {
+        // (page-1)*pageSize must fit in an int. A hostile page=int.MaxValue request would
+        // wrap to a negative offset under naïve int math; the endpoint clamps in long and
+        // refuses anything that would overflow.
+        await _fx.ResetAsync();
+        var (_, modToken) = await SeedUserAsync("mod", UserRoles.Moderator);
+        using var client = AuthTestHelpers.CreateBearerClient(_factory!, modToken);
+        var resp = await client.GetAsync($"/admin/reports?page={int.MaxValue}&pageSize=100");
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
 
     [Fact]
     public async Task ListReports_InvalidStatus_Returns400()

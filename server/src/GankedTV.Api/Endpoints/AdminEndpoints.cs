@@ -38,6 +38,7 @@ public static class AdminEndpoints
         // Ban / unban are admin-only — mods can resolve queues and hide content but can't
         // disable accounts.
         group.MapPost("/users/{id:guid}/ban", BanUser)
+            .WithValidation<BanUserRequest>()
             .RequireAuthorization(RolePolicies.Admin);
         group.MapPost("/users/{id:guid}/unban", UnbanUser)
             .RequireAuthorization(RolePolicies.Admin);
@@ -60,7 +61,16 @@ public static class AdminEndpoints
 
         var clampedPage = Math.Max(1, page ?? 1);
         var clampedPageSize = Math.Clamp(pageSize ?? DefaultPageSize, 1, MaxPageSize);
-        var skip = (clampedPage - 1) * clampedPageSize;
+        // Compute skip in long arithmetic so a hostile ?page=int.MaxValue request can't
+        // wrap around to a negative offset and either crash or silently page from the
+        // start. Anything beyond int.MaxValue rows is well past any realistic queue
+        // depth — surface as 400 rather than passing a clamped/wrapped value to Skip().
+        var skipLong = (long)(clampedPage - 1) * clampedPageSize;
+        if (skipLong > int.MaxValue)
+        {
+            return ProblemResults.BadRequest("invalid_page");
+        }
+        var skip = (int)skipLong;
 
         var baseQuery = db.Reports.AsNoTracking()
             .Where(r => r.Status == normalizedStatus);

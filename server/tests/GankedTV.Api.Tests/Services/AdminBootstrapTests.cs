@@ -11,11 +11,20 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace GankedTV.Api.Tests.Services;
 
 [Collection("Postgres")]
-public class AdminBootstrapTests
+public class AdminBootstrapTests : IDisposable
 {
     private readonly PostgresFixture _fx;
+    // Captured at construction so Dispose can restore any value the host process had set
+    // (e.g. an outer integration run that exported ADMIN_EMAILS) — mutating a process-wide
+    // env var inside a test without restoring it would leak into every later test that
+    // calls AdminBootstrap.StartAsync.
+    private readonly string? _originalAdminEmails =
+        Environment.GetEnvironmentVariable("ADMIN_EMAILS");
 
     public AdminBootstrapTests(PostgresFixture fx) => _fx = fx;
+
+    public void Dispose() =>
+        Environment.SetEnvironmentVariable("ADMIN_EMAILS", _originalAdminEmails);
 
     private async Task<Guid> SeedUserAsync(string email, string role = UserRoles.User)
     {

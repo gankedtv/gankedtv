@@ -392,6 +392,13 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
                 t.HasCheckConstraint(
                     "ck_reports_reason",
                     "reason IN ('spam','harassment','hate','nsfw','violence','wrong_game','other')");
+                // ReportService.CreateAsync enforces the "other requires a note" invariant
+                // at the service layer; the DB-level check is defense in depth, matching
+                // the way ck_reports_reason / status / target_type guard against bypass via
+                // out-of-band SQL or a buggy future caller.
+                t.HasCheckConstraint(
+                    "ck_reports_other_note",
+                    "reason <> 'other' OR (note IS NOT NULL AND LENGTH(TRIM(note)) > 0)");
             });
 
             // Drives the admin queue (status filter, newest first).

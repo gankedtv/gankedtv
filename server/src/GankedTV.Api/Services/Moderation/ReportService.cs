@@ -92,20 +92,34 @@ public sealed class ReportService(GankedTvDbContext db, TimeProvider clock) : IR
             return ReportResolveResult.Failure(ReportResolveError.InvalidOutcome);
         }
 
-        var report = await db.Reports.FirstOrDefaultAsync(r => r.Id == reportId, ct);
-        if (report is null)
+        // Atomic CAS via ExecuteUpdateAsync: only the row that's still Open can be updated,
+        // so two concurrent moderators racing on the same report can't both succeed and
+        // overwrite each other's resolvedBy/resolvedAt. The previous read-modify-write
+        // would let both load the Open row, both think they're the first resolver, and the
+        // last SaveChangesAsync would clobber the winner's audit fields.
+        var now = clock.GetUtcNow();
+        var updated = await db.Reports
+            .Where(r => r.Id == reportId && r.Status == ReportStatuses.Open)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(r => r.Status, outcome)
+                .SetProperty(r => r.ResolvedBy, (Guid?)moderatorId)
+                .SetProperty(r => r.ResolvedAt, (DateTimeOffset?)now), ct);
+        if (updated == 0)
         {
-            return ReportResolveResult.Failure(ReportResolveError.NotFound);
-        }
-        if (report.Status != ReportStatuses.Open)
-        {
-            return ReportResolveResult.Failure(ReportResolveError.AlreadyResolved);
+            // Either the row doesn't exist or it was already resolved by someone else.
+            // Distinguish those with a single follow-up SELECT so the SPA can render the
+            // right message (404 vs 409). The lookup races with concurrent inserts but
+            // not in a way that matters — if a brand-new report appeared between the
+            // UPDATE-miss and this SELECT, returning "not found" is still defensible.
+            var exists = await db.Reports.AsNoTracking().AnyAsync(r => r.Id == reportId, ct);
+            return exists
+                ? ReportResolveResult.Failure(ReportResolveError.AlreadyResolved)
+                : ReportResolveResult.Failure(ReportResolveError.NotFound);
         }
 
-        report.Status = outcome;
-        report.ResolvedBy = moderatorId;
-        report.ResolvedAt = clock.GetUtcNow();
-        await db.SaveChangesAsync(ct);
+        // Surface the updated row to the caller (the admin queue refresh uses the response
+        // body). AsNoTracking is fine — we're not going to mutate it again.
+        var report = await db.Reports.AsNoTracking().FirstAsync(r => r.Id == reportId, ct);
         return ReportResolveResult.Success(report);
     }
 

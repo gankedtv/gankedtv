@@ -22,12 +22,13 @@ public static class AuthEndpoints
         app.MapGet("/auth/{provider}/callback", Callback);
         app.MapPost("/auth/refresh", Refresh)
             .WithValidation<RefreshRequest>()
-            // Keep OpenAPI in sync with the three shapes Refresh can return. Moved onto the
-            // route-group call because the handler now returns IResult (needed to return a
-            // ProblemDetails body on 401 via ProblemResults.Unauthorized).
+            // Keep OpenAPI in sync with the shapes Refresh can return. 403 covers the
+            // banned-account branch (see ProblemResults.Forbidden("account_banned") in
+            // the handler); 401 covers invalid_refresh.
             .Produces<TokenResponse>(StatusCodes.Status200OK)
             .ProducesValidationProblem()
-            .ProducesProblem(StatusCodes.Status401Unauthorized);
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden);
 
         app.MapPost("/auth/register", Register)
             .WithValidation<RegisterRequest>()
@@ -41,7 +42,11 @@ public static class AuthEndpoints
             .RequireRateLimiting(AuthRateLimiting.CredentialsPolicy)
             .Produces<TokenResponse>(StatusCodes.Status200OK)
             .ProducesValidationProblem()
-            .ProducesProblem(StatusCodes.Status401Unauthorized);
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            // Banned accounts get a 403 + code=account_banned even after credentials check
+            // out, so the SPA can render a dedicated "your account is disabled" message
+            // rather than the generic invalid-credentials copy.
+            .ProducesProblem(StatusCodes.Status403Forbidden);
 
         app.MapPost("/auth/password", SetPassword)
             .RequireAuthorization()
