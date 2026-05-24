@@ -136,10 +136,7 @@ describe('api/clips', () => {
     it('returns null when the server responds with 204 No Content', async () => {
       vi.stubGlobal(
         'fetch',
-        vi.fn(
-          async () =>
-            new Response(null, { status: 204, headers: { 'content-length': '0' } }),
-        ),
+        vi.fn(async () => new Response(null, { status: 204, headers: { 'content-length': '0' } })),
       )
 
       const result = await clips.featured()
