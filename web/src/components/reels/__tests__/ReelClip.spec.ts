@@ -62,6 +62,7 @@ function makeDetail(overrides: Partial<ClipDetail> = {}): ClipDetail {
     ...makeClip(),
     videoUrl: 'https://cdn.test/video.mp4',
     videoUrlExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+    videoCodec: null,
     width: 1920,
     height: 1080,
     visibility: 'public',

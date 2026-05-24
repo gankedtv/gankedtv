@@ -37,7 +37,23 @@ const videoEl = useTemplateRef<HTMLVideoElement>('videoEl')
 const needsTapToPlay = ref(false)
 const spinnerVisible = ref(false)
 const commentsOpen = ref(false)
+const codecUnsupported = ref(false)
 let spinnerTimer: ReturnType<typeof setTimeout> | null = null
+
+// AV1 capability probe — same MIME string ClipView uses. ClipView falls back to a
+// just-in-time HLS stream; for reels we send the user to the detail page (which
+// already orchestrates the JIT polling + hls.js attach). Keeping reels lean —
+// no hls.js pulled into this slot, and one URL/codec decision per detail load.
+const AV1_MIME = 'video/mp4; codecs="av01.0.05M.08"'
+
+function canPlayCodec(codec: string | null, el: HTMLVideoElement | null): boolean {
+  if (!el) return true
+  if (!codec || codec === 'h264') return true
+  if (codec === 'av1') return el.canPlayType(AV1_MIME) !== ''
+  // Unknown codec — optimistically attempt direct playback rather than forcing
+  // the user to bounce to the detail page on a maybe-playable file.
+  return true
+}
 
 // Like state is local for snappy optimistic UI. Parent gets notified via emit so
 // its `items[]` cache reflects the latest count if the user opens the detail page.
@@ -104,6 +120,16 @@ watch(
   [() => props.isActive, () => props.detail, videoEl],
   ([active, detail, el]) => {
     if (!detail || !el) return
+    codecUnsupported.value = !canPlayCodec(detail.videoCodec, el)
+    if (codecUnsupported.value) {
+      // Bail before play() — calling it on a clip the browser can't decode
+      // just produces a silent black slot. The template renders an "Open in
+      // detail" affordance so the user can fall through to the JIT-capable
+      // player.
+      el.pause()
+      detachViewTracking()
+      return
+    }
     if (active) {
       el.muted = props.globalMuted
       el.currentTime = 0
@@ -279,6 +305,24 @@ function closeComments() {
       >
         Retry
       </button>
+    </div>
+
+    <!-- Codec the browser can't decode directly (e.g. AV1 on Safari). The detail
+         page handles the just-in-time HLS fallback; reels just delegates rather
+         than pulling hls.js + JIT polling into every slot. -->
+    <div
+      v-else-if="detail && codecUnsupported"
+      class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/50 px-6 text-center"
+    >
+      <p class="font-mono text-xs uppercase tracking-widest text-text-secondary">
+        This format needs the full player
+      </p>
+      <RouterLink
+        :to="detailHref"
+        class="rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary no-underline"
+      >
+        Open in detail →
+      </RouterLink>
     </div>
 
     <!-- Tap-to-play fallback (autoplay rejection). -->
