@@ -152,6 +152,40 @@ public class ObjectStorageTests
     }
 
     [Fact]
+    public async Task DeleteByPrefixAsync_ListsAndBatchDeletesMatchingObjects()
+    {
+        var s3 = Substitute.For<IAmazonS3>();
+        s3.ListObjectsV2Async(Arg.Any<ListObjectsV2Request>(), Arg.Any<CancellationToken>())
+            .Returns(new ListObjectsV2Response
+            {
+                S3Objects = new List<S3Object>
+                {
+                    new() { Key = "abc/master.m3u8" },
+                    new() { Key = "abc/stream_0_000.ts" },
+                },
+                IsTruncated = false,
+            });
+
+        await BuildService(s3).DeleteByPrefixAsync("stream-cache", "abc/");
+
+        await s3.Received(1).DeleteObjectsAsync(
+            Arg.Is<DeleteObjectsRequest>(r => r.BucketName == "stream-cache" && r.Objects.Count == 2),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task DeleteByPrefixAsync_NoMatches_DoesNotDelete()
+    {
+        var s3 = Substitute.For<IAmazonS3>();
+        s3.ListObjectsV2Async(Arg.Any<ListObjectsV2Request>(), Arg.Any<CancellationToken>())
+            .Returns(new ListObjectsV2Response { S3Objects = new List<S3Object>(), IsTruncated = false });
+
+        await BuildService(s3).DeleteByPrefixAsync("stream-cache", "abc/");
+
+        await s3.DidNotReceive().DeleteObjectsAsync(Arg.Any<DeleteObjectsRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public void S3PublicUrls_BuildUrl_PrefersPublicUrlFallsBackToEndpoint()
     {
         var withPublic = new S3Options { Endpoint = "http://minio:9000", PublicUrl = "https://cdn.example.com/" };

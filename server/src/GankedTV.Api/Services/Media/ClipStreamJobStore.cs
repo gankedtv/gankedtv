@@ -9,6 +9,10 @@ public sealed class ClipStreamJobStore : IClipStreamJobStore
     private readonly GankedTvDbContext _db;
     private readonly TimeProvider _clock;
 
+    // How long a 'failed' job is left alone before /stream is allowed to re-enqueue it. Bounds
+    // retries on a permanently-broken clip while letting a transient GPU outage recover.
+    private static readonly TimeSpan FailedRetryCooldown = TimeSpan.FromMinutes(5);
+
     public ClipStreamJobStore(GankedTvDbContext db, TimeProvider clock)
     {
         _db = db;
@@ -17,13 +21,17 @@ public sealed class ClipStreamJobStore : IClipStreamJobStore
 
     public async Task EnqueueAsync(Guid clipId, CancellationToken ct)
     {
-        // Insert-if-absent. ON CONFLICT DO NOTHING keeps concurrent /stream requests for the
-        // same clip from stacking duplicates or racing on the clip_id PK; an existing row
-        // (pending / in-flight / failed) is left untouched.
+        // Insert-if-absent, with one exception: a 'failed' row older than the cooldown is reset
+        // back to 'pending' so a transient transcode outage doesn't permanently block the clip.
+        // Concurrent requests can't stack duplicates (clip_id PK); pending/in-flight rows and
+        // freshly-failed rows (within cooldown) are left untouched by the conditional DO UPDATE.
+        var retryCutoff = _clock.GetUtcNow() - FailedRetryCooldown;
         await _db.Database.ExecuteSqlInterpolatedAsync($@"
             INSERT INTO clip_stream_jobs (clip_id, status, processing_attempts, created_at, updated_at)
             VALUES ({clipId}, 'pending', 0, now(), now())
-            ON CONFLICT (clip_id) DO NOTHING
+            ON CONFLICT (clip_id) DO UPDATE
+              SET status = 'pending', processing_attempts = 0, processing_started_at = NULL, updated_at = now()
+              WHERE clip_stream_jobs.status = 'failed' AND clip_stream_jobs.updated_at < {retryCutoff}
         ", ct);
     }
 
@@ -41,6 +49,11 @@ public sealed class ClipStreamJobStore : IClipStreamJobStore
 
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
+        // Same claim shape as ClipMediaJobStore.ClaimNextAsync: SELECT … FOR UPDATE SKIP LOCKED
+        // materialized via AsNoTracking().ToListAsync() (the row lock is held by the surrounding
+        // transaction, not EF's tracker), then a follow-up ExecuteUpdateAsync writes the lease.
+        // It's two statements rather than an UPDATE … WHERE id = (SELECT … FOR UPDATE), but keeps
+        // the lock + claim atomic and the code readable — don't "optimize" into one statement.
         var rows = await _db.ClipStreamJobs
             .FromSqlInterpolated($@"
                 SELECT *

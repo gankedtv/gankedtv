@@ -3,6 +3,7 @@ using System.Linq.Expressions;
 using System.Net;
 using System.Security.Claims;
 using GankedTV.Api.Auth;
+using GankedTV.Api.Clips;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
@@ -36,7 +37,10 @@ public static class ClipsReadEndpoints
         var group = app.MapGroup("/clips");
         group.MapGet("/feed", GetFeed);
         group.MapGet("/{id:guid}", GetDetail);
-        group.MapGet("/{id:guid}/stream", GetStream);
+        // Anonymous like GetDetail, but each call does a DB lookup + S3 HEAD (+ enqueue on
+        // miss), so it rides the same per-IP view rate limit to bound abuse.
+        group.MapGet("/{id:guid}/stream", GetStream)
+            .RequireRateLimiting(ClipsRateLimiting.ClipsViewPolicy);
         app.MapGet("/c/{code:length(6,12)}", GetByShareCode);
         return app;
     }
@@ -53,9 +57,18 @@ public static class ClipsReadEndpoints
         CancellationToken ct)
     {
         // Same visibility rule as the detail endpoint: any ready clip is reachable by link.
-        var exists = await db.Clips.AsNoTracking().AnyAsync(c => c.Id == id && c.Status == "ready", ct);
-        if (!exists)
+        var clip = await db.Clips.AsNoTracking()
+            .Where(c => c.Id == id && c.Status == "ready")
+            .Select(c => new { c.VideoCodec })
+            .SingleOrDefaultAsync(ct);
+        if (clip is null)
             return ProblemResults.NotFound("not_found");
+
+        // H.264 masters play directly in every browser — the detail contract tells clients to
+        // use videoUrl. Refuse JIT here so /stream can't be abused to pile on avoidable
+        // transcode load for clips that never need it.
+        if (string.Equals(clip.VideoCodec, "h264", StringComparison.Ordinal))
+            return ProblemResults.BadRequest("stream_not_required");
 
         var masterKey = $"{JitLadderService.BuildCachePrefix(id)}/master.m3u8";
         var cached = await storage.GetObjectMetadataAsync(s3.Value.StreamCacheBucket, masterKey, ct);
@@ -65,13 +78,16 @@ public static class ClipsReadEndpoints
             return Results.Ok(new StreamResponse(url, "ready"));
         }
 
+        // Enqueue first: this inserts a pending job, or recovers a stale 'failed' row (past the
+        // retry cooldown) back to pending so a transient GPU outage doesn't permanently block
+        // the clip. A still-fresh 'failed' row is left untouched and surfaced as 503 below.
+        await streamJobs.EnqueueAsync(id, ct);
         if (await streamJobs.GetStatusAsync(id, ct) == ClipStreamJobStatuses.Failed)
             return Results.Problem(
                 statusCode: StatusCodes.Status503ServiceUnavailable,
                 title: "stream_unavailable",
                 detail: "Just-in-time transcode failed for this clip.");
 
-        await streamJobs.EnqueueAsync(id, ct);
         return Results.Json(new StreamResponse(null, "pending"), statusCode: StatusCodes.Status202Accepted);
     }
 

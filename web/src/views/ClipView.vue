@@ -27,6 +27,12 @@ const auth = useAuthStore()
 const clip = ref<ClipDetail | null>(null)
 const loading = ref(false)
 const errored = ref(false)
+// Distinct copy for the two failure modes: a detail-load failure vs. a JIT transcode that
+// hasn't finished / failed. The latter looks fine (thumbnail loaded) so a generic message is
+// confusing.
+const DEFAULT_ERROR = "Couldn't load this clip."
+const JIT_ERROR = 'This clip is still being prepared for your device — try again in a moment.'
+const errorMessage = ref(DEFAULT_ERROR)
 // A freshly-uploaded clip 404s until the pipeline (thumbnail + compress) finishes. Rather than
 // bounce the owner straight to not-found, we treat a 404 as "maybe still processing" and poll a
 // few times before giving up.
@@ -104,6 +110,7 @@ async function loadClip(isPoll = false) {
     processingPolls = 0
     clearProcessingTimer()
     clip.value = null
+    errorMessage.value = DEFAULT_ERROR
     teardownPlayer()
   }
   errored.value = false
@@ -230,7 +237,7 @@ async function startJitStream(id: string, el: HTMLVideoElement) {
     try {
       res = await clips.getStream(id)
     } catch {
-      if (myToken === playerToken) errored.value = true
+      if (myToken === playerToken) failJitPlayback()
       return
     }
     if (myToken !== playerToken) return
@@ -242,6 +249,13 @@ async function startJitStream(id: string, el: HTMLVideoElement) {
     if (myToken !== playerToken) return
   }
   // Exhausted the poll budget without a ready rendition — surface an error rather than hang.
+  failJitPlayback()
+}
+
+// Surface a JIT-specific error. Retry (the error panel button) re-runs loadClip, which tears
+// down the player and re-enters setupPlayer → startJitStream for a fresh attempt.
+function failJitPlayback() {
+  errorMessage.value = JIT_ERROR
   errored.value = true
 }
 
@@ -285,7 +299,7 @@ function attachHlsStream(el: HTMLVideoElement, hlsUrl: string) {
   }
 
   // No native HLS and no MSE — nothing left to try.
-  errored.value = true
+  failJitPlayback()
 }
 
 function teardownPlayer() {
@@ -473,7 +487,7 @@ async function onConfirmDelete() {
     />
 
     <!-- Error -->
-    <StatusPanel v-else-if="errored" kind="error" message="Couldn't load this clip.">
+    <StatusPanel v-else-if="errored" kind="error" :message="errorMessage">
       <button
         class="cursor-pointer rounded-sm border border-border bg-surface-raised px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
         @click="(clipId || shareCode) && loadClip()"

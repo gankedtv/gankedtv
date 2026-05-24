@@ -73,6 +73,52 @@ public class ClipStreamJobStoreIntegrationTests
     }
 
     [Fact]
+    public async Task EnqueueAsync_ResetsStaleFailedRowToPending_LeavesFreshFailedRow()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("rex");
+        var staleClip = await SeedClipAsync(userId, ClipStatuses.Ready);
+        var freshClip = await SeedClipAsync(userId, ClipStatuses.Ready);
+        var now = DateTimeOffset.UtcNow;
+
+        await using (var seed = NewContext())
+        {
+            // Stale failed (10min ago, past the 5min cooldown) + fresh failed (1min ago).
+            seed.ClipStreamJobs.Add(new ClipStreamJob
+            {
+                ClipId = staleClip,
+                Status = ClipStreamJobStatuses.Failed,
+                ProcessingAttempts = 3,
+                CreatedAt = now.AddMinutes(-20),
+                UpdatedAt = now.AddMinutes(-10),
+            });
+            seed.ClipStreamJobs.Add(new ClipStreamJob
+            {
+                ClipId = freshClip,
+                Status = ClipStreamJobStatuses.Failed,
+                ProcessingAttempts = 3,
+                CreatedAt = now.AddMinutes(-1),
+                UpdatedAt = now.AddMinutes(-1),
+            });
+            await seed.SaveChangesAsync();
+        }
+
+        await using (var db = NewContext())
+        {
+            var store = NewStore(now, db);
+            await store.EnqueueAsync(staleClip, CancellationToken.None);
+            await store.EnqueueAsync(freshClip, CancellationToken.None);
+        }
+
+        await using var verify = NewContext();
+        var stale = await verify.ClipStreamJobs.AsNoTracking().SingleAsync(j => j.ClipId == staleClip);
+        stale.Status.Should().Be(ClipStreamJobStatuses.Pending); // recovered
+        stale.ProcessingAttempts.Should().Be(0);
+        var fresh = await verify.ClipStreamJobs.AsNoTracking().SingleAsync(j => j.ClipId == freshClip);
+        fresh.Status.Should().Be(ClipStreamJobStatuses.Failed); // within cooldown — untouched
+    }
+
+    [Fact]
     public async Task GetStatusAsync_ReturnsStatusOrNull()
     {
         await _fx.ResetAsync();

@@ -837,6 +837,22 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Stream_H264Master_Returns400_NoJobEnqueued()
+    {
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync("h264streamer");
+        var (clipId, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, videoCodec: "h264");
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync($"/clips/{clipId}/stream");
+
+        // H.264 masters play directly — /stream must refuse rather than queue a pointless transcode.
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        await using var db = _fx.CreateContext();
+        (await db.ClipStreamJobs.AsNoTracking().AnyAsync(j => j.ClipId == clipId)).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Stream_UnknownClip_Returns404()
     {
         await _fx.ResetAsync();

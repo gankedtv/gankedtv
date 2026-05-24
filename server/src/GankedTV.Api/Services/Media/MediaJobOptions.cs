@@ -8,11 +8,12 @@ public sealed class MediaJobOptions
     // partial idx_clips_processing_updated_at index, so a tight loop is fine.
     public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(2);
 
-    // A claimed row is hidden from other workers until ProcessingStartedAt expires.
-    // Set comfortably above the longest expected ffmpeg run so a healthy job is never
-    // double-claimed; if a worker crashes mid-job, the next worker picks it up after
-    // this window.
-    public TimeSpan LeaseDuration { get; set; } = TimeSpan.FromMinutes(5);
+    // A claimed row is hidden from other workers until ProcessingStartedAt expires. MUST stay
+    // comfortably above the longest expected ffmpeg run (TranscodeTimeout, 10min) so an
+    // in-flight compress/JIT encode is never re-claimed mid-run — two workers writing the same
+    // deterministic output key would otherwise flap the object and waste GPU. Trade-off: a
+    // genuinely crashed job isn't retried until this window elapses.
+    public TimeSpan LeaseDuration { get; set; } = TimeSpan.FromMinutes(15);
 
     // Maximum number of times a row is claimed before it lands in 'failed'. The first
     // run is attempt 1, so MaxAttempts=3 means up to two retries after the initial try.

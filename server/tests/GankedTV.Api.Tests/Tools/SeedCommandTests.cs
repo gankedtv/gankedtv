@@ -462,6 +462,8 @@ public class SeedCommandTests : IAsyncLifetime
             return Task.CompletedTask;
         }
 
+        public Task DeleteByPrefixAsync(string bucket, string prefix, CancellationToken ct = default) => Task.CompletedTask;
+
         public string GetPresignedPutUrl(string bucket, string key, string contentType, TimeSpan? expiry = null) => string.Empty;
         public string GetPresignedGetUrl(string bucket, string key, TimeSpan? expiry = null) => string.Empty;
     }

@@ -165,9 +165,12 @@ public sealed class JitLadderService : IJitLadderService
         for (var i = 0; i < n; i++) filter.Append("[v").Append(i).Append(']');
         for (var i = 0; i < n; i++)
         {
-            filter.Append(";[v").Append(i).Append("]scale=-2:")
+            // min(ih,H) caps the rung at the source height so we never upscale — covers both
+            // the source-capped rungs and the unknown-height fallback. Single-quoted so the
+            // comma inside min() isn't parsed as a filtergraph separator.
+            filter.Append(";[v").Append(i).Append("]scale=-2:'min(ih,")
                 .Append(rungs[i].Height.ToString(ci))
-                .Append("[v").Append(i).Append("out]");
+                .Append(")'[v").Append(i).Append("out]");
         }
         args.Add("-filter_complex");
         args.Add(filter.ToString());

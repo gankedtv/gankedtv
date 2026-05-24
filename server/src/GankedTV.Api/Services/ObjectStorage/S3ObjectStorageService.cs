@@ -172,6 +172,35 @@ public sealed class S3ObjectStorageService : IObjectStorageService
         }, ct);
     }
 
+    public async Task DeleteByPrefixAsync(string bucket, string prefix, CancellationToken ct = default)
+    {
+        // List + batch-delete in pages. A clip's cached ladder is a handful of files, but page
+        // defensively in case of many segments. DeleteObjects caps at 1000 keys per call, which
+        // matches ListObjectsV2's default page size.
+        string? token = null;
+        do
+        {
+            var listed = await _s3.ListObjectsV2Async(new ListObjectsV2Request
+            {
+                BucketName = bucket,
+                Prefix = prefix,
+                ContinuationToken = token,
+            }, ct);
+
+            if (listed.S3Objects is { Count: > 0 } objects)
+            {
+                await _s3.DeleteObjectsAsync(new DeleteObjectsRequest
+                {
+                    BucketName = bucket,
+                    Objects = objects.Select(o => new KeyVersion { Key = o.Key }).ToList(),
+                }, ct);
+            }
+
+            token = listed.IsTruncated == true ? listed.NextContinuationToken : null;
+        }
+        while (token is not null);
+    }
+
     public async Task PutObjectAsync(
         string bucket,
         string key,

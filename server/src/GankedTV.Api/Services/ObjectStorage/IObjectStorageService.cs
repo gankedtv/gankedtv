@@ -19,6 +19,11 @@ public interface IObjectStorageService
 
     Task DeleteObjectAsync(string bucket, string key, CancellationToken ct = default);
 
+    // Deletes every object under a key prefix (e.g. a clip's cached HLS rendition under
+    // "{clipId}/..."). Used so deleting a clip doesn't leave its publicly-readable
+    // stream-cache objects lingering until the lifecycle TTL.
+    Task DeleteByPrefixAsync(string bucket, string prefix, CancellationToken ct = default);
+
     Task<ObjectMetadata?> GetObjectMetadataAsync(
         string bucket,
         string key,

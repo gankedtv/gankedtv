@@ -53,8 +53,10 @@ public sealed class CompressWorker : ClipStageWorker
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex,
-                    "Compressed clip={ClipId} but failed to delete the original {Key}; it is now an orphan.",
+                // Error, not Warning: a leaked original silently eats the disk savings this
+                // pipeline exists to deliver, so it should be alertable / dashboarded.
+                _logger.LogError(ex,
+                    "Compressed clip={ClipId} but failed to delete the original {Key}; it is now an orphan consuming storage.",
                     job.ClipId, result.OriginalKey);
             }
         }
