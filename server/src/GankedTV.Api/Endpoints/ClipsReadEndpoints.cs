@@ -277,14 +277,93 @@ public static class ClipsReadEndpoints
         return storage.GetPresignedGetUrl(bucket, thumbnailKey, ThumbnailUrlLifetime);
     }
 
-    private static Task<IResult> GetFeatured(
+    // Daily "Clip of the Day". Selection reuses the time-weighted trending score over a
+    // UTC-calendar-day window with a strict deterministic tie-break (Score → LikeCount →
+    // CreatedAt → Id). Returns 204 when no public+ready clip has engagement today; the
+    // web client falls back to the newest clip so the hero never goes blank.
+    private static async Task<IResult> GetFeatured(
         ClaimsPrincipal principal,
         GankedTvDbContext db,
         IObjectStorageService storage,
         IOptions<S3Options> s3,
         IMemoryCache cache,
-        CancellationToken ct) =>
-        Task.FromResult<IResult>(Results.NoContent());
+        CancellationToken ct)
+    {
+        var winnerId = await BuildFeaturedClipIdAsync(db, ct);
+        if (winnerId is null)
+        {
+            return Results.NoContent();
+        }
+
+        var clip = await db.Clips.AsNoTracking()
+            .Where(c => c.Id == winnerId.Value && c.Visibility == "public" && c.Status == "ready")
+            .IncludeFeedRelations()
+            .FirstOrDefaultAsync(ct);
+
+        if (clip is null)
+        {
+            // Cached pick was deleted / unpublished / taken back to processing between
+            // selection and rehydration. No retry — surface 204 and let the next request
+            // recompute under a fresh cache state. (Caching wired up in a later task.)
+            return Results.NoContent();
+        }
+
+        var items = await ProjectFeedItemsAsync([clip], principal, db, storage, s3, ct);
+        return Results.Ok(items[0]);
+    }
+
+    // Picks today's featured clip by the same time-weighted score used for trending,
+    // but with engagement scoped to the current UTC calendar day. Deterministic
+    // ordering across all ties (Score → LikeCount → CreatedAt → Id) so a single winner
+    // is always pinned for the day.
+    //
+    // Returns null when no public+ready clip has any like/view since 00:00 UTC today.
+    internal static async Task<Guid?> BuildFeaturedClipIdAsync(
+        GankedTvDbContext db,
+        CancellationToken ct)
+    {
+        // Anchor to UTC midnight as a DateTimeOffset (Offset=0). Npgsql refuses to
+        // bind a DateTime to a timestamptz column unless its kind/offset is explicitly
+        // UTC, so DateTimeOffset.UtcNow.Date (returns DateTime, kind=Unspecified) would
+        // crash at query time.
+        var todayStart = new DateTimeOffset(DateTimeOffset.UtcNow.Date, TimeSpan.Zero);
+
+        var candidates = await db.Clips.AsNoTracking()
+            .Where(c => c.Visibility == "public" && c.Status == "ready")
+            .Where(c => db.Likes.Any(l => l.ClipId == c.Id && l.CreatedAt >= todayStart)
+                     || db.ClipViews.Any(v => v.ClipId == c.Id && v.CreatedAt >= todayStart))
+            .Select(c => new
+            {
+                c.Id,
+                c.LikeCount,
+                c.CreatedAt,
+                LikesInWindow = db.Likes.Count(l => l.ClipId == c.Id && l.CreatedAt >= todayStart),
+                ViewsInWindow = db.ClipViews.Count(v => v.ClipId == c.Id && v.CreatedAt >= todayStart),
+            })
+            .ToListAsync(ct);
+
+        if (candidates.Count == 0)
+        {
+            return null;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        return candidates
+            .Select(r => new
+            {
+                r.Id,
+                r.LikeCount,
+                r.CreatedAt,
+                Score = (r.LikesInWindow * 3 + r.ViewsInWindow)
+                    / Math.Pow(Math.Max(0, (now - r.CreatedAt).TotalHours) + 2, 1.5),
+            })
+            .OrderByDescending(r => r.Score)
+            .ThenByDescending(r => r.LikeCount)
+            .ThenByDescending(r => r.CreatedAt)
+            .ThenByDescending(r => r.Id)
+            .First()
+            .Id;
+    }
 
     private static Task<IResult> GetDetail(
         Guid id,
