@@ -203,7 +203,11 @@ internal sealed class RedisRateLimitLease : RateLimitLease
 {
     private static readonly string[] RetryAfterMetadata = [MetadataName.RetryAfter.Name];
 
-    /// <summary>Shared granted lease — acquired leases are stateless, so one instance suffices.</summary>
+    /// <summary>
+    /// Shared granted lease — acquired leases are stateless and carry no metadata, so one instance
+    /// suffices. Safe only because the base <see cref="RateLimitLease.Dispose(bool)"/> is a no-op
+    /// (this type adds no disposable state); if that ever changes, switch to a per-acquire instance.
+    /// </summary>
     public static readonly RedisRateLimitLease Acquired = new();
 
     private readonly TimeSpan? _retryAfter;

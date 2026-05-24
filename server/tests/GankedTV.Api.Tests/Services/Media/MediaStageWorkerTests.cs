@@ -1,5 +1,6 @@
 using FluentAssertions;
 using GankedTV.Api.Data.Entities;
+using GankedTV.Api.Services.Caching;
 using GankedTV.Api.Services.Media;
 using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.Extensions.DependencyInjection;
@@ -252,6 +253,43 @@ public class MediaStageWorkerTests
 
         await store.Received(1).CompleteCompressionAsync(job.ClipId, 1, "u/clip.cmp.mp4", "av1", Arg.Any<CancellationToken>());
         await storage.Received(1).DeleteObjectAsync("clips", "u/clip.mp4", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Compress_FeedCacheInvalidationThrows_StillCompletesAndDoesNotFail()
+    {
+        // Codifies the "Redis unavailable → no failure" guarantee for the ready transition: the
+        // best-effort feed invalidation runs after the clip is already 'ready', so a throwing
+        // IFeedCache must be swallowed — never tripping the stage's MarkFailed/ReleaseLease path.
+        var store = Substitute.For<IClipMediaJobStore>();
+        var compressor = Substitute.For<ICompressJobService>();
+        var storage = Substitute.For<IObjectStorageService>();
+        var s3 = Substitute.For<IOptionsMonitor<S3Options>>();
+        s3.CurrentValue.Returns(new S3Options { ClipsBucket = "clips" });
+        var feedCache = Substitute.For<IFeedCache>();
+        feedCache.When(c => c.InvalidateFeedsAsync(Arg.Any<CancellationToken>()))
+            .Do(_ => throw new InvalidOperationException("redis down"));
+        var sp = Scope(s =>
+        {
+            s.AddScoped(_ => store);
+            s.AddScoped(_ => compressor);
+            s.AddScoped(_ => storage);
+            s.AddScoped(_ => s3);
+            s.AddScoped(_ => feedCache);
+        });
+        var svc = new CompressWorker(
+            sp.GetRequiredService<IServiceScopeFactory>(), Ffmpeg(),
+            Monitor(new MediaJobOptions { MaxAttempts = 3 }), NullLogger<CompressWorker>.Instance);
+        var job = ClipJob();
+        store.ClaimNextAsync(ClipStatuses.Transcoding, Arg.Any<TimeSpan>(), Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(job);
+        compressor.CompressAsync(job, Arg.Any<CancellationToken>())
+            .Returns(new CompressionResult("same.mp4", "h264", "same.mp4"));
+
+        (await svc.TryProcessOneAsync(CancellationToken.None)).Should().BeTrue();
+
+        await store.Received(1).CompleteCompressionAsync(job.ClipId, 1, "same.mp4", "h264", Arg.Any<CancellationToken>());
+        await store.DidNotReceive().MarkFailedAsync(Arg.Any<Guid>(), Arg.Any<int>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await store.DidNotReceive().ReleaseLeaseAsync(Arg.Any<Guid>(), Arg.Any<int>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

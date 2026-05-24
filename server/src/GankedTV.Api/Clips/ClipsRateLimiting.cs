@@ -58,8 +58,14 @@ public static class ClipsRateLimiting
         {
             if (ctx.Lease.TryGetMetadata(MetadataName.RetryAfter, out TimeSpan retryAfter))
             {
+                // Round up to whole seconds, floored at 1. The in-process FixedWindowRateLimiter
+                // fallback reports the *remaining* window as a sub-second TimeSpan, so a plain
+                // (int) cast would emit `Retry-After: 0` late in a window — and RFC 7231 lets
+                // clients retry immediately on 0, defeating the limiter. (The Redis path already
+                // rounds up, so this is a no-op there.)
+                var seconds = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds));
                 ctx.HttpContext.Response.Headers.RetryAfter =
-                    ((int)retryAfter.TotalSeconds).ToString(CultureInfo.InvariantCulture);
+                    seconds.ToString(CultureInfo.InvariantCulture);
             }
             return new ValueTask(ProblemResults.TooManyRequests(RateLimitedCode)
                 .ExecuteAsync(ctx.HttpContext));

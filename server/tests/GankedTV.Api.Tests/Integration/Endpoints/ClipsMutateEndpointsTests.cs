@@ -1,13 +1,17 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
 using GankedTV.Api.Clips;
 using GankedTV.Api.Data.Entities;
+using GankedTV.Api.Services.Caching;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Tests.TestSupport;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using NSubstitute;
 
 namespace GankedTV.Api.Tests.Integration.Endpoints;
@@ -85,6 +89,35 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
     }
 
     // ---- PATCH /clips/{id} ----
+
+    [Fact]
+    public async Task Patch_FeedCacheInvalidationThrows_StillReturns200()
+    {
+        // Codifies the spec's "Redis unavailable → no 500s": the DB write has committed, so a
+        // throwing best-effort invalidation must not surface as a 500. Overrides IFeedCache with
+        // a substitute that throws on InvalidateFeedsAsync.
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, title: "before");
+
+        var throwingCache = Substitute.For<IFeedCache>();
+        throwingCache.When(c => c.InvalidateFeedsAsync(Arg.Any<CancellationToken>()))
+            .Do(_ => throw new InvalidOperationException("redis down"));
+        using var factory = _factory!.WithWebHostBuilder(b => b.ConfigureServices(s =>
+        {
+            s.RemoveAll<IFeedCache>();
+            s.AddSingleton(throwingCache);
+        }));
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var resp = await client.PatchAsJsonAsync($"/clips/{clipId}", new { title = "after" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var db = _fx.CreateContext();
+        (await db.Clips.AsNoTracking().Where(c => c.Id == clipId).Select(c => c.Title).FirstAsync())
+            .Should().Be("after"); // the write persisted despite the cache failure
+    }
 
     [Fact]
     public async Task Patch_NoBearer_Returns401()
