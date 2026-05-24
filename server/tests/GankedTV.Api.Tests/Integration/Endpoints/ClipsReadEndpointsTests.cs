@@ -1185,7 +1185,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         await _fx.ResetAsync();
         var (userId, _) = await SeedUserAndIssueTokenAsync();
         var now = DateTimeOffset.UtcNow;
-        var todayStart = now.Date;
+        var todayStart = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
         // Use a timestamp inside today's UTC day AND within trending's typical recency
         // (5 min ago). If `now` is within 5 minutes of UTC midnight, snap to todayStart
         // so the test isn't time-of-day fragile.
@@ -1222,7 +1222,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         await _fx.ResetAsync();
         var (userId, _) = await SeedUserAndIssueTokenAsync();
         var now = DateTimeOffset.UtcNow;
-        var todayStart = now.Date;
+        var todayStart = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
         var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
 
         var (unlisted, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "unlisted", visibility: "unlisted");
@@ -1251,7 +1251,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         await _fx.ResetAsync();
         var (userId, _) = await SeedUserAndIssueTokenAsync();
         var now = DateTimeOffset.UtcNow;
-        var todayStart = now.Date;
+        var todayStart = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
         var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
 
         var (processing, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "processing", status: "processing");
@@ -1312,7 +1312,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         var (likerA, _) = await SeedUserAndIssueTokenAsync("liker-a");
         var (likerB, _) = await SeedUserAndIssueTokenAsync("liker-b");
         var now = DateTimeOffset.UtcNow;
-        var todayStart = now.Date;
+        var todayStart = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
         var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
         var sharedCreatedAt = now.AddHours(-1);
 
@@ -1349,7 +1349,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         await _fx.ResetAsync();
         var (userId, _) = await SeedUserAndIssueTokenAsync();
         var now = DateTimeOffset.UtcNow;
-        var todayStart = now.Date;
+        var todayStart = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
         var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
 
         // Both clips have CreatedAt within the same hour so the (hours+2)^1.5 denominator
@@ -1383,7 +1383,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         await _fx.ResetAsync();
         var (userId, _) = await SeedUserAndIssueTokenAsync();
         var now = DateTimeOffset.UtcNow;
-        var todayStart = now.Date;
+        var todayStart = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
         var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
         var sharedCreatedAt = now.AddHours(-1);
 
@@ -1415,7 +1415,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         await _fx.ResetAsync();
         var (userId, _) = await SeedUserAndIssueTokenAsync();
         var now = DateTimeOffset.UtcNow;
-        var todayStart = now.Date;
+        var todayStart = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
         var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
 
         var (original, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "original");
@@ -1456,7 +1456,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         await _fx.ResetAsync();
         var (userId, _) = await SeedUserAndIssueTokenAsync();
         var now = DateTimeOffset.UtcNow;
-        var todayStart = now.Date;
+        var todayStart = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
         var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
 
         var (clipId, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "doomed");
@@ -1493,7 +1493,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
         var (likerId, likerToken) = await SeedUserAndIssueTokenAsync("liker");
         var now = DateTimeOffset.UtcNow;
-        var todayStart = now.Date;
+        var todayStart = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
         var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
 
         var (clipId, _) = await SeedClipAsync(authorId, now.AddHours(-1), title: "liked");
