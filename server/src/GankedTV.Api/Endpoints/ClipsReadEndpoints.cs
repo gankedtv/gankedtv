@@ -279,7 +279,10 @@ public static class ClipsReadEndpoints
 
     // Daily "Clip of the Day". Selection reuses the time-weighted trending score over a
     // UTC-calendar-day window with a strict deterministic tie-break (Score → LikeCount →
-    // CreatedAt → Id). Returns 204 when no public+ready clip has engagement today; the
+    // CreatedAt → Id). The winning Guid (not the hydrated DTO) is memoized under
+    // featured:{yyyy-MM-dd} with absolute expiration at next UTC midnight so the pick
+    // rolls over deterministically. Hydration runs every request so likedByMe + signed
+    // URLs stay fresh. Returns 204 when no public+ready clip has engagement today; the
     // web client falls back to the newest clip so the hero never goes blank.
     private static async Task<IResult> GetFeatured(
         ClaimsPrincipal principal,
@@ -289,7 +292,33 @@ public static class ClipsReadEndpoints
         IMemoryCache cache,
         CancellationToken ct)
     {
-        var winnerId = await BuildFeaturedClipIdAsync(db, ct);
+        // Construct todayStart as a true DateTimeOffset at UTC midnight (see
+        // BuildFeaturedClipIdAsync for the rationale — Kind=Unspecified DateTimes
+        // don't bind to Npgsql's `timestamp with time zone`, and AbsoluteExpiration
+        // takes a DateTimeOffset so we need one with an explicit UTC offset for the
+        // cache to roll over at actual UTC midnight regardless of host TZ).
+        var todayStart = new DateTimeOffset(DateTimeOffset.UtcNow.Date, TimeSpan.Zero);
+        var cacheKey = $"featured:{todayStart:yyyy-MM-dd}";
+
+        Guid? winnerId;
+        if (cache.TryGetValue(cacheKey, out Guid cachedId))
+        {
+            winnerId = cachedId;
+        }
+        else
+        {
+            winnerId = await BuildFeaturedClipIdAsync(db, ct);
+            if (winnerId is not null)
+            {
+                // Cache only on a hit. Caching null/204 would prevent newly-eligible
+                // clips from surfacing within the day.
+                cache.Set(cacheKey, winnerId.Value, new MemoryCacheEntryOptions
+                {
+                    AbsoluteExpiration = todayStart.AddDays(1), // next UTC midnight
+                });
+            }
+        }
+
         if (winnerId is null)
         {
             return Results.NoContent();
@@ -302,9 +331,10 @@ public static class ClipsReadEndpoints
 
         if (clip is null)
         {
-            // Cached pick was deleted / unpublished / taken back to processing between
-            // selection and rehydration. No retry — surface 204 and let the next request
-            // recompute under a fresh cache state. (Caching wired up in a later task.)
+            // Cached pick was deleted / unpublished / taken back to processing. Evict
+            // the stale key so the next request recomputes against current DB state;
+            // surface 204 for this request (no retry — keeps the handler simple).
+            cache.Remove(cacheKey);
             return Results.NoContent();
         }
 
