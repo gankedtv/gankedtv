@@ -10,6 +10,7 @@ using GankedTV.Api.Pagination;
 using GankedTV.Api.Problems;
 using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 
 namespace GankedTV.Api.Endpoints;
@@ -34,6 +35,7 @@ public static class ClipsReadEndpoints
     {
         var group = app.MapGroup("/clips");
         group.MapGet("/feed", GetFeed);
+        group.MapGet("/featured", GetFeatured);
         group.MapGet("/{id:guid}", GetDetail);
         app.MapGet("/c/{code:length(6,12)}", GetByShareCode);
         return app;
@@ -274,6 +276,15 @@ public static class ClipsReadEndpoints
         ArgumentException.ThrowIfNullOrEmpty(thumbnailKey);
         return storage.GetPresignedGetUrl(bucket, thumbnailKey, ThumbnailUrlLifetime);
     }
+
+    private static Task<IResult> GetFeatured(
+        ClaimsPrincipal principal,
+        GankedTvDbContext db,
+        IObjectStorageService storage,
+        IOptions<S3Options> s3,
+        IMemoryCache cache,
+        CancellationToken ct) =>
+        Task.FromResult<IResult>(Results.NoContent());
 
     private static Task<IResult> GetDetail(
         Guid id,
