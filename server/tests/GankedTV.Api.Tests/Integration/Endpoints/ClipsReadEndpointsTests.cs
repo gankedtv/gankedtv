@@ -1213,4 +1213,62 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         body.GetProperty("id").GetGuid().Should().Be(hot);
         body.GetProperty("title").GetString().Should().Be("hot");
     }
+
+    [Fact]
+    public async Task Featured_SkipsNonPublicClips()
+    {
+        // An unlisted clip with overwhelming engagement is never the featured pick.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var todayStart = now.Date;
+        var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
+
+        var (unlisted, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "unlisted", visibility: "unlisted");
+        var (publicClip, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "public");
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.AddRange(
+                Enumerable.Range(0, 50).Select(_ => new ClipView { ClipId = unlisted, CreatedAt = engagementAt }));
+            db.ClipViews.Add(new ClipView { ClipId = publicClip, CreatedAt = engagementAt });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/featured");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("id").GetGuid().Should().Be(publicClip);
+    }
+
+    [Fact]
+    public async Task Featured_SkipsNonReadyClips()
+    {
+        // A processing/failed clip with overwhelming engagement is never the featured pick.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var todayStart = now.Date;
+        var engagementAt = now.AddMinutes(-5) >= todayStart ? now.AddMinutes(-5) : todayStart;
+
+        var (processing, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "processing", status: "processing");
+        var (ready, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "ready");
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.AddRange(
+                Enumerable.Range(0, 50).Select(_ => new ClipView { ClipId = processing, CreatedAt = engagementAt }));
+            db.ClipViews.Add(new ClipView { ClipId = ready, CreatedAt = engagementAt });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/featured");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("id").GetGuid().Should().Be(ready);
+    }
 }
