@@ -253,6 +253,22 @@ function openComments() {
 function closeComments() {
   commentsOpen.value = false
 }
+
+function onCommentsKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') closeComments()
+}
+
+watch(commentsOpen, (open) => {
+  if (typeof window === 'undefined') return
+  if (open) window.addEventListener('keydown', onCommentsKeydown)
+  else window.removeEventListener('keydown', onCommentsKeydown)
+})
+
+onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('keydown', onCommentsKeydown)
+  }
+})
 </script>
 
 <template>
@@ -426,7 +442,6 @@ function closeComments() {
           v-if="commentsOpen"
           class="fixed inset-0 z-50 bg-black/55"
           @click.self="closeComments"
-          @keydown.esc.window="closeComments"
         >
           <Transition
             enter-active-class="transition-transform duration-200 ease-out"
