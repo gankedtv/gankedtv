@@ -37,15 +37,22 @@ const source = ref<FeedSource>(initialTab)
 const items = ref<ClipFeedItem[]>([])
 const cursor = ref<string | null>(null)
 const loading = ref(false)
+// Daily "Clip of the Day" pick. Loaded once on mount in parallel with the feed.
+// Survives tab switches because it's a global pick, not per-source.
+const featured = ref<ClipFeedItem | null>(null)
 // Initial-load failure (no items rendered yet) — full-page error panel.
 const errored = ref(false)
 // Pagination failure with content already on screen — inline retry on the
 // "Load more" button so we don't blow away the loaded feed.
 const paginationErrored = ref(false)
 
-// Hero is the newest ready clip; secondary uses the next chunk. The server returns
-// items ordered by createdAt desc so position 0 is always the freshest.
-const hero = computed(() => items.value[0] ?? null)
+// Hero prefers today's featured pick (computed server-side via /clips/featured)
+// and falls back to items[0] (newest ready clip) so the hero never goes blank
+// — handles fresh-platform / pre-engagement / featured-fetch-failed cases.
+const hero = computed<ClipFeedItem | null>(() => featured.value ?? items.value[0] ?? null)
+// True only when the hero is actually today's featured pick — the badge must
+// not lie about provenance.
+const heroIsFeatured = computed(() => featured.value !== null)
 const secondary = computed(() => items.value.slice(1, 5))
 const grid = computed(() => items.value.slice(5))
 
@@ -109,7 +116,20 @@ function selectTab(next: FeedSource) {
   loadMore()
 }
 
-onMounted(loadMore)
+async function loadFeatured() {
+  try {
+    featured.value = await clips.featured()
+  } catch (err) {
+    // Silent failure — hero falls back to items[0]. No user-facing error.
+    console.error('featured: load failed', err)
+    featured.value = null
+  }
+}
+
+onMounted(() => {
+  // Independent loads — featured failure must not block the feed and vice versa.
+  void Promise.allSettled([loadMore(), loadFeatured()])
+})
 </script>
 
 <template>
@@ -215,7 +235,7 @@ onMounted(loadMore)
           <div class="flex flex-col justify-between px-11 py-10">
             <div class="flex flex-col gap-4">
               <div class="font-mono text-[11px] uppercase tracking-[0.15em] text-neon">
-                Featured Clip
+                {{ heroIsFeatured ? 'Clip of the Day' : 'Featured Clip' }}
               </div>
               <h2
                 class="m-0 font-heading text-[46px] font-bold leading-none uppercase text-text-primary"
