@@ -15,6 +15,7 @@ vi.mock('@/views/HomeView.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/views/LoginView.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/views/UploadView.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/views/ClipView.vue', () => ({ default: { template: '<div />' } }))
+vi.mock('@/views/ReelsView.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/views/UserView.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/views/AuthCallbackView.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/views/NotFoundView.vue', () => ({ default: { template: '<div />' } }))
@@ -86,5 +87,19 @@ describe('share-code route', () => {
     await router.push('/c/abc123')
     expect(router.currentRoute.value.name).toBe('clip-share')
     expect(router.currentRoute.value.params.code).toBe('abc123')
+  })
+})
+
+describe('reels routes', () => {
+  it('resolves /feed/reels to the bare reels route with no id param', async () => {
+    await router.push('/feed/reels')
+    expect(router.currentRoute.value.name).toBe('reels')
+    expect(router.currentRoute.value.params.id).toBeUndefined()
+  })
+
+  it('resolves /feed/reels/:id to the reel-clip route and exposes the id param', async () => {
+    await router.push('/feed/reels/clp_42')
+    expect(router.currentRoute.value.name).toBe('reel-clip')
+    expect(router.currentRoute.value.params.id).toBe('clp_42')
   })
 })

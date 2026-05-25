@@ -14,6 +14,7 @@ import StatusPanel from '@/components/StatusPanel.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import UnderlineTabs from '@/components/UnderlineTabs.vue'
 import LoadMoreButton from '@/components/LoadMoreButton.vue'
+import ReelsFab from '@/components/reels/ReelsFab.vue'
 import IconPlay from '@/components/icons/IconPlay.vue'
 
 const router = useRouter()
@@ -346,5 +347,7 @@ onMounted(() => {
         @load="loadMore"
       />
     </template>
+
+    <ReelsFab />
   </main>
 </template>
