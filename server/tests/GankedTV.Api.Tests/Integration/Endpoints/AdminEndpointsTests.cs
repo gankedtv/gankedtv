@@ -157,6 +157,68 @@ public class AdminEndpointsTests : IAsyncLifetime
     // ---- Queue hydration ----
 
     [Fact]
+    public async Task ListReports_HydratesCommentTarget()
+    {
+        // Exercises the comment branch of the polymorphic ListReports projection.
+        await _fx.ResetAsync();
+        var (_, modToken) = await SeedUserAsync("mod", UserRoles.Moderator);
+        var (ownerId, _) = await SeedUserAsync("owner");
+        var (authorId, _) = await SeedUserAsync("author");
+        var (reporterId, _) = await SeedUserAsync("reporter");
+        var clipId = await SeedClipAsync(ownerId);
+
+        Guid commentId;
+        await using (var db = _fx.CreateContext())
+        {
+            var c = new Comment
+            {
+                Id = Guid.NewGuid(),
+                ClipId = clipId,
+                UserId = authorId,
+                Body = "to-report",
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+            };
+            db.Comments.Add(c);
+            await db.SaveChangesAsync();
+            commentId = c.Id;
+        }
+        await SeedReportAsync(reporterId, ReportTargetTypes.Comment, commentId);
+
+        using var client = AuthTestHelpers.CreateBearerClient(_factory!, modToken);
+        var resp = await client.GetAsync("/admin/reports?status=open");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var page = await resp.Content.ReadFromJsonAsync<ReportListResponse>();
+        page!.Items[0].TargetType.Should().Be(ReportTargetTypes.Comment);
+        page.Items[0].Target.Comment.Should().NotBeNull();
+        page.Items[0].Target.Comment!.Body.Should().Be("to-report");
+        // Clip/user branches are null on a comment row — pins the discriminated-union shape.
+        page.Items[0].Target.Clip.Should().BeNull();
+        page.Items[0].Target.User.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ListReports_HydratesUserTarget()
+    {
+        // Exercises the user branch of the polymorphic ListReports projection.
+        await _fx.ResetAsync();
+        var (_, modToken) = await SeedUserAsync("mod", UserRoles.Moderator);
+        var (targetUserId, _) = await SeedUserAsync("target");
+        var (reporterId, _) = await SeedUserAsync("reporter");
+        await SeedReportAsync(reporterId, ReportTargetTypes.User, targetUserId);
+
+        using var client = AuthTestHelpers.CreateBearerClient(_factory!, modToken);
+        var resp = await client.GetAsync("/admin/reports?status=open");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var page = await resp.Content.ReadFromJsonAsync<ReportListResponse>();
+        page!.Items[0].TargetType.Should().Be(ReportTargetTypes.User);
+        page.Items[0].Target.User.Should().NotBeNull();
+        page.Items[0].Target.User!.Username.Should().Be("target");
+        page.Items[0].Target.Clip.Should().BeNull();
+        page.Items[0].Target.Comment.Should().BeNull();
+    }
+
+    [Fact]
     public async Task ListReports_HydratesClipTarget()
     {
         await _fx.ResetAsync();

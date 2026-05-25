@@ -315,4 +315,116 @@ public class ClipsImportEndpointsTests : IAsyncLifetime
         await db.SaveChangesAsync();
         return clip.Id;
     }
+
+    // ---- MapError switch coverage ----
+    // Drives every ClipUploadError that ClipsImportEndpoints.MapError handles through a
+    // fake IClipImportService so each switch arm gets exercised. Without this the import
+    // endpoint's MapError sits at ~11% branch coverage because the integration tests above
+    // exercise only the happy path + a couple of failure modes.
+
+    private sealed class FakeImportService(GankedTV.Api.Services.Clips.ClipUploadError error)
+        : GankedTV.Api.Services.Clips.IClipImportService
+    {
+        public Task<GankedTV.Api.Services.Clips.ClipResult<GankedTV.Api.Services.Clips.ImportClipResult>>
+            SubmitAsync(Guid userId, GankedTV.Api.Services.Clips.ImportClipInput input, CancellationToken ct) =>
+            Task.FromResult(GankedTV.Api.Services.Clips.ClipResult<GankedTV.Api.Services.Clips.ImportClipResult>.Fail(error));
+
+        public Task<GankedTV.Api.Services.Clips.ClipResult<GankedTV.Api.Services.Clips.ImportClipPreviewResult>>
+            PreviewAsync(string? url, CancellationToken ct) =>
+            Task.FromResult(GankedTV.Api.Services.Clips.ClipResult<GankedTV.Api.Services.Clips.ImportClipPreviewResult>.Fail(error));
+    }
+
+    [Theory]
+    [InlineData(GankedTV.Api.Services.Clips.ClipUploadError.InvalidUrl, HttpStatusCode.BadRequest, "invalid_url")]
+    [InlineData(GankedTV.Api.Services.Clips.ClipUploadError.UnsupportedHost, HttpStatusCode.BadRequest, "unsupported_host")]
+    [InlineData(GankedTV.Api.Services.Clips.ClipUploadError.SourceUnavailable, HttpStatusCode.BadRequest, "source_unavailable")]
+    [InlineData(GankedTV.Api.Services.Clips.ClipUploadError.FetchFailed, HttpStatusCode.ServiceUnavailable, "fetch_failed")]
+    [InlineData(GankedTV.Api.Services.Clips.ClipUploadError.ImportDisabled, HttpStatusCode.ServiceUnavailable, "import_disabled")]
+    [InlineData(GankedTV.Api.Services.Clips.ClipUploadError.InvalidTitle, HttpStatusCode.BadRequest, "invalid_title")]
+    [InlineData(GankedTV.Api.Services.Clips.ClipUploadError.InvalidDescription, HttpStatusCode.BadRequest, "invalid_description")]
+    [InlineData(GankedTV.Api.Services.Clips.ClipUploadError.InvalidVisibility, HttpStatusCode.BadRequest, "invalid_visibility")]
+    [InlineData(GankedTV.Api.Services.Clips.ClipUploadError.InvalidGame, HttpStatusCode.BadRequest, "invalid_game")]
+    [InlineData(GankedTV.Api.Services.Clips.ClipUploadError.TooManyTags, HttpStatusCode.BadRequest, "too_many_tags")]
+    [InlineData(GankedTV.Api.Services.Clips.ClipUploadError.InvalidTag, HttpStatusCode.BadRequest, "invalid_tag")]
+    public async Task Import_MapErrorArm_TranslatesToProblemDetails(
+        GankedTV.Api.Services.Clips.ClipUploadError error, HttpStatusCode expectedStatus, string expectedCode)
+    {
+        await _fx.ResetAsync();
+        await using var factory = new AuthApiFactory(
+            _fx.ConnectionString,
+            _storage,
+            configureServices: services =>
+            {
+                services.RemoveAll<GankedTV.Api.Services.Clips.IClipImportService>();
+                services.AddScoped<GankedTV.Api.Services.Clips.IClipImportService>(_ => new FakeImportService(error));
+            });
+        var (_, token) = await AuthTestHelpers.SeedUserAndIssueTokenAsync(_fx, factory, "errorcase");
+        using var client = AuthTestHelpers.CreateBearerClient(factory, token);
+
+        var resp = await client.PostAsJsonAsync("/clips/import", new
+        {
+            url = "https://medal.tv/clips/abc",
+            title = "x",
+            visibility = "public",
+        });
+
+        resp.StatusCode.Should().Be(expectedStatus);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("code").GetString().Should().Be(expectedCode);
+    }
+
+    [Fact]
+    public async Task Import_UnmappedError_FallsThroughToInternal500()
+    {
+        // ClipUploadError.NotFound is upload-flow-only; the import endpoint's MapError has
+        // no explicit arm for it, so the `_` default arm and UnmappedError logger path fire.
+        // Pins both the default-arm branch and the diagnostic side-effect.
+        await _fx.ResetAsync();
+        await using var factory = new AuthApiFactory(
+            _fx.ConnectionString,
+            _storage,
+            configureServices: services =>
+            {
+                services.RemoveAll<GankedTV.Api.Services.Clips.IClipImportService>();
+                services.AddScoped<GankedTV.Api.Services.Clips.IClipImportService>(
+                    _ => new FakeImportService(GankedTV.Api.Services.Clips.ClipUploadError.NotFound));
+            });
+        var (_, token) = await AuthTestHelpers.SeedUserAndIssueTokenAsync(_fx, factory, "unmapped");
+        using var client = AuthTestHelpers.CreateBearerClient(factory, token);
+
+        var resp = await client.PostAsJsonAsync("/clips/import", new
+        {
+            url = "https://medal.tv/clips/abc",
+            visibility = "public",
+        });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("code").GetString().Should().Be("unmapped_error");
+    }
+
+    [Fact]
+    public async Task Import_Preview_FailedResult_RoutesThroughMapError()
+    {
+        // PreviewAsync shares the same MapError as Submit but didn't have an error-path
+        // smoke test — covers the success/failure branch of the preview lambda.
+        await _fx.ResetAsync();
+        await using var factory = new AuthApiFactory(
+            _fx.ConnectionString,
+            _storage,
+            configureServices: services =>
+            {
+                services.RemoveAll<GankedTV.Api.Services.Clips.IClipImportService>();
+                services.AddScoped<GankedTV.Api.Services.Clips.IClipImportService>(
+                    _ => new FakeImportService(GankedTV.Api.Services.Clips.ClipUploadError.UnsupportedHost));
+            });
+        var (_, token) = await AuthTestHelpers.SeedUserAndIssueTokenAsync(_fx, factory, "previewerr");
+        using var client = AuthTestHelpers.CreateBearerClient(factory, token);
+
+        var resp = await client.PostAsJsonAsync("/clips/import/preview", new { url = "https://example.invalid/x" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("code").GetString().Should().Be("unsupported_host");
+    }
 }

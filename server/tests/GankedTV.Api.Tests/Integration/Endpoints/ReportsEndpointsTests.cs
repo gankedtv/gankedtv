@@ -227,4 +227,85 @@ public class ReportsEndpointsTests : IAsyncLifetime
 
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
     }
+
+    // ---- Parity coverage: comment + user variants exercise the same MapError branches as
+    // the clip variant. Each MapPost lambda is its own compiled handler, so the per-arm
+    // branches need a hit per variant to land in coverage.
+
+    [Fact]
+    public async Task ReportComment_UnknownTarget_Returns404()
+    {
+        await _fx.ResetAsync();
+        var (_, reporterToken) = await SeedUserAsync("reporter");
+        using var client = AuthTestHelpers.CreateBearerClient(_factory!, reporterToken);
+
+        var resp = await client.PostAsJsonAsync($"/comments/{Guid.NewGuid()}/report",
+            new { reason = "spam" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task ReportComment_InvalidReason_Returns400()
+    {
+        await _fx.ResetAsync();
+        var (ownerId, _) = await SeedUserAsync("owner");
+        var (authorId, _) = await SeedUserAsync("author");
+        var (_, reporterToken) = await SeedUserAsync("reporter");
+        var clipId = await SeedClipAsync(ownerId);
+        var commentId = await SeedCommentAsync(clipId, authorId);
+
+        using var client = AuthTestHelpers.CreateBearerClient(_factory!, reporterToken);
+        var resp = await client.PostAsJsonAsync($"/comments/{commentId}/report",
+            new { reason = "bogus" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task ReportUser_UnknownTarget_Returns404()
+    {
+        await _fx.ResetAsync();
+        var (_, reporterToken) = await SeedUserAsync("reporter");
+        using var client = AuthTestHelpers.CreateBearerClient(_factory!, reporterToken);
+
+        var resp = await client.PostAsJsonAsync($"/users/{Guid.NewGuid()}/report",
+            new { reason = "harassment" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task ReportUser_DuplicateOpen_Returns409()
+    {
+        await _fx.ResetAsync();
+        var (targetId, _) = await SeedUserAsync("target");
+        var (_, reporterToken) = await SeedUserAsync("reporter");
+
+        using var client = AuthTestHelpers.CreateBearerClient(_factory!, reporterToken);
+        var first = await client.PostAsJsonAsync($"/users/{targetId}/report",
+            new { reason = "harassment" });
+        first.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var second = await client.PostAsJsonAsync($"/users/{targetId}/report",
+            new { reason = "hate" });
+        second.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public async Task ReportComment_OtherWithoutNote_Returns400()
+    {
+        await _fx.ResetAsync();
+        var (ownerId, _) = await SeedUserAsync("owner");
+        var (authorId, _) = await SeedUserAsync("author");
+        var (_, reporterToken) = await SeedUserAsync("reporter");
+        var clipId = await SeedClipAsync(ownerId);
+        var commentId = await SeedCommentAsync(clipId, authorId);
+
+        using var client = AuthTestHelpers.CreateBearerClient(_factory!, reporterToken);
+        var resp = await client.PostAsJsonAsync($"/comments/{commentId}/report",
+            new { reason = "other" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
 }

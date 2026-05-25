@@ -272,6 +272,29 @@ public class ReportServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ConcurrentDuplicates_OnlyOneSucceeds()
+    {
+        // Pins the IsDuplicateOpenReport catch-filter on the partial unique index. With both
+        // submits racing past the app-level AnyAsync check (they each see no existing open
+        // report), the DB partial-unique-index trips on the second INSERT and the service
+        // surfaces a DuplicateOpenReport failure (not an unhandled exception).
+        await _fx.ResetAsync();
+        var (reporter, owner) = await SeedTwoUsersAsync();
+        var clipId = await SeedClipAsync(owner);
+
+        async Task<ReportCreateResult> TrySubmit()
+        {
+            await using var db = _fx.CreateContext();
+            return await new ReportService(db, TimeProvider.System)
+                .CreateAsync(reporter, ReportTargetTypes.Clip, clipId, "spam", null, default);
+        }
+
+        var results = await Task.WhenAll(TrySubmit(), TrySubmit(), TrySubmit());
+        results.Count(r => r.IsSuccess).Should().Be(1);
+        results.Count(r => r.Error == ReportCreateError.DuplicateOpenReport).Should().Be(2);
+    }
+
+    [Fact]
     public async Task DbCheck_OtherWithoutNote_RejectsDirectInsert()
     {
         // Pins the defense-in-depth: ck_reports_other_note must reject an out-of-band
