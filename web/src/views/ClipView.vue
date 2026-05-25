@@ -19,6 +19,7 @@ import CommentsSection from '@/components/CommentsSection.vue'
 import IconHeart from '@/components/icons/IconHeart.vue'
 import IconShare from '@/components/icons/IconShare.vue'
 import IconMoreVertical from '@/components/icons/IconMoreVertical.vue'
+import IconLink from '@/components/icons/IconLink.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -100,6 +101,19 @@ const clipId = computed(() => {
 const shareCode = computed(() => {
   const code = route.params.code
   return Array.isArray(code) ? code[0] : (code as string | undefined)
+})
+
+// Attribution badge for clips ingested via POST /clips/import. The host is shown to the
+// viewer instead of the full URL (which can be long + carries query params); the link still
+// goes to the full original. Null when the clip wasn't imported or the URL is malformed.
+const importSourceHost = computed(() => {
+  const url = clip.value?.importSourceUrl
+  if (!url) return null
+  try {
+    return new URL(url).host.replace(/^www\./, '')
+  } catch {
+    return null
+  }
 })
 
 async function loadClip(isPoll = false) {
@@ -528,6 +542,19 @@ async function onConfirmDelete() {
         <div v-if="clip.tags.length" class="mt-3 flex flex-wrap gap-2">
           <TagChip v-for="t in clip.tags" :key="t.id" :slug="t.slug" :name="t.name" size="md" />
         </div>
+
+        <!-- Source attribution for imported clips. Subtle pill; clicking opens the original
+             in a new tab so reviewers can confirm credit / spot reuploads at a glance. -->
+        <a
+          v-if="clip.importSourceUrl && importSourceHost"
+          :href="clip.importSourceUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="mt-3 inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-raised px-3 py-1 font-mono text-[11px] uppercase tracking-[0.06em] text-text-muted transition-colors hover:border-brand-light hover:text-text-primary"
+        >
+          <IconLink :size="12" />
+          <span>Imported from {{ importSourceHost }}</span>
+        </a>
 
         <div class="mt-4 flex flex-wrap items-center gap-3">
           <!-- Author info -->

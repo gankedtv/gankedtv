@@ -25,6 +25,7 @@ public sealed class CompressWorker : ClipStageWorker
 
     protected override string ClaimStatus => ClipStatuses.Transcoding;
     protected override string StageName => "compress";
+    protected override string? TerminalFailureReason => ClipFailureReasons.TranscodeFailed;
     protected override bool IsWorkerEnabled(MediaJobOptions opts) => opts.TranscodeWorkerEnabled;
 
     protected override async Task ProcessAsync(

@@ -17,6 +17,7 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
     private readonly string _environment;
     private readonly IReadOnlyList<IOAuthProvider>? _oauthProviders;
     private readonly S3Fixture? _s3Fixture;
+    private readonly Action<IServiceCollection>? _configureServices;
 
     // `oauthProviders`, when non-null, REPLACES the real Discord/Google registrations
     // wholesale (they are not merged). Passing an empty list therefore leaves the registry
@@ -27,12 +28,17 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
     // S3 container by overriding S3Options. This is the end-to-end path used by
     // [Collection("PostgresAndS3")] tests — IObjectStorageService is NOT replaced.
     // Mutually exclusive with `storageOverride` (which substitutes the service wholesale).
+    //
+    // `configureServices`, when non-null, runs LAST inside ConfigureWebHost so tests can
+    // swap arbitrary singletons/scoped services for substitutes (e.g. IClipImportSource)
+    // without growing this constructor every time a new replaceable service appears.
     public AuthApiFactory(
         string connectionString,
         IObjectStorageService? storageOverride = null,
         string environment = "Development",
         IReadOnlyList<IOAuthProvider>? oauthProviders = null,
-        S3Fixture? s3Fixture = null)
+        S3Fixture? s3Fixture = null,
+        Action<IServiceCollection>? configureServices = null)
     {
         if (storageOverride is not null && s3Fixture is not null)
         {
@@ -47,6 +53,7 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
         _environment = environment;
         _oauthProviders = oauthProviders;
         _s3Fixture = s3Fixture;
+        _configureServices = configureServices;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -107,6 +114,11 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
                     services.AddSingleton(provider);
                 }
             }
+
+            // Catch-all extension point — runs last so callers can replace whatever they want
+            // (RemoveAll<T> + AddSingleton/Scoped) without the factory needing a dedicated
+            // constructor parameter per service.
+            _configureServices?.Invoke(services);
         });
     }
 }

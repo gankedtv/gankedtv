@@ -28,4 +28,8 @@ public sealed record ClipDetailResponse(
     GameSummary? Game,
     IReadOnlyList<TagSummary> Tags,
     bool LikedByMe,
-    string Visibility);
+    string Visibility,
+    // Source URL when this clip was ingested via POST /clips/import (Medal.tv / YouTube).
+    // Null for direct uploads. The web detail view renders a "From {host}" attribution
+    // badge linking back to the original — credit + reduces friction over reuploads.
+    string? ImportSourceUrl);

@@ -2,6 +2,7 @@ using FluentAssertions;
 using GankedTV.Api.Clips;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
+using GankedTV.Api.Services.Clips;
 using GankedTV.Api.Services.Media;
 using GankedTV.Api.Tests.TestSupport;
 using Microsoft.EntityFrameworkCore;
@@ -520,5 +521,127 @@ public class ClipMediaJobStoreIntegrationTests
         clip.ProcessingStartedAt.Should().NotBeNull();
         clip.ProcessingStartedAt!.Value.Should().BeCloseTo(bLeaseStart, TimeSpan.FromMicroseconds(1));
         clip.ProcessingAttempts.Should().Be(3);
+    }
+
+    // --- Import stage (issue #106) ----------------------------------------------------
+
+    private async Task<Guid> SeedImportingClipAsync(
+        Guid userId,
+        DateTimeOffset updatedAt,
+        string url = "https://medal.tv/clips/x",
+        string title = "imported title")
+    {
+        await using var db = NewContext();
+        var clip = new Clip
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            Title = title,
+            VideoKey = $"{userId}/v.mp4",
+            ShareCode = ShareCodeGenerator.Next(),
+            Status = ClipStatuses.Importing,
+            ImportSourceUrl = url,
+            CreatedAt = updatedAt,
+            UpdatedAt = updatedAt,
+        };
+        db.Clips.Add(clip);
+        await db.SaveChangesAsync();
+        return clip.Id;
+    }
+
+    [Fact]
+    public async Task ClaimNextImportAsync_PicksImportingClipAndReturnsUrl()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("oscar");
+        var now = DateTimeOffset.UtcNow;
+        var clipId = await SeedImportingClipAsync(userId, now, "https://medal.tv/clips/abc");
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+
+        var result = await store.ClaimNextImportAsync(TimeSpan.FromMinutes(5), 3, CancellationToken.None);
+
+        result.Should().NotBeNull();
+        result!.ClipId.Should().Be(clipId);
+        result.ImportSourceUrl.Should().Be("https://medal.tv/clips/abc");
+        result.AttemptNumber.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ClaimNextImportAsync_IgnoresOtherStatuses()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("paula");
+        var now = DateTimeOffset.UtcNow;
+        // A 'processing' clip must be invisible to the import claim — the partial index is
+        // scoped to status='importing'.
+        await SeedClipAsync(userId, ClipStatuses.Processing, now);
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+        var result = await store.ClaimNextImportAsync(TimeSpan.FromMinutes(5), 3, CancellationToken.None);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task AdvanceImportAsync_AdvancesToProcessing_AndOverwritesPlaceholderTitle()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("queen");
+        var now = DateTimeOffset.UtcNow;
+        var clipId = await SeedImportingClipAsync(userId, now, title: ClipImportDefaults.PlaceholderTitle);
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+        // Pretend the worker had bumped attempts via a claim — set the row's attempt to 1
+        // so the expectedAttempt guard inside AdvanceImportAsync passes.
+        await db.Clips.Where(c => c.Id == clipId)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.ProcessingAttempts, 1));
+
+        await store.AdvanceImportAsync(
+            clipId,
+            expectedAttempt: 1,
+            fileSizeBytes: 1024,
+            extractorTitle: "Extractor Title",
+            placeholderTitle: ClipImportDefaults.PlaceholderTitle,
+            CancellationToken.None);
+
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.Status.Should().Be(ClipStatuses.Processing);
+        clip.FileSizeBytes.Should().Be(1024);
+        clip.Title.Should().Be("Extractor Title");
+        clip.ProcessingAttempts.Should().Be(0);
+        clip.ProcessingStartedAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task AdvanceImportAsync_KeepsUserSuppliedTitle()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("ralph");
+        var now = DateTimeOffset.UtcNow;
+        var clipId = await SeedImportingClipAsync(userId, now, title: "My override");
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+        await db.Clips.Where(c => c.Id == clipId)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.ProcessingAttempts, 1));
+
+        await store.AdvanceImportAsync(
+            clipId,
+            expectedAttempt: 1,
+            fileSizeBytes: 2048,
+            extractorTitle: "Extractor Title",
+            placeholderTitle: ClipImportDefaults.PlaceholderTitle,
+            CancellationToken.None);
+
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.Status.Should().Be(ClipStatuses.Processing);
+        // User-supplied title is preserved because it didn't match the placeholder.
+        clip.Title.Should().Be("My override");
     }
 }

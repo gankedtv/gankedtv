@@ -66,7 +66,7 @@ public sealed class ThumbnailJobService : IThumbnailJobService
         {
             await ExtractFrameAsync(videoUrl, thumbPath, seekOffset, opts, ct);
 
-            var thumbnailKey = ClipUploadService.BuildThumbnailKey(job.UserId, job.ClipId, gameSlug);
+            var thumbnailKey = ClipKeys.BuildThumbnailKey(job.UserId, job.ClipId, gameSlug);
             await using (var stream = File.OpenRead(thumbPath))
             {
                 await _storage.PutObjectAsync(buckets.ThumbnailsBucket, thumbnailKey, stream, "image/jpeg", ct);

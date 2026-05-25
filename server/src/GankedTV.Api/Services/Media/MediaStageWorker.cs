@@ -102,13 +102,15 @@ public abstract class MediaStageWorker<TJob> : BackgroundService
         }
     }
 
-    private async Task ProbeBinariesAsync(MediaJobOptions opts, CancellationToken ct)
+    // Virtual so stages with extra binaries (e.g. ImportWorker → yt-dlp) can extend the
+    // boot probe without duplicating the loop / lease machinery.
+    protected virtual async Task ProbeBinariesAsync(MediaJobOptions opts, CancellationToken ct)
     {
         await ProbeOneAsync(opts.FfmpegPath, ct);
         await ProbeOneAsync(opts.FfprobePath, ct);
     }
 
-    private async Task ProbeOneAsync(string executable, CancellationToken ct)
+    protected async Task ProbeOneAsync(string executable, CancellationToken ct)
     {
         try
         {
@@ -126,9 +128,13 @@ public abstract class MediaStageWorker<TJob> : BackgroundService
         }
         catch (Exception ex)
         {
+            // Generic message: this probe runs for every binary a stage depends on (ffmpeg,
+            // ffprobe, yt-dlp, …). Stage-specific remediation lives in the per-stage config
+            // (CLAUDE.md "Host requirements" lists the *_PATH envs) — here we just point at
+            // the missing executable + which stage needs it.
             _logger.LogWarning(ex,
-                "Could not invoke '{Executable}'. The {Stage} worker is enabled but jobs will fail until this is fixed. "
-                + "Install ffmpeg or set MediaJobs:FfmpegPath / MediaJobs:FfprobePath (env: FFMPEG_PATH / FFPROBE_PATH).",
+                "Could not invoke '{Executable}'. The {Stage} worker is enabled but jobs will fail "
+                + "until this binary is installed or the configured path is corrected.",
                 executable, StageName);
         }
     }

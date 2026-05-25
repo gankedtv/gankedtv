@@ -155,6 +155,24 @@ builder.Services.AddOptions<MediaJobOptions>()
         if (int.TryParse(segDur, out var sd) && sd > 0) opts.SegmentDuration = TimeSpan.FromSeconds(sd);
         var transcodeMin = Environment.GetEnvironmentVariable("MEDIA_TRANSCODE_TIMEOUT_MINUTES");
         if (int.TryParse(transcodeMin, out var tm) && tm > 0) opts.TranscodeTimeout = TimeSpan.FromMinutes(tm);
+        // URL import (issue #106). Independent of the GPU split — the fetch is I/O bound and
+        // belongs on the API host. AllowedHosts is comma-separated, trimmed, lowercased.
+        var importEnabled = Environment.GetEnvironmentVariable("MEDIA_IMPORT_ENABLED");
+        if (bool.TryParse(importEnabled, out var ie)) opts.Import.Enabled = ie;
+        var importWorkerEnabled = Environment.GetEnvironmentVariable("MEDIA_IMPORT_WORKER_ENABLED");
+        if (bool.TryParse(importWorkerEnabled, out var iwe)) opts.Import.WorkerEnabled = iwe;
+        var ytdlp = Environment.GetEnvironmentVariable("YTDLP_PATH");
+        if (!string.IsNullOrWhiteSpace(ytdlp)) opts.Import.YtdlpPath = ytdlp;
+        var fetchSecs = Environment.GetEnvironmentVariable("MEDIA_IMPORT_FETCH_TIMEOUT_SECS");
+        if (int.TryParse(fetchSecs, out var fs) && fs > 0) opts.Import.FetchTimeout = TimeSpan.FromSeconds(fs);
+        var importHosts = Environment.GetEnvironmentVariable("MEDIA_IMPORT_ALLOWED_HOSTS");
+        if (!string.IsNullOrWhiteSpace(importHosts))
+        {
+            opts.Import.AllowedHosts = importHosts
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(h => h.ToLowerInvariant())
+                .ToList();
+        }
     })
     .Validate(o => o.PollInterval > TimeSpan.Zero, "MediaJobs.PollInterval must be positive.")
     .Validate(o => o.LeaseDuration > TimeSpan.Zero, "MediaJobs.LeaseDuration must be positive.")
@@ -171,6 +189,9 @@ builder.Services.AddOptions<MediaJobOptions>()
     .Validate(o => !string.IsNullOrWhiteSpace(o.VideoCodec), "MediaJobs.VideoCodec must be set.")
     .Validate(o => !string.IsNullOrWhiteSpace(o.JitVideoEncoder), "MediaJobs.JitVideoEncoder must be set.")
     .Validate(o => o.Ladder is { Count: > 0 }, "MediaJobs.Ladder must define at least one rung.")
+    .Validate(o => o.Import.FetchTimeout > TimeSpan.Zero, "MediaJobs.Import.FetchTimeout must be positive.")
+    .Validate(o => !string.IsNullOrWhiteSpace(o.Import.YtdlpPath), "MediaJobs.Import.YtdlpPath must be set.")
+    .Validate(o => o.Import.AllowedHosts is { Count: > 0 }, "MediaJobs.Import.AllowedHosts must list at least one host.")
     .ValidateOnStart();
 builder.Services.AddSingleton<IFfmpegRunner, FfmpegRunner>();
 builder.Services.AddScoped<IClipMediaJobStore, ClipMediaJobStore>();
@@ -181,6 +202,11 @@ builder.Services.AddScoped<IJitLadderService, JitLadderService>();
 builder.Services.AddHostedService<ThumbnailWorker>();
 builder.Services.AddHostedService<CompressWorker>();
 builder.Services.AddHostedService<StreamRenditionWorker>();
+// URL-import stage (issue #106). Worker exits at startup when MEDIA_IMPORT_ENABLED=false
+// (or MEDIA_IMPORT_WORKER_ENABLED=false on the GPU box), mirroring the IGDB-sync pattern.
+builder.Services.AddSingleton<GankedTV.Api.Services.Media.Import.IClipImportSource,
+    GankedTV.Api.Services.Media.Import.YtDlpImportSource>();
+builder.Services.AddHostedService<ImportWorker>();
 
 builder.Services.AddOptions<ClipValidationOptions>()
     .Configure(opts =>
@@ -201,6 +227,8 @@ builder.Services.AddOptions<ClipValidationOptions>()
     .ValidateOnStart();
 
 builder.Services.AddScoped<IClipUploadService, ClipUploadService>();
+builder.Services.AddScoped<IClipImportService, ClipImportService>();
+builder.Services.AddScoped<IClipImportUrlValidator, ClipImportUrlValidator>();
 builder.Services.AddScoped<ITagsResolver, TagsResolver>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 
@@ -432,6 +460,7 @@ app.UseRateLimiter();
 app.MapAuthEndpoints();
 app.MapMeEndpoints();
 app.MapClipsUploadEndpoints();
+app.MapClipsImportEndpoints();
 app.MapClipsReadEndpoints();
 app.MapClipsMutateEndpoints();
 app.MapLikesEndpoints();

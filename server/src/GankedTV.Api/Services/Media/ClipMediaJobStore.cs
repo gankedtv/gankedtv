@@ -1,5 +1,6 @@
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
+using GankedTV.Api.Validation;
 using Microsoft.EntityFrameworkCore;
 
 namespace GankedTV.Api.Services.Media;
@@ -125,7 +126,7 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
                 .SetProperty(c => c.UpdatedAt, now), ct);
     }
 
-    public async Task MarkFailedAsync(Guid clipId, int expectedAttempt, string fromStatus, CancellationToken ct)
+    public async Task MarkFailedAsync(Guid clipId, int expectedAttempt, string fromStatus, CancellationToken ct, string? reason = null)
     {
         var now = _clock.GetUtcNow();
         await _db.Clips
@@ -135,6 +136,7 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(c => c.Status, ClipStatuses.Failed)
                 .SetProperty(c => c.ProcessingStartedAt, (DateTimeOffset?)null)
+                .SetProperty(c => c.FailureReason, reason)
                 .SetProperty(c => c.UpdatedAt, now), ct);
     }
 
@@ -147,6 +149,113 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
                 && c.ProcessingAttempts == expectedAttempt)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(c => c.ProcessingStartedAt, (DateTimeOffset?)null)
+                .SetProperty(c => c.UpdatedAt, now), ct);
+    }
+
+    public async Task<ClaimedImportJob?> ClaimNextImportAsync(
+        TimeSpan leaseDuration,
+        int maxAttempts,
+        CancellationToken ct)
+    {
+        var now = _clock.GetUtcNow();
+        var leaseExpiry = now - leaseDuration;
+        var importingStatus = ClipStatuses.Importing;
+
+        // Same SKIP LOCKED + lease-bump shape as ClaimNextAsync — replicated here because the
+        // import claim needs to return ImportSourceUrl + Title, which aren't on ClaimedMediaJob.
+        // Refactoring the existing claim to a generic shape would balloon the diff; copying
+        // the 20 lines is the cheaper route. Backed by idx_clips_importing_updated_at.
+        await using var tx = await _db.Database.BeginTransactionAsync(ct);
+
+        var rows = await _db.Clips
+            .FromSqlInterpolated($@"
+                SELECT *
+                FROM clips
+                WHERE status = {importingStatus}
+                  AND (processing_started_at IS NULL OR processing_started_at < {leaseExpiry})
+                  AND processing_attempts < {maxAttempts}
+                ORDER BY updated_at
+                FOR UPDATE SKIP LOCKED
+                LIMIT 1
+            ")
+            .AsNoTracking()
+            .ToListAsync(ct);
+
+        if (rows.Count == 0)
+        {
+            await tx.CommitAsync(ct);
+            return null;
+        }
+
+        var clip = rows[0];
+        var nextAttempt = clip.ProcessingAttempts + 1;
+
+        await _db.Clips
+            .Where(c => c.Id == clip.Id)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(c => c.ProcessingStartedAt, now)
+                .SetProperty(c => c.ProcessingAttempts, nextAttempt)
+                .SetProperty(c => c.UpdatedAt, now), ct);
+
+        await tx.CommitAsync(ct);
+
+        // ImportSourceUrl is guaranteed non-null on importing rows by the submit service. The
+        // null-coalescing is a defence-in-depth fallback: if the column is somehow null, the
+        // worker re-validates and fails fast rather than feeding an empty string to yt-dlp.
+        return new ClaimedImportJob(
+            clip.Id,
+            clip.UserId,
+            clip.GameId,
+            clip.VideoKey,
+            clip.ImportSourceUrl ?? string.Empty,
+            clip.Title,
+            nextAttempt);
+    }
+
+    public async Task AdvanceImportAsync(
+        Guid clipId,
+        int expectedAttempt,
+        long fileSizeBytes,
+        string? extractorTitle,
+        string placeholderTitle,
+        CancellationToken ct)
+    {
+        var now = _clock.GetUtcNow();
+        var trimmedExtractor = string.IsNullOrWhiteSpace(extractorTitle) ? null : extractorTitle.Trim();
+
+        // Two-phase update so the title overwrite is conditional on placeholder match without
+        // an extra round-trip. EF's ExecuteUpdateAsync can't conditionally set one property,
+        // so we apply the always-set columns first, then the title separately when applicable.
+        var rowsAffected = await _db.Clips
+            .Where(c => c.Id == clipId
+                && c.Status == ClipStatuses.Importing
+                && c.ProcessingAttempts == expectedAttempt)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(c => c.Status, ClipStatuses.Processing)
+                .SetProperty(c => c.FileSizeBytes, fileSizeBytes)
+                .SetProperty(c => c.ProcessingStartedAt, (DateTimeOffset?)null)
+                // Reset attempts so the next stage (thumbnail) gets its own full budget, just
+                // like AdvanceThumbnailAsync does for the compress stage.
+                .SetProperty(c => c.ProcessingAttempts, 0)
+                .SetProperty(c => c.UpdatedAt, now), ct);
+
+        if (rowsAffected == 0 || trimmedExtractor is null)
+        {
+            return;
+        }
+
+        // Only swap the title if it still equals the user-supplied placeholder. A user who
+        // typed a real title before submit keeps it; the placeholder-only path picks up the
+        // extractor's title here. Truncate to the shared ClipValidationLimits ceiling so the
+        // hard cap stays single-sourced — the upload path also clamps against it via
+        // DataAnnotations.
+        var truncated = trimmedExtractor.Length > ClipValidationLimits.MaxTitleLength
+            ? trimmedExtractor[..ClipValidationLimits.MaxTitleLength]
+            : trimmedExtractor;
+        await _db.Clips
+            .Where(c => c.Id == clipId && c.Title == placeholderTitle)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(c => c.Title, truncated)
                 .SetProperty(c => c.UpdatedAt, now), ct);
     }
 }

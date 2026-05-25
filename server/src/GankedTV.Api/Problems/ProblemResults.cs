@@ -33,6 +33,9 @@ public static class ProblemResults
     public static IResult Internal(string code, string? detail = null) =>
         Build(StatusCodes.Status500InternalServerError, code, detail);
 
+    public static IResult ServiceUnavailable(string code, string? detail = null) =>
+        Build(StatusCodes.Status503ServiceUnavailable, code, detail);
+
     /// <summary>
     /// Shared null-body response used by both <c>ValidationEndpointFilter&lt;T&gt;</c> and
     /// handler-side defensive guards, so clients see one shape regardless of which guard fires.

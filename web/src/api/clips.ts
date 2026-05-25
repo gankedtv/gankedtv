@@ -54,6 +54,10 @@ export interface ClipDetail {
   likedByMe: boolean
   visibility: 'public' | 'unlisted'
   shareCode: string
+  // Set when the clip was ingested via POST /clips/import (Medal.tv / YouTube). Null for
+  // direct uploads. The detail page renders a "From {host}" attribution badge linking back
+  // to the original.
+  importSourceUrl: string | null
 }
 
 export interface UpdateClipBody {
@@ -103,6 +107,42 @@ export interface CreateClipBody {
   tags?: string[]
 }
 
+// POST /clips/import body. Url is required; everything else is optional — when title
+// is empty, the server fills it from the source's metadata (yt-dlp --print-json).
+export interface ImportClipBody {
+  url: string
+  title?: string | null
+  description?: string | null
+  gameId?: number | null
+  visibility?: 'public' | 'unlisted'
+  tags?: string[]
+}
+
+export interface ImportClipResult {
+  id: string
+  // 'importing' on submit; the client polls clips.getDetail until status flips to 'ready'
+  // (success) or 'failed' (terminal). Intermediate states ('processing', 'transcoding')
+  // come from the existing pipeline and are surfaced for progress UI.
+  status: string
+}
+
+// Returned by POST /clips/import/preview — metadata-only probe before any clip row exists.
+// Lets the wizard show duration + title in step 1 and gate "Continue" when the source
+// already exceeds maxClipDurationSecs. Fields are nullable because not every extractor
+// reports them; the front-end only gates when durationSecs is known.
+export interface ImportClipPreview {
+  title: string | null
+  durationSecs: number | null
+  width: number | null
+  height: number | null
+  // Best thumbnail URL the platform resolves (Medal CDN, img.youtube.com). Used by the
+  // upload wizard to render a real preview frame for any supported source. Always nullable
+  // because not every extractor exposes one — the YouTube-derived client-side fallback
+  // still works when this is null.
+  thumbnailUrl: string | null
+  maxClipDurationSecs: number
+}
+
 export interface CompleteClipResult {
   id: string
   fileSizeBytes: number
@@ -116,6 +156,19 @@ export interface LikeResult {
 export interface StreamStatus {
   hlsUrl: string | null
   status: 'ready' | 'pending'
+}
+
+// Owner-only status probe — returned by GET /clips/{id}/status while the clip is still
+// moving through the pipeline (importing → processing → transcoding → ready/failed).
+// On failure, failureReason is a short machine-readable code (e.g. 'source_too_long')
+// and durationSecs / maxClipDurationSecs let the UI render specific copy.
+export interface ClipStatus {
+  id: string
+  status: string
+  shareCode: string
+  failureReason: string | null
+  durationSecs: number | null
+  maxClipDurationSecs: number | null
 }
 
 export const clips = {
@@ -155,6 +208,12 @@ export const clips = {
     return api<ClipDetail>(`/clips/${encodeURIComponent(id)}`)
   },
 
+  // Owner-only lightweight status probe. Used by the upload + import wizards to poll for
+  // pipeline transitions before the clip is feed-visible (getDetail 404s in non-ready states).
+  getStatus(id: string): Promise<ClipStatus> {
+    return api<ClipStatus>(`/clips/${encodeURIComponent(id)}/status`)
+  },
+
   getByShareCode(code: string): Promise<ClipDetail> {
     return api<ClipDetail>(`/c/${encodeURIComponent(code)}`)
   },
@@ -167,6 +226,20 @@ export const clips = {
 
   create(body: CreateClipBody): Promise<{ id: string }> {
     return api<{ id: string }>('/clips', { method: 'POST', body })
+  },
+
+  // POST /clips/import — paste a Medal.tv / YouTube URL and the server fetches the source
+  // via yt-dlp, then feeds it into the same thumbnail → compress → ready pipeline as a
+  // direct upload. Returns immediately; caller polls clips.getDetail(id) for status.
+  importFromUrl(body: ImportClipBody): Promise<ImportClipResult> {
+    return api<ImportClipResult>('/clips/import', { method: 'POST', body })
+  },
+
+  // POST /clips/import/preview — metadata-only probe (no download, no clip row). Used by
+  // step 1 of the wizard to surface duration + title and gate "Continue" when the source
+  // is already too long, sparing the user from filling out step 2 for a doomed clip.
+  previewImport(url: string): Promise<ImportClipPreview> {
+    return api<ImportClipPreview>('/clips/import/preview', { method: 'POST', body: { url } })
   },
 
   getUploadUrl(id: string): Promise<UploadUrl> {
