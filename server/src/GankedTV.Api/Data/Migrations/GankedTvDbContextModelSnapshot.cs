@@ -665,6 +665,91 @@ namespace GankedTV.Api.Data.Migrations
                     b.ToTable("refresh_tokens", (string)null);
                 });
 
+            modelBuilder.Entity("GankedTV.Api.Data.Entities.Report", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("note");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("reason");
+
+                    b.Property<Guid>("ReporterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reporter_id");
+
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("resolved_at");
+
+                    b.Property<Guid?>("ResolvedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("resolved_by");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("open")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TargetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("target_id");
+
+                    b.Property<string>("TargetType")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("target_type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_reports");
+
+                    b.HasIndex("ResolvedBy")
+                        .HasDatabaseName("ix_reports_resolved_by");
+
+                    b.HasIndex("Status", "CreatedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("idx_reports_status_created_at");
+
+                    b.HasIndex("TargetType", "TargetId")
+                        .HasDatabaseName("idx_reports_target");
+
+                    b.HasIndex("ReporterId", "TargetType", "TargetId")
+                        .IsUnique()
+                        .HasDatabaseName("idx_reports_open_unique")
+                        .HasFilter("status = 'open'");
+
+                    b.ToTable("reports", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_reports_other_note", "reason <> 'other' OR (note IS NOT NULL AND LENGTH(TRIM(note)) > 0)");
+
+                            t.HasCheckConstraint("ck_reports_reason", "reason IN ('spam','harassment','hate','nsfw','violence','wrong_game','other')");
+
+                            t.HasCheckConstraint("ck_reports_status", "status IN ('open','resolved','dismissed')");
+
+                            t.HasCheckConstraint("ck_reports_target_type", "target_type IN ('clip','comment','user')");
+                        });
+                });
+
             modelBuilder.Entity("GankedTV.Api.Data.Entities.Tag", b =>
                 {
                     b.Property<int>("Id")
@@ -714,6 +799,15 @@ namespace GankedTV.Api.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("avatar_url");
 
+                    b.Property<DateTimeOffset?>("BannedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("banned_at");
+
+                    b.Property<string>("BannedReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("banned_reason");
+
                     b.Property<string>("Bio")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
@@ -750,6 +844,14 @@ namespace GankedTV.Api.Data.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("password_hash");
 
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("user")
+                        .HasColumnName("role");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
@@ -784,6 +886,8 @@ namespace GankedTV.Api.Data.Migrations
                     b.ToTable("users", null, t =>
                         {
                             t.HasCheckConstraint("ck_users_password_hash_algo_paired", "(password_hash IS NULL AND password_algo IS NULL) OR (password_hash IS NOT NULL AND password_algo IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_users_role", "role IN ('user','moderator','admin')");
                         });
                 });
 
@@ -970,6 +1074,26 @@ namespace GankedTV.Api.Data.Migrations
                         .HasConstraintName("fk_refresh_tokens_users_user_id");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("GankedTV.Api.Data.Entities.Report", b =>
+                {
+                    b.HasOne("GankedTV.Api.Data.Entities.User", "Reporter")
+                        .WithMany()
+                        .HasForeignKey("ReporterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_reports_users_reporter_id");
+
+                    b.HasOne("GankedTV.Api.Data.Entities.User", "ResolvedByUser")
+                        .WithMany()
+                        .HasForeignKey("ResolvedBy")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_reports_users_resolved_by");
+
+                    b.Navigation("Reporter");
+
+                    b.Navigation("ResolvedByUser");
                 });
 
             modelBuilder.Entity("GankedTV.Api.Data.Entities.Clip", b =>

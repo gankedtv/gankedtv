@@ -15,11 +15,12 @@ import AuthorHandle from '@/components/AuthorHandle.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
 import ClipEditDialog from '@/components/ClipEditDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ReportDialog from '@/components/ReportDialog.vue'
 import CommentsSection from '@/components/CommentsSection.vue'
 import IconHeart from '@/components/icons/IconHeart.vue'
 import IconShare from '@/components/icons/IconShare.vue'
-import IconMoreVertical from '@/components/icons/IconMoreVertical.vue'
 import IconLink from '@/components/icons/IconLink.vue'
+import KebabMenu, { type KebabMenuItem } from '@/components/KebabMenu.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -344,8 +345,6 @@ onBeforeUnmount(() => {
   teardownPlayer()
   clearProcessingTimer()
   if (toastTimer !== null) clearTimeout(toastTimer)
-  window.removeEventListener('keydown', onMenuKeydown)
-  window.removeEventListener('click', onMenuClickOutside, true)
 })
 
 async function toggleLike() {
@@ -407,40 +406,26 @@ const authorColor = computed(() => {
 // Hoisted so the template doesn't re-parse the URL on every render.
 const authorAvatarUrl = computed(() => safeImageUrl(clip.value?.author.avatarUrl))
 
-const menuOpen = ref(false)
 const editOpen = ref(false)
 const deleteOpen = ref(false)
 const deleting = ref(false)
 
 const isOwner = computed(() => !!auth.user && !!clip.value && clip.value.author.id === auth.user.id)
 
-function openMenu() {
-  menuOpen.value = true
+// Report dialog state — only available to signed-in non-owners. The dialog component is the
+// same one used by CommentsSection / UserView; this view just provides the trigger button.
+const reportOpen = ref(false)
+function onReportSubmitted() {
+  reportOpen.value = false
+  fireToast('Report submitted')
 }
 
-function closeMenu() {
-  menuOpen.value = false
-}
-
-function onMenuKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape') closeMenu()
-}
-
-function onMenuClickOutside(e: MouseEvent) {
-  const target = e.target as Node | null
-  const menuEl = document.getElementById('clip-more-menu')
-  if (menuEl && !menuEl.contains(target)) closeMenu()
-}
-
-watch(menuOpen, (open) => {
-  if (open) {
-    window.addEventListener('keydown', onMenuKeydown)
-    window.addEventListener('click', onMenuClickOutside, true)
-  } else {
-    window.removeEventListener('keydown', onMenuKeydown)
-    window.removeEventListener('click', onMenuClickOutside, true)
-  }
-})
+// Owner-only kebab (Edit + Delete). KebabMenu owns open/close + outside-click + Esc; this
+// view just declares the items.
+const ownerMenuItems = computed<KebabMenuItem[]>(() => [
+  { label: 'Edit', onClick: openEdit },
+  { label: 'Delete', variant: 'danger', onClick: openDelete },
+])
 
 function onSaved(updated: ClipDetail) {
   clip.value = updated
@@ -452,12 +437,11 @@ function onEditError(message: string) {
 }
 
 function openEdit() {
-  closeMenu()
+  // KebabMenu closes itself on item-click, so the trigger doesn't need to do it.
   editOpen.value = true
 }
 
 function openDelete() {
-  closeMenu()
   deleteOpen.value = true
 }
 
@@ -611,36 +595,20 @@ async function onConfirmDelete() {
               <span>Share</span>
             </button>
 
-            <div v-if="isOwner" id="clip-more-menu" class="relative">
-              <button
-                class="flex h-7 w-7 items-center justify-center rounded text-text-secondary transition-colors hover:bg-surface-raised"
-                aria-label="More options"
-                aria-haspopup="true"
-                :aria-expanded="menuOpen"
-                @click.stop="menuOpen ? closeMenu() : openMenu()"
-              >
-                <IconMoreVertical :size="16" />
-              </button>
-              <div
-                v-if="menuOpen"
-                class="absolute right-0 top-full z-20 mt-1 min-w-32 rounded-md border border-border-strong bg-surface-overlay shadow-[0_4px_20px_rgba(0,0,0,0.4)]"
-              >
-                <button
-                  type="button"
-                  class="w-full cursor-pointer rounded-md px-4 py-2.5 text-left font-body text-sm text-text-primary transition-colors duration-100 hover:bg-surface-raised"
-                  @click="openEdit"
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  class="w-full cursor-pointer rounded-md px-4 py-2.5 text-left font-body text-sm text-error transition-colors duration-100 hover:bg-surface-raised"
-                  @click="openDelete"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
+            <button
+              v-if="auth.isAuthenticated && !isOwner"
+              class="flex items-center gap-1.5 rounded border border-border bg-surface-raised px-3 py-1.5 font-mono text-[12px] text-text-secondary transition-all duration-150 hover:text-[color:var(--color-error)]"
+              @click="reportOpen = true"
+            >
+              <span>Report</span>
+            </button>
+
+            <KebabMenu
+              v-if="isOwner"
+              :items="ownerMenuItems"
+              icon-orientation="vertical"
+              trigger-variant="plain"
+            />
           </div>
         </div>
       </div>
@@ -698,6 +666,15 @@ async function onConfirmDelete() {
       :busy="deleting"
       @cancel="deleteOpen = false"
       @confirm="onConfirmDelete"
+    />
+
+    <ReportDialog
+      v-if="clip"
+      :open="reportOpen"
+      target-type="clip"
+      :target-id="clip.id"
+      @cancel="reportOpen = false"
+      @submitted="onReportSubmitted"
     />
 
     <!-- Toast — kept inside the page's single root so the route-level

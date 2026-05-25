@@ -66,6 +66,7 @@ function makeDetail(overrides: Partial<ClipDetail> = {}): ClipDetail {
     width: 1920,
     height: 1080,
     visibility: 'public',
+    importSourceUrl: null,
     ...overrides,
   }
 }
@@ -165,6 +166,7 @@ describe('ReelClip — like flow', () => {
       avatarUrl: null,
       createdAt: '',
       hasPassword: true,
+      role: 'user',
     })
 
     const likeBtn = wrapper.find('button[aria-label="Like"]')
@@ -190,6 +192,7 @@ describe('ReelClip — like flow', () => {
       avatarUrl: null,
       createdAt: '',
       hasPassword: true,
+      role: 'user',
     })
 
     await wrapper.find('button[aria-label="Like"]').trigger('click')

@@ -73,6 +73,17 @@ public sealed class RefreshTokenService : IRefreshTokenService
             .Include(t => t.User)
             .SingleAsync(t => t.TokenHash == hash, ct);
 
+        // Ban check before issuing the successor row: a banned client polling /auth/refresh
+        // would otherwise insert one refresh_tokens row per call (the old token IS revoked
+        // by the CAS above — that's intentional and security-positive — but minting a new
+        // row that the BannedUserMiddleware will reject anyway is pure write amplification).
+        // Revoking-without-replacing also breaks the refresh chain, which is the desired
+        // outcome for a banned account.
+        if (row.User.BannedAt is not null)
+        {
+            throw new BannedAccountException();
+        }
+
         var newRaw = GenerateRaw();
         _db.RefreshTokens.Add(new RefreshToken
         {

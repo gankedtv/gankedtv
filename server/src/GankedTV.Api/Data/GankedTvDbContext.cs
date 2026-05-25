@@ -18,6 +18,7 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
     public DbSet<ClipTag> ClipTags => Set<ClipTag>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<ClipStreamJob> ClipStreamJobs => Set<ClipStreamJob>();
+    public DbSet<Report> Reports => Set<Report>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -33,13 +34,21 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             e.Property(u => u.GoogleId).HasMaxLength(50);
             e.Property(u => u.PasswordHash).HasMaxLength(255);
             e.Property(u => u.PasswordAlgo).HasMaxLength(32);
+            e.Property(u => u.Role).HasMaxLength(16).HasDefaultValue(UserRoles.User);
+            e.Property(u => u.BannedReason).HasMaxLength(500);
             // Hash and algo must be set together. CredentialAuthService maintains this
             // invariant by construction; the DB-level CHECK guards against manual UPDATEs
             // or future bugs that would otherwise produce un-verifiable rows.
-            e.ToTable(t => t.HasCheckConstraint(
-                "ck_users_password_hash_algo_paired",
-                "(password_hash IS NULL AND password_algo IS NULL) "
-                + "OR (password_hash IS NOT NULL AND password_algo IS NOT NULL)"));
+            e.ToTable(t =>
+            {
+                t.HasCheckConstraint(
+                    "ck_users_password_hash_algo_paired",
+                    "(password_hash IS NULL AND password_algo IS NULL) "
+                    + "OR (password_hash IS NOT NULL AND password_algo IS NOT NULL)");
+                t.HasCheckConstraint(
+                    "ck_users_role",
+                    "role IN ('user','moderator','admin')");
+            });
             e.Property(u => u.Bio).HasMaxLength(500);
             e.Property(u => u.CreatedAt).HasDefaultValueSql("now()");
             e.Property(u => u.UpdatedAt).HasDefaultValueSql("now()");
@@ -348,6 +357,64 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             e.HasIndex(n => n.RecipientId)
                 .HasFilter("read_at IS NULL")
                 .HasDatabaseName("idx_notifications_unread");
+        });
+
+        modelBuilder.Entity<Report>(e =>
+        {
+            e.HasKey(r => r.Id);
+            e.Property(r => r.Id).HasDefaultValueSql("gen_random_uuid()");
+            e.Property(r => r.TargetType).HasMaxLength(16);
+            e.Property(r => r.Reason).HasMaxLength(32);
+            e.Property(r => r.Note).HasMaxLength(2000);
+            e.Property(r => r.Status).HasMaxLength(16).HasDefaultValue(ReportStatuses.Open);
+            e.Property(r => r.CreatedAt).HasDefaultValueSql("now()");
+
+            e.HasOne(r => r.Reporter)
+                .WithMany()
+                .HasForeignKey(r => r.ReporterId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(r => r.ResolvedByUser)
+                .WithMany()
+                .HasForeignKey(r => r.ResolvedBy)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // Enum-style domain values guarded at the DB level so a buggy future call site
+            // can't write a status/type/reason that crashes hydration.
+            e.ToTable(t =>
+            {
+                t.HasCheckConstraint(
+                    "ck_reports_target_type",
+                    "target_type IN ('clip','comment','user')");
+                t.HasCheckConstraint(
+                    "ck_reports_status",
+                    "status IN ('open','resolved','dismissed')");
+                t.HasCheckConstraint(
+                    "ck_reports_reason",
+                    "reason IN ('spam','harassment','hate','nsfw','violence','wrong_game','other')");
+                // ReportService.CreateAsync enforces the "other requires a note" invariant
+                // at the service layer; the DB-level check is defense in depth, matching
+                // the way ck_reports_reason / status / target_type guard against bypass via
+                // out-of-band SQL or a buggy future caller.
+                t.HasCheckConstraint(
+                    "ck_reports_other_note",
+                    "reason <> 'other' OR (note IS NOT NULL AND LENGTH(TRIM(note)) > 0)");
+            });
+
+            // Drives the admin queue (status filter, newest first).
+            e.HasIndex(r => new { r.Status, r.CreatedAt })
+                .IsDescending(false, true)
+                .HasDatabaseName("idx_reports_status_created_at");
+            // Drives ResolveForTargetAsync (close all open reports for a moderated target).
+            e.HasIndex(r => new { r.TargetType, r.TargetId })
+                .HasDatabaseName("idx_reports_target");
+            // Race-safe duplicate guard: only one open report per (reporter, target). Partial
+            // filter on status='open' so the same user can still file a fresh report after a
+            // prior one has been resolved/dismissed.
+            e.HasIndex(r => new { r.ReporterId, r.TargetType, r.TargetId })
+                .IsUnique()
+                .HasFilter("status = 'open'")
+                .HasDatabaseName("idx_reports_open_unique");
         });
 
         modelBuilder.Entity<RefreshToken>(e =>

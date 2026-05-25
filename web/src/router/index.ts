@@ -108,6 +108,14 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/admin',
+      name: 'admin',
+      component: () => import('@/views/AdminView.vue'),
+      // Moderator covers admin too (admin is a superset) — mirrors RoleAuthorization on the
+      // server, so the gate is identical on both sides.
+      meta: { requiresAuth: true, requiresRole: 'moderator' as const },
+    },
+    {
       path: '/auth/callback',
       name: 'auth-callback',
       component: () => import('@/views/AuthCallbackView.vue'),
@@ -124,6 +132,15 @@ router.beforeEach((to) => {
   const auth = useAuthStore()
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
     return { name: 'login', query: { redirect: to.fullPath } }
+  }
+  // Role gates redirect to home (not 403) so users who navigate to /admin via address-bar
+  // typing land somewhere usable. The nav link itself is hidden for non-mods.
+  const required = (to.meta as { requiresRole?: 'admin' | 'moderator' }).requiresRole
+  if (required === 'admin' && !auth.isAdmin) {
+    return { name: 'home' }
+  }
+  if (required === 'moderator' && !auth.isModerator) {
+    return { name: 'home' }
   }
 })
 

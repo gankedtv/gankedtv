@@ -22,11 +22,12 @@ public class JwtServiceTests
             ExpiryMinutes = expiryMinutes,
         }));
 
-    private static User BuildUser(string? email = "alice@example.com") => new()
+    private static User BuildUser(string? email = "alice@example.com", string role = UserRoles.User) => new()
     {
         Id = Guid.Parse("11111111-1111-1111-1111-111111111111"),
         Username = "alice",
         Email = email,
+        Role = role,
     };
 
     [Fact]
@@ -55,6 +56,33 @@ public class JwtServiceTests
 
         var read = new JwtSecurityTokenHandler().ReadJwtToken(token);
         read.Claims.Should().NotContain(c => c.Type == JwtRegisteredClaimNames.Email);
+    }
+
+    [Fact]
+    public void Issue_DefaultUserRole_EmitsUserRoleClaim()
+    {
+        var token = BuildService().Issue(BuildUser());
+
+        var read = new JwtSecurityTokenHandler().ReadJwtToken(token);
+        read.Claims.Should().Contain(c => c.Type == JwtClaims.Role && c.Value == UserRoles.User);
+    }
+
+    [Fact]
+    public void Issue_AdminUser_EmitsAdminRoleClaim()
+    {
+        var token = BuildService().Issue(BuildUser(role: UserRoles.Admin));
+
+        var read = new JwtSecurityTokenHandler().ReadJwtToken(token);
+        read.Claims.Should().Contain(c => c.Type == JwtClaims.Role && c.Value == UserRoles.Admin);
+    }
+
+    [Fact]
+    public void Issue_ModeratorUser_EmitsModeratorRoleClaim()
+    {
+        var token = BuildService().Issue(BuildUser(role: UserRoles.Moderator));
+
+        var read = new JwtSecurityTokenHandler().ReadJwtToken(token);
+        read.Claims.Should().Contain(c => c.Type == JwtClaims.Role && c.Value == UserRoles.Moderator);
     }
 
     [Fact]

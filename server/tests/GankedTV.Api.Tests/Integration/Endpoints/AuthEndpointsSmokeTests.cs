@@ -5,6 +5,7 @@ using FluentAssertions;
 using GankedTV.Api.Auth.Tokens;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Tests.TestSupport;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace GankedTV.Api.Tests.Integration.Endpoints;
@@ -107,6 +108,35 @@ public class AuthEndpointsSmokeTests : IAsyncLifetime
         var newRefresh = body.RootElement.GetProperty("refresh").GetString();
         newRefresh.Should().NotBeNullOrEmpty().And.NotBe(original);
         body.RootElement.GetProperty("expiresIn").GetInt32().Should().Be(15 * 60);
+    }
+
+    [Fact]
+    public async Task Refresh_BannedUser_Returns403_AndDoesNotInsertSuccessor()
+    {
+        // Endpoint-level smoke: ensure the BannedAccountException thrown by RotateAsync
+        // surfaces as 403 account_banned, mirroring the login response, and that the SPA
+        // can tell the difference between an invalid refresh (401) and a disabled account.
+        await _fx.ResetAsync();
+        var original = await SeedUserAndIssueRefreshAsync();
+
+        // Ban the user we just issued the refresh for.
+        await using (var db = _fx.CreateContext())
+        {
+            var user = await db.Users.SingleAsync(u => u.Username == "refreshuser");
+            user.BannedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.PostAsJsonAsync("/auth/refresh", new { refresh = original });
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        // The endpoint refused to mint a successor; refresh_tokens still has the original
+        // (now revoked) row but no new ones — write amplification is bounded.
+        await using var verify = _fx.CreateContext();
+        var rows = await verify.RefreshTokens.AsNoTracking().ToListAsync();
+        rows.Should().ContainSingle();
+        rows[0].RevokedAt.Should().NotBeNull();
     }
 
     [Fact]

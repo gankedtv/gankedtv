@@ -6,6 +6,7 @@ import { comments, type CommentItem } from '@/api/comments'
 import { useAuthStore } from '@/stores/auth'
 import CommentItemRow from '@/components/CommentItem.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ReportDialog from '@/components/ReportDialog.vue'
 
 const props = defineProps<{ clipId: string }>()
 
@@ -38,6 +39,13 @@ const replyLoading = ref<Record<string, boolean>>({})
 // Delete confirmation
 const pendingDelete = ref<string | null>(null)
 const deleting = ref(false)
+
+// Report dialog — same component used for clips/users elsewhere, just pointed at the
+// comment via the targetType prop.
+const reportingId = ref<string | null>(null)
+function requestReport(id: string) {
+  reportingId.value = id
+}
 
 const inputClass =
   'w-full rounded-md border border-border bg-surface-raised px-3.5 py-2.5 font-body text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-border-hover transition-colors duration-150'
@@ -310,6 +318,7 @@ function markDeleted(id: string) {
           :can-reply="auth.isAuthenticated"
           @reply="toggleReply"
           @delete="requestDelete"
+          @report="requestReport"
         />
 
         <!-- Reply composer -->
@@ -353,6 +362,7 @@ function markDeleted(id: string) {
               :current-user-id="currentUserId"
               :can-reply="false"
               @delete="requestDelete"
+              @report="requestReport"
             />
           </li>
         </ul>
@@ -388,6 +398,14 @@ function markDeleted(id: string) {
       :busy="deleting"
       @cancel="pendingDelete = null"
       @confirm="confirmDelete"
+    />
+
+    <ReportDialog
+      :open="reportingId !== null"
+      target-type="comment"
+      :target-id="reportingId ?? ''"
+      @cancel="reportingId = null"
+      @submitted="reportingId = null"
     />
   </section>
 </template>

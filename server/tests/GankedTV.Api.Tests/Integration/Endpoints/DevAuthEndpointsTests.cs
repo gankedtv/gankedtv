@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
+using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Tests.TestSupport;
 using Microsoft.EntityFrameworkCore;
 
@@ -89,6 +90,58 @@ public class DevAuthEndpointsTests : IAsyncLifetime
         var resp = await client.PostAsJsonAsync("/dev/token", new { username = "prod" });
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task DevToken_WithRoleAdmin_CreatesAdminUser()
+    {
+        // Backs the "Sign in as seedadmin" dev button: passing role=admin must create or
+        // re-assert the user as admin so the SPA's admin surface is reachable without
+        // having to run `make seed` first.
+        await _fx.ResetAsync();
+        using var client = _factory!.CreateClient();
+
+        var resp = await client.PostAsJsonAsync("/dev/token", new { username = "seedadmin", role = "admin" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("role").GetString().Should().Be(UserRoles.Admin);
+
+        await using var db = _fx.CreateContext();
+        var user = await db.Users.SingleAsync(u => u.Username == "seedadmin");
+        user.Role.Should().Be(UserRoles.Admin);
+    }
+
+    [Fact]
+    public async Task DevToken_ReassertsRoleOnExistingUser()
+    {
+        // A contributor who manually demoted the seeded admin row should be able to "Sign in
+        // as seedadmin" again and end up admin — the dev endpoint isn't a privilege check,
+        // it's a convenience for local moderation testing.
+        await _fx.ResetAsync();
+        using var client = _factory!.CreateClient();
+
+        await client.PostAsJsonAsync("/dev/token", new { username = "demoted", role = "user" });
+        var resp = await client.PostAsJsonAsync("/dev/token", new { username = "demoted", role = "admin" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var db = _fx.CreateContext();
+        var user = await db.Users.SingleAsync(u => u.Username == "demoted");
+        user.Role.Should().Be(UserRoles.Admin);
+    }
+
+    [Fact]
+    public async Task DevToken_UnknownRole_FallsBackToUser()
+    {
+        // Allow-list, not deny-list: a typo or hostile body can't mint an unexpected role.
+        await _fx.ResetAsync();
+        using var client = _factory!.CreateClient();
+
+        var resp = await client.PostAsJsonAsync("/dev/token", new { username = "typo", role = "superuser" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("role").GetString().Should().Be(UserRoles.User);
     }
 
     [Fact]

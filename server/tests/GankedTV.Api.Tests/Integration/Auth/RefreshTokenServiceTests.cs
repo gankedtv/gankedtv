@@ -446,4 +446,40 @@ public class RefreshTokenServiceTests
         outcomes.Count(ok => ok).Should().Be(1);
         outcomes.Count(ok => !ok).Should().Be(2);
     }
+
+    [Fact]
+    public async Task RotateAsync_BannedUser_ThrowsAndDoesNotInsertSuccessor()
+    {
+        // Pre-fix, a banned user polling /auth/refresh would revoke the old token AND
+        // insert a successor row that BannedUserMiddleware would then reject — pure write
+        // amplification on refresh_tokens. RotateAsync now bails after revoking with
+        // BannedAccountException so the table stays bounded.
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync();
+
+        string raw;
+        await using (var db = _fx.CreateContext())
+        {
+            raw = await new RefreshTokenService(db, DefaultOpts()).IssueAsync(userId);
+        }
+
+        // Flip the user banned after issuing the refresh.
+        await using (var db = _fx.CreateContext())
+        {
+            var user = await db.Users.SingleAsync(u => u.Id == userId);
+            user.BannedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = _fx.CreateContext())
+        {
+            var act = async () => await new RefreshTokenService(db, DefaultOpts()).RotateAsync(raw);
+            await act.Should().ThrowAsync<BannedAccountException>();
+        }
+
+        await using var verify = _fx.CreateContext();
+        var rows = await verify.RefreshTokens.AsNoTracking().ToListAsync();
+        rows.Should().ContainSingle("the old token is revoked but no successor row is inserted");
+        rows[0].RevokedAt.Should().NotBeNull();
+    }
 }

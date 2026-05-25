@@ -19,6 +19,7 @@ vi.mock('@/views/ReelsView.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/views/UserView.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/views/AuthCallbackView.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/views/NotFoundView.vue', () => ({ default: { template: '<div />' } }))
+vi.mock('@/views/AdminView.vue', () => ({ default: { template: '<div />' } }))
 
 let router: Router
 
@@ -70,6 +71,7 @@ describe('router beforeEach guard', () => {
       avatarUrl: null,
       createdAt: '',
       hasPassword: false,
+      role: 'user',
     })
 
     await router.push('/upload')
@@ -79,6 +81,54 @@ describe('router beforeEach guard', () => {
   it('maps unknown paths to the not-found view', async () => {
     await router.push('/something-that-does-not-exist')
     expect(router.currentRoute.value.name).toBe('not-found')
+  })
+
+  it('redirects non-moderators away from /admin to home', async () => {
+    const auth = useAuthStore()
+    auth.setUser({
+      id: '1',
+      username: 'plain',
+      email: null,
+      bio: null,
+      avatarUrl: null,
+      createdAt: '',
+      hasPassword: false,
+      role: 'user',
+    })
+    await router.push('/admin')
+    expect(router.currentRoute.value.name).toBe('home')
+  })
+
+  it('allows moderators onto /admin', async () => {
+    const auth = useAuthStore()
+    auth.setUser({
+      id: '1',
+      username: 'mod',
+      email: null,
+      bio: null,
+      avatarUrl: null,
+      createdAt: '',
+      hasPassword: false,
+      role: 'moderator',
+    })
+    await router.push('/admin')
+    expect(router.currentRoute.value.name).toBe('admin')
+  })
+
+  it('allows admins onto /admin (superset of moderator)', async () => {
+    const auth = useAuthStore()
+    auth.setUser({
+      id: '1',
+      username: 'admin',
+      email: null,
+      bio: null,
+      avatarUrl: null,
+      createdAt: '',
+      hasPassword: false,
+      role: 'admin',
+    })
+    await router.push('/admin')
+    expect(router.currentRoute.value.name).toBe('admin')
   })
 })
 

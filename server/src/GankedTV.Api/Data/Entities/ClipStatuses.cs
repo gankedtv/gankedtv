@@ -31,6 +31,14 @@ public static class ClipVisibilities
     public const string Public = "public";
     public const string Unlisted = "unlisted";
 
+    // Set by moderation. Reuses the existing feed predicate (Visibility = 'public') so no
+    // new query branches are needed — a hidden clip drops out of every feed automatically.
+    // The owner still sees their own clip via owner-scoped read paths; the moderator can
+    // restore via /admin/clips/{id}/unhide.
+    public const string Hidden = "hidden";
+
+    // Only IsValid keeps its original two-value contract — this gate protects user-facing
+    // visibility writes (create / patch / upload), which must never accept "hidden".
     public static bool IsValid(string value) =>
         string.Equals(value, Public, StringComparison.OrdinalIgnoreCase)
         || string.Equals(value, Unlisted, StringComparison.OrdinalIgnoreCase);

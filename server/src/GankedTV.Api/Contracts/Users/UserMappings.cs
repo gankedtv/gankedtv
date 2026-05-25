@@ -16,5 +16,6 @@ public static class UserMappings
 
     public static MeResponse ToMe(this User user) =>
         new(user.Id, user.Username, user.Email, user.Bio, user.AvatarUrl, user.CreatedAt,
-            HasPassword: !string.IsNullOrEmpty(user.PasswordHash));
+            HasPassword: !string.IsNullOrEmpty(user.PasswordHash),
+            Role: user.Role);
 }

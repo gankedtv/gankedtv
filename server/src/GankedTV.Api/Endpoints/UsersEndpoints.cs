@@ -52,8 +52,17 @@ public static class UsersEndpoints
             return ProblemResults.NotFound("not_found");
         }
 
+        // Owner viewing their own profile sees public + unlisted clips so they can find their
+        // own private-link uploads; everyone else sees public only. Hidden (moderated) clips
+        // stay invisible to everyone here — restoring them is an admin action, not something
+        // the owner can route around by checking their own profile.
+        var isOwner = ClipsReadEndpoints.TryGetUserId(principal, out var viewerId)
+            && viewerId == user.Id;
         var clips = await db.Clips.AsNoTracking()
-            .Where(c => c.UserId == user.Id && c.Visibility == "public" && c.Status == "ready")
+            .Where(c => c.UserId == user.Id
+                && c.Status == "ready"
+                && (c.Visibility == ClipVisibilities.Public
+                    || (isOwner && c.Visibility == ClipVisibilities.Unlisted)))
             .OrderByDescending(c => c.CreatedAt)
             .Include(c => c.User)
             .Take(UserClipsPageSize)

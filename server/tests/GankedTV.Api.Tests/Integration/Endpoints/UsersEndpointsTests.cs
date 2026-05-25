@@ -105,6 +105,51 @@ public class UsersEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetUser_AsOwner_IncludesUnlistedClips_ButNotHidden()
+    {
+        // Owner viewing their own profile sees public + unlisted (so they can find their
+        // own private-link uploads), but NOT hidden clips — those are a moderation outcome
+        // and need an explicit admin unhide before they reappear anywhere.
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync("alice");
+        var now = DateTimeOffset.UtcNow;
+        var pub = await SeedClipAsync(userId, now.AddSeconds(-1), title: "public");
+        var unl = await SeedClipAsync(userId, now.AddSeconds(-2), visibility: "unlisted", title: "unlisted");
+        await SeedClipAsync(userId, now.AddSeconds(-3), visibility: "hidden", title: "hidden");
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.GetAsync("/users/alice");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var clipIds = body.GetProperty("clips").EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid()).ToList();
+        clipIds.Should().BeEquivalentTo(new[] { pub, unl });
+    }
+
+    [Fact]
+    public async Task GetUser_AsForeignViewer_OmitsUnlistedAndHidden()
+    {
+        // Sanity: even an authenticated viewer who isn't the owner still only sees public.
+        await _fx.ResetAsync();
+        var (ownerId, _) = await SeedUserAndIssueTokenAsync("alice");
+        var (_, viewerToken) = await SeedUserAndIssueTokenAsync("bob");
+        var now = DateTimeOffset.UtcNow;
+        var pub = await SeedClipAsync(ownerId, now.AddSeconds(-1), title: "public");
+        await SeedClipAsync(ownerId, now.AddSeconds(-2), visibility: "unlisted", title: "unlisted");
+        await SeedClipAsync(ownerId, now.AddSeconds(-3), visibility: "hidden", title: "hidden");
+
+        using var client = ClientWithBearer(viewerToken);
+        var resp = await client.GetAsync("/users/alice");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var clipIds = body.GetProperty("clips").EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid()).ToList();
+        clipIds.Should().Equal(pub);
+    }
+
+    [Fact]
     public async Task GetUser_CaseInsensitiveUsername()
     {
         await _fx.ResetAsync();

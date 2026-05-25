@@ -22,12 +22,13 @@ public static class AuthEndpoints
         app.MapGet("/auth/{provider}/callback", Callback);
         app.MapPost("/auth/refresh", Refresh)
             .WithValidation<RefreshRequest>()
-            // Keep OpenAPI in sync with the three shapes Refresh can return. Moved onto the
-            // route-group call because the handler now returns IResult (needed to return a
-            // ProblemDetails body on 401 via ProblemResults.Unauthorized).
+            // Keep OpenAPI in sync with the shapes Refresh can return. 403 covers the
+            // banned-account branch (see ProblemResults.Forbidden("account_banned") in
+            // the handler); 401 covers invalid_refresh.
             .Produces<TokenResponse>(StatusCodes.Status200OK)
             .ProducesValidationProblem()
-            .ProducesProblem(StatusCodes.Status401Unauthorized);
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden);
 
         app.MapPost("/auth/register", Register)
             .WithValidation<RegisterRequest>()
@@ -41,7 +42,11 @@ public static class AuthEndpoints
             .RequireRateLimiting(AuthRateLimiting.CredentialsPolicy)
             .Produces<TokenResponse>(StatusCodes.Status200OK)
             .ProducesValidationProblem()
-            .ProducesProblem(StatusCodes.Status401Unauthorized);
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            // Banned accounts get a 403 + code=account_banned even after credentials check
+            // out, so the SPA can render a dedicated "your account is disabled" message
+            // rather than the generic invalid-credentials copy.
+            .ProducesProblem(StatusCodes.Status403Forbidden);
 
         app.MapPost("/auth/password", SetPassword)
             .RequireAuthorization()
@@ -127,6 +132,15 @@ public static class AuthEndpoints
         }
 
         var user = await users.UpsertFromOAuthAsync(oauth.Name, info, ct);
+        if (user.BannedAt is not null)
+        {
+            // OAuth round-trips already burned the authorization code, so failing here means
+            // the user has to start sign-in from scratch — that's intended. Sending a redirect
+            // with the error code lets the SPA surface a banned-account screen instead of a
+            // generic OAuth-failed toast.
+            var webOriginBanned = oauthOptions.Value.WebOrigin.TrimEnd('/');
+            return Results.Redirect($"{webOriginBanned}/auth/callback?error=account_banned");
+        }
         var token = jwt.Issue(user);
         var refresh = await refreshTokens.IssueAsync(user.Id, ct);
 
@@ -185,6 +199,13 @@ public static class AuthEndpoints
             // and "wrong password". TryLoginAsync runs a constant-time-equivalent dummy
             // verify in the missing-user / no-password paths to keep the timing flat.
             return ProblemResults.Unauthorized("invalid_credentials");
+        }
+        if (user.BannedAt is not null)
+        {
+            // Bypass the generic-401 collapse: the user authenticated, so leaking the ban
+            // signal is intended — the SPA needs to render a "your account has been disabled"
+            // screen instead of "wrong password".
+            return ProblemResults.Forbidden("account_banned");
         }
 
         return await IssueTokenResponseAsync(user, jwt, refreshTokens, jwtOptions, ct);
@@ -254,6 +275,14 @@ public static class AuthEndpoints
             return Results.Ok(result.ToTokenResponse(
                 token,
                 jwtOptions.Value.ExpiryMinutes * 60));
+        }
+        catch (BannedAccountException)
+        {
+            // RotateAsync revoked the old token (breaking the refresh chain — security
+            // positive for a banned account) but did NOT insert a successor row. A banned
+            // client polling this endpoint can no longer drive write amplification on the
+            // refresh_tokens table.
+            return ProblemResults.Forbidden("account_banned");
         }
         catch (InvalidRefreshTokenException)
         {
