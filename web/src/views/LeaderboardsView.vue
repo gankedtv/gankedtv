@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
-import {
-  leaderboards,
-  type GlobalLeaderboardResponse,
-  type LeaderboardWindow,
-} from '@/api/leaderboards'
+import { leaderboards, type LeaderboardWindow } from '@/api/leaderboards'
+import { useLatestRequest } from '@/composables/useLatestRequest'
 import { formatNum } from '@/lib/format'
 import LeaderboardRow from '@/components/LeaderboardRow.vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -19,37 +16,13 @@ const WINDOWS: { key: LeaderboardWindow; label: string }[] = [
 ]
 
 const activeWindow = ref<LeaderboardWindow>('week')
-const data = ref<GlobalLeaderboardResponse | null>(null)
-const loading = ref(false)
-const errored = ref(false)
+const { data, loading, errored, run } = useLatestRequest(
+  () => leaderboards.global({ window: activeWindow.value, clipsLimit: 10, gamesLimit: 10 }),
+  { label: 'leaderboards' },
+)
 
-// Monotonic load token: rapid tab toggles (week → month → week) shouldn't let a slow
-// earlier response overwrite a newer one. Same pattern as TrendingView.
-let latestLoadId = 0
-
-async function load() {
-  const id = ++latestLoadId
-  loading.value = true
-  errored.value = false
-  try {
-    const resp = await leaderboards.global({
-      window: activeWindow.value,
-      clipsLimit: 10,
-      gamesLimit: 10,
-    })
-    if (id !== latestLoadId) return
-    data.value = resp
-  } catch (err) {
-    if (id !== latestLoadId) return
-    console.error('leaderboards: load failed', err)
-    errored.value = true
-  } finally {
-    if (id === latestLoadId) loading.value = false
-  }
-}
-
-onMounted(load)
-watch(activeWindow, load)
+onMounted(run)
+watch(activeWindow, run)
 
 function selectWindow(key: LeaderboardWindow) {
   if (key === activeWindow.value) return
@@ -90,7 +63,7 @@ const timeBtnInactive = `${timeBtnBase} bg-transparent text-text-secondary curso
     <StatusPanel v-if="errored" kind="error" message="Couldn't load leaderboards.">
       <button
         class="cursor-pointer rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
-        @click="load"
+        @click="run"
       >
         Retry
       </button>

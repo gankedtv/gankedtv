@@ -24,6 +24,15 @@ public interface IFeedCache
     ValueTask<CachedFeedPage> GetOrCreateTrendingAsync(
         string key, Func<CancellationToken, ValueTask<CachedFeedPage>> factory, CancellationToken ct);
 
+    /// <summary>
+    /// Cache a leaderboard payload (TTL-governed; not invalidated on writes). Generic on
+    /// <typeparamref name="T"/> so the same surface handles global and per-game responses;
+    /// callers store the anonymous shape (LikedByMe=false) and re-stamp per request after
+    /// a cache hit, the same way <see cref="GetOrCreateTrendingAsync"/> is used.
+    /// </summary>
+    ValueTask<T> GetOrCreateLeaderboardAsync<T>(
+        string key, Func<CancellationToken, ValueTask<T>> factory, CancellationToken ct);
+
     /// <summary>Drop every cached feed page (called best-effort on clip mutations).</summary>
     ValueTask InvalidateFeedsAsync(CancellationToken ct);
 }
@@ -44,6 +53,11 @@ public sealed class FeedCache(HybridCache cache) : IFeedCache
     /// so it's not invalidated on writes — only the short expiration governs freshness.</summary>
     public const string TrendingTag = "trending";
 
+    /// <summary>Tag on leaderboard payloads (global + per-game). Same TTL-only contract as
+    /// trending: short expiration governs freshness; likes don't bust the cache, matching the
+    /// same accepted staleness as cached feed cards.</summary>
+    public const string LeaderboardTag = "leaderboards";
+
     // Short TTL with write-time invalidation. L1 (LocalCacheExpiration) is intentionally
     // shorter than L2 (Expiration): with no cross-pod L1 backplane, RemoveByTagAsync clears
     // L2 immediately but a sibling pod's L1 can serve stale until its local copy lapses —
@@ -56,6 +70,7 @@ public sealed class FeedCache(HybridCache cache) : IFeedCache
 
     private static readonly string[] FeedTags = [FeedTag];
     private static readonly string[] TrendingTags = [TrendingTag];
+    private static readonly string[] LeaderboardTags = [LeaderboardTag];
 
     /// <summary>Cache a feed page (latest or per-game) under the <see cref="FeedTag"/>.</summary>
     public ValueTask<CachedFeedPage> GetOrCreateFeedAsync(
@@ -70,6 +85,13 @@ public sealed class FeedCache(HybridCache cache) : IFeedCache
         Func<CancellationToken, ValueTask<CachedFeedPage>> factory,
         CancellationToken ct) =>
         cache.GetOrCreateAsync(key, factory, Entry, TrendingTags, ct);
+
+    /// <summary>Cache a leaderboard payload under the <see cref="LeaderboardTag"/> (TTL-governed).</summary>
+    public ValueTask<T> GetOrCreateLeaderboardAsync<T>(
+        string key,
+        Func<CancellationToken, ValueTask<T>> factory,
+        CancellationToken ct) =>
+        cache.GetOrCreateAsync(key, factory, Entry, LeaderboardTags, ct);
 
     /// <summary>
     /// Drop every cached feed page. Called best-effort on clip create/complete/delete and on

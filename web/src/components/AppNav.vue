@@ -14,6 +14,8 @@ import IconSun from './icons/IconSun.vue'
 import IconMoon from './icons/IconMoon.vue'
 import IconPlus from './icons/IconPlus.vue'
 import IconBell from './icons/IconBell.vue'
+import IconMenu from './icons/IconMenu.vue'
+import MobileNavDrawer from './MobileNavDrawer.vue'
 
 const auth = useAuthStore()
 const theme = useThemeStore()
@@ -248,6 +250,20 @@ onBeforeUnmount(() => {
   document.removeEventListener('mousedown', onDocumentMouseDown)
   document.removeEventListener('keydown', onDocumentKeyDown)
 })
+
+// --- Mobile nav drawer --------------------------------------------------------
+//
+// Below the `tablet` breakpoint (720px), Games/Trending/Leaderboards are hidden via
+// max-tablet:hidden on the desktop nav links. The hamburger + drawer surface them on
+// mobile so two top-level features aren't unreachable. Drawer owns its own escape /
+// route-change / backdrop close handling; we just track open-state here and return
+// focus to the hamburger when it closes.
+const hamburgerRef = useTemplateRef<HTMLButtonElement>('hamburgerRef')
+const isDrawerOpen = ref(false)
+
+watch(isDrawerOpen, (open) => {
+  if (!open) nextTick(() => hamburgerRef.value?.focus())
+})
 </script>
 
 <template>
@@ -263,6 +279,19 @@ onBeforeUnmount(() => {
         <span class="logo__mark"></span>
         GANKED<span class="logo__tv">.TV</span>
       </RouterLink>
+
+      <!-- Hamburger trigger (mobile only). Below the tablet breakpoint, Games / Trending /
+           Leaderboards collapse into the drawer below. -->
+      <button
+        ref="hamburgerRef"
+        type="button"
+        class="hidden h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-border bg-transparent text-text-secondary transition-colors duration-150 hover:border-border-hover hover:text-text-primary max-tablet:inline-flex"
+        aria-label="Open menu"
+        :aria-expanded="isDrawerOpen"
+        @click="isDrawerOpen = true"
+      >
+        <IconMenu :size="16" />
+      </button>
 
       <!-- Nav links -->
       <nav class="flex flex-1 items-center gap-1" aria-label="Main navigation">
@@ -483,5 +512,7 @@ onBeforeUnmount(() => {
         <NotificationsDropdown @close="closeBell" />
       </div>
     </Teleport>
+
+    <MobileNavDrawer v-model:open="isDrawerOpen" />
   </header>
 </template>

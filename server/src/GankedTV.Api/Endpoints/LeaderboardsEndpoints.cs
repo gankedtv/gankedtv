@@ -5,6 +5,8 @@ using GankedTV.Api.Contracts.Leaderboards;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Problems;
+using GankedTV.Api.Services.Caching;
+using GankedTV.Api.Services.Feeds;
 using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -32,41 +34,54 @@ public static class LeaderboardsEndpoints
         GankedTvDbContext db,
         IObjectStorageService storage,
         IOptions<S3Options> s3,
+        IFeedCache feedCache,
         CancellationToken ct)
     {
         // Default to "week" when the caller omits window — the standalone /leaderboards
         // landing page renders week-first; explicit-but-unknown values still 400 so a UI
         // typo (`?window=mounth`) surfaces immediately instead of being silently coerced.
-        var windowKey = window ?? LeaderboardWindow.Default;
-        if (!LeaderboardWindow.TryParse(windowKey, out var since))
+        if (!LeaderboardWindow.TryParseRequest(
+                window, clipsLimit, DefaultClipsLimit, MaxClipsLimit,
+                out var windowKey, out var since, out var clipsCap))
         {
             return ProblemResults.BadRequest("invalid_window");
         }
 
-        var clipsCap = Math.Clamp(clipsLimit ?? DefaultClipsLimit, 1, MaxClipsLimit);
         var gamesCap = Math.Clamp(gamesLimit ?? DefaultGamesLimit, 1, MaxGamesLimit);
 
-        var clipsBase = db.Clips.AsNoTracking()
-            .Where(c => c.Visibility == "public" && c.Status == "ready");
-        var topClips = await BuildEntriesAsync(clipsBase, since, clipsCap, principal, db, storage, s3, ct);
+        // Cache the anonymous shape (LikedByMe=false on every entry); the per-caller stamp
+        // happens post-cache via StampLikedByMeOnEntriesAsync, the same pattern trending uses.
+        // TTL-only invalidation matches trending: likes are too high-frequency to bust the
+        // cache on each one, and a window-bounded board is inherently approximate.
+        var cached = await feedCache.GetOrCreateLeaderboardAsync(
+            $"lb:global:{windowKey}:{clipsCap}:{gamesCap}",
+            async c =>
+            {
+                var clipsBase = db.Clips.AsNoTracking()
+                    .Where(cl => cl.Visibility == "public" && cl.Status == "ready");
+                var topClips = await BuildAnonymousEntriesAsync(clipsBase, since, clipsCap, db, storage, s3, c);
+                var topGames = await BuildTopGamesAsync(since, gamesCap, db, c);
+                return new GlobalLeaderboardResponse(windowKey, topClips, topGames);
+            },
+            ct);
 
-        var topGames = await BuildTopGamesAsync(since, gamesCap, db, ct);
-
-        return Results.Ok(new GlobalLeaderboardResponse(windowKey, topClips, topGames));
+        var stampedClips = await StampLikedByMeOnEntriesAsync(cached.TopClips, principal, db, ct);
+        return Results.Ok(cached with { TopClips = stampedClips });
     }
 
     // Shared helper: turn a pre-filtered Clip IQueryable into a ranked list of leaderboard
     // entries scoped to a window. Owns the windowed-count query, deterministic tiebreak,
     // hydration with feed includes, and the rank-numbering pass.
     //
-    // Tie-breaking goes (likes desc, clip.created_at desc, clip.id asc): newer clips with
-    // equal likes outrank older ones (rewards momentum); equal createdAt falls back to a
-    // total ordering on Guid so the ranking is stable across requests.
-    internal static async Task<List<LeaderboardEntry>> BuildEntriesAsync(
+    // Anonymous half (no LikedByMe stamp) — the per-caller stamp is added post-cache by
+    // <see cref="StampLikedByMeOnEntriesAsync"/>, so this output is safe to share via the
+    // leaderboard cache. Tie-breaking goes (likes desc, clip.created_at desc, clip.id asc):
+    // newer clips with equal likes outrank older ones (rewards momentum); equal createdAt
+    // falls back to a total ordering on Guid so the ranking is stable across requests.
+    internal static async Task<List<LeaderboardEntry>> BuildAnonymousEntriesAsync(
         IQueryable<Clip> baseQuery,
         DateTimeOffset since,
         int limit,
-        ClaimsPrincipal principal,
         GankedTvDbContext db,
         IObjectStorageService storage,
         IOptions<S3Options> s3,
@@ -98,35 +113,41 @@ public static class LeaderboardsEndpoints
             .Take(limit)
             .ToList();
 
+        // Hydrate ranked IDs through the shared builder with the belt-and-braces re-filter
+        // turned on: a leaderboard surfacing a clip that flipped to private/unlisted between
+        // candidate fetch and hydration is more user-visible than the same race on trending,
+        // which self-heals via TTL.
         var topIds = ranked.Select(r => r.ClipId).ToList();
-        // Re-apply the public+ready predicate as a belt-and-braces guard: a clip can flip
-        // to private/unlisted or out of `ready` between the candidate fetch above and this
-        // hydrate. Trending tolerates that race ("self-healing on the next request"), but
-        // a leaderboard surfacing an unlisted clip in a "Most Liked This Week" board is
-        // more user-visible/confusing, and the extra WHERE clause is free.
-        var hydrated = await db.Clips.AsNoTracking()
-            .Where(c => topIds.Contains(c.Id) && c.Visibility == "public" && c.Status == "ready")
-            .IncludeFeedRelations()
-            .ToListAsync(ct);
-        var byId = hydrated.ToDictionary(c => c.Id);
+        var hydratedOrdered = await RankedFeedBuilder.HydrateOrderedAsync(
+            topIds, db, reapplyPublicReadyFilter: true, ct);
 
-        var feedItems = await ClipsReadEndpoints.ProjectFeedItemsAsync(
-            [.. ranked.Where(r => byId.ContainsKey(r.ClipId)).Select(r => byId[r.ClipId])],
-            principal, db, storage, s3, ct);
+        var feedItems = ClipsReadEndpoints.ProjectAnonymousFeedItems(hydratedOrdered, storage, s3);
 
-        // Walk ranked + feedItems in lockstep: feedItems was built from ranked-ordered
-        // clips, so index i corresponds to the same clip in both lists. A clip dropped
-        // between candidate fetch and hydrate (mid-delete, or filtered out by the
-        // re-applied visibility/status guard above) just falls out of both lists together.
-        // `entries.Count` doubles as both the next rank (1-based after +1) and the next
-        // feedItems index, since each addition increments them together.
+        // hydratedOrdered/feedItems are in `ranked` order with dropped IDs already removed,
+        // so we walk a parallel index into the windowed-like counts kept on `ranked`.
+        var windowLikesById = ranked.ToDictionary(r => r.ClipId, r => r.WindowLikes);
         var entries = new List<LeaderboardEntry>(feedItems.Count);
-        foreach (var r in ranked)
+        for (var i = 0; i < feedItems.Count; i++)
         {
-            if (!byId.ContainsKey(r.ClipId)) continue;
-            entries.Add(feedItems[entries.Count].ToEntry(entries.Count + 1, r.WindowLikes));
+            var item = feedItems[i];
+            entries.Add(item.ToEntry(i + 1, windowLikesById[item.Id]));
         }
         return entries;
+    }
+
+    // Re-stamp LikedByMe on the inner ClipFeedItem of each cached leaderboard entry, the
+    // same way trending re-stamps cached anonymous feed items. Preserves rank + windowLikes
+    // by zipping the stamped clips back into a fresh entry list.
+    internal static async Task<List<LeaderboardEntry>> StampLikedByMeOnEntriesAsync(
+        IReadOnlyList<LeaderboardEntry> anonymousEntries,
+        ClaimsPrincipal principal,
+        GankedTvDbContext db,
+        CancellationToken ct)
+    {
+        if (anonymousEntries.Count == 0) return [];
+        var clips = anonymousEntries.Select(e => e.Clip).ToList();
+        var stamped = await ClipsReadEndpoints.ApplyLikedByMeAsync(clips, principal, db, ct);
+        return [.. anonymousEntries.Zip(stamped, (entry, clip) => entry with { Clip = clip })];
     }
 
     // Top games for a window: sum windowed likes across each game's public+ready clips.
@@ -134,12 +155,20 @@ public static class LeaderboardsEndpoints
     // actually have activity. ClipCount counts public+ready clips for the whole catalog
     // (not just clips with likes in the window) so the number matches what GameView's
     // header shows — otherwise the same game would display two different counts.
+    //
+    // Ordering is hybrid: SQL applies the cheap part of the sort (likes desc, clip-count
+    // desc) and trims to a bounded candidate set, then the in-memory pass appends the
+    // Ordinal name tiebreak for determinism. Without this, ranking the whole catalog meant
+    // materialising every game with ≥1 windowed like just to sort + Take(limit) in memory.
     private static async Task<List<TopGameEntry>> BuildTopGamesAsync(
         DateTimeOffset since,
         int limit,
         GankedTvDbContext db,
         CancellationToken ct)
     {
+        // 4× headroom absorbs any plausible tie cluster on (likes, clipCount) at the cut.
+        // EF requires Take to be a constant or a captured variable for the parameter.
+        var candidateCap = limit * 4;
         var rows = await db.Games.AsNoTracking()
             .Select(g => new
             {
@@ -153,6 +182,9 @@ public static class LeaderboardsEndpoints
                     c.GameId == g.Id && c.Visibility == "public" && c.Status == "ready"),
             })
             .Where(x => x.WindowLikes > 0)
+            .OrderByDescending(x => x.WindowLikes)
+            .ThenByDescending(x => x.ClipCount)
+            .Take(candidateCap)
             .ToListAsync(ct);
 
         return [.. rows

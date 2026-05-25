@@ -282,6 +282,76 @@ public class LeaderboardsEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Global_Cached_LikedByMeStaysPerCaller()
+    {
+        // The leaderboard payload is cached anonymously and re-stamped per caller, mirroring
+        // the trending cache. The high-risk regression is the cache leaking one caller's
+        // likedByMe to another. Anonymous warms the cache → authenticated liker must still
+        // see likedByMe=true on the same cached entry.
+        await _fx.ResetAsync();
+        var (likerId, likerToken) = await AuthTestHelpers.SeedUserAndIssueTokenAsync(_fx, _factory!, "liker");
+        var (authorId, _) = await AuthTestHelpers.SeedUserAndIssueTokenAsync(_fx, _factory!, "author");
+        var gameId = await GetGameIdBySlugAsync("valorant");
+        var (clipId, _) = await SeedClipAsync(authorId, DateTimeOffset.UtcNow, gameId, "lb-cached");
+        await using (var db = _fx.CreateContext())
+        {
+            db.Likes.Add(new Like { UserId = likerId, ClipId = clipId, CreatedAt = DateTimeOffset.UtcNow.AddHours(-1) });
+            await db.SaveChangesAsync();
+        }
+
+        // Anonymous request warms the cache with likedByMe=false everywhere.
+        using (var anon = _factory!.CreateClient())
+        {
+            var body = await (await anon.GetAsync("/leaderboards?window=week")).Content.ReadFromJsonAsync<JsonElement>();
+            body.GetProperty("topClips").EnumerateArray()
+                .Select(e => e.GetProperty("clip").GetProperty("likedByMe").GetBoolean())
+                .Should().OnlyContain(l => l == false);
+        }
+
+        // Liker hits the same cached entry within TTL but must see their own like.
+        using (var likerClient = AuthTestHelpers.CreateBearerClient(_factory!, likerToken))
+        {
+            var body = await (await likerClient.GetAsync("/leaderboards?window=week")).Content.ReadFromJsonAsync<JsonElement>();
+            var entry = body.GetProperty("topClips").EnumerateArray().Single();
+            entry.GetProperty("clip").GetProperty("id").GetGuid().Should().Be(clipId);
+            entry.GetProperty("clip").GetProperty("likedByMe").GetBoolean().Should().BeTrue();
+        }
+    }
+
+    [Fact]
+    public async Task GameLeaderboard_Cached_LikedByMeStaysPerCaller()
+    {
+        // Same isolation guarantee for the per-game endpoint. Different code path (different
+        // handler, different cache key), so test it separately.
+        await _fx.ResetAsync();
+        var (likerId, likerToken) = await AuthTestHelpers.SeedUserAndIssueTokenAsync(_fx, _factory!, "liker");
+        var (authorId, _) = await AuthTestHelpers.SeedUserAndIssueTokenAsync(_fx, _factory!, "author");
+        var gameId = await GetGameIdBySlugAsync("valorant");
+        var (clipId, _) = await SeedClipAsync(authorId, DateTimeOffset.UtcNow, gameId, "game-lb-cached");
+        await using (var db = _fx.CreateContext())
+        {
+            db.Likes.Add(new Like { UserId = likerId, ClipId = clipId, CreatedAt = DateTimeOffset.UtcNow.AddHours(-1) });
+            await db.SaveChangesAsync();
+        }
+
+        using (var anon = _factory!.CreateClient())
+        {
+            var body = await (await anon.GetAsync("/games/valorant/leaderboard?window=week")).Content.ReadFromJsonAsync<JsonElement>();
+            body.GetProperty("entries").EnumerateArray()
+                .Select(e => e.GetProperty("clip").GetProperty("likedByMe").GetBoolean())
+                .Should().OnlyContain(l => l == false);
+        }
+
+        using (var likerClient = AuthTestHelpers.CreateBearerClient(_factory!, likerToken))
+        {
+            var body = await (await likerClient.GetAsync("/games/valorant/leaderboard?window=week")).Content.ReadFromJsonAsync<JsonElement>();
+            var entry = body.GetProperty("entries").EnumerateArray().Single();
+            entry.GetProperty("clip").GetProperty("id").GetGuid().Should().Be(clipId);
+            entry.GetProperty("clip").GetProperty("likedByMe").GetBoolean().Should().BeTrue();
+        }
+    }
+
+    [Fact]
     public async Task GameLeaderboard_LimitClampedAndRanksAssigned()
     {
         await _fx.ResetAsync();
