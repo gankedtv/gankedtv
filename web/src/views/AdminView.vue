@@ -117,9 +117,10 @@ function onUnbanUser(item: ReportItem) {
   return withAction(() => unbanUser(item.targetId))
 }
 
-// Fix-game flow: opens the dialog seeded with the clip's current game id, then on submit
-// posts to /admin/clips/{id}/game and the queue refreshes (the wrong_game report falls off
-// the Open tab via reason-scoped auto-resolve on the server).
+// Fix-game flow: opens an empty picker (the existing wrong tag isn't a useful default —
+// admin actively picks the correct one), then on submit posts to /admin/clips/{id}/game
+// and the queue refreshes (the wrong_game report falls off the Open tab via reason-scoped
+// auto-resolve on the server).
 const fixGameFor = ref<ReportItem | null>(null)
 function onFixGame(item: ReportItem) {
   fixGameFor.value = item

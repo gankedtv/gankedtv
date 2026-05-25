@@ -1,8 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { ReportItem } from '@/api/admin'
+import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps<{ item: ReportItem }>()
+// Ban/unban is admin-only on the server (RolePolicies.Admin); mods clicking the button
+// would just collect a 403 toast. Read the role here so the button never renders for
+// moderators, matching how AppNav already gates the admin link.
+const auth = useAuthStore()
 defineEmits<{
   resolve: []
   dismiss: []
@@ -116,7 +121,7 @@ const userIsBanned = computed(
           Remove comment
         </button>
         <button
-          v-if="item.targetType === 'user'"
+          v-if="item.targetType === 'user' && auth.isAdmin"
           type="button"
           @click="userIsBanned ? $emit('unbanUser') : $emit('banUser')"
           class="cursor-pointer rounded-md border border-[color:var(--color-error)] bg-[color:var(--color-error)]/15 px-3 py-1.5 font-heading text-[11px] font-bold uppercase tracking-wider text-[color:var(--color-error)] transition-colors duration-150 hover:bg-[color:var(--color-error)]/25"

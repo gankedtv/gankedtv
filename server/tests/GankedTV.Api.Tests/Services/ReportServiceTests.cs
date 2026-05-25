@@ -204,4 +204,97 @@ public class ReportServiceTests
 
         result.Error.Should().Be(ReportResolveError.NotFound);
     }
+
+    [Fact]
+    public async Task ResolveAsync_TwoConcurrentResolvers_ExactlyOneSucceeds()
+    {
+        // Pins the CAS guarantee: with the previous read-modify-write, two moderators
+        // racing on the same Open report would both load it, both think they were the
+        // first resolver, and the loser's SaveChangesAsync would clobber the winner's
+        // audit fields. ExecuteUpdateAsync makes the second resolver get AlreadyResolved
+        // even when both calls launch from independent scopes.
+        await _fx.ResetAsync();
+        var (reporter, owner) = await SeedTwoUsersAsync();
+        var clipId = await SeedClipAsync(owner);
+
+        // ResolvedBy is FK-constrained to users; seed two real moderators so the UPDATE
+        // doesn't fail with 23503 instead of testing the CAS path we care about.
+        Guid modA, modB;
+        await using (var seedDb = _fx.CreateContext())
+        {
+            var ma = new User
+            {
+                Username = "modA",
+                Email = "ma@example.com",
+                Role = UserRoles.Moderator,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+            };
+            var mb = new User
+            {
+                Username = "modB",
+                Email = "mb@example.com",
+                Role = UserRoles.Moderator,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+            };
+            seedDb.Users.AddRange(ma, mb);
+            await seedDb.SaveChangesAsync();
+            modA = ma.Id;
+            modB = mb.Id;
+        }
+
+        Guid reportId;
+        await using (var seedDb = _fx.CreateContext())
+        {
+            var created = await new ReportService(seedDb, TimeProvider.System)
+                .CreateAsync(reporter, ReportTargetTypes.Clip, clipId, "spam", null, default);
+            reportId = created.ReportId!.Value;
+        }
+
+        // Each task gets its own DbContext so they aren't serialised through one scope.
+        var taskA = Task.Run(async () =>
+        {
+            await using var db = _fx.CreateContext();
+            return await new ReportService(db, TimeProvider.System)
+                .ResolveAsync(reportId, modA, ReportStatuses.Resolved, default);
+        });
+        var taskB = Task.Run(async () =>
+        {
+            await using var db = _fx.CreateContext();
+            return await new ReportService(db, TimeProvider.System)
+                .ResolveAsync(reportId, modB, ReportStatuses.Dismissed, default);
+        });
+
+        var results = await Task.WhenAll(taskA, taskB);
+        results.Count(r => r.IsSuccess).Should().Be(1);
+        results.Count(r => r.Error == ReportResolveError.AlreadyResolved).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task DbCheck_OtherWithoutNote_RejectsDirectInsert()
+    {
+        // Pins the defense-in-depth: ck_reports_other_note must reject an out-of-band
+        // INSERT that bypasses ReportService. Without this round-trip, only the service
+        // layer enforces "other requires a note" and a future call site (or hand-SQL)
+        // could write a malformed row.
+        await _fx.ResetAsync();
+        var (reporter, owner) = await SeedTwoUsersAsync();
+        var clipId = await SeedClipAsync(owner);
+
+        await using var db = _fx.CreateContext();
+        db.Reports.Add(new Report
+        {
+            ReporterId = reporter,
+            TargetType = ReportTargetTypes.Clip,
+            TargetId = clipId,
+            Reason = ReportReasons.Other,
+            Note = null,
+            Status = ReportStatuses.Open,
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
+
+        var act = async () => await db.SaveChangesAsync();
+        await act.Should().ThrowAsync<DbUpdateException>();
+    }
 }

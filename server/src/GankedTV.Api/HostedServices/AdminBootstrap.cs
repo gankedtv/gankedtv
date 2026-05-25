@@ -9,6 +9,14 @@ namespace GankedTV.Api.HostedServices;
 // — re-runs each startup but the WHERE clause excludes already-admin rows so the UPDATE is a
 // no-op once everyone is promoted. New users matching the list still have to register/login
 // once before the bootstrap kicks in on the next start; that's fine for a seed mechanism.
+//
+// PROMOTE-ONLY: removing an email from ADMIN_EMAILS does NOT demote the existing user. That
+// is deliberate — autocratically demoting a role on env-var change risks accidentally
+// stripping admins from a hand-promoted operator (someone running `UPDATE users SET role='admin'`
+// directly) when an unrelated deploy ships with a different env. To revoke admin from a user,
+// the operator runs `UPDATE users SET role='user' WHERE email = ...` (or builds an admin
+// /admin/users/{id}/role endpoint as a Phase-5 follow-up). The class name + log line make
+// the one-way nature explicit.
 public sealed class AdminBootstrap(
     IServiceScopeFactory scopeFactory,
     IConfiguration config,

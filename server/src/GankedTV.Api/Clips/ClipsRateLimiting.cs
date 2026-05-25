@@ -21,11 +21,15 @@ public static class ClipsRateLimiting
     // 30 writes per minute. Per-user when the caller is authenticated, per-IP otherwise.
     // Fixed window (not sliding) — same shape as the credentials policy, no extra state.
     //
-    // The 30 covers the WHOLE clip-write surface — every endpoint that attaches this policy
-    // shares one bucket per user: POST /clips, POST /clips/{id}/upload-url, POST /clips/{id}/complete,
-    // PATCH /clips/{id}, DELETE /clips/{id}, POST /clips/{id}/like, DELETE /clips/{id}/like.
+    // The 30 covers the WHOLE clip-write surface AND the moderation-report submission
+    // endpoints — every endpoint that attaches this policy shares one bucket per user:
+    // POST /clips, POST /clips/{id}/upload-url, POST /clips/{id}/complete, PATCH /clips/{id},
+    // DELETE /clips/{id}, POST /clips/{id}/like, DELETE /clips/{id}/like,
+    // POST /clips/{id}/report, POST /comments/{id}/report, POST /users/{id}/report.
     // A happy-path upload burns 3 (create + upload-url + complete), so the floor is ~10 clips/min
-    // per user before the bucket exhausts. Pinned by ClipsRateLimitTests.MixedWrites_ShareBucket.
+    // per user before the bucket exhausts. Reports share the same bucket on purpose: it caps
+    // mass-report abuse without needing a second per-user keyed limiter. Pinned by
+    // ClipsRateLimitTests.MixedWrites_ShareBucket.
     //
     // Enforced cluster-wide via RedisRateLimiterFactory when REDIS_URL is set — all pods share
     // one Redis bucket per partition key, so the 30/min ceiling holds regardless of pod count.

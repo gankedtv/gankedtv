@@ -15,3 +15,11 @@ public sealed class InvalidRefreshTokenException : Exception
 {
     public InvalidRefreshTokenException(string message) : base(message) { }
 }
+
+// Thrown by RotateAsync when the refresh-token row belongs to a banned account. Distinct
+// from InvalidRefreshTokenException so the endpoint can translate it to 403 account_banned
+// (matching the login response shape) instead of the generic 401 invalid_refresh.
+public sealed class BannedAccountException : Exception
+{
+    public BannedAccountException() : base("Account is banned.") { }
+}

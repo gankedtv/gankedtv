@@ -271,16 +271,18 @@ public static class AuthEndpoints
         try
         {
             var result = await refreshTokens.RotateAsync(req.Refresh, ct);
-            if (result.User.BannedAt is not null)
-            {
-                // The token rotation already burned the previous refresh; the freshly-issued
-                // successor is unusable to a banned account, so just refuse to mint a JWT.
-                return ProblemResults.Forbidden("account_banned");
-            }
             var token = jwt.Issue(result.User);
             return Results.Ok(result.ToTokenResponse(
                 token,
                 jwtOptions.Value.ExpiryMinutes * 60));
+        }
+        catch (BannedAccountException)
+        {
+            // RotateAsync revoked the old token (breaking the refresh chain — security
+            // positive for a banned account) but did NOT insert a successor row. A banned
+            // client polling this endpoint can no longer drive write amplification on the
+            // refresh_tokens table.
+            return ProblemResults.Forbidden("account_banned");
         }
         catch (InvalidRefreshTokenException)
         {
