@@ -166,6 +166,7 @@ describe('ReelClip — like flow', () => {
       avatarUrl: null,
       createdAt: '',
       hasPassword: true,
+      role: 'user',
     })
 
     const likeBtn = wrapper.find('button[aria-label="Like"]')
@@ -191,6 +192,7 @@ describe('ReelClip — like flow', () => {
       avatarUrl: null,
       createdAt: '',
       hasPassword: true,
+      role: 'user',
     })
 
     await wrapper.find('button[aria-label="Like"]').trigger('click')
