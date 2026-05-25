@@ -92,6 +92,7 @@ function makeDetail(id: string, overrides: Partial<ClipDetail> = {}): ClipDetail
     width: 1920,
     height: 1080,
     visibility: 'public',
+    importSourceUrl: null,
     ...overrides,
   }
 }
