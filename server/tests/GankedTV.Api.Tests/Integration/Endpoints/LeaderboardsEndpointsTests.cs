@@ -286,8 +286,9 @@ public class LeaderboardsEndpointsTests : IAsyncLifetime
     {
         // The leaderboard payload is cached anonymously and re-stamped per caller, mirroring
         // the trending cache. The high-risk regression is the cache leaking one caller's
-        // likedByMe to another. Anonymous warms the cache → authenticated liker must still
-        // see likedByMe=true on the same cached entry.
+        // likedByMe to another. Exercise both directions: anonymous-warms-then-authed and
+        // authed-warms-then-anonymous, since per-caller stamping must hold regardless of
+        // which request populated the cache.
         await _fx.ResetAsync();
         var (likerId, likerToken) = await AuthTestHelpers.SeedUserAndIssueTokenAsync(_fx, _factory!, "liker");
         var (authorId, _) = await AuthTestHelpers.SeedUserAndIssueTokenAsync(_fx, _factory!, "author");
@@ -299,7 +300,17 @@ public class LeaderboardsEndpointsTests : IAsyncLifetime
             await db.SaveChangesAsync();
         }
 
-        // Anonymous request warms the cache with likedByMe=false everywhere.
+        // Authed request warms the cache; the stamped result must NOT leak likedByMe=true
+        // back into the shared cache entry.
+        using (var likerClient = AuthTestHelpers.CreateBearerClient(_factory!, likerToken))
+        {
+            var body = await (await likerClient.GetAsync("/leaderboards?window=week")).Content.ReadFromJsonAsync<JsonElement>();
+            var entry = body.GetProperty("topClips").EnumerateArray().Single();
+            entry.GetProperty("clip").GetProperty("id").GetGuid().Should().Be(clipId);
+            entry.GetProperty("clip").GetProperty("likedByMe").GetBoolean().Should().BeTrue();
+        }
+
+        // Anonymous request hits the same cached entry within TTL and must see false.
         using (var anon = _factory!.CreateClient())
         {
             var body = await (await anon.GetAsync("/leaderboards?window=week")).Content.ReadFromJsonAsync<JsonElement>();
@@ -308,7 +319,7 @@ public class LeaderboardsEndpointsTests : IAsyncLifetime
                 .Should().OnlyContain(l => l == false);
         }
 
-        // Liker hits the same cached entry within TTL but must see their own like.
+        // And the original direction: liker hits the cache after anon and still sees their like.
         using (var likerClient = AuthTestHelpers.CreateBearerClient(_factory!, likerToken))
         {
             var body = await (await likerClient.GetAsync("/leaderboards?window=week")).Content.ReadFromJsonAsync<JsonElement>();
@@ -322,7 +333,8 @@ public class LeaderboardsEndpointsTests : IAsyncLifetime
     public async Task GameLeaderboard_Cached_LikedByMeStaysPerCaller()
     {
         // Same isolation guarantee for the per-game endpoint. Different code path (different
-        // handler, different cache key), so test it separately.
+        // handler, different cache key), so test it separately. Cover both warm directions
+        // so an authed warm can't leak likedByMe=true into the cache.
         await _fx.ResetAsync();
         var (likerId, likerToken) = await AuthTestHelpers.SeedUserAndIssueTokenAsync(_fx, _factory!, "liker");
         var (authorId, _) = await AuthTestHelpers.SeedUserAndIssueTokenAsync(_fx, _factory!, "author");
@@ -334,6 +346,16 @@ public class LeaderboardsEndpointsTests : IAsyncLifetime
             await db.SaveChangesAsync();
         }
 
+        // Authed warms the cache first.
+        using (var likerClient = AuthTestHelpers.CreateBearerClient(_factory!, likerToken))
+        {
+            var body = await (await likerClient.GetAsync("/games/valorant/leaderboard?window=week")).Content.ReadFromJsonAsync<JsonElement>();
+            var entry = body.GetProperty("entries").EnumerateArray().Single();
+            entry.GetProperty("clip").GetProperty("id").GetGuid().Should().Be(clipId);
+            entry.GetProperty("clip").GetProperty("likedByMe").GetBoolean().Should().BeTrue();
+        }
+
+        // Anonymous must still see false on the same cached entry.
         using (var anon = _factory!.CreateClient())
         {
             var body = await (await anon.GetAsync("/games/valorant/leaderboard?window=week")).Content.ReadFromJsonAsync<JsonElement>();
@@ -342,6 +364,7 @@ public class LeaderboardsEndpointsTests : IAsyncLifetime
                 .Should().OnlyContain(l => l == false);
         }
 
+        // And the original direction still holds.
         using (var likerClient = AuthTestHelpers.CreateBearerClient(_factory!, likerToken))
         {
             var body = await (await likerClient.GetAsync("/games/valorant/leaderboard?window=week")).Content.ReadFromJsonAsync<JsonElement>();

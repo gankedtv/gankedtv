@@ -23,7 +23,7 @@ const entries = computed(() => data.value?.entries ?? [])
 
 onMounted(run)
 // Refetch when the parent navigates between games (slug changes) without unmounting.
-watch(() => [props.slug, props.window], run)
+watch(() => [props.slug, props.window, props.limit], run)
 
 const windowLabel = {
   week: 'This Week',

@@ -57,7 +57,7 @@ const linkActive =
     >
       <div
         v-if="open"
-        class="fixed inset-0 z-50"
+        class="fixed inset-0 z-[60]"
         role="dialog"
         aria-modal="true"
         :aria-labelledby="titleId"
