@@ -43,12 +43,7 @@ public sealed class UserUpsertService
             {
                 existing.Email = info.Email;
             }
-            // Only populate avatar when the user doesn't already have one, so a user's
-            // explicit PATCH /me choice isn't stomped on next sign-in.
-            if (!string.IsNullOrWhiteSpace(info.AvatarUrl) && string.IsNullOrWhiteSpace(existing.AvatarUrl))
-            {
-                existing.AvatarUrl = info.AvatarUrl;
-            }
+            RefreshAvatarFromProvider(existing, providerName, info);
             existing.UpdatedAt = _clock.GetUtcNow();
             await _db.SaveChangesAsync(ct);
             return existing;
@@ -81,10 +76,7 @@ public sealed class UserUpsertService
             return null;
         }
         SetProviderId(byEmail, providerName, info.ProviderUserId);
-        if (!string.IsNullOrWhiteSpace(info.AvatarUrl) && string.IsNullOrWhiteSpace(byEmail.AvatarUrl))
-        {
-            byEmail.AvatarUrl = info.AvatarUrl;
-        }
+        RefreshAvatarFromProvider(byEmail, providerName, info);
         byEmail.UpdatedAt = _clock.GetUtcNow();
         await _db.SaveChangesAsync(ct);
         return byEmail;
@@ -99,11 +91,16 @@ public sealed class UserUpsertService
         {
             var now = _clock.GetUtcNow();
             var username = await UsernameGenerator.GenerateUniqueAsync(info.Username, _db.Users, ct);
+            var providerSource = $"oauth:{providerName}";
+            var hasAvatar = !string.IsNullOrWhiteSpace(info.AvatarUrl);
             var user = new User
             {
                 Username = username,
                 Email = info.EmailVerified ? info.Email : null,
                 AvatarUrl = info.AvatarUrl,
+                AvatarSource = hasAvatar ? providerSource : null,
+                OAuthAvatarUrl = hasAvatar ? info.AvatarUrl : null,
+                OAuthAvatarSource = hasAvatar ? providerSource : null,
                 CreatedAt = now,
                 UpdatedAt = now,
             };
@@ -151,6 +148,40 @@ public sealed class UserUpsertService
         ex.InnerException is PostgresException pg
         && pg.SqlState == PostgresErrorCodes.UniqueViolation
         && string.Equals(pg.ConstraintName, indexName, StringComparison.Ordinal);
+
+    // Avatar refresh policy for an existing user (called on every OAuth login, after we've
+    // located the user via provider id or by linking through a verified email).
+    //
+    // Stash the provider's *current* avatar URL on the user regardless of whether we adopt it.
+    // That lets DELETE /auth/me/avatar restore the provider picture immediately without waiting
+    // for the next OAuth login.
+    //
+    // Adopt it as the *active* AvatarUrl only when:
+    //   - AvatarSource is null (legacy row — first time we're classifying the source), OR
+    //   - AvatarSource matches this same provider (the user is logging in with the provider
+    //     that owns their avatar, and Discord's CDN hash may have rotated).
+    //
+    // A user-uploaded avatar (AvatarSource = "upload") is never overwritten. Neither is an
+    // avatar sourced from a different provider — logging in with Google does not stomp the
+    // user's Discord-sourced picture.
+    private void RefreshAvatarFromProvider(User user, string providerName, OAuthUserInfo info)
+    {
+        if (string.IsNullOrWhiteSpace(info.AvatarUrl))
+        {
+            return;
+        }
+        var providerSource = $"oauth:{providerName}";
+        user.OAuthAvatarUrl = info.AvatarUrl;
+        user.OAuthAvatarSource = providerSource;
+
+        var sourceMatchesProvider = user.AvatarSource is null
+            || string.Equals(user.AvatarSource, providerSource, StringComparison.Ordinal);
+        if (sourceMatchesProvider && user.AvatarUrl != info.AvatarUrl)
+        {
+            user.AvatarUrl = info.AvatarUrl;
+            user.AvatarSource = providerSource;
+        }
+    }
 
     private static void SetProviderId(User user, string providerName, string providerUserId)
     {

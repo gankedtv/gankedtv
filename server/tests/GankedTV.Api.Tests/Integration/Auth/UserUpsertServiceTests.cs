@@ -72,19 +72,24 @@ public class UserUpsertServiceTests
     }
 
     [Fact]
-    public async Task UpsertFromOAuthAsync_ExistingDiscordIdWithCustomAvatar_KeepsUserAvatar()
+    public async Task UpsertFromOAuthAsync_ExistingDiscordIdWithUploadedAvatar_KeepsUserAvatar()
     {
+        // The "upload" source is the only one we treat as a manual override that the OAuth
+        // login MUST NOT clobber. A legacy NULL source is treated as OAuth-sourced (because
+        // pre-migration all avatars came from OAuth); see UpsertFromOAuthAsync_LegacyNullSource_*
+        // for that branch.
         await _fx.ResetAsync();
         var now = DateTimeOffset.UtcNow;
         Guid id;
         await using (var db = _fx.CreateContext())
         {
-            // User has set a custom avatar via PATCH /me previously.
             var existing = new User
             {
                 Username = "zoe",
                 Email = "zoe@example.com",
                 AvatarUrl = "https://custom.example/zoe.png",
+                AvatarSource = "upload",
+                AvatarObjectKey = "zoe/avatar-abc.png",
                 DiscordId = "d-42",
                 CreatedAt = now,
                 UpdatedAt = now,
@@ -104,6 +109,11 @@ public class UserUpsertServiceTests
         await using var verify = _fx.CreateContext();
         var user = await verify.Users.SingleAsync(u => u.Id == id);
         user.AvatarUrl.Should().Be("https://custom.example/zoe.png");
+        user.AvatarSource.Should().Be("upload");
+        // Even when the active avatar is left alone, we still stash the latest provider URL
+        // so DELETE /auth/me/avatar can restore it without waiting for the next login.
+        user.OAuthAvatarUrl.Should().Be("https://cdn.discordapp.com/avatars/d-42/hash.png");
+        user.OAuthAvatarSource.Should().Be("oauth:discord");
     }
 
     [Fact]
@@ -229,11 +239,10 @@ public class UserUpsertServiceTests
     }
 
     [Fact]
-    public async Task UpsertFromOAuthAsync_ExistingDiscordUserWithAvatar_KeepsEmailUpdatesOnly()
+    public async Task UpsertFromOAuthAsync_UploadAvatar_KeepsAvatarUpdatesEmailOnly()
     {
-        // Existing user already has a custom avatar; provider re-asserts an avatar hash. The
-        // avatar branch must NOT be taken (user's explicit PATCH /me choice wins), but the
-        // verified-email update branch should still fire when the provider email changes.
+        // Existing user has an uploaded avatar; provider re-asserts a different URL. Email
+        // update fires normally; avatar is preserved (upload source is sacred).
         await _fx.ResetAsync();
         var now = DateTimeOffset.UtcNow;
         Guid id;
@@ -244,6 +253,7 @@ public class UserUpsertServiceTests
                 Username = "alex",
                 Email = "old@example.com",
                 AvatarUrl = "https://custom.example/alex.png",
+                AvatarSource = "upload",
                 DiscordId = "d-alex",
                 CreatedAt = now,
                 UpdatedAt = now,
@@ -338,6 +348,140 @@ public class UserUpsertServiceTests
         user.DiscordId.Should().Be("d-merge");
         user.PasswordHash.Should().Be(PreservedHash);
         user.PasswordAlgo.Should().Be("argon2id");
+    }
+
+    [Fact]
+    public async Task UpsertFromOAuthAsync_NewDiscordUser_SetsAvatarSourceAndOAuthStash()
+    {
+        // First-signup path: the freshly-created row should carry both the active AvatarSource
+        // and the OAuth stash columns so the "Reset to OAuth avatar" UI works immediately.
+        await _fx.ResetAsync();
+        await using (var db = _fx.CreateContext())
+        {
+            await new UserUpsertService(db).UpsertFromOAuthAsync(
+                DiscordOAuthProvider.ProviderName,
+                new OAuthUserInfo("d-7", "u@example.com", "u", "https://cdn.discord/u.png", EmailVerified: true));
+        }
+
+        await using var verify = _fx.CreateContext();
+        var user = await verify.Users.SingleAsync();
+        user.AvatarUrl.Should().Be("https://cdn.discord/u.png");
+        user.AvatarSource.Should().Be("oauth:discord");
+        user.OAuthAvatarUrl.Should().Be("https://cdn.discord/u.png");
+        user.OAuthAvatarSource.Should().Be("oauth:discord");
+    }
+
+    [Fact]
+    public async Task UpsertFromOAuthAsync_LegacyNullSource_RefreshesAvatarOnLogin()
+    {
+        // The bug fix: pre-migration rows have AvatarSource = NULL. The provider rotating its
+        // CDN hash leaves the old URL 404'ing; on next login we must refresh and classify the
+        // source so subsequent rotations work too.
+        await _fx.ResetAsync();
+        var now = DateTimeOffset.UtcNow;
+        Guid id;
+        await using (var db = _fx.CreateContext())
+        {
+            db.Users.Add(new User
+            {
+                Username = "legacy",
+                DiscordId = "d-legacy",
+                AvatarUrl = "https://cdn.discordapp.com/avatars/d-legacy/OLDHASH.png",
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            await db.SaveChangesAsync();
+            id = (await db.Users.SingleAsync()).Id;
+        }
+
+        await using (var db = _fx.CreateContext())
+        {
+            await new UserUpsertService(db).UpsertFromOAuthAsync(
+                DiscordOAuthProvider.ProviderName,
+                new OAuthUserInfo("d-legacy", null, "legacy",
+                    "https://cdn.discordapp.com/avatars/d-legacy/NEWHASH.png"));
+        }
+
+        await using var verify = _fx.CreateContext();
+        var user = await verify.Users.SingleAsync(u => u.Id == id);
+        user.AvatarUrl.Should().Be("https://cdn.discordapp.com/avatars/d-legacy/NEWHASH.png");
+        user.AvatarSource.Should().Be("oauth:discord");
+    }
+
+    [Fact]
+    public async Task UpsertFromOAuthAsync_SourceMatchesProvider_RefreshesAvatar()
+    {
+        await _fx.ResetAsync();
+        var now = DateTimeOffset.UtcNow;
+        Guid id;
+        await using (var db = _fx.CreateContext())
+        {
+            db.Users.Add(new User
+            {
+                Username = "rot",
+                DiscordId = "d-rot",
+                AvatarUrl = "https://cdn.discordapp.com/avatars/d-rot/OLD.png",
+                AvatarSource = "oauth:discord",
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            await db.SaveChangesAsync();
+            id = (await db.Users.SingleAsync()).Id;
+        }
+
+        await using (var db = _fx.CreateContext())
+        {
+            await new UserUpsertService(db).UpsertFromOAuthAsync(
+                DiscordOAuthProvider.ProviderName,
+                new OAuthUserInfo("d-rot", null, "rot",
+                    "https://cdn.discordapp.com/avatars/d-rot/NEW.png"));
+        }
+
+        await using var verify = _fx.CreateContext();
+        var user = await verify.Users.SingleAsync(u => u.Id == id);
+        user.AvatarUrl.Should().Be("https://cdn.discordapp.com/avatars/d-rot/NEW.png");
+    }
+
+    [Fact]
+    public async Task UpsertFromOAuthAsync_DifferentProvider_DoesNotStompAvatar_ButStashesOAuth()
+    {
+        // User's active avatar is sourced from Discord. They log in with Google. The active
+        // avatar must NOT change, but the Google URL is stashed so a user who later prefers it
+        // can still use it.
+        await _fx.ResetAsync();
+        var now = DateTimeOffset.UtcNow;
+        Guid id;
+        await using (var db = _fx.CreateContext())
+        {
+            db.Users.Add(new User
+            {
+                Username = "dual",
+                Email = "dual@example.com",
+                DiscordId = "d-dual",
+                GoogleId = "g-dual",
+                AvatarUrl = "https://cdn.discordapp.com/avatars/d-dual/X.png",
+                AvatarSource = "oauth:discord",
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            await db.SaveChangesAsync();
+            id = (await db.Users.SingleAsync()).Id;
+        }
+
+        await using (var db = _fx.CreateContext())
+        {
+            await new UserUpsertService(db).UpsertFromOAuthAsync(
+                GoogleOAuthProvider.ProviderName,
+                new OAuthUserInfo("g-dual", "dual@example.com", "dual",
+                    "https://lh.googleusercontent.com/dual.png", EmailVerified: true));
+        }
+
+        await using var verify = _fx.CreateContext();
+        var user = await verify.Users.SingleAsync(u => u.Id == id);
+        user.AvatarUrl.Should().Be("https://cdn.discordapp.com/avatars/d-dual/X.png");
+        user.AvatarSource.Should().Be("oauth:discord");
+        user.OAuthAvatarUrl.Should().Be("https://lh.googleusercontent.com/dual.png");
+        user.OAuthAvatarSource.Should().Be("oauth:google");
     }
 
     [Fact]

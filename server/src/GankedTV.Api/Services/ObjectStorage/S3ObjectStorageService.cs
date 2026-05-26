@@ -32,7 +32,14 @@ public sealed class S3ObjectStorageService : IObjectStorageService
         // Deduplicate so an aliased config (e.g. GameCoversBucket == ClipsBucket) doesn't issue
         // a duplicate PutBucketAsync for the same name.
         var required = new HashSet<string>(
-            new[] { _options.ClipsBucket, _options.ThumbnailsBucket, _options.GameCoversBucket, _options.StreamCacheBucket },
+            new[]
+            {
+                _options.ClipsBucket,
+                _options.ThumbnailsBucket,
+                _options.GameCoversBucket,
+                _options.StreamCacheBucket,
+                _options.AvatarsBucket,
+            },
             StringComparer.Ordinal);
 
         foreach (var name in required)
@@ -52,6 +59,7 @@ public sealed class S3ObjectStorageService : IObjectStorageService
         // the policy there would silently expose private media to anonymous reads.
         await ApplyPublicReadIfSafeAsync(_options.GameCoversBucket, "GameCoversBucket", ct);
         await ApplyPublicReadIfSafeAsync(_options.StreamCacheBucket, "StreamCacheBucket", ct);
+        await ApplyPublicReadIfSafeAsync(_options.AvatarsBucket, "AvatarsBucket", ct);
 
         // The stream cache is transient: a lifecycle rule expires cached renditions so the JIT
         // output never accumulates indefinitely. Skipped when aliased onto a private bucket.

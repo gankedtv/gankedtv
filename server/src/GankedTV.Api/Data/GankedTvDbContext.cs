@@ -48,8 +48,27 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
                 t.HasCheckConstraint(
                     "ck_users_role",
                     "role IN ('user','moderator','admin')");
+                // accent_color stores a #RRGGBB literal; the regex guards against malformed
+                // values reaching the DB even if the app-side validator is bypassed.
+                t.HasCheckConstraint(
+                    "ck_users_accent_color",
+                    "accent_color IS NULL OR accent_color ~ '^#[0-9A-Fa-f]{6}$'");
             });
             e.Property(u => u.Bio).HasMaxLength(500);
+            e.Property(u => u.AvatarSource).HasMaxLength(32);
+            // Explicit column names so the snake_case convention doesn't split "OAuth" as
+            // "o_auth_*" — we want a single "oauth_*" segment.
+            e.Property(u => u.OAuthAvatarUrl).HasColumnName("oauth_avatar_url");
+            e.Property(u => u.OAuthAvatarSource).HasMaxLength(32).HasColumnName("oauth_avatar_source");
+            e.Property(u => u.AccentColor).HasMaxLength(7);
+            // jsonb mapping for social_links — see SocialLinks.cs. ToJson() persists the whole
+            // owned entity as a single column. Property-level Json column type defaults to
+            // "jsonb" on Npgsql, but we set it explicitly so a future provider swap doesn't
+            // silently downgrade to "json".
+            e.OwnsOne(u => u.SocialLinks, sl =>
+            {
+                sl.ToJson("social_links");
+            });
             e.Property(u => u.CreatedAt).HasDefaultValueSql("now()");
             e.Property(u => u.UpdatedAt).HasDefaultValueSql("now()");
             e.HasIndex(u => u.Username).IsUnique().HasDatabaseName("idx_users_username");
