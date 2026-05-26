@@ -65,7 +65,8 @@ public sealed class S3ObjectStorageService : IObjectStorageService
         // output never accumulates indefinitely. Skipped when aliased onto a private bucket.
         if (_options.StreamCacheBucket != _options.ClipsBucket
             && _options.StreamCacheBucket != _options.ThumbnailsBucket
-            && _options.StreamCacheBucket != _options.GameCoversBucket)
+            && _options.StreamCacheBucket != _options.GameCoversBucket
+            && _options.StreamCacheBucket != _options.AvatarsBucket)
         {
             await ApplyStreamCacheLifecycleAsync(ct);
         }

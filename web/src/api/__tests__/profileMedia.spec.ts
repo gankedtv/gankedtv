@@ -39,11 +39,13 @@ describe('api/profileMedia', () => {
     expect(JSON.parse(init.body as string)).toEqual({ contentType: 'image/png' })
   })
 
-  it('POSTs the banner upload-url request', async () => {
+  it('POSTs the banner upload-url request with the chosen content type', async () => {
     stubJson({ url: 'https://signed', expiresAt: '', contentType: 'image/webp', objectKey: 'k' })
     await profileMedia.getBannerUploadUrl('image/webp')
-    const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+    const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
     expect(url).toBe(`${BASE_URL}/auth/me/banner/upload-url`)
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body as string)).toEqual({ contentType: 'image/webp' })
   })
 
   it('POSTs the avatar complete request with the echoed object key', async () => {
@@ -57,10 +59,13 @@ describe('api/profileMedia', () => {
   })
 
   it('POSTs the banner complete request', async () => {
-    stubJson({ url: 'https://final', objectKey: 'abc', avatarSource: null })
-    await profileMedia.completeBanner('abc')
-    const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+    stubJson({ url: 'https://final', objectKey: 'abc' })
+    const out = await profileMedia.completeBanner('abc')
+    expect(out.avatarSource).toBeUndefined()
+    const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
     expect(url).toBe(`${BASE_URL}/auth/me/banner/complete`)
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body as string)).toEqual({ objectKey: 'abc' })
   })
 
   it('DELETEs the avatar and surfaces the restored URL / source', async () => {
@@ -74,8 +79,9 @@ describe('api/profileMedia', () => {
   })
 
   it('DELETEs the banner', async () => {
-    stubJson({ url: null, avatarSource: null })
-    await profileMedia.deleteBanner()
+    stubJson({ url: null })
+    const out = await profileMedia.deleteBanner()
+    expect(out.avatarSource).toBeUndefined()
     const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
     expect(url).toBe(`${BASE_URL}/auth/me/banner`)
     expect(init.method).toBe('DELETE')

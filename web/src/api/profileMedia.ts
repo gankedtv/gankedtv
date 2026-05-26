@@ -19,14 +19,15 @@ export interface ProfileMediaCompleted {
   url: string
   objectKey: string
   // Only present on the avatar variant — banner has no "source" concept.
-  avatarSource: AvatarSource
+  avatarSource?: AvatarSource
 }
 
 export interface ProfileMediaDeleted {
   // The URL after deletion. For an avatar with a stashed OAuth picture this is the restored
   // provider avatar; otherwise null.
   url: string | null
-  avatarSource: AvatarSource
+  // Only present on the avatar variant — banner has no "source" concept.
+  avatarSource?: AvatarSource
 }
 
 function uploadUrl(kind: 'avatar' | 'banner', contentType: ProfileMediaContentType) {

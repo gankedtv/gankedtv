@@ -176,10 +176,15 @@ public sealed class UserUpsertService
 
         var sourceMatchesProvider = user.AvatarSource is null
             || string.Equals(user.AvatarSource, providerSource, StringComparison.Ordinal);
-        if (sourceMatchesProvider && user.AvatarUrl != info.AvatarUrl)
+        if (sourceMatchesProvider)
         {
-            user.AvatarUrl = info.AvatarUrl;
+            // Always classify (so legacy NULL rows are stamped even when the URL is unchanged).
+            // Only rewrite the URL when it actually differs to avoid spurious row churn.
             user.AvatarSource = providerSource;
+            if (user.AvatarUrl != info.AvatarUrl)
+            {
+                user.AvatarUrl = info.AvatarUrl;
+            }
         }
     }
 

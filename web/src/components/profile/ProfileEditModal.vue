@@ -144,9 +144,16 @@ function chooseEncoderMime(srcMime: string): ProfileMediaContentType {
 function readImage(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()
-    img.onload = () => resolve(img)
-    img.onerror = () => reject(new Error('Could not decode image'))
-    img.src = URL.createObjectURL(file)
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      resolve(img)
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('Could not decode image'))
+    }
+    img.src = url
   })
 }
 
@@ -207,6 +214,9 @@ async function resetToOAuthAvatar() {
   try {
     await profileMedia.deleteAvatar()
     await auth.fetchMe()
+    // Drop any in-modal pick so the UI reflects the restored OAuth picture and the next
+    // Save doesn't immediately re-upload what we just reset.
+    clearAvatarChoice()
   } catch (err) {
     errorMsg.value = friendlyError(err)
   } finally {

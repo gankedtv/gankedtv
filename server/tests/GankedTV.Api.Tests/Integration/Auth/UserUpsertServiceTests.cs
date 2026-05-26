@@ -409,6 +409,43 @@ public class UserUpsertServiceTests
     }
 
     [Fact]
+    public async Task UpsertFromOAuthAsync_LegacyNullSource_UnchangedUrl_ClassifiesSource()
+    {
+        // Legacy row whose AvatarUrl already matches the provider's current URL: nothing
+        // to refresh, but the NULL source still needs to be stamped so subsequent CDN
+        // rotations take the refresh branch instead of stalling on the null-source check.
+        await _fx.ResetAsync();
+        var now = DateTimeOffset.UtcNow;
+        const string url = "https://cdn.discordapp.com/avatars/d-legacy2/SAMEHASH.png";
+        Guid id;
+        await using (var db = _fx.CreateContext())
+        {
+            db.Users.Add(new User
+            {
+                Username = "legacy2",
+                DiscordId = "d-legacy2",
+                AvatarUrl = url,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            await db.SaveChangesAsync();
+            id = (await db.Users.SingleAsync()).Id;
+        }
+
+        await using (var db = _fx.CreateContext())
+        {
+            await new UserUpsertService(db).UpsertFromOAuthAsync(
+                DiscordOAuthProvider.ProviderName,
+                new OAuthUserInfo("d-legacy2", null, "legacy2", url));
+        }
+
+        await using var verify = _fx.CreateContext();
+        var user = await verify.Users.SingleAsync(u => u.Id == id);
+        user.AvatarUrl.Should().Be(url);
+        user.AvatarSource.Should().Be("oauth:discord");
+    }
+
+    [Fact]
     public async Task UpsertFromOAuthAsync_SourceMatchesProvider_RefreshesAvatar()
     {
         await _fx.ResetAsync();
