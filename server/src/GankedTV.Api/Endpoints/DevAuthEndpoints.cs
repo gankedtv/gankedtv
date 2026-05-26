@@ -32,8 +32,17 @@ public static class DevAuthEndpoints
         GankedTvDbContext db,
         IJwtService jwt,
         IRefreshTokenService refreshTokens,
+        IHostEnvironment env,
         CancellationToken ct)
     {
+        // Defense-in-depth: the route is only mapped in Development (see Program.cs), but guard
+        // the handler too so it can never mint a token if it's ever mapped by mistake. Returns
+        // 404 (not 403) so the endpoint is indistinguishable from "not present" outside dev.
+        if (!env.IsDevelopment())
+        {
+            return Results.NotFound();
+        }
+
         var raw = req?.Username ?? "dev-user";
         var username = UsernameGenerator.Slugify(raw);
         // Unknown role values silently fall back to "user" so a typo in the request body

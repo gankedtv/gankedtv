@@ -18,12 +18,14 @@ using GankedTV.Api.Services.Igdb;
 using GankedTV.Api.Services.Maintenance;
 using GankedTV.Api.Services.Media;
 using GankedTV.Api.Services.Moderation;
+using GankedTV.Api.Services.Health;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Services.Tags;
 using GankedTV.Api.Tools;
 using GankedTV.Api.Validation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Cors.Infrastructure;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using System.Text;
@@ -53,6 +55,11 @@ builder.Services.AddTransient<BannedUserMiddleware>();
 builder.Services.AddScoped<SeedCommand>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddHostedService<AdminBootstrap>();
+
+// Readiness probe: DB reachable + migrations applied (logic in ReadinessHealthCheck so it
+// stays in the coverage denominator). Liveness needs no checks — mapped with an empty predicate.
+builder.Services.AddHealthChecks()
+    .AddCheck<ReadinessHealthCheck>("ready", tags: ["ready"]);
 
 var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL")
     ?? builder.Configuration.GetConnectionString("DefaultConnection")
@@ -425,6 +432,39 @@ builder.Services
     });
 builder.Services.AddCors();
 
+// Fail-fast secret validation: in Production, refuse to boot when required secrets are missing
+// (or still set to dev defaults) instead of running misconfigured and failing on the first
+// request. Reads raw env vars — not the DI-bound options — so dev fallbacks (localhost WebOrigin,
+// minioadmin S3 creds) can't mask an unset secret. Aggregation logic lives in
+// ProductionStartupValidator to stay inside the coverage denominator.
+if (builder.Environment.IsProduction())
+{
+    var secretErrors = ProductionStartupValidator.Validate(
+        connectionString,
+        new JwtOptions
+        {
+            Secret = Environment.GetEnvironmentVariable("JWT_SECRET") ?? "",
+            Issuer = "n/a",
+            Audience = "n/a",
+        },
+        new OAuthOptions { WebOrigin = Environment.GetEnvironmentVariable("WEB_ORIGIN") ?? "" },
+        new S3Options
+        {
+            Endpoint = Environment.GetEnvironmentVariable("S3_ENDPOINT") ?? "",
+            AccessKey = Environment.GetEnvironmentVariable("S3_ACCESS_KEY") ?? "",
+            SecretKey = Environment.GetEnvironmentVariable("S3_SECRET_KEY") ?? "",
+            PublicUrl = Environment.GetEnvironmentVariable("S3_PUBLIC_URL"),
+        },
+        Environment.GetEnvironmentVariable("CORS_ORIGINS"));
+    if (secretErrors.Count > 0)
+    {
+        throw new InvalidOperationException(
+            "Refusing to start in Production — required configuration is missing or invalid:"
+            + Environment.NewLine
+            + string.Join(Environment.NewLine, secretErrors.Select(e => "  - " + e)));
+    }
+}
+
 var app = builder.Build();
 
 // --seed short-circuit: runs the dev seed against the configured DB and exits. We still build
@@ -448,6 +488,16 @@ if (ImportGamesCommand.ShouldRun(args))
     return;
 }
 
+// Startup migrations (gated by RUN_MIGRATIONS_ON_STARTUP, default off). Runs synchronously
+// before the app serves so a fresh prod DB self-migrates and /health/ready only goes green
+// once the schema exists. Locally migrations stay manual (`make migrate`).
+if (DatabaseMigrator.IsEnabled(Environment.GetEnvironmentVariable(DatabaseMigrator.EnableEnvVar)))
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<GankedTvDbContext>();
+    await DatabaseMigrator.ApplyMigrationsAsync(db, app.Logger, CancellationToken.None);
+}
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
@@ -459,6 +509,16 @@ app.UseMiddleware<ErrorHandlingMiddleware>();
 // 404 for unmatched routes, 415 for unsupported media types) into ProblemDetails so every
 // error response from the API has the same JSON envelope regardless of origin.
 app.UseStatusCodePages();
+
+// Health probes as terminal middleware placed BEFORE UseHttpsRedirection so an HTTP probe
+// (container HEALTHCHECK, k8s probe, the #123 deploy smoke-test) short-circuits with 200/503
+// instead of getting a 307 redirect to https. Liveness: process up, no dependency checks.
+// Readiness: DB reachable + migrations applied (the "ready"-tagged ReadinessHealthCheck).
+app.UseHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
+app.UseHealthChecks(
+    "/health/ready",
+    new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
+
 // Skip in dev — :5050 is plain HTTP and the redirect emits CORS-less 307s.
 if (!app.Environment.IsDevelopment())
 {

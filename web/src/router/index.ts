@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { trackPageView } from '@/lib/analytics'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -142,6 +143,12 @@ router.beforeEach((to) => {
   if (required === 'moderator' && !auth.isModerator) {
     return { name: 'home' }
   }
+})
+
+// Emit SPA page views after each successful navigation. No-op until analytics is initialised
+// with a measurement id (production only), so this is inert in dev and tests.
+router.afterEach((to) => {
+  trackPageView(to.fullPath)
 })
 
 export default router

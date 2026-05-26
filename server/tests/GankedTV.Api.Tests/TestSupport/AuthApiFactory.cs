@@ -62,6 +62,19 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("JWT_SECRET", "smoke-test-jwt-secret-at-least-32-bytes-xx");
         Environment.SetEnvironmentVariable("OAUTH_STATE_SECRET", "smoke-test-state-secret-at-least-32-bytes");
         Environment.SetEnvironmentVariable("WEB_ORIGIN", "http://localhost:5173");
+        // Required by ProductionStartupValidator when environment == Production. Harmless in
+        // Development runs (the validator only fires in Production). Non-default S3 creds + a
+        // PublicUrl satisfy the "no dev defaults in prod" checks. CORS_ORIGINS must be present
+        // for the validator, but CorsOriginsTests set their own value before constructing the
+        // factory — only default it when unset so their assertions still win.
+        if (Environment.GetEnvironmentVariable("CORS_ORIGINS") is null)
+        {
+            Environment.SetEnvironmentVariable("CORS_ORIGINS", "http://localhost:5173");
+        }
+        Environment.SetEnvironmentVariable("S3_ENDPOINT", "http://localhost:9000");
+        Environment.SetEnvironmentVariable("S3_ACCESS_KEY", "test-s3-access-key");
+        Environment.SetEnvironmentVariable("S3_SECRET_KEY", "test-s3-secret-key");
+        Environment.SetEnvironmentVariable("S3_PUBLIC_URL", "http://localhost:9000");
         Environment.SetEnvironmentVariable("DISCORD_CLIENT_ID", "test-discord-client");
         Environment.SetEnvironmentVariable("DISCORD_CLIENT_SECRET", "test-discord-secret");
         Environment.SetEnvironmentVariable("DISCORD_REDIRECT_URI", "http://localhost:5000/auth/discord/callback");

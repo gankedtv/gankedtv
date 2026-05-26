@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
+import { trackPageView } from '@/lib/analytics'
 import type { Router } from 'vue-router'
+
+vi.mock('@/lib/analytics', () => ({ trackPageView: vi.fn() }))
 
 // Swap createWebHistory → createMemoryHistory in the router module so navigation doesn't
 // depend on the jsdom window.location. This lets router.isReady() resolve deterministically
@@ -129,6 +132,14 @@ describe('router beforeEach guard', () => {
     })
     await router.push('/admin')
     expect(router.currentRoute.value.name).toBe('admin')
+  })
+})
+
+describe('analytics page-view hook', () => {
+  it('emits a page view with the full path after each navigation', async () => {
+    vi.mocked(trackPageView).mockClear()
+    await router.push('/clip/clp_7?ref=feed')
+    expect(trackPageView).toHaveBeenCalledWith('/clip/clp_7?ref=feed')
   })
 })
 
