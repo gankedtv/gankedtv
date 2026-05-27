@@ -6,6 +6,7 @@ import router from './router'
 import { useThemeStore } from './stores/theme'
 import { useAuthStore } from './stores/auth'
 import { configureAuth } from './api/client'
+import { initAnalytics } from './lib/analytics'
 import './assets/main.css'
 
 const app = createApp(App)
@@ -27,6 +28,9 @@ configureAuth({
 })
 
 await auth.bootstrap()
+
+// No-op unless VITE_GA_MEASUREMENT_ID is set at build time (production only).
+initAnalytics(import.meta.env.VITE_GA_MEASUREMENT_ID)
 
 app.use(router)
 app.mount('#app')

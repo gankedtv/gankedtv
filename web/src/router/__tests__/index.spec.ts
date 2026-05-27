@@ -1,7 +1,15 @@
 import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
+import { trackPageView } from '@/lib/analytics'
 import type { Router } from 'vue-router'
+
+// Keep the real stripSensitiveParams (so the redaction is exercised end-to-end) but spy on
+// the sink so we can assert exactly what would be shipped to analytics.
+vi.mock('@/lib/analytics', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/analytics')>('@/lib/analytics')
+  return { ...actual, trackPageView: vi.fn() }
+})
 
 // Swap createWebHistory → createMemoryHistory in the router module so navigation doesn't
 // depend on the jsdom window.location. This lets router.isReady() resolve deterministically
@@ -129,6 +137,28 @@ describe('router beforeEach guard', () => {
     })
     await router.push('/admin')
     expect(router.currentRoute.value.name).toBe('admin')
+  })
+})
+
+describe('analytics page-view hook', () => {
+  it('emits a page view with the full path after each navigation', async () => {
+    vi.mocked(trackPageView).mockClear()
+    await router.push('/clip/clp_7?ref=feed')
+    expect(trackPageView).toHaveBeenCalledWith('/clip/clp_7?ref=feed')
+  })
+
+  it('strips OAuth credentials from the tracked path on /auth/callback', async () => {
+    vi.mocked(trackPageView).mockClear()
+    await router.push('/auth/callback?token=fake-jwt&refresh=fake-refresh&returnTo=/feed')
+
+    expect(trackPageView).toHaveBeenCalledTimes(1)
+    const tracked = vi.mocked(trackPageView).mock.calls[0][0]
+    expect(tracked).not.toContain('token')
+    expect(tracked).not.toContain('fake-jwt')
+    expect(tracked).not.toContain('refresh')
+    expect(tracked).not.toContain('fake-refresh')
+    // Non-sensitive params are preserved.
+    expect(tracked).toContain('returnTo=%2Ffeed')
   })
 })
 

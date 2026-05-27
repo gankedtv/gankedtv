@@ -1,5 +1,20 @@
 /// <reference types="vite/client" />
 
+interface ImportMetaEnv {
+  /** Base URL of the API. Injected at build time; falls back to localhost:5050 in dev. */
+  readonly VITE_API_BASE_URL?: string
+  /** GA4 measurement id (e.g. "G-XXXXXXX"). Present only in production builds; gates analytics. */
+  readonly VITE_GA_MEASUREMENT_ID?: string
+  /** When "true", skip localStorage token persistence (HttpOnly-cookie strategy). */
+  readonly VITE_USE_SECURE_COOKIES?: string
+  /** Max upload size in MB shown in the upload UI. */
+  readonly VITE_MAX_UPLOAD_SIZE_MB?: string
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv
+}
+
 declare module '*.vue' {
   import type { DefineComponent } from 'vue'
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type, @typescript-eslint/no-explicit-any
