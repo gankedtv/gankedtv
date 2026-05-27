@@ -149,8 +149,11 @@ public class ProfileMediaEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task AvatarComplete_FileTooLarge_Returns400()
+    public async Task AvatarComplete_FileTooLarge_Returns400AndDeletesOrphan()
     {
+        // Presigned PUTs can't enforce size, so the oversized object is already in the bucket
+        // when complete rejects it. Inline cleanup prevents a client from spamming the bucket
+        // with rejected uploads (avatars bucket has no lifecycle expiry).
         await _fx.ResetAsync();
         var (userId, token) = await SeedUserAndIssueTokenAsync();
         var key = $"{userId}/avatar-abc.png";
@@ -162,10 +165,11 @@ public class ProfileMediaEndpointsTests : IAsyncLifetime
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await resp.Content.ReadAsStringAsync()).Should().Contain("file_too_large");
+        await _storage.Received(1).DeleteObjectAsync(Arg.Any<string>(), key, Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task AvatarComplete_DisallowedMime_Returns400()
+    public async Task AvatarComplete_DisallowedMime_Returns400AndDeletesOrphan()
     {
         await _fx.ResetAsync();
         var (userId, token) = await SeedUserAndIssueTokenAsync();
@@ -178,6 +182,7 @@ public class ProfileMediaEndpointsTests : IAsyncLifetime
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await resp.Content.ReadAsStringAsync()).Should().Contain("unsupported_content_type");
+        await _storage.Received(1).DeleteObjectAsync(Arg.Any<string>(), key, Arg.Any<CancellationToken>());
     }
 
     [Fact]

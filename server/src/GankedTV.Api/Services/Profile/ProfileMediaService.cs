@@ -78,20 +78,30 @@ public sealed class ProfileMediaService : IProfileMediaService
             return ProfileMediaResult<ProfileMediaCompleteResult>.Fail(ProfileMediaError.NotFound);
         }
 
+        // A presigned PUT can't enforce size or MIME, so by the time we reject here the object
+        // already exists in the bucket. The avatars bucket has no lifecycle expiry — without
+        // an inline cleanup a client could repeatedly PUT oversized/wrong-type files (each
+        // under a unique ULID key) and orphan them forever.
         var meta = await _storage.GetObjectMetadataAsync(_s3.AvatarsBucket, objectKey, ct);
         if (meta is null || meta.SizeBytes <= 0)
         {
+            if (meta is not null)
+            {
+                await TryDeleteObjectAsync(objectKey, ct);
+            }
             return ProfileMediaResult<ProfileMediaCompleteResult>.Fail(ProfileMediaError.ObjectNotUploaded);
         }
 
         var maxBytes = kind == ProfileMediaKind.Avatar ? _options.MaxAvatarBytes : _options.MaxBannerBytes;
         if (meta.SizeBytes > maxBytes)
         {
+            await TryDeleteObjectAsync(objectKey, ct);
             return ProfileMediaResult<ProfileMediaCompleteResult>.Fail(ProfileMediaError.FileTooLarge);
         }
 
         if (NormalizeContentType(meta.ContentType) is null)
         {
+            await TryDeleteObjectAsync(objectKey, ct);
             return ProfileMediaResult<ProfileMediaCompleteResult>.Fail(ProfileMediaError.UnsupportedContentType);
         }
 
