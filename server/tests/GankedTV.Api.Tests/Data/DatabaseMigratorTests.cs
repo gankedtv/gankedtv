@@ -45,11 +45,15 @@ public class DatabaseMigratorTests : IAsyncLifetime
     [InlineData("true", true)]
     [InlineData("TRUE", true)]
     [InlineData("True", true)]
+    [InlineData("1", true)]
+    [InlineData("yes", true)]
+    [InlineData("on", true)]
+    [InlineData(" true ", true)] // tolerate surrounding whitespace from env/ConfigMap values
     [InlineData("false", false)]
+    [InlineData("0", false)]
     [InlineData("", false)]
     [InlineData(null, false)]
-    [InlineData("1", false)]
-    public void IsEnabled_OnlyTrueIsEnabled(string? value, bool expected)
+    public void IsEnabled_AcceptsCommonTruthyValues(string? value, bool expected)
     {
         DatabaseMigrator.IsEnabled(value).Should().Be(expected);
     }

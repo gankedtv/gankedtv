@@ -10,11 +10,19 @@ namespace GankedTV.Api.Data;
 /// </summary>
 public static class DatabaseMigrator
 {
-    /// <summary>Env-var name that gates startup migration. Set to <c>"true"</c> to enable.</summary>
+    /// <summary>Env-var name that gates startup migration. Set to a truthy value to enable.</summary>
     public const string EnableEnvVar = "RUN_MIGRATIONS_ON_STARTUP";
 
+    // Deliberately more lenient than the bool.TryParse-based MEDIA_* toggles in Program.cs:
+    // K8s ConfigMaps and many CI systems use "1"/"yes"/"on" by convention, and the failure mode
+    // of a silently-skipped migration (a fresh prod DB that boots but never migrates, leaving
+    // /health/ready red with a "migrations pending" message) is confusing to debug. Accepting
+    // the common truthy spellings here avoids that foot-gun.
+    private static readonly HashSet<string> TruthyValues =
+        new(StringComparer.OrdinalIgnoreCase) { "true", "1", "yes", "on" };
+
     public static bool IsEnabled(string? envValue) =>
-        string.Equals(envValue, "true", StringComparison.OrdinalIgnoreCase);
+        envValue is not null && TruthyValues.Contains(envValue.Trim());
 
     public static async Task ApplyMigrationsAsync(
         GankedTvDbContext db,

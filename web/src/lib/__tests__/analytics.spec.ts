@@ -3,6 +3,7 @@ import {
   initAnalytics,
   isAnalyticsEnabled,
   setAnalyticsProvider,
+  stripSensitiveParams,
   trackEvent,
   trackPageView,
 } from '../analytics'
@@ -65,10 +66,35 @@ describe('analytics wrapper', () => {
     expect(gtag).toHaveBeenCalledWith('event', 'share', { clipId: '42' })
   })
 
-  it('does not inject the script twice when gtag already exists', () => {
-    window.gtag = vi.fn()
+  it('does not inject the script twice but still configures on re-init', () => {
+    const gtag = vi.fn()
+    window.gtag = gtag
     initAnalytics('G-TEST123')
+
     const scripts = document.head.querySelectorAll('script[src*="googletagmanager"]')
     expect(scripts).toHaveLength(0)
+    // config must still run even though the gtag stub already existed.
+    expect(gtag).toHaveBeenCalledWith('config', 'G-TEST123', { send_page_view: false })
+  })
+})
+
+describe('stripSensitiveParams', () => {
+  it('returns the path unchanged when there is no query string', () => {
+    expect(stripSensitiveParams('/feed')).toBe('/feed')
+  })
+
+  it('drops OAuth credential params but keeps the rest', () => {
+    const out = stripSensitiveParams(
+      '/auth/callback?token=jwt&refresh=rt&code=c&state=s&access_token=a&id_token=i&returnTo=/feed',
+    )
+    expect(out).toBe('/auth/callback?returnTo=%2Ffeed')
+  })
+
+  it('collapses to the bare path when every param is sensitive', () => {
+    expect(stripSensitiveParams('/auth/callback?token=jwt&refresh=rt')).toBe('/auth/callback')
+  })
+
+  it('leaves non-sensitive query strings intact', () => {
+    expect(stripSensitiveParams('/trending?sort=week&page=2')).toBe('/trending?sort=week&page=2')
   })
 })

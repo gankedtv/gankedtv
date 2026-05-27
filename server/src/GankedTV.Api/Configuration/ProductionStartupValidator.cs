@@ -9,6 +9,15 @@ namespace GankedTV.Api.Configuration;
 /// host refuses to boot with a clear, aggregated error rather than running misconfigured and
 /// failing later on the first request. Pure (no I/O) so it is unit-tested directly.
 /// </summary>
+/// <remarks>
+/// The caller in <c>Program.cs</c> passes values read straight from <c>Environment.GetEnvironmentVariable</c>,
+/// deliberately bypassing the DI options binding (which falls back to <c>appsettings</c>/config and
+/// dev defaults like <c>minioadmin</c> or <c>localhost:5173</c>). This enforces an <b>env-only secret
+/// contract</b>: required secrets must arrive via environment variables, per <c>DEPLOYMENT.md</c>.
+/// If a future deployment wires secrets through a config provider instead (Azure Key Vault, AWS
+/// Parameter Store, etc.), this env-only check will report them "missing" — update both the call
+/// site (to read the bound options) and this contract before integrating a vault.
+/// </remarks>
 public static class ProductionStartupValidator
 {
     /// <summary>Dev-default object-storage credentials that must never reach Production.</summary>

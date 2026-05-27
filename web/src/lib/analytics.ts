@@ -9,6 +9,32 @@ export interface AnalyticsProvider {
   trackEvent(name: string, params?: Record<string, unknown>): void
 }
 
+// Query keys that can carry credentials/secrets and must never be shipped to a third-party
+// analytics provider. The OAuth callback lands on /auth/callback?token=<JWT>&refresh=<token>,
+// so a naive `trackPageView(to.fullPath)` would leak a 30-day refresh token to GA.
+const SENSITIVE_QUERY_KEYS = new Set([
+  'token',
+  'refresh',
+  'code',
+  'state',
+  'access_token',
+  'id_token',
+])
+
+/** Removes sensitive query params from a router fullPath before it reaches analytics. */
+export function stripSensitiveParams(fullPath: string): string {
+  const [path, query = ''] = fullPath.split('?')
+  if (!query) return path
+  // Rebuild from only the non-sensitive entries (rather than deleting in place, which would
+  // mutate the live iterator) — preserves original order and is straightforward to read.
+  const kept = new URLSearchParams()
+  for (const [key, value] of new URLSearchParams(query)) {
+    if (!SENSITIVE_QUERY_KEYS.has(key)) kept.append(key, value)
+  }
+  const qs = kept.toString()
+  return qs ? `${path}?${qs}` : path
+}
+
 const noopProvider: AnalyticsProvider = {
   trackPageView() {},
   trackEvent() {},
@@ -35,19 +61,23 @@ declare global {
 
 /** Loads gtag.js once and returns a GA4-backed provider. */
 function createGtagProvider(measurementId: string): AnalyticsProvider {
-  if (typeof document !== 'undefined' && !window.gtag) {
-    const script = document.createElement('script')
-    script.async = true
-    script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(measurementId)}`
-    document.head.appendChild(script)
+  if (typeof document !== 'undefined') {
+    // The script + dataLayer/gtag stub bootstrap exactly once; re-init must not inject twice.
+    if (!window.gtag) {
+      const script = document.createElement('script')
+      script.async = true
+      script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(measurementId)}`
+      document.head.appendChild(script)
 
-    window.dataLayer = window.dataLayer || []
-    window.gtag = function gtag(...args: unknown[]) {
-      window.dataLayer!.push(args)
+      window.dataLayer = window.dataLayer || []
+      window.gtag = function gtag(...args: unknown[]) {
+        window.dataLayer!.push(args)
+      }
+      window.gtag('js', new Date())
     }
-    window.gtag('js', new Date())
-    // send_page_view:false — SPA page views are emitted by the router (see router/index.ts),
-    // otherwise the initial automatic hit double-counts the first navigation.
+    // config runs on every init (outside the bootstrap guard) so a re-init with a new
+    // measurement id still configures it. send_page_view:false — SPA page views are emitted by
+    // the router (see router/index.ts); the initial automatic hit would double-count otherwise.
     window.gtag('config', measurementId, { send_page_view: false })
   }
 

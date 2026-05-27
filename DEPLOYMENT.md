@@ -43,9 +43,11 @@ Migrations are **manual locally** (`make migrate`). In production, set
 `RUN_MIGRATIONS_ON_STARTUP=true` on the migrating instance so a fresh DB self-migrates at boot,
 before serving requests. `/health/ready` only reports healthy once all migrations are applied
 (see [DatabaseMigrator](server/src/GankedTV.Api/Data/DatabaseMigrator.cs) and
-[ReadinessHealthCheck](server/src/GankedTV.Api/Services/Health/ReadinessHealthCheck.cs)). If you run
-more than one API replica, enable the flag on exactly one (or run migrations as a separate
-init step) to avoid concurrent migration races.
+[ReadinessHealthCheck](server/src/GankedTV.Api/Services/Health/ReadinessHealthCheck.cs)). EF Core
+serialises migration runs via a `__EFMigrationsHistory` lock, so multiple replicas booting with the
+flag enabled apply migrations safely (they wait, they don't race). For clarity you may still prefer
+to gate the flag to one replica or run migrations as a separate init step, but it isn't required for
+correctness. The flag accepts `true`/`1`/`yes`/`on`.
 
 ## Health endpoints
 
