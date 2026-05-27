@@ -2,7 +2,12 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadRootEnv, mergeFirstWins, parseEnvFile } from '../src/loadEnv.ts';
+import {
+  loadRootEnv,
+  loadVaultwardenSecrets,
+  mergeFirstWins,
+  parseEnvFile,
+} from '../src/loadEnv.ts';
 
 describe('parseEnvFile', () => {
   test('parses KEY=value pairs', () => {
@@ -85,5 +90,51 @@ describe('loadRootEnv', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('loadVaultwardenSecrets', () => {
+  const throwingFetch = (async () => {
+    throw new Error('fetch should not have been called');
+  }) as unknown as typeof fetch;
+
+  test('no-ops when the bootstrap vars are unset', async () => {
+    const target: Record<string, string | undefined> = { DISCORD_BOT_TOKEN: undefined };
+    await loadVaultwardenSecrets(target, { fetchImpl: throwingFetch });
+    expect(target).toEqual({ DISCORD_BOT_TOKEN: undefined });
+  });
+
+  test('fills unset keys but never overwrites an already-set one (env wins)', async () => {
+    const target: Record<string, string | undefined> = {
+      VAULTWARDEN_API_URL: 'https://vault.test',
+      VAULTWARDEN_API_KEY: 'k',
+      DISCORD_BOT_TOKEN: 'from-shell',
+    };
+    const fetchImpl = (async (input: string | URL | Request) => {
+      const key = decodeURIComponent(String(input).split('/secret/')[1]!.split('?')[0]!);
+      return new Response(JSON.stringify({ name: key, value: `vault-${key}` }), { status: 200 });
+    }) as typeof fetch;
+
+    await loadVaultwardenSecrets(target, {
+      fetchImpl,
+      manifest: ['DISCORD_BOT_TOKEN', 'DISCORD_BOT_APP_ID'],
+    });
+
+    expect(target.DISCORD_BOT_TOKEN).toBe('from-shell'); // already set → not overwritten
+    expect(target.DISCORD_BOT_APP_ID).toBe('vault-DISCORD_BOT_APP_ID'); // filled from vault
+  });
+
+  test('production fails fast when a required secret is missing', async () => {
+    const target: Record<string, string | undefined> = {
+      VAULTWARDEN_API_URL: 'https://vault.test',
+      VAULTWARDEN_API_KEY: 'k',
+      ASPNETCORE_ENVIRONMENT: 'Production',
+    };
+    const fetchImpl = (async () =>
+      new Response('{"error":"secret not found"}', { status: 404 })) as unknown as typeof fetch;
+
+    await expect(
+      loadVaultwardenSecrets(target, { fetchImpl, manifest: ['DISCORD_BOT_TOKEN'] }),
+    ).rejects.toThrow(/not found/);
   });
 });

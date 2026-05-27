@@ -1,6 +1,6 @@
-// Side-effect import — merges the repo-root .env into process.env BEFORE
-// loadConfig reads it. Mirrors web/vite.config.ts's `envDir: '../'`.
-import './loadEnv.ts';
+// Importing loadEnv runs its side effect (merging the repo-root .env into process.env) and exposes
+// loadVaultwardenSecrets, which main() awaits before loadConfig().
+import { loadVaultwardenSecrets } from './loadEnv.ts';
 
 import { Client, GatewayIntentBits, REST, Routes, type Interaction } from 'discord.js';
 import { loadConfig } from './config.ts';
@@ -28,6 +28,8 @@ const log: PollerLogger = {
 };
 
 async function main(): Promise<void> {
+  // Pull secrets from Vaultwarden (no-op unless the bootstrap vars are set) before reading config.
+  await loadVaultwardenSecrets(process.env);
   const config = loadConfig();
 
   if (!config.enabled) {

@@ -17,6 +17,9 @@ namespace GankedTV.Api.Configuration;
 /// If a future deployment wires secrets through a config provider instead (Azure Key Vault, AWS
 /// Parameter Store, etc.), this env-only check will report them "missing" — update both the call
 /// site (to read the bound options) and this contract before integrating a vault.
+/// The Vaultwarden integration preserves this contract: it injects fetched secrets into the
+/// environment (not a config provider) before this validator runs, so the env-only check sees them
+/// as ordinary env vars.
 /// </remarks>
 public static class ProductionStartupValidator
 {

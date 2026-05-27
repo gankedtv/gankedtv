@@ -42,6 +42,43 @@ if (builder.Environment.IsDevelopment())
     }
 }
 
+// Vaultwarden secret bootstrap: like the DotNetEnv load above, fetch the manifest and set each as
+// an env var only when unset, so shell/.env still wins and every GetEnvironmentVariable read site
+// (the connection-string read below, the Production validation later) picks it up unchanged. No-op
+// when the bootstrap vars are unset; logic lives in the loader to stay in the coverage denominator.
+var vaultwardenOptions = new VaultwardenOptions
+{
+    ApiUrl = Environment.GetEnvironmentVariable("VAULTWARDEN_API_URL"),
+    ApiKey = Environment.GetEnvironmentVariable("VAULTWARDEN_API_KEY"),
+    Organization = Environment.GetEnvironmentVariable("VAULTWARDEN_ORG") is { Length: > 0 } vaultOrg
+        ? vaultOrg
+        : "GankedTV",
+    Collection = Environment.GetEnvironmentVariable("VAULTWARDEN_COLLECTION"),
+};
+if (vaultwardenOptions.IsConfigured)
+{
+    // One short-lived HttpClient for this pre-host bootstrap fetch — IHttpClientFactory isn't
+    // available before builder.Build(), and pooling buys nothing for a few sequential one-shot calls.
+    using var vaultwardenHttp = new HttpClient
+    {
+        Timeout = TimeSpan.FromSeconds(10),
+        MaxResponseContentBufferSize = 64 * 1024,
+    };
+    using var vaultwardenLoggerFactory = LoggerFactory.Create(b => b.AddConsole());
+    var vaultwardenLoader = new VaultwardenSecretsLoader(
+        vaultwardenHttp,
+        vaultwardenOptions,
+        vaultwardenOptions.EffectiveCollection(builder.Environment.EnvironmentName),
+        vaultwardenLoggerFactory.CreateLogger<VaultwardenSecretsLoader>());
+    vaultwardenLoader
+        .LoadAsync(
+            failFast: builder.Environment.IsProduction(),
+            Environment.GetEnvironmentVariable,
+            Environment.SetEnvironmentVariable)
+        .GetAwaiter()
+        .GetResult();
+}
+
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();

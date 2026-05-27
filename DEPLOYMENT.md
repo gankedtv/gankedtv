@@ -4,9 +4,10 @@ Production runtime requirements and configuration for GankedTV. This covers the 
 and the **web frontend**; container build/publish and the auto-deploy pipeline are tracked
 separately in issue #123.
 
-> **Secrets are never committed.** Everything below is provided via environment variables (or
-> your orchestrator's secret store) at runtime — there are no secrets in `appsettings*.json` or
-> any checked-in file.
+> **Secrets are never committed.** In production they come from the self-hosted Vaultwarden-API
+> (see [Secret management](#secret-management-vaultwarden)) or your orchestrator's secret store, fed
+> in via environment variables at runtime — there are no secrets in `appsettings*.json` or any
+> checked-in file.
 
 ## Hard requirements
 
@@ -36,6 +37,53 @@ Required:
 
 Also recommended in production: `OAUTH_STATE_SECRET` (≥ 32 bytes; required once any OAuth provider
 is configured) and the provider client credentials (`DISCORD_*`, `GOOGLE_*`).
+
+## Secret management (Vaultwarden)
+
+Secrets are sourced from the self-hosted [Vaultwarden-API](https://github.com/Turbootzz/Vaultwarden-API)
+rather than hand-placed per environment. Each app fetches its secrets at startup (API,
+bot) or build (web) and layers them into the environment; **a value already set in the environment
+always wins**, so the vault is the source of truth without removing per-key overrides. The same TS
+client (`shared/vaultwarden/`) backs the bot and the web build; the API has an equivalent in
+[VaultwardenSecretsLoader](server/src/GankedTV.Api/Configuration/VaultwardenSecretsLoader.cs).
+
+**Bootstrap vars** (the only secrets that stay in the environment — you can't fetch secrets without
+one):
+
+| Var | Purpose |
+|---|---|
+| `VAULTWARDEN_API_URL` | Base URL of the Vaultwarden-API. Unset → the whole integration no-ops and apps fall back to `.env`/env. |
+| `VAULTWARDEN_API_KEY` | Bearer token of the dedicated `secrets@` Vaultwarden user (a member of the `GankedTV` org with access to both collections). |
+| `VAULTWARDEN_ORG` | Organization. Defaults to `GankedTV`. |
+| `VAULTWARDEN_COLLECTION` | Optional explicit collection override (else env-derived). |
+
+**Collection per environment.** `ASPNETCORE_ENVIRONMENT` (the bot also falls back to `NODE_ENV`)
+selects the collection: `Production` → **`Secrets - PROD`**, anything else → **`Secrets - DEV`**.
+Vault items are named exactly like the env keys, scoped by org + collection so the same key can hold
+different values in DEV vs PROD without colliding.
+
+**Resilience.** Fetches are sequential (the API rate-limits 30 req/min/IP) and one-shot at
+startup/build — rotate a secret by restarting/rebuilding. In **Production** a required secret that
+can't be fetched **fails the boot** with a clear, Vaultwarden-specific error; in development a
+missing/unreachable vault falls back to `.env`. The API's fetch runs **before** the fail-fast
+validation above, so a prod boot supplied with only the two bootstrap vars has the vault populate
+`DATABASE_URL` / `JWT_SECRET` / `S3_*` / … and then passes validation.
+
+**Per-app manifest** (the keys each app fetches):
+
+| App | Keys |
+|---|---|
+| API | `DATABASE_URL`, `JWT_SECRET`, `OAUTH_STATE_SECRET`, `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_PUBLIC_URL`, `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `IGDB_CLIENT_ID`, `IGDB_CLIENT_SECRET`, `REDIS_URL`, `WEB_ORIGIN`, `CORS_ORIGINS` |
+| Discord bot | `DISCORD_BOT_TOKEN`, `DISCORD_BOT_APP_ID`, `DISCORD_DATABASE_URL` |
+| Web build | `VITE_API_BASE_URL`, `VITE_GA_MEASUREMENT_ID`, `VITE_USE_SECURE_COOKIES`, `VITE_MAX_UPLOAD_SIZE_MB` (baked into the public bundle — single source of truth, not secrecy) |
+
+`SENTRY_DSN` is intentionally **absent** — there's no Sentry integration yet (tracked in #124); add
+it to the manifests when that lands.
+
+**CI.** The web build workflow pulls `VITE_*` from the PROD collection on pushes to `main` (using a
+`VAULTWARDEN_API_KEY` GitHub secret and the API's `ENABLE_GITHUB_IP_RANGES` to whitelist runner IPs);
+PR builds skip the fetch and use the committed `.env`, so PR CI doesn't depend on vault availability.
+Sourcing the **deploy** job's secrets from Vaultwarden is part of #123.
 
 ## Startup database migrations
 
