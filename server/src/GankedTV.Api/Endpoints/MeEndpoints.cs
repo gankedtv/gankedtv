@@ -1,8 +1,10 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Text.RegularExpressions;
 using GankedTV.Api.Auth;
 using GankedTV.Api.Contracts.Users;
 using GankedTV.Api.Data;
+using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Problems;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
@@ -12,10 +14,18 @@ using Npgsql;
 
 namespace GankedTV.Api.Endpoints;
 
-public static class MeEndpoints
+public static partial class MeEndpoints
 {
-    private const int MaxAvatarUrlLength = 2048;
     private const int MaxBioLength = 500;
+    private const int MaxSocialHandleLength = 32;
+
+    // #RRGGBB. The DB ck_users_accent_color check enforces the same shape — keep them in sync.
+    [GeneratedRegex("^#[0-9A-Fa-f]{6}$")]
+    private static partial Regex AccentColorRegex();
+    // Whitelist for social handles. URL-safe but loose enough to accept the platforms we care
+    // about (Twitch/YouTube/Twitter all permit dots, underscores, hyphens within these limits).
+    [GeneratedRegex("^[A-Za-z0-9_.-]+$")]
+    private static partial Regex SocialHandleRegex();
 
     public static IEndpointRouteBuilder MapMeEndpoints(this IEndpointRouteBuilder app)
     {
@@ -118,16 +128,32 @@ public static class MeEndpoints
             }
         }
 
-        if (req.AvatarUrl is not null)
+        if (req.AccentColor is not null)
         {
-            var (ok, newAvatar) = ValidateAvatarUrl(req.AvatarUrl);
+            var (ok, normalized) = ValidateAccentColor(req.AccentColor);
             if (!ok)
             {
-                return ProblemResults.BadRequest("invalid_avatar_url");
+                return ProblemResults.BadRequest("invalid_accent_color");
             }
-            if (user.AvatarUrl != newAvatar)
+            if (user.AccentColor != normalized)
             {
-                user.AvatarUrl = newAvatar;
+                user.AccentColor = normalized;
+                changed = true;
+            }
+        }
+
+        if (req.SocialLinks is not null)
+        {
+            var (ok, normalized) = ValidateSocialLinks(req.SocialLinks);
+            if (!ok)
+            {
+                return ProblemResults.BadRequest("invalid_social_links");
+            }
+            // Compare structurally — assigning a "no-op" SocialLinks object would still mark
+            // the entity dirty otherwise.
+            if (!SocialLinksEqual(user.SocialLinks, normalized))
+            {
+                user.SocialLinks = normalized;
                 changed = true;
             }
         }
@@ -150,32 +176,66 @@ public static class MeEndpoints
         return Results.Ok(user.ToMe());
     }
 
-    private static (bool ok, string? value) ValidateAvatarUrl(string raw)
+    internal static (bool ok, string? value) ValidateAccentColor(string raw)
     {
+        // Empty string clears; null arrives only when the field is absent (no-op upstream).
         if (raw.Length == 0)
         {
             return (true, null);
         }
-        if (raw.Length > MaxAvatarUrlLength)
+        return AccentColorRegex().IsMatch(raw) ? (true, raw) : (false, null);
+    }
+
+    // Per-handle validator + clearing semantics: an empty string for a platform clears that
+    // platform; if every platform ends up cleared, the whole SocialLinks object collapses to
+    // null so the row carries no jsonb payload rather than `{}`.
+    internal static (bool ok, SocialLinks? value) ValidateSocialLinks(SocialLinksDto dto)
+    {
+        var twitch = NormalizeHandle(dto.Twitch);
+        if (twitch.invalid) return (false, null);
+        var youtube = NormalizeHandle(dto.YouTube);
+        if (youtube.invalid) return (false, null);
+        var twitter = NormalizeHandle(dto.Twitter);
+        if (twitter.invalid) return (false, null);
+
+        if (twitch.value is null && youtube.value is null && twitter.value is null)
         {
-            return (false, null);
+            return (true, null);
         }
-        if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri))
+        return (true, new SocialLinks
         {
-            return (false, null);
-        }
-        if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+            Twitch = twitch.value,
+            YouTube = youtube.value,
+            Twitter = twitter.value,
+        });
+    }
+
+    private static (string? value, bool invalid) NormalizeHandle(string? raw)
+    {
+        if (raw is null)
         {
-            return (false, null);
+            return (null, false);
         }
-        // Credentials in a URL render as an Authorization header when the browser fetches the
-        // image; refuse to store them. Fragments are client-only and serve no purpose for an
-        // image src, so refuse those too rather than quietly storing dead bytes.
-        if (!string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Fragment))
+        // Tolerate the leading "@" users naturally type — strip it before validating so a
+        // pasted "@TwitchUser" round-trips as "TwitchUser".
+        var trimmed = raw.Trim().TrimStart('@');
+        if (trimmed.Length == 0)
         {
-            return (false, null);
+            // Empty input clears that platform.
+            return (null, false);
         }
-        return (true, raw);
+        if (trimmed.Length > MaxSocialHandleLength || !SocialHandleRegex().IsMatch(trimmed))
+        {
+            return (null, true);
+        }
+        return (trimmed, false);
+    }
+
+    private static bool SocialLinksEqual(SocialLinks? a, SocialLinks? b)
+    {
+        if (a is null && b is null) return true;
+        if (a is null || b is null) return false;
+        return a.Twitch == b.Twitch && a.YouTube == b.YouTube && a.Twitter == b.Twitter;
     }
 
     private static bool IsUsernameUniqueViolation(DbUpdateException ex) =>

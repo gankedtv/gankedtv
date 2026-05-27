@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { login, me, oauthStartUrl, register, setPassword } from '../auth'
+import { login, me, oauthStartUrl, register, setPassword, updateMe } from '../auth'
 import { configureAuth, BASE_URL } from '../client'
 
 beforeEach(() => {
@@ -119,6 +119,50 @@ describe('api/auth', () => {
       const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
       expect(url).toBe(`${BASE_URL}/auth/login`)
       expect(init.method).toBe('POST')
+    })
+  })
+
+  describe('updateMe()', () => {
+    it('PATCHes /auth/me with the sparse payload and returns the parsed MeResponse', async () => {
+      const updated = {
+        id: '1',
+        username: 'zoe',
+        email: null,
+        bio: null,
+        avatarUrl: null,
+        avatarSource: null,
+        oauthAvatarUrl: null,
+        bannerUrl: null,
+        accentColor: '#6D28D9',
+        socialLinks: { twitch: 'zoe', youtube: null, twitter: null },
+        createdAt: '',
+        hasPassword: false,
+        role: 'user',
+      }
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () =>
+            new Response(JSON.stringify(updated), {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            }),
+        ),
+      )
+
+      const result = await updateMe({
+        accentColor: '#6D28D9',
+        socialLinks: { twitch: 'zoe' },
+      })
+
+      expect(result.accentColor).toBe('#6D28D9')
+      const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(url).toBe(`${BASE_URL}/auth/me`)
+      expect(init.method).toBe('PATCH')
+      expect(JSON.parse(init.body as string)).toEqual({
+        accentColor: '#6D28D9',
+        socialLinks: { twitch: 'zoe' },
+      })
     })
   })
 

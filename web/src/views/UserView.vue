@@ -13,6 +13,7 @@ import UnderlineTabs from '@/components/UnderlineTabs.vue'
 import IconShare from '@/components/icons/IconShare.vue'
 import KebabMenu, { type KebabMenuItem } from '@/components/KebabMenu.vue'
 import ReportDialog from '@/components/ReportDialog.vue'
+import ProfileEditModal from '@/components/profile/ProfileEditModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -104,6 +105,42 @@ const initials = computed(() => {
 // Hoisted so the template doesn't re-parse the URL on every render.
 const avatarImageUrl = computed(() => safeImageUrl(profile.value?.avatarUrl))
 
+// User-uploaded banner replaces the username-hashed gradient when present; otherwise the
+// gradient remains as the fallback so a brand-new account still has a non-empty banner.
+const bannerImageUrl = computed(() => safeImageUrl(profile.value?.bannerUrl))
+
+// Inline style binding for the profile header — DESIGN.md mandates that user-picked colors
+// flow via inline :style (CSS variables), not Tailwind classes, since each profile carries
+// its own color and a class can't carry runtime values.
+const accentStyle = computed<Record<string, string>>(() => {
+  const c = profile.value?.accentColor
+  const out: Record<string, string> = {}
+  if (c) out['--profile-accent'] = c
+  return out
+})
+
+const socialLinkEntries = computed(() => {
+  const s = profile.value?.socialLinks
+  if (!s) return []
+  return [
+    s.twitch
+      ? { label: 'Twitch', href: `https://twitch.tv/${encodeURIComponent(s.twitch)}` }
+      : null,
+    s.youtube
+      ? { label: 'YouTube', href: `https://youtube.com/@${encodeURIComponent(s.youtube)}` }
+      : null,
+    s.twitter ? { label: 'X', href: `https://x.com/${encodeURIComponent(s.twitter)}` } : null,
+  ].filter((x): x is { label: string; href: string } => x !== null)
+})
+
+const editOpen = ref(false)
+
+async function onProfileSaved() {
+  // The modal already updated the auth.user via fetchMe; re-fetch the public profile so
+  // the page renders the new banner/accent/socials without a manual refresh.
+  if (username.value) await loadProfile(username.value)
+}
+
 const joinedDate = computed(() => {
   if (!profile.value) return ''
   return new Date(profile.value.createdAt).toLocaleString(undefined, {
@@ -182,9 +219,10 @@ onBeforeUnmount(() => {
   if (copyTimer !== null) clearTimeout(copyTimer)
 })
 
-// Own-profile kebab — currently just Sign out. Reusable `KebabMenu` handles open/close,
+// Own-profile kebab — Edit profile + Sign out. Reusable `KebabMenu` handles open/close,
 // outside-click, and Esc; this view only declares the items.
 const ownProfileMenuItems = computed<KebabMenuItem[]>(() => [
+  { label: 'Edit profile', onClick: () => (editOpen.value = true) },
   { label: 'Sign out', variant: 'danger', onClick: () => auth.logout() },
 ])
 
@@ -223,10 +261,20 @@ const TABS: { key: Tab; label: string }[] = [
       </StatusPanel>
     </main>
 
-    <main v-else-if="profile" class="relative">
+    <main v-else-if="profile" class="relative" :style="accentStyle">
       <!-- ===================== BANNER ===================== -->
-      <div class="relative h-70 overflow-hidden" :style="{ background: bannerGradient }">
+      <div
+        class="relative h-70 overflow-hidden"
+        :style="bannerImageUrl ? undefined : { background: bannerGradient }"
+      >
+        <img
+          v-if="bannerImageUrl"
+          :src="bannerImageUrl"
+          :alt="`${profile.username}'s banner`"
+          class="absolute inset-0 h-full w-full object-cover"
+        />
         <div
+          v-if="!bannerImageUrl"
           class="absolute inset-0 bg-[repeating-linear-gradient(45deg,rgba(255,255,255,0.04)_0_12px,transparent_12px_24px)]"
         ></div>
         <div
@@ -254,8 +302,12 @@ const TABS: { key: Tab; label: string }[] = [
         <div class="relative z-10 -mt-17.5 flex flex-wrap items-start gap-7">
           <!-- Large avatar -->
           <div
-            class="flex h-35 w-35 shrink-0 select-none items-center justify-center rounded-full border-4 border-surface-base font-heading text-[56px] font-bold tracking-[-0.02em] text-white"
-            :style="{ background: bannerGradient }"
+            class="flex h-35 w-35 shrink-0 select-none items-center justify-center rounded-full border-4 font-heading text-[56px] font-bold tracking-[-0.02em] text-white"
+            :class="profile.accentColor ? '' : 'border-surface-base'"
+            :style="{
+              background: bannerGradient,
+              ...(profile.accentColor ? { borderColor: profile.accentColor } : {}),
+            }"
           >
             <img
               v-if="avatarImageUrl"
@@ -290,6 +342,21 @@ const TABS: { key: Tab; label: string }[] = [
             >
               {{ profile.bio }}
             </p>
+
+            <!-- Social links row. Rendered only when at least one handle exists; each opens
+                 in a new tab with rel=noopener so the destination can't navigate this window. -->
+            <div v-if="socialLinkEntries.length" class="mt-2.5 flex flex-wrap items-center gap-2">
+              <a
+                v-for="entry in socialLinkEntries"
+                :key="entry.label"
+                :href="entry.href"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-flex items-center rounded-sm border border-border bg-surface-raised px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary transition-colors duration-150 hover:border-border-hover hover:text-text-primary"
+              >
+                {{ entry.label }}
+              </a>
+            </div>
           </div>
 
           <!-- Action buttons (follow + share + more) -->
@@ -460,6 +527,13 @@ const TABS: { key: Tab; label: string }[] = [
       :target-id="profile.id"
       @cancel="reportOpen = false"
       @submitted="reportOpen = false"
+    />
+
+    <ProfileEditModal
+      v-if="isMe"
+      :open="editOpen"
+      @close="editOpen = false"
+      @saved="onProfileSaved"
     />
   </div>
 </template>

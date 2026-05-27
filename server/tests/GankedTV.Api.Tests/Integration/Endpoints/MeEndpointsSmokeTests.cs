@@ -178,55 +178,6 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Patch_InvalidAvatarUrl_Returns400()
-    {
-        await _fx.ResetAsync();
-        var (_, token, _) = await SeedUserAndIssueTokenAsync();
-
-        using var client = ClientWithBearer(token);
-        var resp = await client.PatchAsJsonAsync("/auth/me", new { avatarUrl = "not a url" });
-
-        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-    }
-
-    [Fact]
-    public async Task Patch_AvatarUrlWithCredentials_Returns400()
-    {
-        await _fx.ResetAsync();
-        var (_, token, _) = await SeedUserAndIssueTokenAsync();
-
-        using var client = ClientWithBearer(token);
-        var resp = await client.PatchAsJsonAsync("/auth/me", new { avatarUrl = "https://user:pass@example.com/a.png" });
-
-        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-    }
-
-    [Fact]
-    public async Task Patch_AvatarUrlWithFragment_Returns400()
-    {
-        await _fx.ResetAsync();
-        var (_, token, _) = await SeedUserAndIssueTokenAsync();
-
-        using var client = ClientWithBearer(token);
-        var resp = await client.PatchAsJsonAsync("/auth/me", new { avatarUrl = "https://example.com/a.png#payload" });
-
-        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-    }
-
-    [Fact]
-    public async Task Patch_AvatarUrlTooLong_Returns400()
-    {
-        await _fx.ResetAsync();
-        var (_, token, _) = await SeedUserAndIssueTokenAsync();
-
-        var longPath = new string('a', 2100);
-        using var client = ClientWithBearer(token);
-        var resp = await client.PatchAsJsonAsync("/auth/me", new { avatarUrl = $"https://example.com/{longPath}.png" });
-
-        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-    }
-
-    [Fact]
     public async Task Patch_NoChange_DoesNotBumpUpdatedAt()
     {
         await _fx.ResetAsync();
@@ -353,55 +304,234 @@ public class MeEndpointsSmokeTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Patch_SetAndClearAvatarUrl()
+    public async Task Patch_AvatarUrl_FieldIgnoredSilently()
     {
+        // PATCH /auth/me no longer accepts avatarUrl directly — uploads go through the
+        // ProfileMedia endpoints, and OAuth refresh handles the provider-driven path. An
+        // external script that still sends the field must not be persisted, but the request
+        // is otherwise valid so it still 200s.
         await _fx.ResetAsync();
-        var (userId, token, _) = await SeedUserAndIssueTokenAsync("avataruser");
+        var (userId, token, _) = await SeedUserAndIssueTokenAsync("legacyclient");
 
         using var client = ClientWithBearer(token);
-        var set = await client.PatchAsJsonAsync("/auth/me", new { avatarUrl = "https://cdn.example.com/a.png" });
-        set.StatusCode.Should().Be(HttpStatusCode.OK);
+        var resp = await client.PatchAsJsonAsync("/auth/me",
+            new { avatarUrl = "https://attacker.example.com/evil.png" });
 
-        await using (var db = _fx.CreateContext())
-        {
-            var u = await db.Users.AsNoTracking().SingleAsync(x => x.Id == userId);
-            u.AvatarUrl.Should().Be("https://cdn.example.com/a.png");
-        }
-
-        // An empty string is the canonical "remove avatar" signal — ValidateAvatarUrl maps "" to (ok, null).
-        var cleared = await client.PatchAsJsonAsync("/auth/me", new { avatarUrl = "" });
-        cleared.StatusCode.Should().Be(HttpStatusCode.OK);
-
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
         await using var verify = _fx.CreateContext();
-        var final = await verify.Users.AsNoTracking().SingleAsync(x => x.Id == userId);
-        final.AvatarUrl.Should().BeNull();
+        var user = await verify.Users.AsNoTracking().SingleAsync(u => u.Id == userId);
+        user.AvatarUrl.Should().BeNull();
     }
 
     [Fact]
-    public async Task Patch_AvatarUrlUnchanged_DoesNotBumpUpdatedAt()
+    public async Task Patch_AccentColor_RoundTrips()
     {
         await _fx.ResetAsync();
-        var (userId, token, _) = await SeedUserAndIssueTokenAsync("stableavatar");
-        const string avatar = "https://cdn.example.com/x.png";
+        var (userId, token, _) = await SeedUserAndIssueTokenAsync("accent");
 
-        DateTimeOffset before;
+        using var client = ClientWithBearer(token);
+        var resp = await client.PatchAsJsonAsync("/auth/me", new { accentColor = "#6D28D9" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var verify = _fx.CreateContext();
+        var user = await verify.Users.AsNoTracking().SingleAsync(u => u.Id == userId);
+        user.AccentColor.Should().Be("#6D28D9");
+    }
+
+    [Fact]
+    public async Task Patch_AccentColor_InvalidHex_Returns400()
+    {
+        await _fx.ResetAsync();
+        var (_, token, _) = await SeedUserAndIssueTokenAsync();
+        using var client = ClientWithBearer(token);
+
+        // Word colors (no #), short hex, non-hex chars all rejected by the regex.
+        var resps = await Task.WhenAll(
+            client.PatchAsJsonAsync("/auth/me", new { accentColor = "red" }),
+            client.PatchAsJsonAsync("/auth/me", new { accentColor = "#fff" }),
+            client.PatchAsJsonAsync("/auth/me", new { accentColor = "#ZZZZZZ" }));
+
+        foreach (var r in resps)
+        {
+            r.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        }
+    }
+
+    [Fact]
+    public async Task Patch_AccentColor_EmptyClears()
+    {
+        await _fx.ResetAsync();
+        var (userId, token, _) = await SeedUserAndIssueTokenAsync("clearaccent");
         await using (var db = _fx.CreateContext())
         {
             var u = await db.Users.SingleAsync(x => x.Id == userId);
-            u.AvatarUrl = avatar;
+            u.AccentColor = "#00FF00";
             await db.SaveChangesAsync();
-            before = u.UpdatedAt;
         }
 
-        await Task.Delay(20);
-
         using var client = ClientWithBearer(token);
-        var resp = await client.PatchAsJsonAsync("/auth/me", new { avatarUrl = avatar });
+        var resp = await client.PatchAsJsonAsync("/auth/me", new { accentColor = "" });
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
 
         await using var verify = _fx.CreateContext();
-        var final = await verify.Users.AsNoTracking().SingleAsync(x => x.Id == userId);
-        final.UpdatedAt.Should().Be(before);
+        var user = await verify.Users.AsNoTracking().SingleAsync(x => x.Id == userId);
+        user.AccentColor.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Patch_SocialLinks_RoundTripsAndStripsAtPrefix()
+    {
+        await _fx.ResetAsync();
+        var (userId, token, _) = await SeedUserAndIssueTokenAsync("socials");
+        using var client = ClientWithBearer(token);
+
+        var resp = await client.PatchAsJsonAsync("/auth/me", new
+        {
+            socialLinks = new { twitch = "@TwitchUser", youtube = "MyChannel", twitter = "x.handle" },
+        });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var raw = await resp.Content.ReadAsStringAsync();
+        // Pin the serialized shape so the SPA can rely on the lower-camel keys.
+        raw.Should().Contain("\"socialLinks\":{");
+        raw.Should().Contain("\"twitch\":\"TwitchUser\"");
+        raw.Should().Contain("\"youtube\":\"MyChannel\"");
+        raw.Should().Contain("\"twitter\":\"x.handle\"");
+
+        await using var verify = _fx.CreateContext();
+        var user = await verify.Users.AsNoTracking().SingleAsync(x => x.Id == userId);
+        user.SocialLinks.Should().NotBeNull();
+        // Leading @ stripped on the way in.
+        user.SocialLinks!.Twitch.Should().Be("TwitchUser");
+        user.SocialLinks.YouTube.Should().Be("MyChannel");
+        user.SocialLinks.Twitter.Should().Be("x.handle");
+    }
+
+    [Fact]
+    public async Task Patch_SocialLinks_DisallowedChar_Returns400()
+    {
+        await _fx.ResetAsync();
+        var (_, token, _) = await SeedUserAndIssueTokenAsync();
+        using var client = ClientWithBearer(token);
+
+        // Spaces, slashes, and other punctuation aren't allowed by SocialHandleRegex.
+        var resp = await client.PatchAsJsonAsync("/auth/me",
+            new { socialLinks = new { twitch = "bad handle" } });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Patch_SocialLinks_TooLong_Returns400()
+    {
+        await _fx.ResetAsync();
+        var (_, token, _) = await SeedUserAndIssueTokenAsync();
+        using var client = ClientWithBearer(token);
+
+        var resp = await client.PatchAsJsonAsync("/auth/me",
+            new { socialLinks = new { twitch = new string('a', 33) } });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Patch_SocialLinks_AllEmpty_CollapsesToNull()
+    {
+        await _fx.ResetAsync();
+        var (userId, token, _) = await SeedUserAndIssueTokenAsync("collapse");
+        await using (var db = _fx.CreateContext())
+        {
+            var u = await db.Users.SingleAsync(x => x.Id == userId);
+            u.SocialLinks = new GankedTV.Api.Data.Entities.SocialLinks { Twitch = "prior" };
+            await db.SaveChangesAsync();
+        }
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PatchAsJsonAsync("/auth/me",
+            new { socialLinks = new { twitch = "", youtube = "", twitter = "" } });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var verify = _fx.CreateContext();
+        var user = await verify.Users.AsNoTracking().SingleAsync(x => x.Id == userId);
+        user.SocialLinks.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Patch_AccentColor_SameValueIsNoOp()
+    {
+        // Repeat-with-same-value branch — the handler skips the assignment + UpdatedAt bump.
+        await _fx.ResetAsync();
+        var (userId, token, _) = await SeedUserAndIssueTokenAsync("samenoop");
+        await using (var db = _fx.CreateContext())
+        {
+            var u = await db.Users.SingleAsync(x => x.Id == userId);
+            u.AccentColor = "#00FFAA";
+            await db.SaveChangesAsync();
+        }
+        DateTimeOffset before;
+        await using (var db = _fx.CreateContext())
+        {
+            before = (await db.Users.AsNoTracking().SingleAsync(x => x.Id == userId)).UpdatedAt;
+        }
+        await Task.Delay(20);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PatchAsJsonAsync("/auth/me", new { accentColor = "#00FFAA" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var verify = _fx.CreateContext();
+        var user = await verify.Users.AsNoTracking().SingleAsync(x => x.Id == userId);
+        user.UpdatedAt.Should().Be(before);
+    }
+
+    [Fact]
+    public async Task Patch_SocialLinks_YoutubeInvalid_Returns400()
+    {
+        await _fx.ResetAsync();
+        var (_, token, _) = await SeedUserAndIssueTokenAsync();
+        using var client = ClientWithBearer(token);
+        var resp = await client.PatchAsJsonAsync("/auth/me",
+            new { socialLinks = new { youtube = "bad space" } });
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Patch_SocialLinks_TwitterInvalid_Returns400()
+    {
+        await _fx.ResetAsync();
+        var (_, token, _) = await SeedUserAndIssueTokenAsync();
+        using var client = ClientWithBearer(token);
+        var resp = await client.PatchAsJsonAsync("/auth/me",
+            new { socialLinks = new { twitter = "bad/slash" } });
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Patch_SocialLinks_RepeatSame_IsNoOp()
+    {
+        await _fx.ResetAsync();
+        var (userId, token, _) = await SeedUserAndIssueTokenAsync("noop2");
+        await using (var db = _fx.CreateContext())
+        {
+            var u = await db.Users.SingleAsync(x => x.Id == userId);
+            u.SocialLinks = new SocialLinks { Twitch = "same" };
+            await db.SaveChangesAsync();
+        }
+        DateTimeOffset before;
+        await using (var db = _fx.CreateContext())
+        {
+            before = (await db.Users.AsNoTracking().SingleAsync(x => x.Id == userId)).UpdatedAt;
+        }
+        await Task.Delay(20);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PatchAsJsonAsync("/auth/me",
+            new { socialLinks = new { twitch = "same" } });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var verify = _fx.CreateContext();
+        var user = await verify.Users.AsNoTracking().SingleAsync(x => x.Id == userId);
+        user.UpdatedAt.Should().Be(before);
     }
 
     [Fact]

@@ -56,6 +56,66 @@ describe('UserView (issue #92 regression)', () => {
     expect(wrapper.html().trimStart().startsWith('<div')).toBe(true)
   })
 
+  it('renders the banner image when set and the social-link row', async () => {
+    getByUsername.mockResolvedValue({
+      id: 'u1',
+      username: 'seeduser',
+      bio: null,
+      avatarUrl: null,
+      bannerUrl: 'https://cdn.test/banner.jpg',
+      accentColor: '#FF4466',
+      socialLinks: { twitch: 'tw', youtube: 'yt', twitter: null },
+      createdAt: new Date().toISOString(),
+      followerCount: 0,
+      followingCount: 0,
+      followedByMe: null,
+      clips: [],
+    })
+    const router = makeRouter()
+    await router.push({ name: 'user', params: { username: 'seeduser' } })
+    await router.isReady()
+    const wrapper = mount(UserView, { global: { plugins: [router, createPinia()] } })
+    await flushPromises()
+
+    // Banner image replaces the gradient fallback when bannerUrl is set.
+    const bannerImg = wrapper.find('img[alt$="banner"]')
+    expect(bannerImg.exists()).toBe(true)
+    expect(bannerImg.attributes('src')).toBe('https://cdn.test/banner.jpg')
+
+    // Social links — Twitch + YouTube present, Twitter absent.
+    const links = wrapper.findAll('a[target="_blank"]')
+    const hrefs = links.map((a) => a.attributes('href'))
+    expect(hrefs).toContain('https://twitch.tv/tw')
+    expect(hrefs).toContain('https://youtube.com/@yt')
+    expect(hrefs.some((h) => h?.startsWith('https://x.com/'))).toBe(false)
+  })
+
+  it('falls back to the gradient banner when bannerUrl is null', async () => {
+    getByUsername.mockResolvedValue({
+      id: 'u1',
+      username: 'seeduser',
+      bio: null,
+      avatarUrl: null,
+      bannerUrl: null,
+      accentColor: null,
+      socialLinks: null,
+      createdAt: new Date().toISOString(),
+      followerCount: 0,
+      followingCount: 0,
+      followedByMe: null,
+      clips: [],
+    })
+    const router = makeRouter()
+    await router.push({ name: 'user', params: { username: 'seeduser' } })
+    await router.isReady()
+    const wrapper = mount(UserView, { global: { plugins: [router, createPinia()] } })
+    await flushPromises()
+
+    expect(wrapper.find('img[alt$="banner"]').exists()).toBe(false)
+    // Gradient applied inline on the banner container.
+    expect(wrapper.html()).toContain('linear-gradient')
+  })
+
   it('renders profile clips once loaded', async () => {
     getByUsername.mockResolvedValue({
       id: 'u1',

@@ -1,4 +1,5 @@
 import { api } from './client'
+import type { SocialLinks } from './auth'
 import type { ClipFeedItem } from './clips'
 
 export interface UserProfile {
@@ -6,6 +7,9 @@ export interface UserProfile {
   username: string
   bio: string | null
   avatarUrl: string | null
+  bannerUrl: string | null
+  accentColor: string | null
+  socialLinks: SocialLinks | null
   createdAt: string
   followerCount: number
   followingCount: number

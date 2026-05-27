@@ -58,6 +58,7 @@ public class ObjectStorageTests
                     new() { BucketName = "thumbnails" },
                     new() { BucketName = "game-covers" },
                     new() { BucketName = "stream-cache" },
+                    new() { BucketName = "avatars" },
                 },
             });
 
@@ -103,6 +104,7 @@ public class ObjectStorageTests
             ThumbnailsBucket = "thumbnails",
             GameCoversBucket = "clips", // aliased onto a private bucket
             StreamCacheBucket = "thumbnails", // also aliased — neither public bucket may get a policy
+            AvatarsBucket = "clips", // and the avatars bucket — must not expose private media either
         });
 
         await new S3ObjectStorageService(s3, options, NullLogger<S3ObjectStorageService>.Instance)

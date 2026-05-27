@@ -244,6 +244,11 @@ builder.Services.AddScoped<IClipImportUrlValidator, ClipImportUrlValidator>();
 builder.Services.AddScoped<ITagsResolver, TagsResolver>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 
+builder.Services.AddOptions<GankedTV.Api.Services.Profile.ProfileMediaOptions>()
+    .Configure(opts => builder.Configuration.GetSection("ProfileMedia").Bind(opts));
+builder.Services.AddScoped<GankedTV.Api.Services.Profile.IProfileMediaService,
+    GankedTV.Api.Services.Profile.ProfileMediaService>();
+
 // ---- Auth configuration ----
 
 builder.Services.AddOptions<JwtOptions>()
@@ -535,6 +540,7 @@ app.UseRateLimiter();
 
 app.MapAuthEndpoints();
 app.MapMeEndpoints();
+app.MapProfileMediaEndpoints();
 app.MapClipsUploadEndpoints();
 app.MapClipsImportEndpoints();
 app.MapClipsReadEndpoints();

@@ -23,4 +23,10 @@ public sealed class S3Options
 
     // Days a cached rendition survives before the bucket's lifecycle expiry removes it.
     public int StreamCacheTtlDays { get; set; } = 14;
+
+    // User avatars and banners. Anonymous-read like game-covers so the stored URL is a stable,
+    // cacheable public URL that doesn't need presigning on every read. Object keys carry a
+    // ULID suffix so a replacement upload writes to a new key, the DB swap is atomic, and the
+    // old object can be deleted afterwards without browser-cache invalidation pain.
+    public string AvatarsBucket { get; set; } = "avatars";
 }
