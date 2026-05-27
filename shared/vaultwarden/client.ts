@@ -84,7 +84,15 @@ export async function fetchSecrets(opts: FetchSecretsOptions): Promise<Record<st
       continue;
     }
 
-    const body = (await res.json()) as { name?: string; value?: string };
+    let body: { name?: string; value?: string };
+    try {
+      body = (await res.json()) as { name?: string; value?: string };
+    } catch (err) {
+      if (throwOnError) {
+        throw new Error(`Vaultwarden: invalid JSON for ${name} from ${opts.collection}`, { cause: err });
+      }
+      continue;
+    }
     if (body.value) out[name] = body.value;
   }
 

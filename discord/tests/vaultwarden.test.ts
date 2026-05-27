@@ -122,6 +122,15 @@ describe('fetchSecrets', () => {
     ).toEqual({});
   });
 
+  test('treats a malformed 200 body like an error (skipped, or thrown with throwOnError)', async () => {
+    const badBody = (async () =>
+      new Response('<html>not json', { status: 200 })) as unknown as typeof fetch;
+    expect(await fetchSecrets({ ...base, fetchImpl: badBody })).toEqual({});
+    await expect(fetchSecrets({ ...base, throwOnError: true, fetchImpl: badBody })).rejects.toThrow(
+      /invalid JSON/,
+    );
+  });
+
   test('fetches multiple manifest keys sequentially', async () => {
     const { fetchImpl, calls } = fakeFetch((url) => {
       const key = decodeURIComponent(url.split('/secret/')[1]!.split('?')[0]!);

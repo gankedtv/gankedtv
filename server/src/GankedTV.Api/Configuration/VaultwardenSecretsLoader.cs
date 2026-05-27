@@ -51,6 +51,8 @@ public sealed class VaultwardenSecretsLoader
         string collection,
         ILogger<VaultwardenSecretsLoader> logger)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(options.ApiUrl);
+        ArgumentException.ThrowIfNullOrWhiteSpace(options.ApiKey);
         _httpClient = httpClient;
         _options = options;
         _collection = collection;
@@ -109,7 +111,7 @@ public sealed class VaultwardenSecretsLoader
             {
                 value = await FetchSecretAsync(key, ct);
             }
-            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
             {
                 if (failFast)
                 {

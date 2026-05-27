@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using FluentAssertions;
 using GankedTV.Api.Configuration;
 using GankedTV.Api.Tests.TestSupport;
@@ -43,6 +44,19 @@ public class VaultwardenSecretsLoaderTests
     }
 
     [Fact]
+    public void Constructor_RejectsBlankBootstrapVars()
+    {
+        using var http = new HttpClient();
+        var act = () => new VaultwardenSecretsLoader(
+            http,
+            new VaultwardenOptions { ApiUrl = "", ApiKey = "" },
+            "Secrets - DEV",
+            NullLogger<VaultwardenSecretsLoader>.Instance);
+
+        act.Should().Throw<ArgumentException>();
+    }
+
+    [Fact]
     public async Task FetchSecretAsync_ParsesValue_AndScopesRequestByOrgAndCollection()
     {
         var handler = new TestHttpMessageHandler()
@@ -76,6 +90,16 @@ public class VaultwardenSecretsLoaderTests
             .OnGet(SecretPrefix, HttpStatusCode.InternalServerError, """{"error":"boom"}""");
 
         await Assert.ThrowsAsync<HttpRequestException>(
+            () => Build(handler).FetchSecretAsync("DATABASE_URL", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task FetchSecretAsync_MalformedJson_Throws()
+    {
+        var handler = new TestHttpMessageHandler()
+            .OnGet(SecretPrefix, HttpStatusCode.OK, "<html>not json</html>");
+
+        await Assert.ThrowsAsync<JsonException>(
             () => Build(handler).FetchSecretAsync("DATABASE_URL", CancellationToken.None));
     }
 
@@ -139,6 +163,27 @@ public class VaultwardenSecretsLoaderTests
     {
         var handler = new TestHttpMessageHandler()
             .OnGet(SecretPrefix, HttpStatusCode.InternalServerError, """{"error":"boom"}""");
+        var (get, set, _) = FakeEnv();
+
+        var applied = await Build(handler).LoadAsync(failFast: false, get, set, manifest: ["DATABASE_URL"]);
+
+        applied.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task LoadAsync_Production_MalformedJson_Throws()
+    {
+        var handler = new TestHttpMessageHandler().OnGet(SecretPrefix, HttpStatusCode.OK, "<html>");
+        var (get, set, _) = FakeEnv();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => Build(handler).LoadAsync(failFast: true, get, set, manifest: ["DATABASE_URL"]));
+    }
+
+    [Fact]
+    public async Task LoadAsync_Development_MalformedJson_FallsBack()
+    {
+        var handler = new TestHttpMessageHandler().OnGet(SecretPrefix, HttpStatusCode.OK, "<html>");
         var (get, set, _) = FakeEnv();
 
         var applied = await Build(handler).LoadAsync(failFast: false, get, set, manifest: ["DATABASE_URL"]);
