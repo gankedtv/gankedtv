@@ -171,10 +171,13 @@ public static class GamesEndpoints
         GankedTvDbContext db,
         IObjectStorageService storage,
         IOptions<S3Options> s3,
+        IFeedCache feedCache,
         CancellationToken ct)
     {
-        var windowKey = window ?? LeaderboardWindow.Default;
-        if (!LeaderboardWindow.TryParse(windowKey, out var since))
+        if (!LeaderboardWindow.TryParseRequest(
+                window, limit,
+                LeaderboardsEndpoints.DefaultClipsLimit, LeaderboardsEndpoints.MaxClipsLimit,
+                out var windowKey, out var since, out var cap))
         {
             return ProblemResults.BadRequest("invalid_window");
         }
@@ -191,13 +194,22 @@ public static class GamesEndpoints
         if (game is null)
             return ProblemResults.NotFound("not_found");
 
-        var cap = Math.Clamp(limit ?? LeaderboardsEndpoints.DefaultClipsLimit, 1, LeaderboardsEndpoints.MaxClipsLimit);
-        var baseQuery = db.Clips.AsNoTracking()
-            .Where(c => c.GameId == game.Id && c.Visibility == "public" && c.Status == "ready");
+        // Cache the anonymous entry list keyed by slug+window+cap; stamp LikedByMe post-cache.
+        // Same TTL-only contract as the global board and trending — likes don't bust the cache.
+        var gameId = game.Id;
+        var anonymousEntries = await feedCache.GetOrCreateLeaderboardAsync(
+            $"lb:game:{slug}:{windowKey}:{cap}",
+            c =>
+            {
+                var baseQuery = db.Clips.AsNoTracking()
+                    .Where(cl => cl.GameId == gameId && cl.Visibility == "public" && cl.Status == "ready");
+                return new ValueTask<List<LeaderboardEntry>>(
+                    LeaderboardsEndpoints.BuildAnonymousEntriesAsync(baseQuery, since, cap, db, storage, s3, c));
+            },
+            ct);
 
-        var entries = await LeaderboardsEndpoints.BuildEntriesAsync(
-            baseQuery, since, cap, principal, db, storage, s3, ct);
-
-        return Results.Ok(new GameLeaderboardResponse(windowKey, game.Summary, entries));
+        var stamped = await LeaderboardsEndpoints.StampLikedByMeOnEntriesAsync(
+            anonymousEntries, principal, db, ct);
+        return Results.Ok(new GameLeaderboardResponse(windowKey, game.Summary, stamped));
     }
 }

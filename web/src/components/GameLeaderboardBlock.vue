@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
-import { leaderboards, type LeaderboardEntry, type LeaderboardWindow } from '@/api/leaderboards'
+import { computed, onMounted, watch } from 'vue'
+import { leaderboards, type LeaderboardWindow } from '@/api/leaderboards'
+import { useLatestRequest } from '@/composables/useLatestRequest'
 import LeaderboardRow from '@/components/LeaderboardRow.vue'
 
 const props = withDefaults(
@@ -14,34 +15,15 @@ const props = withDefaults(
   { window: 'week', limit: 5 },
 )
 
-const entries = ref<LeaderboardEntry[]>([])
-const loading = ref(false)
-const errored = ref(false)
-let latestLoadId = 0
+const { data, loading, errored, run } = useLatestRequest(
+  () => leaderboards.forGame(props.slug, { window: props.window, limit: props.limit }),
+  { label: 'game leaderboard' },
+)
+const entries = computed(() => data.value?.entries ?? [])
 
-async function load() {
-  const id = ++latestLoadId
-  loading.value = true
-  errored.value = false
-  try {
-    const resp = await leaderboards.forGame(props.slug, {
-      window: props.window,
-      limit: props.limit,
-    })
-    if (id !== latestLoadId) return
-    entries.value = resp.entries
-  } catch (err) {
-    if (id !== latestLoadId) return
-    console.error('game leaderboard: load failed', err)
-    errored.value = true
-  } finally {
-    if (id === latestLoadId) loading.value = false
-  }
-}
-
-onMounted(load)
+onMounted(run)
 // Refetch when the parent navigates between games (slug changes) without unmounting.
-watch(() => [props.slug, props.window], load)
+watch(() => [props.slug, props.window, props.limit], run)
 
 const windowLabel = {
   week: 'This Week',

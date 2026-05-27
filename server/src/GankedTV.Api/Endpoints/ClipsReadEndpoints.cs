@@ -10,6 +10,7 @@ using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Pagination;
 using GankedTV.Api.Problems;
 using GankedTV.Api.Services.Caching;
+using GankedTV.Api.Services.Feeds;
 using GankedTV.Api.Services.Media;
 using GankedTV.Api.Validation;
 using GankedTV.Api.Services.ObjectStorage;
@@ -294,35 +295,14 @@ public static class ClipsReadEndpoints
             .Select(r => r.Clip.Id)
             .ToList();
 
-        if (topIds.Count == 0)
-        {
-            return new CachedFeedPage([], NextCursor: null);
-        }
-
-        // Re-hydrate with feed Includes (the candidate Select dropped them) and preserve
-        // ranking order. EF's Contains() generates IN (...) which doesn't preserve order, so
-        // we re-sort in C# after fetch using the topIds index.
-        //
-        // Visibility/status filters from `baseQuery` aren't reapplied here because `topIds` was
-        // already derived from the filtered candidate set. The micro-race window — a clip
-        // flipping to unlisted or back to processing between scoring and rehydration — could
-        // surface one stale row in a trending response; accepted as bounded and self-healing
-        // on the next request. A clip *deleted* between scoring and rehydration just drops
-        // out of the result (TryGetValue skip) rather than 500ing.
-        var ordered = await db.Clips.AsNoTracking()
-            .Where(c => topIds.Contains(c.Id))
-            .IncludeFeedRelations()
-            .ToListAsync(ct);
-
-        var byId = ordered.ToDictionary(c => c.Id);
-        var ranked = new List<Clip>(topIds.Count);
-        foreach (var id in topIds)
-        {
-            if (byId.TryGetValue(id, out var clip))
-            {
-                ranked.Add(clip);
-            }
-        }
+        // Visibility/status filters from `baseQuery` aren't reapplied at hydrate because
+        // `topIds` was already derived from the filtered candidate set. The micro-race window
+        // — a clip flipping to unlisted or back to processing between scoring and rehydration —
+        // could surface one stale row in a trending response; accepted as bounded and
+        // self-healing on the next request. A clip *deleted* between scoring and rehydration
+        // just drops out of the result rather than 500ing.
+        var ranked = await RankedFeedBuilder.HydrateOrderedAsync(
+            topIds, db, reapplyPublicReadyFilter: false, ct);
 
         var items = ProjectAnonymousFeedItems(ranked, storage, s3);
         return new CachedFeedPage(items, NextCursor: null);

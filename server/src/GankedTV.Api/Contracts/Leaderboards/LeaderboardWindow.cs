@@ -39,4 +39,24 @@ public static class LeaderboardWindow
                 return false;
         }
     }
+
+    // Bundles the window-default-and-parse + limit-clamp that every leaderboard handler
+    // does up-front. `windowKey` is the resolved string (defaulted when null) so callers
+    // can echo it back in the response payload; `since` is the parsed cutoff; `clampedLimit`
+    // is the input limit clamped to [1, maxLimit] with the default applied when null.
+    // Returns false only when an explicit, non-null window string doesn't match a known
+    // value — the caller should turn that into a 400.
+    public static bool TryParseRequest(
+        string? window,
+        int? limit,
+        int defaultLimit,
+        int maxLimit,
+        out string windowKey,
+        out DateTimeOffset since,
+        out int clampedLimit)
+    {
+        windowKey = window ?? Default;
+        clampedLimit = Math.Clamp(limit ?? defaultLimit, 1, maxLimit);
+        return TryParse(windowKey, out since);
+    }
 }

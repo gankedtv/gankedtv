@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
 import { clips, type ClipFeedItem } from '@/api/clips'
 import { games as gamesApi, type GameListItem } from '@/api/games'
+import { useLatestRequest } from '@/composables/useLatestRequest'
 import { formatNum } from '@/lib/format'
 import GameTag from '@/components/GameTag.vue'
 import DurationBadge from '@/components/DurationBadge.vue'
@@ -24,43 +25,28 @@ const TIME_WINDOWS = [
 
 const timeWindow = ref<TrendingWindow>('24h')
 
-const topClips = ref<ClipFeedItem[]>([])
-const loading = ref(false)
-const errored = ref(false)
-
-const hotGames = ref<GameListItem[]>([])
-
-// Monotonic token so rapid `timeWindow` toggles (24h → 7d → 24h …) don't let a slow
-// earlier response overwrite a newer one. Without this, the user can land on `7d` and
-// see `24h` results blink in a moment later.
-let latestLoadId = 0
-
-async function load() {
-  const loadId = ++latestLoadId
-  loading.value = true
-  errored.value = false
-  try {
+// Hot games don't depend on the window, so reloading them on each toggle is wasted work
+// but the simplicity wins (and they're cheap). One composable covers both so a rapid
+// window flip still gets a single loading/errored signal.
+const { data, loading, errored, run } = useLatestRequest<{
+  topClips: ClipFeedItem[]
+  hotGames: GameListItem[]
+}>(
+  async () => {
     const [feed, games] = await Promise.all([
       clips.feed({ sort: 'trending', window: timeWindow.value, limit: 50 }),
       gamesApi.list(8),
     ])
-    if (loadId !== latestLoadId) return
-    topClips.value = feed.items.slice(0, 10)
-    hotGames.value = games
-  } catch (err) {
-    if (loadId !== latestLoadId) return
-    console.error('trending: load failed', err)
-    errored.value = true
-  } finally {
-    if (loadId === latestLoadId) loading.value = false
-  }
-}
+    return { topClips: feed.items.slice(0, 10), hotGames: games }
+  },
+  { label: 'trending' },
+)
 
-onMounted(load)
+const topClips = computed(() => data.value?.topClips ?? [])
+const hotGames = computed(() => data.value?.hotGames ?? [])
 
-// Window change → re-fetch. Hot games don't depend on the window, so reloading them is
-// wasted work but the simplicity wins; the request is cheap and small.
-watch(timeWindow, load)
+onMounted(run)
+watch(timeWindow, run)
 
 function selectWindow(key: string, enabled: boolean) {
   if (!enabled || key === timeWindow.value) return
@@ -115,7 +101,7 @@ const rankRest = `${rankBase} text-text-muted`
     <StatusPanel v-if="errored" kind="error" message="Couldn't load trending.">
       <button
         class="cursor-pointer rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
-        @click="load"
+        @click="run"
       >
         Retry
       </button>

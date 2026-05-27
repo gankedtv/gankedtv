@@ -80,4 +80,44 @@ public class FeedCacheTests
 
         trendingCalls.Should().Be(1, "the feed tag must not evict trending entries");
     }
+
+    [Fact]
+    public async Task GetOrCreateLeaderboardAsync_SecondCall_ServedFromCache()
+    {
+        var (cache, sp) = Build();
+        await using var _ = sp;
+        var calls = 0;
+        ValueTask<int> Factory(CancellationToken _)
+        {
+            calls++;
+            return new ValueTask<int>(42);
+        }
+
+        var first = await cache.GetOrCreateLeaderboardAsync("lb:global:week:10:10", Factory, default);
+        var second = await cache.GetOrCreateLeaderboardAsync("lb:global:week:10:10", Factory, default);
+
+        calls.Should().Be(1, "the second call must hit the cache, not the factory");
+        first.Should().Be(42);
+        second.Should().Be(42);
+    }
+
+    [Fact]
+    public async Task InvalidateFeedsAsync_DoesNotEvictLeaderboards()
+    {
+        // Leaderboards live under their own tag and are TTL-governed; a feed invalidation must leave them.
+        var (cache, sp) = Build();
+        await using var _ = sp;
+        var calls = 0;
+        ValueTask<int> Factory(CancellationToken _)
+        {
+            calls++;
+            return new ValueTask<int>(1);
+        }
+
+        await cache.GetOrCreateLeaderboardAsync("lb:global:week:10:10", Factory, default);
+        await cache.InvalidateFeedsAsync(default);
+        await cache.GetOrCreateLeaderboardAsync("lb:global:week:10:10", Factory, default);
+
+        calls.Should().Be(1, "the feed tag must not evict leaderboard entries");
+    }
 }
