@@ -3,16 +3,94 @@
 # Tear down a worktree created by scripts/new-worktree.sh: stop containers,
 # remove named volumes (data is throwaway), and remove the worktree.
 #
-# Usage: ./scripts/remove-worktree.sh <issue-number> [--force]
+# Usage:
+#   ./scripts/remove-worktree.sh <issue-number> [--force]   single-shot teardown
+#   ./scripts/remove-worktree.sh --merged [--yes]           scan .worktrees/ and
+#                                                            tear down every one
+#                                                            whose PR is merged
 #
 # Extra flags after the issue number pass through to `git worktree remove`
 # (e.g. --force to discard uncommitted changes).
 
 set -euo pipefail
 
+# ---- batch mode: --merged ----------------------------------------------------
+# Scans .worktrees/issue-*/, checks each branch's PR state via `gh`, previews
+# the set of merged ones, prompts, then recurses into single-shot mode for each.
+if [[ "${1:-}" == "--merged" ]]; then
+  shift
+  assume_yes=0
+  if [[ "${1:-}" == "--yes" || "${1:-}" == "-y" ]]; then
+    assume_yes=1
+    shift
+  fi
+
+  repo_root=$(git rev-parse --show-toplevel)
+  cd "$repo_root"
+
+  if [[ ! -d .worktrees ]]; then
+    echo "no .worktrees/ directory — nothing to clean up"
+    exit 0
+  fi
+
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "error: gh CLI required for --merged mode" >&2
+    exit 1
+  fi
+
+  to_remove=()
+  printf '\nWorktree status:\n'
+  printf '%-8s %-12s %-50s %s\n' 'ISSUE' 'PR STATE' 'BRANCH' 'DECISION'
+  printf '%-8s %-12s %-50s %s\n' '-----' '--------' '------' '--------'
+  shopt -s nullglob
+  for d in .worktrees/issue-*/; do
+    n="${d#.worktrees/issue-}"; n="${n%/}"
+    branch=$(git -C "$d" branch --show-current 2>/dev/null || true)
+    if [[ -z "$branch" ]]; then
+      printf '%-8s %-12s %-50s %s\n' "#$n" 'NO-BRANCH' '(detached)' 'skip'
+      continue
+    fi
+    pr_state=$(gh pr list --head "$branch" --state all --json state --jq '.[0].state // "NONE"' 2>/dev/null || echo 'GH-FAIL')
+    if [[ "$pr_state" == "MERGED" ]]; then
+      printf '%-8s %-12s %-50s %s\n' "#$n" "$pr_state" "$branch" 'REMOVE'
+      to_remove+=("$n")
+    else
+      printf '%-8s %-12s %-50s %s\n' "#$n" "$pr_state" "$branch" 'skip'
+    fi
+  done
+  shopt -u nullglob
+
+  if (( ${#to_remove[@]} == 0 )); then
+    printf '\nNothing to remove.\n'
+    exit 0
+  fi
+
+  printf '\nAbout to remove %d worktree(s): %s\n' "${#to_remove[@]}" "${to_remove[*]}"
+  printf 'This stops + removes docker containers, drops postgres/minio volumes,\n'
+  printf 'removes the .worktrees/issue-<n>/ dir, and deletes the local branch.\n'
+  if (( ! assume_yes )); then
+    printf 'Proceed? [y/N] '
+    read -r confirm
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+      echo "aborted"
+      exit 0
+    fi
+  fi
+
+  for n in "${to_remove[@]}"; do
+    printf '\n=== removing #%s ===\n' "$n"
+    "$0" "$n" || echo "warning: removal of #$n failed, continuing"
+  done
+
+  printf '\n✓ cleanup complete\n'
+  exit 0
+fi
+
+# ---- single-shot mode --------------------------------------------------------
 issue="${1:-}"
 if [[ -z "$issue" ]]; then
   echo "usage: $0 <issue-number> [--force]" >&2
+  echo "       $0 --merged [--yes]" >&2
   exit 1
 fi
 issue="${issue#\#}"

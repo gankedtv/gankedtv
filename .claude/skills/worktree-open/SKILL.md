@@ -1,9 +1,9 @@
 ---
-name: open-worktrees
-description: Use when the user wants to open GankedTV worktrees (`.worktrees/issue-<n>/`) in their terminal — iTerm2 on macOS (3 tabs × N side-by-side panes), Terminal.app on macOS (3 windows × N tabs), or Konsole on KDE/Linux (3 windows × N tabs). Each role (claude / server / web) groups all issues. Triggers on phrases like "open worktrees for X Y Z", "open worktree tabs", "spin up panes for these issues", "set up iTerm splits for these worktrees", or when `/worktree` is invoked with a terminal keyword.
+name: worktree-open
+description: Use when the user wants to open GankedTV worktree(s) (`.worktrees/issue-<n>/`) in their terminal — iTerm2 on macOS (3 tabs × N side-by-side panes), Terminal.app on macOS (3 windows × N tabs), or Konsole on KDE/Linux (3 windows × N tabs). Each role (claude / server / web) groups all issues. Works for one issue or many. Triggers on phrases like "open worktree for X", "open worktrees for X Y Z", "open worktree tabs", "spin up panes for these issues", "set up iTerm splits for these worktrees", or when `/worktree` is invoked with a terminal keyword.
 ---
 
-# Open worktrees
+# Worktree open
 
 This skill is a router. The shared logic (metadata extraction, preconditions, naming scheme) lives here; the AppleScript implementation lives in a sibling file picked per terminal.
 
