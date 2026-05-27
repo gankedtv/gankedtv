@@ -16,7 +16,7 @@ iTerm2 derives the tab strip title from the currently active pane's name (no sep
 
 ## Sizing
 
-All splits inside a tab are vertical (side-by-side). iTerm2's `split vertically` bisects the source pane 50/50, and each split targets the most-recently-created pane, so widths land at 50 / 25 / 25 for 3 issues and 50 / 25 / 12.5 / 12.5 for 4 — pane 1 always keeps half the tab. For 2 issues this is fine; for 3+ either live with the imbalance, manually `Cmd+Opt+Shift+Left` from pane 1 to push the divider, or batch larger sets across multiple runs.
+All splits inside a tab are vertical (side-by-side). iTerm2's `split vertically` bisects the source pane 50/50, and each split targets the previously-created pane, so widths land at 50 / 25 / 25 for 3 issues and 50 / 25 / 12.5 / 12.5 for 4 — pane 1 always keeps half the tab. For 2–3 issues this is fine; for 4+ either live with the imbalance, manually `Cmd+Opt+Shift+Left` from pane 1 to push the divider, or batch larger sets across multiple runs.
 
 ## Implementation
 

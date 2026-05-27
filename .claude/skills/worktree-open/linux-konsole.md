@@ -41,10 +41,13 @@ open_window() {
     name="$prefix • $role"
     case "$role" in
       # Single quotes inside the outer double-quoted bash -c arg keep the slash
-      # command intact when bash re-parses argv.
-      claude) cmd="bash -c \"claude --permission-mode plan '/issue $num'\"" ;;
-      server) cmd="bash -c \"make server\"" ;;
-      web)    cmd="bash -c \"make up && make web\"" ;;
+      # command intact when bash re-parses argv. We prefix `cd $wt &&` even
+      # though `workdir:` already chdir's the spawned process — matches the
+      # iTerm/Terminal subfiles and means cwd is set by argv, not by Konsole's
+      # internal field handling.
+      claude) cmd="bash -c \"cd $wt && claude --permission-mode plan '/issue $num'\"" ;;
+      server) cmd="bash -c \"cd $wt && make server\"" ;;
+      web)    cmd="bash -c \"cd $wt && make up && make web\"" ;;
       *) echo "unknown role: $role" >&2; rm -f "$tabsfile"; return 1 ;;
     esac
     printf 'title: %s;; workdir: %s;; command: %s\n' "$name" "$wt" "$cmd" >> "$tabsfile"

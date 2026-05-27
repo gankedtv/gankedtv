@@ -37,6 +37,13 @@ if [[ "${1:-}" == "--merged" ]]; then
     echo "error: gh CLI required for --merged mode" >&2
     exit 1
   fi
+  # Fail loudly on missing auth — without this, every PR lookup silently
+  # returns GH-FAIL and the user sees "Nothing to remove" instead of an
+  # actionable error.
+  if ! gh auth status >/dev/null 2>&1; then
+    echo "error: gh not authenticated — run 'gh auth login'" >&2
+    exit 1
+  fi
 
   to_remove=()
   printf '\nWorktree status:\n'
@@ -50,7 +57,12 @@ if [[ "${1:-}" == "--merged" ]]; then
       printf '%-8s %-12s %-50s %s\n' "#$n" 'NO-BRANCH' '(detached)' 'skip'
       continue
     fi
-    pr_state=$(gh pr list --head "$branch" --state all --json state --jq '.[0].state // "NONE"' 2>/dev/null || echo 'GH-FAIL')
+    # `gh pr view <branch>` is tighter than `gh pr list --head <branch>` —
+    # the latter can match across fork branches with the same name and the
+    # `.[0]` pick is undefined. `pr view` resolves to the single PR opened
+    # from this repo's branch, or exits non-zero (→ NONE).
+    pr_state=$(gh pr view "$branch" --json state --jq '.state' 2>/dev/null || echo 'NONE')
+    [[ -z "$pr_state" ]] && pr_state='NONE'
     if [[ "$pr_state" == "MERGED" ]]; then
       printf '%-8s %-12s %-50s %s\n' "#$n" "$pr_state" "$branch" 'REMOVE'
       to_remove+=("$n")

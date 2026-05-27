@@ -9,7 +9,9 @@ This skill is a router. The shared logic (metadata extraction, preconditions, na
 
 ## Pick the implementation
 
-Detect the active terminal, then Read the matching sibling file. Check in order:
+**If the user (or `/worktree`'s terminal flag) explicitly named a terminal** ("open these in Terminal.app" / "use Konsole" / "use iTerm"), use that — skip env detection entirely.
+
+Otherwise, detect the active terminal by Reading the matching sibling file. Check in order:
 
 | Condition (first match wins)                          | File to read                                                   |
 |-------------------------------------------------------|----------------------------------------------------------------|
@@ -17,8 +19,6 @@ Detect the active terminal, then Read the matching sibling file. Check in order:
 | `$TERM_PROGRAM` = `Apple_Terminal`                    | [macos-terminal.md](macos-terminal.md) — 3 windows × N tabs    |
 | `$KONSOLE_VERSION` is set (Linux + KDE)               | [linux-konsole.md](linux-konsole.md) — 3 windows × N tabs      |
 | anything else                                         | stop — bail; this terminal isn't supported yet                 |
-
-If the user explicitly names a terminal ("open these in Terminal.app" / "use Konsole" / "use iTerm"), honor that over the detected value.
 
 ## Goal (both implementations)
 
@@ -46,6 +46,7 @@ REPO_ROOT="$(git rev-parse --show-toplevel)" || { echo "not in a git repo" >&2; 
 
 declare -a NUMS PREFIXES WORKTREES
 for n in $ISSUE_LIST; do
+  [[ "$n" =~ ^[0-9]+$ ]] || { echo "bad issue number: $n" >&2; exit 1; }
   wt="$REPO_ROOT/.worktrees/issue-$n"
   raw_title=$(gh issue view "$n" --json title -q .title 2>/dev/null || true)
   safe_title=$(printf '%s' "$raw_title" \
