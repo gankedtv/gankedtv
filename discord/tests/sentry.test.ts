@@ -56,6 +56,6 @@ describe('initSentry', () => {
     initSentry(loadConfig({ ...baseEnv, DISCORD_SENTRY_DSN: 'https://abc@glitchtip.test/1' }), {
       init,
     });
-    expect(init.mock.calls[0]?.[0]).toMatchObject({ tracesSampleRate: 0.1 });
+    expect(init.mock.calls[0]?.[0]).toMatchObject({ tracesSampleRate: 0.01 });
   });
 });

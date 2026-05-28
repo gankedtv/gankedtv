@@ -31,7 +31,7 @@ export function initSentry(config: Config, sdk: SentrySdk = Sentry): void {
     dsn: config.DISCORD_SENTRY_DSN,
     environment: config.DISCORD_SENTRY_ENVIRONMENT?.trim() || process.env.NODE_ENV || 'development',
     release: config.DISCORD_SENTRY_RELEASE?.trim() || gitShortSha() || pkg.version,
-    tracesSampleRate: Number.isFinite(rate) ? rate : 0.1,
+    tracesSampleRate: Number.isFinite(rate) ? rate : 0.01,
     sendDefaultPii: false,
   });
 }

@@ -56,7 +56,7 @@ export function initSentry(app: App, router: Router): void {
     environment: import.meta.env.VITE_SENTRY_ENVIRONMENT?.trim() || import.meta.env.MODE,
     release: import.meta.env.VITE_SENTRY_RELEASE?.trim() || __APP_VERSION__,
     integrations: [Sentry.browserTracingIntegration({ router })],
-    tracesSampleRate: Number.isFinite(sampleRate) ? sampleRate : 0.1,
+    tracesSampleRate: Number.isFinite(sampleRate) ? sampleRate : 0.01,
     tracePropagationTargets: [API_BASE_URL],
     // PII off: don't attach IP/headers/cookies. Defense-in-depth scrubbing via the helpers above.
     sendDefaultPii: false,

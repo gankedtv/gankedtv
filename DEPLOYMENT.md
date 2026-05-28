@@ -137,7 +137,7 @@ runtime:
 All three apps ship the official **Sentry SDK** pointed at the self-hosted **GlitchTip** instance
 (Sentry-API-compatible). It is **opt-in and disabled by default** — each SDK no-ops when its DSN is
 unset, the same contract as the IGDB sync and Discord bot. Posture is **errors/crashes + light
-tracing** (sample rate `0.1`); session replay, profiling, and Sentry "logs" are intentionally off
+tracing** (sample rate `0.01`); session replay, profiling, and Sentry "logs" are intentionally off
 (GlitchTip doesn't support them). `SendDefaultPii` is `false` everywhere and credential-bearing
 headers/cookies/query params are scrubbed before events leave the app.
 
@@ -152,7 +152,7 @@ too, hence the `DISCORD_`-prefix:
 | Discord bot (Bun) | `DISCORD_SENTRY_DSN` | `DISCORD_SENTRY_ENVIRONMENT` → `NODE_ENV`; `DISCORD_SENTRY_RELEASE` → package version |
 
 `SENTRY_TRACES_SAMPLE_RATE` / `VITE_SENTRY_TRACES_SAMPLE_RATE` / `DISCORD_SENTRY_TRACES_SAMPLE_RATE`
-override the `0.1` default. Leave the `*_RELEASE` vars unset for now — the #123 deploy pipeline will
+override the `0.01` default. Leave the `*_RELEASE` vars unset for now — the #123 deploy pipeline will
 set them to the commit SHA so issues map to deploys.
 
 ## Reference

@@ -100,7 +100,7 @@ builder.WebHost.UseSentry(o =>
             CultureInfo.InvariantCulture,
             out var rate)
             ? rate
-            : builder.Configuration.GetValue("Sentry:TracesSampleRate", 0.1);
+            : builder.Configuration.GetValue("Sentry:TracesSampleRate", 0.01);
 });
 builder.Services.AddSingleton<ISentryEventProcessor, SentryPiiScrubber>();
 
