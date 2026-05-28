@@ -48,9 +48,9 @@ if (builder.Environment.IsDevelopment())
 // when the bootstrap vars are unset; logic lives in the loader to stay in the coverage denominator.
 var vaultwardenOptions = new VaultwardenOptions
 {
-    ApiUrl = Environment.GetEnvironmentVariable("VAULTWARDEN_API_URL"),
-    ApiKey = Environment.GetEnvironmentVariable("VAULTWARDEN_API_KEY"),
-    Organization = Environment.GetEnvironmentVariable("VAULTWARDEN_ORG") is { Length: > 0 } vaultOrg
+    ApiUrl = Environment.GetEnvironmentVariable("VAULTWARDEN_API_URL")?.Trim(),
+    ApiKey = Environment.GetEnvironmentVariable("VAULTWARDEN_API_KEY")?.Trim(),
+    Organization = Environment.GetEnvironmentVariable("VAULTWARDEN_ORG")?.Trim() is { Length: > 0 } vaultOrg
         ? vaultOrg
         : "GankedTV",
     Collection = Environment.GetEnvironmentVariable("VAULTWARDEN_COLLECTION"),

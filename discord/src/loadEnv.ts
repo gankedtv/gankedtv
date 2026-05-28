@@ -71,9 +71,9 @@ export async function loadVaultwardenSecrets(
   target: Record<string, string | undefined> = process.env,
   opts: { manifest?: readonly string[]; fetchImpl?: typeof fetch; timeoutMs?: number } = {},
 ): Promise<void> {
-  const apiUrl = target.VAULTWARDEN_API_URL;
-  const apiKey = target.VAULTWARDEN_API_KEY;
-  if (!apiUrl?.trim() || !apiKey?.trim()) return; // opt-in: no bootstrap vars → no-op
+  const apiUrl = target.VAULTWARDEN_API_URL?.trim();
+  const apiKey = target.VAULTWARDEN_API_KEY?.trim();
+  if (!apiUrl || !apiKey) return; // opt-in: no bootstrap vars → no-op
 
   const environment = target.ASPNETCORE_ENVIRONMENT ?? target.NODE_ENV;
   const failFast = environment?.toLowerCase() === 'production';
@@ -90,7 +90,11 @@ export async function loadVaultwardenSecrets(
     fetchImpl: opts.fetchImpl,
     timeoutMs: opts.timeoutMs,
   });
-  mergeFirstWins(target, fetched);
+  // Fill keys that are unset OR a blank placeholder (matching the server's IsNullOrWhiteSpace skip);
+  // a non-empty value still wins. mergeFirstWins (presence-based) stays for the .env layering above.
+  for (const [key, value] of Object.entries(fetched)) {
+    if (!target[key]?.trim()) target[key] = value;
+  }
 }
 
 // Side effect at import time. Tests of the helpers above pass an explicit

@@ -38,6 +38,7 @@ public sealed class TestHttpMessageHandler : HttpMessageHandler
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         Requests.Add(request);
         if (request.Content is not null)
         {

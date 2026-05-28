@@ -35,7 +35,7 @@ public sealed class VaultwardenOptions
     {
         if (!string.IsNullOrWhiteSpace(explicitCollection))
         {
-            return explicitCollection;
+            return explicitCollection.Trim();
         }
 
         return string.Equals(aspnetEnvironment, "Production", StringComparison.OrdinalIgnoreCase)

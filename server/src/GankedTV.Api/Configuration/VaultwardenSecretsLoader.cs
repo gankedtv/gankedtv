@@ -111,6 +111,10 @@ public sealed class VaultwardenSecretsLoader
             {
                 value = await FetchSecretAsync(key, ct);
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw; // caller cancelled — propagate, don't swallow as a fetch failure
+            }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
             {
                 if (failFast)

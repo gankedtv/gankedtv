@@ -7,8 +7,8 @@
  * back to `NODE_ENV`) maps to `"Secrets - PROD"` and anything else to `"Secrets - DEV"`.
  */
 export function resolveCollection(env: Record<string, string | undefined>): string {
-  const explicit = env.VAULTWARDEN_COLLECTION;
-  if (explicit?.trim()) return explicit;
+  const explicit = env.VAULTWARDEN_COLLECTION?.trim();
+  if (explicit) return explicit;
   const e = env.ASPNETCORE_ENVIRONMENT ?? env.NODE_ENV;
   return e?.toLowerCase() === 'production' ? 'Secrets - PROD' : 'Secrets - DEV';
 }

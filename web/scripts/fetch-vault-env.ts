@@ -33,9 +33,9 @@ export async function fetchViteEnv(
   fetchImpl: typeof fetch = fetch,
   manifest: readonly string[] = viteManifest,
 ): Promise<Record<string, string>> {
-  const apiUrl = env.VAULTWARDEN_API_URL
-  const apiKey = env.VAULTWARDEN_API_KEY
-  if (!apiUrl?.trim() || !apiKey?.trim()) return {}
+  const apiUrl = env.VAULTWARDEN_API_URL?.trim()
+  const apiKey = env.VAULTWARDEN_API_KEY?.trim()
+  if (!apiUrl || !apiKey) return {}
   return fetchSecrets({
     apiUrl,
     apiKey,

@@ -204,4 +204,17 @@ public class VaultwardenSecretsLoaderTests
         applied.Should().BeEmpty();
         handler.Requests.Should().HaveCount(VaultwardenSecretsLoader.Manifest.Count);
     }
+
+    [Fact]
+    public async Task LoadAsync_CallerCancellation_Propagates()
+    {
+        var handler = new TestHttpMessageHandler()
+            .OnGet(SecretPrefix, HttpStatusCode.OK, """{"name":"DATABASE_URL","value":"v"}""");
+        var (get, set, _) = FakeEnv();
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => Build(handler).LoadAsync(failFast: false, get, set, manifest: ["DATABASE_URL"], ct: cts.Token));
+    }
 }

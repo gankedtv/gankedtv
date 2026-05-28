@@ -18,6 +18,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Least-privilege default: this workflow only reads source and builds/tests.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest

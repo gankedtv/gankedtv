@@ -124,6 +124,27 @@ describe('loadVaultwardenSecrets', () => {
     expect(target.DISCORD_BOT_APP_ID).toBe('vault-DISCORD_BOT_APP_ID'); // filled from vault
   });
 
+  test('fills a blank placeholder from the vault (blank counts as unset, matching the server)', async () => {
+    const target: Record<string, string | undefined> = {
+      VAULTWARDEN_API_URL: 'https://vault.test',
+      VAULTWARDEN_API_KEY: 'k',
+      DISCORD_BOT_TOKEN: '', // blank placeholder → should be filled from the vault
+      DISCORD_BOT_APP_ID: 'set-app', // genuinely set → preserved
+    };
+    const fetchImpl = (async (input: string | URL | Request) => {
+      const key = decodeURIComponent(String(input).split('/secret/')[1]!.split('?')[0]!);
+      return new Response(JSON.stringify({ name: key, value: `vault-${key}` }), { status: 200 });
+    }) as typeof fetch;
+
+    await loadVaultwardenSecrets(target, {
+      fetchImpl,
+      manifest: ['DISCORD_BOT_TOKEN', 'DISCORD_BOT_APP_ID'],
+    });
+
+    expect(target.DISCORD_BOT_TOKEN).toBe('vault-DISCORD_BOT_TOKEN'); // blank filled
+    expect(target.DISCORD_BOT_APP_ID).toBe('set-app'); // non-empty preserved
+  });
+
   test('production fails fast when a required secret is missing', async () => {
     const target: Record<string, string | undefined> = {
       VAULTWARDEN_API_URL: 'https://vault.test',
