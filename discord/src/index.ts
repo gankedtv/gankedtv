@@ -2,8 +2,10 @@
 // loadVaultwardenSecrets, which main() awaits before loadConfig().
 import { loadVaultwardenSecrets } from './loadEnv.ts';
 
+import * as Sentry from '@sentry/bun';
 import { Client, GatewayIntentBits, REST, Routes, type Interaction } from 'discord.js';
 import { loadConfig } from './config.ts';
+import { initSentry } from './sentry.ts';
 import { connect, createDb } from './db.ts';
 import { runMigrations } from './migrator.ts';
 import { createApi } from './api.ts';
@@ -31,6 +33,10 @@ async function main(): Promise<void> {
   // Pull secrets from Vaultwarden (no-op unless the bootstrap vars are set) before reading config.
   await loadVaultwardenSecrets(process.env);
   const config = loadConfig();
+
+  // No-op unless SENTRY_DSN is set. Before the enabled check so boot-time crashes report too;
+  // installs global unhandled-rejection/uncaught-exception handlers for the long-running process.
+  initSentry(config);
 
   if (!config.enabled) {
     log.info('Discord bot disabled (DISCORD_BOT_TOKEN or DISCORD_BOT_APP_ID unset); exiting.');
@@ -71,6 +77,7 @@ async function main(): Promise<void> {
         commandName: 'commandName' in interaction ? interaction.commandName : null,
         err: String(err),
       });
+      Sentry.captureException(err);
       if (interaction.isRepliable()) {
         try {
           // All command handlers call deferReply() first, so by the time we
@@ -182,7 +189,11 @@ async function main(): Promise<void> {
   await startPoller({ db, api, fanout, log }, config.DISCORD_POLL_INTERVAL_SECONDS, abort.signal);
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
   log.error('fatal', { err: String(err), stack: err instanceof Error ? err.stack : undefined });
+  Sentry.captureException(err);
+  // captureException only enqueues; flush before exiting or the event is dropped. No-op (resolves
+  // immediately) when Sentry isn't initialised. Bounded so a dead transport can't hang shutdown.
+  await Sentry.flush(2000);
   process.exit(1);
 });

@@ -159,6 +159,17 @@ Slash commands ship in two namespaces:
 
 Discord coverage gate: **85% line / 85% function** — enforced by [discord/scripts/check-coverage.ts](discord/scripts/check-coverage.ts), which parses `coverage/lcov.info` and exits non-zero when under threshold (Bun's own `coverageThreshold` setting in [discord/bunfig.toml](discord/bunfig.toml) is documentation-only on Bun 1.3.13 — it prints but doesn't enforce). The script also emits a markdown summary to `$GITHUB_STEP_SUMMARY` in CI. Excluded from the denominator: `src/index.ts` (boot wiring, covered indirectly), `src/db.ts` + `src/api.ts` (I/O wrappers; integration tests would need testcontainers), `src/migrator.ts`, `src/migrations/`.
 
+### Error monitoring (Sentry → self-hosted GlitchTip)
+
+All three apps wire the official **Sentry SDK** to the self-hosted **GlitchTip** instance — server
+(`Sentry.AspNetCore`, [Program.cs](server/src/GankedTV.Api/Program.cs) + [SentryPiiScrubber.cs](server/src/GankedTV.Api/Observability/SentryPiiScrubber.cs)),
+web (`@sentry/vue`, [web/src/lib/sentry.ts](web/src/lib/sentry.ts)), and the bot (`@sentry/bun`,
+[discord/src/sentry.ts](discord/src/sentry.ts)). It's **off by default** (no-op when the DSN is
+unset, same opt-in as IGDB/Discord), **one GlitchTip project per app**, errors + light tracing
+(`sendDefaultPii=false`, no replay/profiling/logs). Config is `SENTRY_DSN` / `SENTRY_ENVIRONMENT` /
+`SENTRY_RELEASE` / `SENTRY_TRACES_SAMPLE_RATE` (web: `VITE_*`-prefixed). Full table in
+[DEPLOYMENT.md](DEPLOYMENT.md#error-monitoring-sentry--self-hosted-glitchtip).
+
 ## Architecture
 
 ```

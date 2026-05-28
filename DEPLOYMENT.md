@@ -126,10 +126,32 @@ runtime:
 |---|---|
 | `VITE_API_BASE_URL` | API base URL the built frontend calls (e.g. `https://api.ganked.tv`). Falls back to `http://localhost:5050` if unset — so it **must** be set for prod builds. |
 | `VITE_GA_MEASUREMENT_ID` | GA4 measurement id (`G-XXXXXXX`). Analytics is a complete no-op (no script, no cookies) when empty, so it stays off in dev/preview. |
+| `VITE_SENTRY_DSN` | Sentry/GlitchTip DSN for the web project. Error monitoring is a no-op when empty. Optional: `VITE_SENTRY_ENVIRONMENT`, `VITE_SENTRY_RELEASE`, `VITE_SENTRY_TRACES_SAMPLE_RATE`. |
 
 > The Dockerfile build-arg wiring that feeds these into the production web image is part of
 > issue #123. **Cookie-consent gating for analytics is a known follow-up** — GA currently loads
 > whenever the measurement id is present.
+
+## Error monitoring (Sentry → self-hosted GlitchTip)
+
+All three apps ship the official **Sentry SDK** pointed at the self-hosted **GlitchTip** instance
+(Sentry-API-compatible). It is **opt-in and disabled by default** — each SDK no-ops when its DSN is
+unset, the same contract as the IGDB sync and Discord bot. Posture is **errors/crashes + light
+tracing** (sample rate `0.1`); session replay, profiling, and Sentry "logs" are intentionally off
+(GlitchTip doesn't support them). `SendDefaultPii` is `false` everywhere and credential-bearing
+headers/cookies/query params are scrubbed before events leave the app.
+
+Create **one GlitchTip project per app** (api / web / discord) and supply each service its own DSN:
+
+| App | DSN var | Environment / Release source |
+|---|---|---|
+| API (.NET) | `SENTRY_DSN` | env `SENTRY_ENVIRONMENT` → falls back to `ASPNETCORE_ENVIRONMENT`; `SENTRY_RELEASE` → entry-assembly version |
+| Web (Vite) | `VITE_SENTRY_DSN` (build-time) | `VITE_SENTRY_ENVIRONMENT` → Vite mode; `VITE_SENTRY_RELEASE` → package version |
+| Discord bot (Bun) | `SENTRY_DSN` (set on the bot container or `discord/.env`, not the shared root) | `SENTRY_ENVIRONMENT` → `NODE_ENV`; `SENTRY_RELEASE` → package version |
+
+`SENTRY_TRACES_SAMPLE_RATE` (web: `VITE_SENTRY_TRACES_SAMPLE_RATE`) overrides the `0.1` default.
+Leave `SENTRY_RELEASE` unset for now — the #123 deploy pipeline will set it to the commit SHA so
+issues map to deploys.
 
 ## Reference
 

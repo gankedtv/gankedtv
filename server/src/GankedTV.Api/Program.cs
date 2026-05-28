@@ -12,6 +12,7 @@ using GankedTV.Api.Endpoints;
 using GankedTV.Api.HostedServices;
 using GankedTV.Api.Middleware;
 using GankedTV.Api.Notifications;
+using GankedTV.Api.Observability;
 using GankedTV.Api.Services.Caching;
 using GankedTV.Api.Services.Clips;
 using GankedTV.Api.Services.Igdb;
@@ -28,6 +29,8 @@ using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Sentry.Extensibility;
+using System.Globalization;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -78,6 +81,28 @@ if (vaultwardenOptions.IsConfigured)
         .GetAwaiter()
         .GetResult();
 }
+
+// ---- Error monitoring (Sentry → self-hosted GlitchTip) ----
+// Opt-in, same contract as IGDB/Discord. The SDK throws on a null DSN and treats "" as "disabled",
+// so we default the DSN to empty when SENTRY_DSN is unset (dev/CI/prod-without-monitoring all
+// no-op). SENTRY_ENVIRONMENT / SENTRY_RELEASE are still auto-read from env (release falls back to
+// the entry-assembly version). Runs after the Vaultwarden bootstrap so a DSN provisioned there is
+// seen. Config binding only: the one piece of real logic (PII scrubbing) lives in SentryPiiScrubber
+// so it stays inside the coverage denominator.
+builder.WebHost.UseSentry(o =>
+{
+    o.Dsn = Environment.GetEnvironmentVariable("SENTRY_DSN") ?? "";
+    o.SendDefaultPii = false;
+    o.TracesSampleRate =
+        double.TryParse(
+            Environment.GetEnvironmentVariable("SENTRY_TRACES_SAMPLE_RATE"),
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out var rate)
+            ? rate
+            : builder.Configuration.GetValue("Sentry:TracesSampleRate", 0.1);
+});
+builder.Services.AddSingleton<ISentryEventProcessor, SentryPiiScrubber>();
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi

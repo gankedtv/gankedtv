@@ -9,11 +9,22 @@ interface ImportMetaEnv {
   readonly VITE_USE_SECURE_COOKIES?: string
   /** Max upload size in MB shown in the upload UI. */
   readonly VITE_MAX_UPLOAD_SIZE_MB?: string
+  /** Sentry/GlitchTip DSN. Present only in production builds; gates error monitoring. */
+  readonly VITE_SENTRY_DSN?: string
+  /** Sentry environment tag. Falls back to import.meta.env.MODE when unset. */
+  readonly VITE_SENTRY_ENVIRONMENT?: string
+  /** Sentry release tag. Falls back to the app version (__APP_VERSION__) when unset. */
+  readonly VITE_SENTRY_RELEASE?: string
+  /** Sentry traces sample rate (0–1). Falls back to 0.1 when unset/invalid. */
+  readonly VITE_SENTRY_TRACES_SAMPLE_RATE?: string
 }
 
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+/** App version injected at build time from package.json (see vite.config.ts). */
+declare const __APP_VERSION__: string
 
 declare module '*.vue' {
   import type { DefineComponent } from 'vue'

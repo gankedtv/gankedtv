@@ -19,9 +19,18 @@ const Schema = z.object({
   DISCORD_DATABASE_URL: z.string().min(1),
   GANKEDTV_API_BASE: z.string().url().default('http://localhost:5050'),
   GANKEDTV_PUBLIC_BASE: z.string().url().default('http://localhost:5173'),
+  // Error monitoring (Sentry → GlitchTip). All optional; the presence of SENTRY_DSN is the
+  // on-switch (see `sentryEnabled` below), same opt-in contract as the bot-credential triple.
+  // No .url() on the DSN: .env.example ships it as an empty placeholder ("SENTRY_DSN=") and "" is
+  // not a valid URL. Sample rate stays a raw string so empty falls back to the default in sentry.ts
+  // (z.coerce.number() would turn "" into 0, silently disabling tracing).
+  SENTRY_DSN: z.string().optional(),
+  SENTRY_ENVIRONMENT: z.string().optional(),
+  SENTRY_RELEASE: z.string().optional(),
+  SENTRY_TRACES_SAMPLE_RATE: z.string().optional(),
 });
 
-export type Config = z.infer<typeof Schema> & { enabled: boolean };
+export type Config = z.infer<typeof Schema> & { enabled: boolean; sentryEnabled: boolean };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const parsed = Schema.parse(env);
@@ -48,5 +57,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
 
   const enabled = hasToken && hasAppId;
-  return { ...parsed, enabled };
+  const sentryEnabled = Boolean(parsed.SENTRY_DSN);
+  return { ...parsed, enabled, sentryEnabled };
 }
