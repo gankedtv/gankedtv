@@ -141,17 +141,19 @@ tracing** (sample rate `0.1`); session replay, profiling, and Sentry "logs" are 
 (GlitchTip doesn't support them). `SendDefaultPii` is `false` everywhere and credential-bearing
 headers/cookies/query params are scrubbed before events leave the app.
 
-Create **one GlitchTip project per app** (api / web / discord) and supply each service its own DSN:
+Create **one GlitchTip project per app** (api / web / discord). Each app's DSN var is distinct, so
+all three can live in a single shared `.env` without colliding — the bot reads the repo-root `.env`
+too, hence the `DISCORD_`-prefix:
 
 | App | DSN var | Environment / Release source |
 |---|---|---|
 | API (.NET) | `SENTRY_DSN` | env `SENTRY_ENVIRONMENT` → falls back to `ASPNETCORE_ENVIRONMENT`; `SENTRY_RELEASE` → entry-assembly version |
 | Web (Vite) | `VITE_SENTRY_DSN` (build-time) | `VITE_SENTRY_ENVIRONMENT` → Vite mode; `VITE_SENTRY_RELEASE` → package version |
-| Discord bot (Bun) | `SENTRY_DSN` (set on the bot container or `discord/.env`, not the shared root) | `SENTRY_ENVIRONMENT` → `NODE_ENV`; `SENTRY_RELEASE` → package version |
+| Discord bot (Bun) | `DISCORD_SENTRY_DSN` | `DISCORD_SENTRY_ENVIRONMENT` → `NODE_ENV`; `DISCORD_SENTRY_RELEASE` → package version |
 
-`SENTRY_TRACES_SAMPLE_RATE` (web: `VITE_SENTRY_TRACES_SAMPLE_RATE`) overrides the `0.1` default.
-Leave `SENTRY_RELEASE` unset for now — the #123 deploy pipeline will set it to the commit SHA so
-issues map to deploys.
+`SENTRY_TRACES_SAMPLE_RATE` / `VITE_SENTRY_TRACES_SAMPLE_RATE` / `DISCORD_SENTRY_TRACES_SAMPLE_RATE`
+override the `0.1` default. Leave the `*_RELEASE` vars unset for now — the #123 deploy pipeline will
+set them to the commit SHA so issues map to deploys.
 
 ## Reference
 

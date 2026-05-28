@@ -166,8 +166,9 @@ All three apps wire the official **Sentry SDK** to the self-hosted **GlitchTip**
 web (`@sentry/vue`, [web/src/lib/sentry.ts](web/src/lib/sentry.ts)), and the bot (`@sentry/bun`,
 [discord/src/sentry.ts](discord/src/sentry.ts)). It's **off by default** (no-op when the DSN is
 unset, same opt-in as IGDB/Discord), **one GlitchTip project per app**, errors + light tracing
-(`sendDefaultPii=false`, no replay/profiling/logs). Config is `SENTRY_DSN` / `SENTRY_ENVIRONMENT` /
-`SENTRY_RELEASE` / `SENTRY_TRACES_SAMPLE_RATE` (web: `VITE_*`-prefixed). Full table in
+(`sendDefaultPii=false`, no replay/profiling/logs). Each app's DSN var is distinct so all three fit
+one shared `.env`: API `SENTRY_*`, web `VITE_SENTRY_*`, bot `DISCORD_SENTRY_*` (prefixed because the
+bot also reads the root `.env`). Full table in
 [DEPLOYMENT.md](DEPLOYMENT.md#error-monitoring-sentry--self-hosted-glitchtip).
 
 ## Architecture
