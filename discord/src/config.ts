@@ -19,13 +19,9 @@ const Schema = z.object({
   DISCORD_DATABASE_URL: z.string().min(1),
   GANKEDTV_API_BASE: z.string().url().default('http://localhost:5050'),
   GANKEDTV_PUBLIC_BASE: z.string().url().default('http://localhost:5173'),
-  // Error monitoring (Sentry → GlitchTip). DISCORD_-prefixed so all three apps' DSNs can live in
-  // the one repo-root .env without colliding: the API reads SENTRY_DSN and the bot also loads the
-  // root .env, so a bare SENTRY_DSN would point the bot at the API's project. The presence of
-  // DISCORD_SENTRY_DSN is the on-switch (see `sentryEnabled` below), same opt-in contract as the
-  // bot-credential triple. No .url() on the DSN: .env.example ships it as an empty placeholder and
-  // "" is not a valid URL. Sample rate stays a raw string so empty falls back to the default in
-  // sentry.ts (z.coerce.number() would turn "" into 0, silently disabling tracing).
+  // DISCORD_-prefixed so the bot's DSN can share the root .env without clashing with the API's
+  // SENTRY_DSN (the bot loads root .env too). No .url(): the "" placeholder isn't a valid URL.
+  // Sample rate stays a string so empty falls back to a default (z.coerce.number() makes "" → 0).
   DISCORD_SENTRY_DSN: z.string().optional(),
   DISCORD_SENTRY_ENVIRONMENT: z.string().optional(),
   DISCORD_SENTRY_RELEASE: z.string().optional(),

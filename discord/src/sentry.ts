@@ -17,11 +17,8 @@ function gitShortSha(): string {
 }
 
 /**
- * Error/crash monitoring → self-hosted GlitchTip. Opt-in: no DISCORD_SENTRY_DSN ⇒ no-op (dev/local
- * stays clean), mirroring the bot's "disabled; exiting" contract. Initialising the SDK also installs
- * global `unhandledRejection` / `uncaughtException` handlers, so the long-running poller and its
- * crashes report automatically. Errors-only posture with light tracing — GlitchTip doesn't support
- * replay/profiling/logs, so they stay off.
+ * Opt-in error monitoring → GlitchTip (no-op without DISCORD_SENTRY_DSN). Init also installs global
+ * unhandledRejection / uncaughtException handlers, so crashes in this long-running process report.
  */
 export function initSentry(config: Config, sdk: SentrySdk = Sentry): void {
   if (!config.sentryEnabled) return;

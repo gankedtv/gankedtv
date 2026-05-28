@@ -4,10 +4,8 @@ using Sentry.Extensibility;
 namespace GankedTV.Api.Observability;
 
 /// <summary>
-/// Defense-in-depth PII scrubbing for outgoing Sentry events. <c>SendDefaultPii=false</c>
-/// already keeps the SDK from attaching request headers/cookies/bodies, but this processor
-/// strips credential-bearing fields unconditionally so auth never leaks to GlitchTip even if
-/// another integration attaches them.
+/// Strips credential-bearing fields from outgoing Sentry events. SendDefaultPii is already false;
+/// this is belt-and-braces so auth never leaks even if another integration attaches it.
 /// </summary>
 public sealed class SentryPiiScrubber : ISentryEventProcessor
 {
@@ -27,8 +25,7 @@ public sealed class SentryPiiScrubber : ISentryEventProcessor
         }
 
         @event.Request.Cookies = null;
-        // OAuth callback URLs carry ?code=…&state=…; the SDK captures the query string regardless
-        // of SendDefaultPii, so strip credential-bearing params before the event leaves.
+        // The SDK captures the query string regardless of SendDefaultPii; redact OAuth code/state.
         @event.Request.QueryString = SensitiveQuery.Redact(@event.Request.QueryString);
         return @event;
     }

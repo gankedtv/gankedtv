@@ -11,9 +11,8 @@ const pkg = JSON.parse(
   readFileSync(fileURLToPath(new URL('./package.json', import.meta.url)), 'utf-8'),
 ) as { version: string }
 
-// Sentry release fallback (see lib/sentry.ts). Prefer the git short SHA so each commit gets a
-// distinct release; fall back to the package version when .git is absent (e.g. a Docker build
-// context) — production overrides it explicitly via VITE_SENTRY_RELEASE.
+// Sentry release fallback: git short SHA, or package version when .git is absent (e.g. a Docker
+// build context, where the deploy sets VITE_SENTRY_RELEASE instead). See lib/sentry.ts.
 function resolveAppVersion(): string {
   try {
     return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })

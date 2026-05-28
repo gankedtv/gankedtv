@@ -219,8 +219,7 @@ export function startPoller(
         await pollOnce(deps);
       } catch (err) {
         deps.log.error('poll round threw', { err: String(err) });
-        // The loop swallows per-round errors to stay resilient, so they never reach the global
-        // handlers — report explicitly. No-op when Sentry isn't initialised.
+        // The loop swallows per-round errors to stay resilient, so report them explicitly here.
         Sentry.captureException(err);
       } finally {
         inFlight = false;

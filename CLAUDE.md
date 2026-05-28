@@ -201,6 +201,11 @@ gankedtv/
 
 - Do not add yourself (Claude / any AI) as a co-author. Never append `Co-Authored-By: Claude ...` trailers to commit messages.
 
+## Code comments
+
+- Default to no comment. Add one only when the *why* is non-obvious — a trap, a hidden constraint, a security reason, an ordering requirement — or to orient the reader through a genuinely complex/tricky section. Don't narrate *what* the code does (well-named identifiers cover that), and don't over-explain: one or two tight lines, never a paragraph.
+- Never reference issue or PR numbers in code comments (e.g. `// issue #123`, `// M4 from review #111`). They rot as the code moves and the context belongs in the commit/PR. Prose docs (this file, DEPLOYMENT.md) may cross-reference issues; source comments must not.
+
 ## Frontend Design
 
 **Before writing any frontend (Vue components, CSS, Tailwind classes):** Read [web/DESIGN.md](web/DESIGN.md).

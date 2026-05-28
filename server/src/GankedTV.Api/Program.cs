@@ -82,13 +82,9 @@ if (vaultwardenOptions.IsConfigured)
         .GetResult();
 }
 
-// ---- Error monitoring (Sentry → self-hosted GlitchTip) ----
-// Opt-in, same contract as IGDB/Discord. The SDK throws on a null DSN and treats "" as "disabled",
-// so we default the DSN to empty when SENTRY_DSN is unset (dev/CI/prod-without-monitoring all
-// no-op). SENTRY_ENVIRONMENT / SENTRY_RELEASE are still auto-read from env (release falls back to
-// the entry-assembly version). Runs after the Vaultwarden bootstrap so a DSN provisioned there is
-// seen. Config binding only: the one piece of real logic (PII scrubbing) lives in SentryPiiScrubber
-// so it stays inside the coverage denominator.
+// Error monitoring (Sentry → GlitchTip). Opt-in: the SDK throws on a null DSN and treats "" as
+// disabled, so default to "" when SENTRY_DSN is unset. Runs after the Vaultwarden bootstrap so a
+// DSN provisioned there is seen; SENTRY_ENVIRONMENT / SENTRY_RELEASE are auto-read from env.
 builder.WebHost.UseSentry(o =>
 {
     o.Dsn = Environment.GetEnvironmentVariable("SENTRY_DSN") ?? "";

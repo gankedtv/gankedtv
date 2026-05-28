@@ -1,10 +1,9 @@
 namespace GankedTV.Api.Observability;
 
 /// <summary>
-/// Strips credential-bearing params from a request query string before it's attached to a Sentry
-/// event. The API serves OAuth callbacks (<c>/auth/{provider}/callback?code=…&amp;state=…</c>), and
-/// the SDK captures the query string regardless of <c>SendDefaultPii</c>, so the authorization code
-/// would otherwise reach GlitchTip. Mirrors the web client's redaction key list.
+/// Drops credential-bearing query params from a captured request URL. The API serves OAuth callbacks
+/// (<c>?code=…&amp;state=…</c>) whose query string the SDK captures regardless of SendDefaultPii, so
+/// the auth code would otherwise reach GlitchTip. Same key list as the web client.
 /// </summary>
 internal static class SensitiveQuery
 {
@@ -18,10 +17,7 @@ internal static class SensitiveQuery
         "id_token",
     };
 
-    /// <summary>
-    /// Drops sensitive key/value pairs, preserving order and benign params. Returns the input
-    /// unchanged when null/empty, and "" when every pair was sensitive. Handles a leading '?'.
-    /// </summary>
+    /// <summary>Drops sensitive pairs, keeping order and benign params. Handles a leading '?'.</summary>
     public static string? Redact(string? queryString)
     {
         if (string.IsNullOrEmpty(queryString))

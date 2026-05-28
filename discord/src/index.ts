@@ -34,8 +34,7 @@ async function main(): Promise<void> {
   await loadVaultwardenSecrets(process.env);
   const config = loadConfig();
 
-  // No-op unless SENTRY_DSN is set. Before the enabled check so boot-time crashes report too;
-  // installs global unhandled-rejection/uncaught-exception handlers for the long-running process.
+  // No-op unless DISCORD_SENTRY_DSN is set; before the enabled check so boot crashes still report.
   initSentry(config);
 
   if (!config.enabled) {
@@ -192,8 +191,8 @@ async function main(): Promise<void> {
 main().catch(async (err) => {
   log.error('fatal', { err: String(err), stack: err instanceof Error ? err.stack : undefined });
   Sentry.captureException(err);
-  // captureException only enqueues; flush before exiting or the event is dropped. No-op (resolves
-  // immediately) when Sentry isn't initialised. Bounded so a dead transport can't hang shutdown.
+  // captureException only enqueues; flush before exiting or the event is dropped (bounded so a
+  // dead transport can't hang shutdown).
   await Sentry.flush(2000);
   process.exit(1);
 });
