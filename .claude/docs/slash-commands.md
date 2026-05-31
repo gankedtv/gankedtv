@@ -9,32 +9,33 @@ Remove the repetitive busywork contributors do around every PR — rebasing, wri
 ## Conventions
 
 - **Location:** `.claude/commands/<name>.md`. Project-scoped, auto-discovered by Claude Code, ships to every contributor that clones the repo.
-- **Naming:** kebab-case (`pr-description`, `rebasemaster`, `issue`, `graph-refresh`).
+- **Naming:** kebab-case (`create-pr`, `rebasemaster`, `issue`, `graph-refresh`).
 - **File shape:** YAML frontmatter (`description`, `argument-hint`) + a markdown body with the instructions Claude should follow. Any shell work lives in fenced bash blocks inside the body — no external scripts. Each command file is self-contained.
 - **AI tooling:** the team uses Claude Code exclusively, so no parallel Copilot / Gemini command files. Revisit if another tool gets adopted.
 
 ## v1 commands
 
-### `/pr-description`
+### `/create-pr`
 
-Draft or update the PR body for the current branch.
+Create — or update — the PR for the current branch end-to-end. Supersedes the old `/pr-description`, which only drafted a body; `/create-pr` runs the precondition + CI gate, pushes, and opens (or edits) the PR itself.
 
-- **Args:** optional `#<issue>` override; otherwise infer from branch prefix `<num>-<slug>` (e.g. `5-server-oauth-…` → #5) or commit trailers.
-- **Preconditions:** on a feature branch (not `main`), commits ahead of `origin/main`, `gh` authenticated.
-- **Scale-to-complexity rule:** body length should match the change's actual complexity. Small docs/config PRs get 1–2 sentence Summary + 2–4 bullets + a one-line test note, and drop sections that don't apply (no Screenshots placeholder if nothing visual changed, no reflexive checklist items). Only the full template for genuinely medium/large PRs.
-- **Template sections** (drop any that don't apply):
-  - Summary · What's here · `Closes #N` · How to test manually · Screenshots / recordings · Checklist
-  - Mirrors the format already established on [PR #18](https://github.com/Turbootzz/gankedtv/pull/18).
+- **Args** (all optional, any order): `#<n>`/bare `<n>` issue override; `--draft` (the **default**); `--ready` to open ready-for-review; `--review` to chain `/code-review` once the PR exists; `--skip-ci` to bypass the local CI gate.
+- **Preconditions:** on a feature branch (not `main`), `git fetch origin main` succeeds, commits ahead of `origin/main`, `gh` authenticated, clean working tree (never auto-commits).
+- **Local CI gate:** before pushing, mirror the pre-push hook scoped to changed top-level dirs (`make ci-server` / `make ci-web` / `make ci-discord`). Abort on red — never open a PR CI will reject. Skippable with `--skip-ci`.
+- **Scale-to-complexity rule:** body length should match the change's actual complexity. Small docs/config PRs get a 1–2 sentence Summary + a few bullets + a one-line test note, and drop sections that don't apply. Only the full template for genuinely medium/large PRs.
+- **Two-tier body:** a tight top half humans skim — `Summary` (the only **required** section) · `What's here` · `Closes #N` · `How to test` — over a collapsed `<details>` block for AI reviewers and deep-divers (file-by-file walkthrough, design decisions, risk / blast radius, out of scope). Drop any section that doesn't apply; no `<!-- placeholder -->` leftovers.
+- **Breaking-change detector:** scans the diff for high-blast-radius changes (new EF migration, dependency churn, removed/renamed public endpoints, env/config surface) and surfaces them as a `> [!IMPORTANT]` callout at the top of the body. Omitted when nothing fires.
 - **Labels** — map paths and commit prefixes to existing repo labels only (intersected with `gh label list` — never invent):
   - `server/**` → `area:server`
   - `web/**` → `area:web`
+  - `discord/**` → `area:discord`
   - `docker-compose*.yml`, `Makefile`, `.github/**` → `area:infra`
   - `.claude/**`, `CLAUDE.md`, `README.md`, other root `*.md` → `documentation`
   - Conventional commit `feat:` → `enhancement`, `fix:` → `bug`, `docs:` → `documentation`
   - Fallback: if nothing mapped and a linked issue exists, inherit the linked issue's labels.
-- **Title hygiene:** flag generic titles (`wip`, `fix`, single-word) and suggest a replacement; never rewrite silently.
-- **Side effects:** if a PR exists → `gh pr edit --body-file …` plus `--add-label` for each derived label not already present (never removes labels). Otherwise print the body and the `--label` flags for a future `gh pr create`; never auto-create.
-- **Failure modes:** no upstream, no commits ahead, detached `HEAD`, `gh` unauthenticated — each exits with a clear message and no partial writes.
+- **Title:** keep an existing PR title in update mode unless it's vague (`wip`, `fix`, single word, no type prefix); otherwise derive from the first conventional-commit subject or the humanized branch name. A vague resolved title is **regenerated from the diff/commits and used** — not merely suggested — and the chosen title is printed in the final report so the operator can spot anything wrong.
+- **Side effects:** update mode → `gh pr edit --body-file …` plus `--add-label` for each derived label not already present (never removes labels), and toggles draft/ready to match the flag. Create mode → `gh pr create` (draft unless `--ready`) with the derived `--label` flags. Prints the PR URL and, with `--review`, invokes `/code-review`.
+- **Failure modes:** no commits ahead, detached `HEAD`, `gh` unauthenticated, dirty tree, failed CI gate, failed push — each exits with a clear message and no partial PR.
 
 ### `/rebasemaster`
 
@@ -89,5 +90,5 @@ Revisit if any one command grows a set of supporting files, or if we want a work
 
 ## Non-goals
 
-- Rewriting the PR description template the team already uses — `/pr-description` mirrors what's there; template changes are a separate conversation.
+- Rewriting the PR description template the team already uses wholesale — `/create-pr` builds on the established format; sweeping template changes are a separate conversation.
 - Parallel Copilot / Gemini command files. Noted in "Mirroring" above.
