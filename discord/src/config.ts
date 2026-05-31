@@ -19,9 +19,17 @@ const Schema = z.object({
   DISCORD_DATABASE_URL: z.string().min(1),
   GANKEDTV_API_BASE: z.string().url().default('http://localhost:5050'),
   GANKEDTV_PUBLIC_BASE: z.string().url().default('http://localhost:5173'),
+  // DISCORD_-prefixed so the bot's DSN can share the root .env without clashing with the API's
+  // SENTRY_DSN (the bot loads root .env too). No .url(): the "" placeholder isn't a valid URL.
+  // Sample rate stays a string so the empty placeholder falls back to a default in sentry.ts
+  // (parseFloat("") → NaN → fallback); a numeric coercion would turn "" into 0 and disable tracing.
+  DISCORD_SENTRY_DSN: z.string().optional(),
+  DISCORD_SENTRY_ENVIRONMENT: z.string().optional(),
+  DISCORD_SENTRY_RELEASE: z.string().optional(),
+  DISCORD_SENTRY_TRACES_SAMPLE_RATE: z.string().optional(),
 });
 
-export type Config = z.infer<typeof Schema> & { enabled: boolean };
+export type Config = z.infer<typeof Schema> & { enabled: boolean; sentryEnabled: boolean };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const parsed = Schema.parse(env);
@@ -48,5 +56,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
 
   const enabled = hasToken && hasAppId;
-  return { ...parsed, enabled };
+  const sentryEnabled = Boolean(parsed.DISCORD_SENTRY_DSN);
+  return { ...parsed, enabled, sentryEnabled };
 }

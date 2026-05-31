@@ -1,3 +1,5 @@
+import * as Sentry from '@sentry/bun';
+
 import type { ApiClient, ClipFeedItem } from './api.ts';
 import type { Db, Subscription } from './db.ts';
 import { matchingSubscriptions } from './filters.ts';
@@ -217,6 +219,8 @@ export function startPoller(
         await pollOnce(deps);
       } catch (err) {
         deps.log.error('poll round threw', { err: String(err) });
+        // The loop swallows per-round errors to stay resilient, so report them explicitly here.
+        Sentry.captureException(err);
       } finally {
         inFlight = false;
       }

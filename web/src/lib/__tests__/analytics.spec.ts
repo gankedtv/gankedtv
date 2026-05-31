@@ -97,4 +97,20 @@ describe('stripSensitiveParams', () => {
   it('leaves non-sensitive query strings intact', () => {
     expect(stripSensitiveParams('/trending?sort=week&page=2')).toBe('/trending?sort=week&page=2')
   })
+
+  it('preserves a fragment while redacting the query', () => {
+    expect(stripSensitiveParams('/auth/callback?token=jwt&returnTo=/feed#section')).toBe(
+      '/auth/callback?returnTo=%2Ffeed#section',
+    )
+  })
+
+  it('keeps a fragment when there is no query string', () => {
+    expect(stripSensitiveParams('/article#comments')).toBe('/article#comments')
+  })
+
+  it('matches sensitive keys case-insensitively (parity with server scrubber)', () => {
+    expect(stripSensitiveParams('/auth/callback?Token=jwt&CODE=c&State=s&keep=ok')).toBe(
+      '/auth/callback?keep=ok',
+    )
+  })
 })

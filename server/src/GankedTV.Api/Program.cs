@@ -12,6 +12,7 @@ using GankedTV.Api.Endpoints;
 using GankedTV.Api.HostedServices;
 using GankedTV.Api.Middleware;
 using GankedTV.Api.Notifications;
+using GankedTV.Api.Observability;
 using GankedTV.Api.Services.Caching;
 using GankedTV.Api.Services.Clips;
 using GankedTV.Api.Services.Igdb;
@@ -28,6 +29,8 @@ using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Sentry.Extensibility;
+using System.Globalization;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -78,6 +81,24 @@ if (vaultwardenOptions.IsConfigured)
         .GetAwaiter()
         .GetResult();
 }
+
+// Error monitoring (Sentry → GlitchTip). Opt-in: the SDK throws on a null DSN and treats "" as
+// disabled, so default to "" when SENTRY_DSN is unset. Runs after the Vaultwarden bootstrap so a
+// DSN provisioned there is seen; SENTRY_ENVIRONMENT / SENTRY_RELEASE are auto-read from env.
+builder.WebHost.UseSentry(o =>
+{
+    o.Dsn = Environment.GetEnvironmentVariable("SENTRY_DSN") ?? "";
+    o.SendDefaultPii = false;
+    o.TracesSampleRate =
+        double.TryParse(
+            Environment.GetEnvironmentVariable("SENTRY_TRACES_SAMPLE_RATE"),
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out var rate)
+            ? rate
+            : builder.Configuration.GetValue("Sentry:TracesSampleRate", 0.01);
+});
+builder.Services.AddSingleton<ISentryEventProcessor, SentryPiiScrubber>();
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi

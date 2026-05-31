@@ -159,6 +159,18 @@ Slash commands ship in two namespaces:
 
 Discord coverage gate: **85% line / 85% function** — enforced by [discord/scripts/check-coverage.ts](discord/scripts/check-coverage.ts), which parses `coverage/lcov.info` and exits non-zero when under threshold (Bun's own `coverageThreshold` setting in [discord/bunfig.toml](discord/bunfig.toml) is documentation-only on Bun 1.3.13 — it prints but doesn't enforce). The script also emits a markdown summary to `$GITHUB_STEP_SUMMARY` in CI. Excluded from the denominator: `src/index.ts` (boot wiring, covered indirectly), `src/db.ts` + `src/api.ts` (I/O wrappers; integration tests would need testcontainers), `src/migrator.ts`, `src/migrations/`.
 
+### Error monitoring (Sentry → self-hosted GlitchTip)
+
+All three apps wire the official **Sentry SDK** to the self-hosted **GlitchTip** instance — server
+(`Sentry.AspNetCore`, [Program.cs](server/src/GankedTV.Api/Program.cs) + [SentryPiiScrubber.cs](server/src/GankedTV.Api/Observability/SentryPiiScrubber.cs)),
+web (`@sentry/vue`, [web/src/lib/sentry.ts](web/src/lib/sentry.ts)), and the bot (`@sentry/bun`,
+[discord/src/sentry.ts](discord/src/sentry.ts)). It's **off by default** (no-op when the DSN is
+unset, same opt-in as IGDB/Discord), **one GlitchTip project per app**, errors + light tracing
+(`sendDefaultPii=false`, no replay/profiling/logs). Each app's DSN var is distinct so all three fit
+one shared `.env`: API `SENTRY_*`, web `VITE_SENTRY_*`, bot `DISCORD_SENTRY_*` (prefixed because the
+bot also reads the root `.env`). Full table in
+[DEPLOYMENT.md](DEPLOYMENT.md#error-monitoring-sentry--self-hosted-glitchtip).
+
 ## Architecture
 
 ```
@@ -188,6 +200,11 @@ gankedtv/
 ## Git workflow
 
 - Do not add yourself (Claude / any AI) as a co-author. Never append `Co-Authored-By: Claude ...` trailers to commit messages.
+
+## Code comments
+
+- Default to no comment. Add one only when the *why* is non-obvious — a trap, a hidden constraint, a security reason, an ordering requirement — or to orient the reader through a genuinely complex/tricky section. Don't narrate *what* the code does (well-named identifiers cover that), and don't over-explain: one or two tight lines, never a paragraph.
+- Never reference issue or PR numbers in code comments (e.g. `// issue #123`, `// M4 from review #111`). They rot as the code moves and the context belongs in the commit/PR. Prose docs (this file, DEPLOYMENT.md) may cross-reference issues; source comments must not.
 
 ## Frontend Design
 
