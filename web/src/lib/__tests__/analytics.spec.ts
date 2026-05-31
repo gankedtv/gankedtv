@@ -107,4 +107,10 @@ describe('stripSensitiveParams', () => {
   it('keeps a fragment when there is no query string', () => {
     expect(stripSensitiveParams('/article#comments')).toBe('/article#comments')
   })
+
+  it('matches sensitive keys case-insensitively (parity with server scrubber)', () => {
+    expect(stripSensitiveParams('/auth/callback?Token=jwt&CODE=c&State=s&keep=ok')).toBe(
+      '/auth/callback?keep=ok',
+    )
+  })
 })

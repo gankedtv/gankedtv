@@ -32,7 +32,9 @@ export function stripSensitiveParams(fullPath: string): string {
   // mutate the live iterator) — preserves original order and is straightforward to read.
   const kept = new URLSearchParams()
   for (const [key, value] of new URLSearchParams(query)) {
-    if (!SENSITIVE_QUERY_KEYS.has(key)) kept.append(key, value)
+    // Case-insensitive match keeps parity with the server scrubber (OrdinalIgnoreCase),
+    // so `?Token=` / `?CODE=` redact the same as `?token=` / `?code=`.
+    if (!SENSITIVE_QUERY_KEYS.has(key.toLowerCase())) kept.append(key, value)
   }
   const qs = kept.toString()
   return (qs ? `${path}?${qs}` : path) + fragment

@@ -1,3 +1,4 @@
+using System.Reflection;
 using FluentAssertions;
 using GankedTV.Api.Observability;
 using Sentry;
@@ -39,6 +40,20 @@ public class SentryPiiScrubberTests
         @event.Request.QueryString = "?code=secret&state=xyz&page=2";
 
         Scrubber.Process(@event).Request.QueryString.Should().Be("?page=2");
+    }
+
+    [Fact]
+    public void Process_LeavesRequestUnattachedForNonHttpEvents()
+    {
+        var @event = new SentryEvent();
+
+        Scrubber.Process(@event);
+
+        // The backing field should remain null — touching @event.Request via the property would
+        // lazy-instantiate an empty Request{} and ship it to GlitchTip for every background crash.
+        var field = typeof(SentryEvent).GetField("_request", BindingFlags.Instance | BindingFlags.NonPublic);
+        field.Should().NotBeNull("test relies on the SDK's _request backing field");
+        field!.GetValue(@event).Should().BeNull();
     }
 
     [Fact]

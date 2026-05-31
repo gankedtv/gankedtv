@@ -23,12 +23,15 @@ function gitShortSha(): string {
 export function initSentry(config: Config, sdk: SentrySdk = Sentry): void {
   if (!config.sentryEnabled) return;
 
-  const rate = Number.parseFloat(config.DISCORD_SENTRY_TRACES_SAMPLE_RATE ?? '');
+  const parsed = Number.parseFloat(config.DISCORD_SENTRY_TRACES_SAMPLE_RATE ?? '');
+  // Reject NaN/Infinity and out-of-range values — Sentry expects a probability in [0,1] and an
+  // out-of-range value would either over-sample (cost) or silently disable tracing.
+  const tracesSampleRate = Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : 0.01;
   sdk.init({
     dsn: config.DISCORD_SENTRY_DSN,
     environment: config.DISCORD_SENTRY_ENVIRONMENT?.trim() || process.env.NODE_ENV || 'development',
     release: config.DISCORD_SENTRY_RELEASE?.trim() || gitShortSha() || pkg.version,
-    tracesSampleRate: Number.isFinite(rate) ? rate : 0.01,
+    tracesSampleRate,
     sendDefaultPii: false,
   });
 }

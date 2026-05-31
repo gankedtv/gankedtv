@@ -21,7 +21,8 @@ const Schema = z.object({
   GANKEDTV_PUBLIC_BASE: z.string().url().default('http://localhost:5173'),
   // DISCORD_-prefixed so the bot's DSN can share the root .env without clashing with the API's
   // SENTRY_DSN (the bot loads root .env too). No .url(): the "" placeholder isn't a valid URL.
-  // Sample rate stays a string so empty falls back to a default (z.coerce.number() makes "" → 0).
+  // Sample rate stays a string so the empty placeholder falls back to a default in sentry.ts
+  // (parseFloat("") → NaN → fallback); a numeric coercion would turn "" into 0 and disable tracing.
   DISCORD_SENTRY_DSN: z.string().optional(),
   DISCORD_SENTRY_ENVIRONMENT: z.string().optional(),
   DISCORD_SENTRY_RELEASE: z.string().optional(),

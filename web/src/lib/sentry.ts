@@ -39,7 +39,12 @@ export function initSentry(app: App, router: Router): void {
   const dsn = import.meta.env.VITE_SENTRY_DSN?.trim()
   if (!dsn) return
 
-  const sampleRate = Number.parseFloat(import.meta.env.VITE_SENTRY_TRACES_SAMPLE_RATE ?? '')
+  const parsedSampleRate = Number.parseFloat(import.meta.env.VITE_SENTRY_TRACES_SAMPLE_RATE ?? '')
+  // Reject NaN/Infinity and out-of-range values — Sentry expects a probability in [0,1].
+  const tracesSampleRate =
+    Number.isFinite(parsedSampleRate) && parsedSampleRate >= 0 && parsedSampleRate <= 1
+      ? parsedSampleRate
+      : 0.01
 
   Sentry.init({
     app,
@@ -47,7 +52,7 @@ export function initSentry(app: App, router: Router): void {
     environment: import.meta.env.VITE_SENTRY_ENVIRONMENT?.trim() || import.meta.env.MODE,
     release: import.meta.env.VITE_SENTRY_RELEASE?.trim() || __APP_VERSION__,
     integrations: [Sentry.browserTracingIntegration({ router })],
-    tracesSampleRate: Number.isFinite(sampleRate) ? sampleRate : 0.01,
+    tracesSampleRate,
     tracePropagationTargets: [API_BASE_URL],
     // PII off; the helpers above scrub defensively.
     sendDefaultPii: false,

@@ -15,7 +15,7 @@ interface ImportMetaEnv {
   readonly VITE_SENTRY_ENVIRONMENT?: string
   /** Sentry release tag. Falls back to the app version (__APP_VERSION__) when unset. */
   readonly VITE_SENTRY_RELEASE?: string
-  /** Sentry traces sample rate (0–1). Falls back to 0.1 when unset/invalid. */
+  /** Sentry traces sample rate (0–1). Falls back to 0.01 when unset/invalid. */
   readonly VITE_SENTRY_TRACES_SAMPLE_RATE?: string
 }
 
