@@ -21,7 +21,7 @@ Two modes, chosen by `$ARGUMENTS`:
 
 ## Batch: scan merged PRs
 
-`/worktree-remove` (no args) or `/worktree-remove --merged` — scan `.worktrees/issue-*/`, look up each branch's PR state via `gh pr list`, propose removal only for those whose PR is **MERGED**.
+`/worktree-remove` (no args) or `/worktree-remove --merged` — scan `.worktrees/issue-*/`, look up each branch's PR state via `gh pr view`, propose removal only for those whose PR is **MERGED**.
 
 1. Run `./scripts/remove-worktree.sh --merged`. The script prints a status table and interactively prompts before destroying anything. Surface its output verbatim.
 2. The user types `y` at the script's prompt to proceed, or anything else to abort.

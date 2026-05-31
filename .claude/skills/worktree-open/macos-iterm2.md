@@ -6,7 +6,7 @@ Read this only after [SKILL.md](SKILL.md) — it assumes the shared metadata-ext
 
 Three tabs total, regardless of how many issues. Each tab has one vertical-split pane per issue (side-by-side columns):
 
-```
+```text
 Tab "claude":  | #103 claude | #104 claude | #108 claude |
 Tab "server":  | #103 server | #104 server | #108 server |
 Tab "web":     | #103 web    | #104 web    | #108 web    |

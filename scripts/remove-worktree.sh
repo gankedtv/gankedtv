@@ -24,6 +24,10 @@ if [[ "${1:-}" == "--merged" ]]; then
     assume_yes=1
     shift
   fi
+  if (( $# > 0 )); then
+    echo "usage: $0 --merged [--yes]" >&2
+    exit 1
+  fi
 
   repo_root=$(git rev-parse --show-toplevel)
   cd "$repo_root"

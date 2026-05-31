@@ -6,7 +6,7 @@ Read this only after [SKILL.md](SKILL.md) — it assumes the shared metadata-ext
 
 Three windows total, regardless of how many issues. Each window holds N tabs (one per issue), grouped by role:
 
-```
+```text
 Window "claude":  [ #103 claude | #104 claude | #108 claude ]
 Window "server":  [ #103 server | #104 server | #108 server ]
 Window "web":     [ #103 web    | #104 web    | #108 web    ]
