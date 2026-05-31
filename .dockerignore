@@ -1,0 +1,12 @@
+# Build context for the discord bot image is the repo ROOT (docker-compose.dev.yml) so it can COPY
+# the shared/ module. Send only what that image needs — allowlist discord/ + shared/, drop the rest.
+# (The .NET API image uses its own server/-scoped build, so this allowlist doesn't affect it.)
+*
+!discord
+!shared
+
+# ...but never ship local build artifacts, even from the allowlisted dirs.
+**/node_modules
+**/coverage
+**/dist
+**/*.local

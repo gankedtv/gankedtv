@@ -52,8 +52,10 @@ services:
   discord:
     profiles: ["discord"]
     build:
-      context: ./discord
-      dockerfile: Dockerfile
+      # Repo-root context so the image can COPY the shared/ module the bot imports (see
+      # discord/Dockerfile). A repo-root .dockerignore keeps the context lean.
+      context: .
+      dockerfile: discord/Dockerfile
     environment:
       # Distinct from the API's DATABASE_URL because the API uses dotnet
       # semicolon form, which porsager's `postgres` driver can't parse.

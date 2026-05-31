@@ -5,16 +5,22 @@ on:
     branches: [main]
     paths:
       - 'web/**'
+      - 'shared/**'
       - '.github/workflows/web.yml'
   pull_request:
     branches: [main]
     paths:
       - 'web/**'
+      - 'shared/**'
       - '.github/workflows/web.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+# Least-privilege default: this workflow only reads source and builds/tests.
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -35,6 +41,13 @@ jobs:
 
       - name: Build
         run: bun run build
+        env:
+          # On push to main, the prebuild pulls VITE_* from Vaultwarden's PROD collection; on PRs
+          # these are blank so it no-ops and the committed .env is used (PR CI stays independent of
+          # the vault). Needs ENABLE_GITHUB_IP_RANGES on the API to whitelist runner IPs.
+          VAULTWARDEN_API_URL: ${{ github.event_name == 'push' && secrets.VAULTWARDEN_API_URL || '' }}
+          VAULTWARDEN_API_KEY: ${{ github.event_name == 'push' && secrets.VAULTWARDEN_API_KEY || '' }}
+          ASPNETCORE_ENVIRONMENT: ${{ github.event_name == 'push' && 'Production' || '' }}
 
   format:
     needs: build
