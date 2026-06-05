@@ -94,6 +94,16 @@ public class VaultwardenSecretsLoaderTests
     }
 
     [Fact]
+    public async Task FetchSecretAsync_NullJsonBody_ReturnsNull()
+    {
+        // A literal JSON `null` deserializes to a null record; the null-conditional yields null.
+        var handler = new TestHttpMessageHandler()
+            .OnGet(SecretPrefix, HttpStatusCode.OK, "null");
+
+        (await Build(handler).FetchSecretAsync("DATABASE_URL", CancellationToken.None)).Should().BeNull();
+    }
+
+    [Fact]
     public async Task FetchSecretAsync_MalformedJson_Throws()
     {
         var handler = new TestHttpMessageHandler()
