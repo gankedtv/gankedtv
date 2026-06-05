@@ -54,6 +54,13 @@ public class Argon2idPasswordHasherTests
     [InlineData("$argon2id$v=19$badparams$abc$def")]
     [InlineData("$argon2id$v=19$m=19456,t=2,p=1$!!!notbase64!!!$abc")]
     [InlineData("$bcrypt$v=19$m=1,t=1,p=1$abc$def")] // wrong algo
+    [InlineData("$argon2id$x=19$m=19456,t=2,p=1$YWJj$ZGVm")] // version field not "v="
+    [InlineData("$argon2id$v=xx$m=19456,t=2,p=1$YWJj$ZGVm")] // version not an integer
+    [InlineData("$argon2id$v=19$=5,t=2,p=1$YWJj$ZGVm")] // empty param key (eq == 0)
+    [InlineData("$argon2id$v=19$m=xx,t=2,p=1$YWJj$ZGVm")] // param value not an integer
+    [InlineData("$argon2id$v=19$m=19456,t=2,p=1,z=9$YWJj$ZGVm")] // unknown param key
+    [InlineData("$argon2id$v=19$m=0,t=2,p=1$YWJj$ZGVm")] // non-positive memory
+    [InlineData("$argon2id$v=19$t=2,p=1$YWJj$ZGVm")] // missing memory param
     public void Verify_WithMalformedEncoded_ReturnsFalse(string encoded)
     {
         _hasher.Verify("anything", encoded).Should().BeFalse();

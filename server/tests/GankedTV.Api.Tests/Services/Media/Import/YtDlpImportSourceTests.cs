@@ -231,6 +231,42 @@ public class YtDlpImportSourceTests
         await act.Should().ThrowAsync<ImportFetchException>().WithMessage("*produced no output*");
     }
 
+    [Fact]
+    public async Task ProbeAsync_ParsesFloatDuration_AndSkipsNoiseAndNonStringFields()
+    {
+        var (source, runner) = Build();
+        // A banner line (skipped: doesn't start with '{'), then the JSON. duration is a float
+        // (rounded), width is absent (→ null), thumbnail is a number not a string (→ null).
+        runner.RunAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(Ok("[youtube] extracting\n" + """{"title":"Clip","duration":12.6,"height":1080,"thumbnail":42}"""));
+
+        var media = await source.ProbeAsync("https://www.youtube.com/watch?v=abc", CancellationToken.None);
+
+        media.Title.Should().Be("Clip");
+        media.DurationSecs.Should().Be(13); // 12.6 → rounded
+        media.Width.Should().BeNull();       // property absent
+        media.Height.Should().Be(1080);      // integer number
+        media.ThumbnailUrl.Should().BeNull(); // present but not a string
+    }
+
+    [Fact]
+    public async Task ProbeAsync_SkipsMalformedJsonLine_AndIgnoresNonNumericDuration()
+    {
+        var (source, runner) = Build();
+        // First '{'-line is malformed (JsonException → try next); the second parses. duration is
+        // a string (non-number → null), title is absent (→ null), width is a plain integer.
+        runner.RunAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(Ok("{ not valid json\n" + """{"duration":"NaN","width":640}"""));
+
+        var media = await source.ProbeAsync("https://www.youtube.com/watch?v=abc", CancellationToken.None);
+
+        media.Title.Should().BeNull();
+        media.DurationSecs.Should().BeNull(); // string, not a number
+        media.Width.Should().Be(640);
+    }
+
     // Helpers ---------------------------------------------------------------------------
 
     private static string? ResolveOutputArg(IReadOnlyList<string> args)

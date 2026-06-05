@@ -118,4 +118,68 @@ public class RedisRateLimiterFactoryTests
         RedisRateLimitLease.Acquired.MetadataNames.Should().BeEmpty();
         RedisRateLimitLease.Acquired.TryGetMetadata(MetadataName.RetryAfter, out _).Should().BeFalse();
     }
+
+    [Fact]
+    public void RejectedLease_ExposesRetryAfterMetadata()
+    {
+        var lease = new RedisRateLimitLease(TimeSpan.FromSeconds(5));
+
+        lease.IsAcquired.Should().BeFalse();
+        lease.MetadataNames.Should().Contain(MetadataName.RetryAfter.Name);
+        lease.TryGetMetadata(MetadataName.RetryAfter, out var value).Should().BeTrue();
+        value.Should().Be(TimeSpan.FromSeconds(5));
+        // A non-matching metadata name returns false even though Retry-After is set.
+        lease.TryGetMetadata("unrelated-metadata", out _).Should().BeFalse();
+    }
+
+    public static TheoryData<Exception> InfraFailures() =>
+        new()
+        {
+            new ObjectDisposedException("multiplexer"), // torn down during a shutdown/teardown race
+            new TimeoutException("client-side timeout"),
+        };
+
+    [Theory]
+    [MemberData(nameof(InfraFailures))]
+    public async Task Redis_InfraFailure_DegradesToInProcessLimiter(Exception failure)
+    {
+        var db = Substitute.For<IDatabase>();
+        db.ScriptEvaluateAsync(Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .ThrowsAsync(failure);
+        var mux = Substitute.For<IConnectionMultiplexer>();
+        mux.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+
+        var limiter = FactoryWith(mux).Create("clips-write", "u:1", permitLimit: 1, TimeSpan.FromMinutes(1));
+
+        (await limiter.AcquireAsync(1)).IsAcquired.Should().BeTrue();
+        using var rejected = await limiter.AcquireAsync(1);
+        rejected.IsAcquired.Should().BeFalse("the degraded in-process limiter still enforces the limit");
+    }
+
+    [Fact]
+    public async Task Dispose_AfterFallbackCreated_DisposesFallback()
+    {
+        var db = Substitute.For<IDatabase>();
+        db.ScriptEvaluateAsync(Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "down"));
+        var mux = Substitute.For<IConnectionMultiplexer>();
+        mux.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+
+        var limiter = FactoryWith(mux).Create("clips-write", "u:1", permitLimit: 1, TimeSpan.FromMinutes(1));
+        await limiter.AcquireAsync(1); // forces lazy fallback creation
+
+        var dispose = () => limiter.Dispose();
+        dispose.Should().NotThrow();
+    }
+
+    [Fact]
+    public void Dispose_WithoutFallback_IsNoOp()
+    {
+        var (mux, _) = MuxReturning(ScriptReply(current: 1, ttlMs: 60_000));
+        var limiter = FactoryWith(mux).Create("clips-write", "u:1", permitLimit: 1, TimeSpan.FromMinutes(1));
+
+        // Fallback was never created (no Redis failure), so Dispose takes the no-op branch.
+        var dispose = () => limiter.Dispose();
+        dispose.Should().NotThrow();
+    }
 }

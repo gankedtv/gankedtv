@@ -58,4 +58,13 @@ public class GameNamingTests
     {
         GameNaming.Tag("™").Should().Be("GAME");
     }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Tag_FallsBackForNullOrWhitespace(string? name)
+    {
+        GameNaming.Tag(name).Should().Be("GAME");
+    }
 }

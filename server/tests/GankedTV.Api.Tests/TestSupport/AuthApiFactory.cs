@@ -89,6 +89,15 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
         // and downstream 401s in tests that depend on a successful register.
         Environment.SetEnvironmentVariable("REDIS_URL", null);
 
+        // Neutralise the Vaultwarden bootstrap inside the test rig. A developer's repo-root .env
+        // (loaded by Program.cs in Development) sets VAULTWARDEN_API_URL/KEY process-wide, and that
+        // value leaks across in-process host boots — a later Production-environment factory would
+        // then fail-fast fetching real secrets from a live vault. Empty (not null) so it reads as
+        // not-configured AND survives the .env NoClobber reload; tests stay hermetic and need no
+        // secrets backend, exactly like CI (which has no .env).
+        Environment.SetEnvironmentVariable("VAULTWARDEN_API_URL", "");
+        Environment.SetEnvironmentVariable("VAULTWARDEN_API_KEY", "");
+
         builder.UseEnvironment(_environment);
         builder.ConfigureServices(services =>
         {

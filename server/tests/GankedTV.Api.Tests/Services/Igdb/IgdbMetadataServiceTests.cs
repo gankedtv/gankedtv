@@ -173,6 +173,60 @@ public class IgdbMetadataServiceTests
         sw.Elapsed.Should().BeGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(40));
     }
 
+    [Fact]
+    public async Task GetPopularGamesAsync_SkipsGamesWithEmptyNameOrImageId()
+    {
+        const string gamesJson = """
+        [
+          {"id":1,"name":"","cover":{"id":1,"image_id":"a"}},
+          {"id":2,"name":"Valid","cover":{"id":2,"image_id":""}},
+          {"id":3,"name":"Good","cover":{"id":3,"image_id":"img3"}}
+        ]
+        """;
+        var handler = new TestHttpMessageHandler()
+            .OnPost(TokenUrl, HttpStatusCode.OK, TokenJson)
+            .OnPost(GamesUrl, HttpStatusCode.OK, gamesJson);
+
+        var games = await Build(handler).GetPopularGamesAsync(10);
+
+        // Empty name and empty image_id are both rejected; only the fully-populated row survives.
+        games.Should().ContainSingle().Which.Should().Be(new IgdbGame(3, "Good", "img3"));
+    }
+
+    [Fact]
+    public async Task GetPopularGamesAsync_NullGamesResponse_ReturnsEmpty()
+    {
+        var handler = new TestHttpMessageHandler()
+            .OnPost(TokenUrl, HttpStatusCode.OK, TokenJson)
+            .OnPost(GamesUrl, HttpStatusCode.OK, "null");
+
+        (await Build(handler).GetPopularGamesAsync(2)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetPopularGamesAsync_NullTokenResponse_Throws()
+    {
+        var handler = new TestHttpMessageHandler()
+            .OnPost(TokenUrl, HttpStatusCode.OK, "null")
+            .OnPost(GamesUrl, HttpStatusCode.OK, "[]");
+
+        var act = async () => await Build(handler).GetPopularGamesAsync(2);
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*empty*");
+    }
+
+    [Fact]
+    public async Task GetPopularGamesAsync_TokenWithoutAccessToken_Throws()
+    {
+        var handler = new TestHttpMessageHandler()
+            .OnPost(TokenUrl, HttpStatusCode.OK, """{"expires_in":3600,"token_type":"bearer"}""")
+            .OnPost(GamesUrl, HttpStatusCode.OK, "[]");
+
+        var act = async () => await Build(handler).GetPopularGamesAsync(2);
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*access_token*");
+    }
+
     // Stateful handler for the 401-retry path: first /games call → 401, subsequent → 200.
     // Token endpoint always 200; counts both so the test can assert a re-auth happened.
     private sealed class SequencedGamesHandler(string tokenJson, string gamesJson) : HttpMessageHandler
