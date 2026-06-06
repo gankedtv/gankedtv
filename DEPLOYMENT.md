@@ -1,8 +1,9 @@
 # Deployment
 
-Production runtime requirements and configuration for GankedTV. This covers the **API server**
-and the **web frontend**; container build/publish and the auto-deploy pipeline are tracked
-separately in issue #123.
+Production runtime requirements and configuration for GankedTV — the **API server**, the **web
+frontend**, and the **Discord bot**. Container images are published to GHCR by
+[release.yml](.github/workflows/release.yml) and run via [docker-compose.prod.yml](docker-compose.prod.yml);
+see [Container images](#container-images-ghcr) and [Single-host deployment](#single-host-deployment) below.
 
 > **Secrets are never committed.** In production they come from the self-hosted Vaultwarden-API
 > (see [Secret management](#secret-management-vaultwarden)) or your orchestrator's secret store, fed
@@ -17,6 +18,145 @@ separately in issue #123.
 - **PostgreSQL ≥ 15** (the dev stack and CI run PG18).
 - The API image ([server/Dockerfile.api](server/Dockerfile.api)) ships `ffmpeg` + `yt-dlp` for the
   media/import workers.
+
+## Container images (GHCR)
+
+[release.yml](.github/workflows/release.yml) builds and pushes three images on every push to `main`,
+each tagged with the commit SHA **and** `latest`:
+
+| Image | Built from | Contents |
+|---|---|---|
+| `ghcr.io/gankedtv/gankedtv-api` | [server/Dockerfile.api](server/Dockerfile.api) | API + media workers (bundles `ffmpeg`, `yt-dlp`, `curl`) |
+| `ghcr.io/gankedtv/gankedtv-web` | [web/Dockerfile](web/Dockerfile) | Built Vue bundle served by Caddy (internal `:80`, no TLS) |
+| `ghcr.io/gankedtv/gankedtv-discord` | [discord/Dockerfile](discord/Dockerfile) | Discord bot |
+
+A per-image change filter skips images whose sources didn't change — their `latest` already points at
+the correct digest. **There is no deploy job**: the host pulls the moved `latest` itself (Watchtower /
+freshdock, or a manual `docker compose pull && up -d`). The full commit-SHA tag is there for pinning
+and rollback (`IMAGE_TAG=<sha>`).
+
+The web image bakes its `VITE_*` values **at build time** from repo **Variables** (Settings → Secrets
+and variables → Actions → *Variables*) — they're public (they ship in the bundle), so they're plain
+build-args, not secrets: `VITE_API_BASE_URL` (required for prod), `VITE_GA_MEASUREMENT_ID`,
+`VITE_USE_SECURE_COOKIES`, `VITE_MAX_UPLOAD_SIZE_MB`, `VITE_SENTRY_DSN`, `VITE_SENTRY_TRACES_SAMPLE_RATE`.
+`VITE_SENTRY_RELEASE` is set to the commit SHA automatically.
+
+**Package visibility.** For an unauthenticated host to pull, set the three GHCR packages **public**
+(repo → Packages → each package → Package settings). If kept private, give the host a `read:packages`
+token via `docker login ghcr.io`.
+
+## Single-host deployment
+
+[docker-compose.prod.yml](docker-compose.prod.yml) runs the whole stack — `postgres`, `redis`, `minio`,
+`api`, `web`, and (with `--profile discord`) the bot — on one host from the GHCR images:
+
+```bash
+cp .env.prod.example .env      # fill in the REQUIRED values
+docker compose -f docker-compose.prod.yml --env-file .env config   # validate interpolation
+docker compose -f docker-compose.prod.yml --env-file .env up -d
+docker compose -f docker-compose.prod.yml --profile discord --env-file .env up -d   # + bot
+```
+
+- The `api` runs with `RUN_MIGRATIONS_ON_STARTUP=true`, so it self-migrates before serving (see
+  [Startup database migrations](#startup-database-migrations)); `/health/ready` goes green once applied.
+- **Nothing serves TLS.** The `web` (`:80`), `api` (`:5000`), and `minio` (`:9000`) ports are published
+  to the host — point **your** reverse proxy (nginx proxy manager, Traefik, …) at them and terminate TLS
+  there: web app → `web:80`, API → `api:5000`, and `S3_PUBLIC_URL` → `minio:9000`.
+- `S3_ENDPOINT` defaults to the internal `http://minio:9000` (api → minio); `S3_PUBLIC_URL` is the
+  browser-facing media URL your proxy serves. The api creates all buckets on first boot
+  (`BucketBootstrapHostedService`), marking `game-covers` / `stream-cache` / `avatars` anonymous-read.
+- **Object store:** the `minio` service runs **AIStor** — MinIO's maintained successor (community
+  MinIO was archived in early 2026). Its **free single-node license** is a token file you mount, not
+  an env var: download a free key at <https://min.io/download>, save the token to `secrets/minio.license`
+  (gitignored), and point `MINIO_LICENSE_FILE` at it (default `./secrets/minio.license`). Without a
+  valid license AIStor blocks all S3 operations. The startup banner says "Community License" even when
+  licensed — confirm with `mc license info` (it reports plan **FREE**, no expiry). The free tier is
+  standalone single-node only (no distributed HA), which is exactly what this stack uses.
+- `DATABASE_URL` / `DISCORD_DATABASE_URL` are derived from `POSTGRES_*`, so the password lives in one
+  place — use a connection-string-safe value (no `;`, `@`, `/`).
+- An all-in-one box flips `MEDIA_TRANSCODE_WORKER_ENABLED` back **on** (Production defaults it off,
+  expecting a GPU host) so the api compresses in-process with the CPU encoder (libx264) — no GPU needed.
+
+> The API logs a one-time `Failed to determine the https port for redirect` warning in Production
+> (HTTPS redirection is enabled but there's no TLS inside the container). It's harmless behind a
+> TLS-terminating proxy — requests pass through as HTTP, and the health probes are mapped before the
+> redirection middleware, so `/health/*` is unaffected.
+
+## Split deployment across hosts
+
+The single-host compose is the baseline. You can peel **object storage** and/or **GPU transcoding**
+onto a separate box (e.g. a TrueNAS server with the disks + an NVIDIA GPU) with **no code change** —
+the S3 layer already separates the internal endpoint from the browser-facing one, and the media queues
+use `FOR UPDATE SKIP LOCKED`, so a worker runs anywhere that reaches the DB.
+
+**AIStor on a storage host** — run it there instead of the compose `minio` service (single-node free
+tier; mount your free license token, same as the single-host stack):
+
+```yaml
+# storage host
+services:
+  minio:
+    image: quay.io/minio/aistor/minio:RELEASE.2026-05-28T20-50-32Z
+    command: minio server /data --console-address ":9001" --license /minio.license
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY}       # == the api's S3_ACCESS_KEY
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
+    ports: ["9000:9000", "9001:9001"]
+    volumes:
+      - "/mnt/pool/minio:/data"               # a dataset with room to grow
+      - "/mnt/pool/minio.license:/minio.license:ro"   # your free AIStor token
+```
+
+Then drop the `minio` service from the compose on the app host and set:
+
+```
+S3_ENDPOINT=http://<storage-lan-ip>:9000      # api → store over the LAN (path-style; already on)
+S3_PUBLIC_URL=https://cdn.example.com          # browser-facing, via your reverse proxy → :9000
+```
+
+Buckets are still auto-created on api boot — no manual setup. The app-host api reaches the store over
+the LAN; browsers use `S3_PUBLIC_URL` (presigned URLs are host-rewritten to it).
+
+**GPU transcode worker** — the compress + JIT stages are GPU-heavy and location-independent. Leave the
+app-host api on thumbnails only (`MEDIA_TRANSCODE_WORKER_ENABLED=false`) and run a second container of
+the **same** api image on the GPU host:
+
+```yaml
+# GPU host — shares the app host's Postgres + the storage host's MinIO over the LAN
+services:
+  transcode:
+    image: ghcr.io/gankedtv/gankedtv-api:latest
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      RUN_MIGRATIONS_ON_STARTUP: "false"       # MUST stay off — the app-host api migrates; avoid races
+      MEDIA_THUMBNAIL_WORKER_ENABLED: "false"
+      MEDIA_TRANSCODE_WORKER_ENABLED: "true"
+      MEDIA_TRANSCODE_ENABLED: "true"
+      MEDIA_IMPORT_WORKER_ENABLED: "false"     # URL-import stays on the app-host api
+      MEDIA_VIDEO_ENCODER: av1_nvenc           # GPU master encoder
+      MEDIA_VIDEO_CODEC: av1
+      MEDIA_JIT_VIDEO_ENCODER: h264_nvenc      # GPU compatibility ladder
+      DATABASE_URL: "Host=<app-host-lan-ip>;Port=5432;Database=gankedtv;Username=gankedtv;Password=..."
+      S3_ENDPOINT: http://<storage-lan-ip>:9000
+      S3_PUBLIC_URL: https://cdn.example.com
+      S3_ACCESS_KEY: ...
+      S3_SECRET_KEY: ...
+      JWT_SECRET: ...                          # it's a full API boot — the fail-fast secrets still apply
+      WEB_ORIGIN: https://example.com
+      CORS_ORIGINS: https://example.com
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - { driver: nvidia, count: 1, capabilities: [gpu, video] }
+```
+
+Requires the **NVIDIA Container Toolkit** on the GPU host. **Caveat:** the stock api image bundles
+Debian's *software* ffmpeg, so `av1_nvenc`/`h264_nvenc` fail at encode time. Give the worker an
+NVENC-enabled ffmpeg — either build a thin image `FROM ghcr.io/gankedtv/gankedtv-api:latest` that drops
+in a `jellyfin/ffmpeg` / `jrottenberg/ffmpeg` build and set `FFMPEG_PATH`/`FFPROBE_PATH`, or bind-mount
+one and point `FFMPEG_PATH` at it. The worker owns no schema and runs no migrations — it only leases
+transcode jobs from the shared DB.
 
 ## Fail-fast secret validation
 
@@ -83,7 +223,9 @@ it to the manifests when that lands.
 **CI.** The web build workflow pulls `VITE_*` from the PROD collection on pushes to `main` (using a
 `VAULTWARDEN_API_KEY` GitHub secret and the API's `ENABLE_GITHUB_IP_RANGES` to whitelist runner IPs);
 PR builds skip the fetch and use the committed `.env`, so PR CI doesn't depend on vault availability.
-Sourcing the **deploy** job's secrets from Vaultwarden is part of #123.
+The release **image** build ([release.yml](.github/workflows/release.yml)) instead bakes `VITE_*` from
+repo Variables, so it needs no vault access; runtime API/bot secrets come from the host `.env` or
+Vaultwarden at container startup.
 
 ## Startup database migrations
 
@@ -102,18 +244,20 @@ correctness. The flag accepts `true`/`1`/`yes`/`on`.
 | Endpoint | Meaning | Use |
 |---|---|---|
 | `GET /health/live` | Process is up (no dependency checks). | Liveness probe / restart signal. |
-| `GET /health/ready` | DB reachable **and** migrations applied. | Readiness gate, load-balancer membership, the #123 deploy smoke test. |
+| `GET /health/ready` | DB reachable **and** migrations applied. | Readiness gate, load-balancer membership, post-deploy smoke check. |
 
 ## Worker toggles (media pipeline)
 
 The media pipeline can be split across hosts (see the table in [CLAUDE.md](CLAUDE.md) under
-"Media pipeline"). `appsettings.Production.json` defaults to the **main API server** role
-(thumbnail worker on, transcode worker off, transcode pipeline on). Override per host via env vars
-to move GPU work to a separate box:
+"Media pipeline"). `appsettings.Production.json` defaults to the **GPU-split** role (thumbnail worker
+on, transcode worker off, transcode pipeline on) — it expects a separate GPU box to run the compress +
+JIT stages. The single-host compose flips `MEDIA_TRANSCODE_WORKER_ENABLED` back on so one box does CPU
+compression; to offload to a GPU host instead, see [Split deployment across hosts](#split-deployment-across-hosts).
 
 | Instance | `MEDIA_THUMBNAIL_WORKER_ENABLED` | `MEDIA_TRANSCODE_WORKER_ENABLED` | encoder vars |
 |---|---|---|---|
-| Main API server | `true` | `false` | — |
+| All-in-one host (CPU) | `true` | `true` | — (defaults: `libx264` / `h264`) |
+| Main API server (GPU split) | `true` | `false` | — |
 | GPU box (NVENC) | `false` | `true` | `MEDIA_VIDEO_ENCODER=av1_nvenc`, `MEDIA_VIDEO_CODEC=av1`, `MEDIA_JIT_VIDEO_ENCODER=h264_nvenc` |
 
 ## Web frontend (build-time config)
@@ -128,9 +272,10 @@ runtime:
 | `VITE_GA_MEASUREMENT_ID` | GA4 measurement id (`G-XXXXXXX`). Analytics is a complete no-op (no script, no cookies) when empty, so it stays off in dev/preview. |
 | `VITE_SENTRY_DSN` | Sentry/GlitchTip DSN for the web project. Error monitoring is a no-op when empty. Optional: `VITE_SENTRY_ENVIRONMENT`, `VITE_SENTRY_RELEASE`, `VITE_SENTRY_TRACES_SAMPLE_RATE`. |
 
-> The Dockerfile build-arg wiring that feeds these into the production web image is part of
-> issue #123. **Cookie-consent gating for analytics is a known follow-up** — GA currently loads
-> whenever the measurement id is present.
+> These feed the production web image as build-args ([web/Dockerfile](web/Dockerfile)); the release
+> workflow sources them from repo Variables — see [Container images](#container-images-ghcr).
+> **Cookie-consent gating for analytics is a known follow-up** — GA currently loads whenever the
+> measurement id is present.
 
 ## Error monitoring (Sentry → self-hosted GlitchTip)
 
@@ -152,8 +297,10 @@ too, hence the `DISCORD_`-prefix:
 | Discord bot (Bun) | `DISCORD_SENTRY_DSN` | `DISCORD_SENTRY_ENVIRONMENT` → `NODE_ENV`; `DISCORD_SENTRY_RELEASE` → package version |
 
 `SENTRY_TRACES_SAMPLE_RATE` / `VITE_SENTRY_TRACES_SAMPLE_RATE` / `DISCORD_SENTRY_TRACES_SAMPLE_RATE`
-override the `0.01` default. Leave the `*_RELEASE` vars unset for now — the #123 deploy pipeline will
-set them to the commit SHA so issues map to deploys.
+override the `0.01` default. The web image sets `VITE_SENTRY_RELEASE` to the commit SHA at build (via
+[release.yml](.github/workflows/release.yml)); for the API and bot, set `SENTRY_RELEASE` /
+`DISCORD_SENTRY_RELEASE` in the deploy env to map issues to a release, or leave them unset to fall back
+to the assembly/package version.
 
 ## Reference
 

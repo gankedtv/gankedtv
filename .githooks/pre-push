@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
-# Mirrors CI: runs the checks CI runs, locally, scoped to what changed.
+# Mirrors CI: runs the checks CI runs, locally, scoped to what changed. The per-language stacks
+# (server / web / discord) run CONCURRENTLY — a push touching several stacks costs about as much
+# wall-clock as its slowest single stack, not the sum. Each stack's output is buffered and printed
+# as a block when it finishes, so parallel logs don't interleave (the trade-off: a slow stack's
+# output appears only once it completes).
+# Server coverage is opt-in (PREPUSH_COVERAGE=1) — it's the slow part and CI gates it anyway.
 # Bypass: `PREPUSH_SKIP=1 git push` or `git push --no-verify`.
 
 set -eu
@@ -51,41 +56,85 @@ if [ -z "$touched_server" ] && [ -z "$touched_web" ] && [ -z "$touched_discord" 
   exit 0
 fi
 
-# Run formatters first (write mode) so we can fail fast if anything changed.
-# Snapshot the diff before so we can detect formatter-induced changes even on
-# files that were already dirty.
+# Only re-install when a manifest changed in the pushed range; cached node_modules is otherwise
+# reused, saving a cold-cache install on every push.
+web_manifest_changed=$(echo "$changed_files" | grep -E '^web/(package\.json|bun\.lock)$' || true)
+discord_manifest_changed=$(echo "$changed_files" | grep -E '^discord/(package\.json|bun\.lock)$' || true)
+
+# run_stages "<phase>" name1 fn1 [name2 fn2 …] — run each fn concurrently in a subshell, buffering
+# its output to a temp file, then print each buffer as a labelled block. Returns 1 if any fn failed.
+# Subshells inherit `set -e`, so a stage stops at its first failing command.
+run_stages() {
+  phase="$1"; shift
+  names=(); logs=(); pids=()
+  while [ "$#" -gt 0 ]; do
+    name="$1"; fn="$2"; shift 2
+    log=$(mktemp)
+    echo "pre-push: [$phase] $name started…"
+    ( "$fn" ) >"$log" 2>&1 &
+    names+=("$name"); logs+=("$log"); pids+=("$!")
+  done
+  rc=0
+  for i in "${!pids[@]}"; do
+    if wait "${pids[$i]}"; then status="ok"; else status="FAILED"; rc=1; fi
+    printf '\n──── %s: %s [%s] ────\n' "$phase" "${names[$i]}" "$status"
+    cat "${logs[$i]}"
+    rm -f "${logs[$i]}"
+  done
+  return "$rc"
+}
+
+# --- Formatters (write mode) ---
+fmt_server() { cd "$repo_root/server"; dotnet format; }
+fmt_web() {
+  cd "$repo_root/web"
+  if [ -n "$web_manifest_changed" ]; then bun install --frozen-lockfile; fi
+  bun run format
+}
+fmt_discord() {
+  cd "$repo_root/discord"
+  if [ -n "$discord_manifest_changed" ]; then bun install --frozen-lockfile; fi
+  bun run format
+}
+
+# --- Checks (mirror CI) ---
+check_server() {
+  cd "$repo_root/server"
+  # Coverage (coverlet.msbuild) instruments every test at build time and roughly 2-4×'s the run, so
+  # it's opt-in locally via PREPUSH_COVERAGE=1 — CI (server.yml) still enforces the 85% line/branch
+  # gate on every push, so coverage can't silently regress. The fast default builds once and reuses
+  # it (--no-build) instead of letting `dotnet test` recompile.
+  if [ "${PREPUSH_COVERAGE:-0}" = "1" ]; then
+    dotnet test --configuration Release /p:CollectCoverage=true /p:Threshold=85%2C85
+  else
+    dotnet build --configuration Release
+    dotnet test --configuration Release --no-build
+  fi
+}
+check_web() {
+  cd "$repo_root/web"
+  bun run lint:check
+  bun run build
+  bun run test:coverage
+}
+check_discord() {
+  cd "$repo_root/discord"
+  bun run lint:check
+  bun run type-check
+  bun run test:coverage
+}
+
+# Run formatters first so we can fail fast if they rewrote anything. Snapshot the diff before so we
+# detect formatter-induced changes even on files that were already dirty.
 diff_before=$(git diff)
 
-if [ -n "$touched_server" ]; then
-  echo "pre-push: formatting server…"
-  (cd server && dotnet format)
-fi
+fmt_stages=()
+if [ -n "$touched_server" ]; then fmt_stages+=(server fmt_server); fi
+if [ -n "$touched_web" ]; then fmt_stages+=(web fmt_web); fi
+if [ -n "$touched_discord" ]; then fmt_stages+=(discord fmt_discord); fi
 
-if [ -n "$touched_web" ]; then
-  # Only re-install when a manifest changed in the pushed range; cached node_modules
-  # is otherwise reused, saving a cold-cache install on every push.
-  manifest_changed=$(echo "$changed_files" | grep -E '^web/(package\.json|bun\.lock)$' || true)
-  echo "pre-push: formatting web…"
-  (
-    cd web
-    if [ -n "$manifest_changed" ]; then
-      bun install --frozen-lockfile
-    fi
-    bun run format
-  )
-fi
-
-if [ -n "$touched_discord" ]; then
-  manifest_changed=$(echo "$changed_files" | grep -E '^discord/(package\.json|bun\.lock)$' || true)
-  echo "pre-push: formatting discord…"
-  (
-    cd discord
-    if [ -n "$manifest_changed" ]; then
-      bun install --frozen-lockfile
-    fi
-    bun run format
-  )
-fi
+echo "pre-push: formatting…"
+run_stages format "${fmt_stages[@]}" || { echo; echo "pre-push: a formatter errored (see above)."; exit 1; }
 
 if [ "$diff_before" != "$(git diff)" ]; then
   echo
@@ -94,38 +143,19 @@ if [ "$diff_before" != "$(git diff)" ]; then
   exit 1
 fi
 
-if [ -n "$touched_server" ]; then
-  echo "pre-push: running server checks…"
-  (
-    cd server
-    dotnet build --configuration Release
-    dotnet test --configuration Release /p:CollectCoverage=true /p:Threshold=85%2C85
-  )
-fi
+check_stages=()
+if [ -n "$touched_server" ]; then check_stages+=(server check_server); fi
+if [ -n "$touched_web" ]; then check_stages+=(web check_web); fi
+if [ -n "$touched_discord" ]; then check_stages+=(discord check_discord); fi
 
-if [ -n "$touched_web" ]; then
-  echo "pre-push: running web checks…"
-  (
-    cd web
-    bun run lint:check
-    bun run build
-    bun run test:coverage
-  )
-fi
-
-if [ -n "$touched_discord" ]; then
-  echo "pre-push: running discord checks…"
-  (
-    cd discord
-    bun run lint:check
-    bun run type-check
-    bun run test:coverage
-  )
-fi
+echo
+echo "pre-push: running checks…"
+run_stages checks "${check_stages[@]}" || { echo; echo "pre-push: checks failed (see above)."; exit 1; }
 
 if command -v graphify >/dev/null 2>&1; then
   echo "pre-push: refreshing graphify index…"
   graphify update . || echo "pre-push: graphify update failed, continuing."
 fi
 
+echo
 echo "pre-push: all checks passed."

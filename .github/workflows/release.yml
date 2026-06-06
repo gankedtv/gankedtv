@@ -1,0 +1,147 @@
+name: Release
+
+# Build + push the three service images to GHCR on every push to main. No deploy step — an
+# auto-updater on the host (Watchtower / freshdock) pulls the moved :latest tag. Each image is also
+# tagged with the full commit SHA for pinning/rollback. A per-image change filter avoids rebuilding
+# images whose sources didn't change; their existing :latest still points at the correct digest.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - 'web/**'
+      - 'discord/**'
+      - 'shared/**'
+      - '.github/workflows/release.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false # never abort a half-published release
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      web: ${{ steps.filter.outputs.web }}
+      discord: ${{ steps.filter.outputs.discord }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            api:
+              - 'server/**'
+              - '.github/workflows/release.yml'
+            web:
+              - 'web/**'
+              - 'shared/**'
+              - '.github/workflows/release.yml'
+            discord:
+              - 'discord/**'
+              - 'shared/**'
+              - '.github/workflows/release.yml'
+
+  api:
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/gankedtv-api
+          tags: |
+            type=sha,prefix=,format=long
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: server # server/-scoped: Dockerfile.api COPYs GankedTV.slnx + src/ relative to server/
+          file: server/Dockerfile.api
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+
+  web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/gankedtv-web
+          tags: |
+            type=sha,prefix=,format=long
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: . # repo root: web build needs web/ + shared/ (see web/Dockerfile + .dockerignore)
+          file: web/Dockerfile
+          push: true
+          # VITE_* are baked into the public bundle (not secret), sourced from repo Variables so the
+          # build stays hermetic — no Vaultwarden/network. Set them under repo Settings → Variables.
+          build-args: |
+            VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL }}
+            VITE_GA_MEASUREMENT_ID=${{ vars.VITE_GA_MEASUREMENT_ID }}
+            VITE_USE_SECURE_COOKIES=${{ vars.VITE_USE_SECURE_COOKIES }}
+            VITE_MAX_UPLOAD_SIZE_MB=${{ vars.VITE_MAX_UPLOAD_SIZE_MB }}
+            VITE_SENTRY_DSN=${{ vars.VITE_SENTRY_DSN }}
+            VITE_SENTRY_ENVIRONMENT=Production
+            VITE_SENTRY_RELEASE=${{ github.sha }}
+            VITE_SENTRY_TRACES_SAMPLE_RATE=${{ vars.VITE_SENTRY_TRACES_SAMPLE_RATE }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+
+  discord:
+    needs: changes
+    if: needs.changes.outputs.discord == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/gankedtv-discord
+          tags: |
+            type=sha,prefix=,format=long
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: . # repo root: discord/Dockerfile COPYs shared/
+          file: discord/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=discord
+          cache-to: type=gha,scope=discord,mode=max

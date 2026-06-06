@@ -21,6 +21,9 @@ web/.eslintcache
 .env.local
 .env.*.local
 
+# Deployment secrets (e.g. the AIStor license token mounted by docker-compose.prod.yml)
+secrets/
+
 # IDE
 .idea/
 .vscode/

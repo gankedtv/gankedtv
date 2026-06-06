@@ -1,0 +1,163 @@
+# Production stack — generic single-host deployment of GankedTV from the published GHCR images.
+#
+# Copy .env.prod.example to .env next to this file and fill it in, then:
+#   docker compose -f docker-compose.prod.yml --env-file .env up -d
+#   docker compose -f docker-compose.prod.yml --profile discord --env-file .env up -d   # +bot
+#
+# All services sit on an internal network; the api / web / minio ports are published to the host so
+# YOUR reverse proxy (nginx proxy manager, Traefik, Caddy, …) can terminate TLS and route to them —
+# nothing here serves TLS. Pin all three images at once with IMAGE_TAG=<commit-sha> (default latest;
+# an auto-updater like Watchtower/freshdock can track :latest instead).
+#
+# Splitting object storage and/or GPU transcoding onto a separate host (e.g. TrueNAS) is an advanced
+# variant documented in DEPLOYMENT.md — point S3_ENDPOINT at the remote object store and drop the
+# minio service here; no compose change beyond that.
+
+name: gankedtv
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gankedtv}
+      POSTGRES_USER: ${POSTGRES_USER:-gankedtv}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gankedtv} -d ${POSTGRES_DB:-gankedtv}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks: [internal]
+
+  redis:
+    image: redis:7
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks: [internal]
+
+  # MinIO community edition is archived/unmaintained (last image Oct 2025), so this uses its
+  # maintained successor AIStor in the free single-node tier. The free license is a SUBNET token
+  # mounted as a FILE — the only supported way for a container (there is no token env var, and the
+  # community-license startup banner is cosmetic: `mc license info` reports plan FREE). Without a
+  # valid license AIStor blocks all S3 operations. Get a free key at https://min.io/download and
+  # save it to ./secrets/minio.license (override the path with MINIO_LICENSE_FILE).
+  minio:
+    image: quay.io/minio/aistor/minio:RELEASE.2026-05-28T20-50-32Z
+    command: minio server /data --console-address ":9001" --license /minio.license
+    # Root creds ARE the S3 creds the api uses — one source of truth, no second pair to keep in sync.
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env}
+    volumes:
+      - minio_data:/data
+      - ${MINIO_LICENSE_FILE:-./secrets/minio.license}:/minio.license:ro
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"      # S3 API — your reverse proxy fronts this as S3_PUBLIC_URL
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"  # admin console — firewall or drop in production
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks: [internal]
+
+  api:
+    image: ghcr.io/gankedtv/gankedtv-api:${IMAGE_TAG:-latest}
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      # This is the single migrating instance; it self-migrates before serving.
+      RUN_MIGRATIONS_ON_STARTUP: "true"
+      # Derived from POSTGRES_* so the password lives in exactly one place. dotnet/Npgsql semicolon
+      # form (NOT the libpq URL the bot uses). Use a connection-string-safe password (no ';').
+      DATABASE_URL: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-gankedtv};Username=${POSTGRES_USER:-gankedtv};Password=${POSTGRES_PASSWORD:?}"
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (>=32 bytes) in .env}
+      JWT_ISSUER: ${JWT_ISSUER:-gankedtv}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-gankedtv-web}
+      OAUTH_STATE_SECRET: ${OAUTH_STATE_SECRET:-}
+      WEB_ORIGIN: ${WEB_ORIGIN:?set WEB_ORIGIN in .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS in .env}
+      # S3_ENDPOINT: internal (api -> minio). S3_PUBLIC_URL: browser-facing (via your reverse proxy).
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_PUBLIC_URL: ${S3_PUBLIC_URL:?set S3_PUBLIC_URL in .env}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+      DISCORD_REDIRECT_URI: ${DISCORD_REDIRECT_URI:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+      IGDB_CLIENT_ID: ${IGDB_CLIENT_ID:-}
+      IGDB_CLIENT_SECRET: ${IGDB_CLIENT_SECRET:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-Production}
+      SENTRY_RELEASE: ${SENTRY_RELEASE:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.01}
+      MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-500}
+      MAX_CLIP_DURATION_SECS: ${MAX_CLIP_DURATION_SECS:-120}
+      # appsettings.Production.json ships the compress worker OFF (it assumes a separate GPU host),
+      # so an all-in-one box must flip it back ON — it then compresses in-process with the default
+      # software encoder (libx264, no GPU). To offload transcoding to a GPU host instead, set this
+      # false and run the GPU worker there (see DEPLOYMENT.md). Encoder/codec stay at the CPU defaults.
+      MEDIA_TRANSCODE_WORKER_ENABLED: ${MEDIA_TRANSCODE_WORKER_ENABLED:-true}
+    ports:
+      - "${API_HTTP_PORT:-5000}:5000"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+      minio: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:5000/health/live || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    restart: unless-stopped
+    networks: [internal]
+
+  web:
+    image: ghcr.io/gankedtv/gankedtv-web:${IMAGE_TAG:-latest}
+    # Static bundle (Caddy); the API base URL is baked at build time, so no runtime depends_on and no
+    # API env here. Healthcheck comes from the image's HEALTHCHECK.
+    ports:
+      - "${WEB_HTTP_PORT:-8080}:80"
+    restart: unless-stopped
+    networks: [internal]
+
+  discord:
+    image: ghcr.io/gankedtv/gankedtv-discord:${IMAGE_TAG:-latest}
+    profiles: ["discord"]
+    environment:
+      # libpq URL form (porsager's `postgres` driver can't parse the dotnet semicolon form the api uses).
+      DISCORD_DATABASE_URL: "postgres://${POSTGRES_USER:-gankedtv}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-gankedtv}"
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      DISCORD_BOT_APP_ID: ${DISCORD_BOT_APP_ID:-}
+      DISCORD_POLL_INTERVAL_SECONDS: ${DISCORD_POLL_INTERVAL_SECONDS:-30}
+      GANKEDTV_API_BASE: ${GANKEDTV_API_BASE:-http://api:5000}
+      GANKEDTV_PUBLIC_BASE: ${GANKEDTV_PUBLIC_BASE:-${WEB_ORIGIN}}
+      DISCORD_SENTRY_DSN: ${DISCORD_SENTRY_DSN:-}
+      DISCORD_SENTRY_ENVIRONMENT: ${DISCORD_SENTRY_ENVIRONMENT:-Production}
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: unless-stopped
+    networks: [internal]
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+
+networks:
+  internal:

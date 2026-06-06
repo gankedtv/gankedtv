@@ -1,8 +1,11 @@
-# Build context for the discord bot image is the repo ROOT (docker-compose.dev.yml) so it can COPY
-# the shared/ module. Send only what that image needs — allowlist discord/ + shared/, drop the rest.
-# (The .NET API image uses its own server/-scoped build, so this allowlist doesn't affect it.)
+# Build context for the discord bot AND web images is the repo ROOT so they can COPY the shared/
+# module — the bot imports it directly, and the web build needs it for Vite's envDir:'../' + the
+# prebuild's shared Vaultwarden client. Send only what those images need — allowlist discord/ +
+# web/ + shared/, drop the rest. (The .NET API image uses its own server/-scoped build, so this
+# allowlist doesn't affect it.)
 *
 !discord
+!web
 !shared
 
 # ...but never ship local build artifacts, even from the allowlisted dirs.
