@@ -26,7 +26,7 @@ each tagged with the commit SHA **and** `latest`:
 
 | Image | Built from | Contents |
 |---|---|---|
-| `ghcr.io/gankedtv/gankedtv-api` | [server/Dockerfile.api](server/Dockerfile.api) | API + media workers (bundles `ffmpeg`, `yt-dlp`, `curl`) |
+| `ghcr.io/gankedtv/gankedtv-server` | [server/Dockerfile.api](server/Dockerfile.api) | API + media workers (bundles `ffmpeg`, `yt-dlp`, `curl`) |
 | `ghcr.io/gankedtv/gankedtv-web` | [web/Dockerfile](web/Dockerfile) | Built Vue bundle served by Caddy (internal `:80`, no TLS) |
 | `ghcr.io/gankedtv/gankedtv-discord` | [discord/Dockerfile](discord/Dockerfile) | Discord bot |
 
@@ -127,7 +127,7 @@ the **same** api image on the GPU host:
 # GPU host — shares the app host's Postgres + the storage host's MinIO over the LAN
 services:
   transcode:
-    image: ghcr.io/gankedtv/gankedtv-api:latest
+    image: ghcr.io/gankedtv/gankedtv-server:latest
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       RUN_MIGRATIONS_ON_STARTUP: "false"       # MUST stay off — the app-host api migrates; avoid races
@@ -155,7 +155,7 @@ services:
 
 Requires the **NVIDIA Container Toolkit** on the GPU host. **Caveat:** the stock api image bundles
 Debian's *software* ffmpeg, so `av1_nvenc`/`h264_nvenc` fail at encode time. Give the worker an
-NVENC-enabled ffmpeg — either build a thin image `FROM ghcr.io/gankedtv/gankedtv-api:latest` that drops
+NVENC-enabled ffmpeg — either build a thin image `FROM ghcr.io/gankedtv/gankedtv-server:latest` that drops
 in a `jellyfin/ffmpeg` / `jrottenberg/ffmpeg` build and set `FFMPEG_PATH`/`FFPROBE_PATH`, or bind-mount
 one and point `FFMPEG_PATH` at it. The worker owns no schema and runs no migrations — it only leases
 transcode jobs from the shared DB.
@@ -217,17 +217,15 @@ validation above, so a prod boot supplied with only the two bootstrap vars has t
 |---|---|
 | API | `DATABASE_URL`, `JWT_SECRET`, `OAUTH_STATE_SECRET`, `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_PUBLIC_URL`, `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `IGDB_CLIENT_ID`, `IGDB_CLIENT_SECRET`, `REDIS_URL`, `WEB_ORIGIN`, `CORS_ORIGINS` |
 | Discord bot | `DISCORD_BOT_TOKEN`, `DISCORD_BOT_APP_ID`, `DISCORD_DATABASE_URL` |
-| Web build | `VITE_API_BASE_URL`, `VITE_GA_MEASUREMENT_ID`, `VITE_USE_SECURE_COOKIES`, `VITE_MAX_UPLOAD_SIZE_MB` (baked into the public bundle — single source of truth, not secrecy) |
+| Web build | *(none)* — the web image is runtime-configured; `VITE_*` are supplied as container env at deploy (see [Web frontend](#web-frontend-runtime-config)), not fetched from the vault. |
 
 `SENTRY_DSN` is intentionally **absent** — there's no Sentry integration yet (tracked in #124); add
 it to the manifests when that lands.
 
-**CI.** The web build workflow pulls `VITE_*` from the PROD collection on pushes to `main` (using a
-`VAULTWARDEN_API_KEY` GitHub secret and the API's `ENABLE_GITHUB_IP_RANGES` to whitelist runner IPs);
-PR builds skip the fetch and use the committed `.env`, so PR CI doesn't depend on vault availability.
-The release **image** build ([release.yml](.github/workflows/release.yml)) needs none of this — the web
-image is environment-agnostic (no `VITE_*` baked); all runtime config/secrets come from the host `.env`
-(or Vaultwarden) at container startup.
+**CI.** The web build (`web.yml`) only **compiles** — it does **not** fetch from Vaultwarden, so neither
+PR nor `main`/release CI depends on vault availability or runner-IP whitelisting. The published web
+image is environment-agnostic; all web `VITE_*` config is supplied as container env at deploy. The API
+and Discord bot still fetch their secrets from the host `.env` (or Vaultwarden) at startup.
 
 ## Startup database migrations
 

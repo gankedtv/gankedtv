@@ -1,21 +1,20 @@
 name: Web
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'web/**'
-      - 'shared/**'
-      - '.github/workflows/web.yml'
   pull_request:
     branches: [main]
     paths:
       - 'web/**'
       - 'shared/**'
       - '.github/workflows/web.yml'
+  # Reusable: release.yml calls this on push to main to gate image publishing on the tests passing.
+  # (No standalone push:main trigger — release.yml orchestrates main so tests don't run twice.)
+  workflow_call:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Static, stack-specific group so it never collides with the caller's group when invoked via
+  # workflow_call (github.workflow resolves to the CALLER there, not "Web").
+  group: ci-web-${{ github.ref }}
   cancel-in-progress: true
 
 # Least-privilege default: this workflow only reads source and builds/tests.
@@ -39,15 +38,12 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # No Vaultwarden env: the published web image is runtime-configured (VITE_* injected into
+      # /config.js at container start), so this build only needs to COMPILE — the prebuild no-ops
+      # without vault creds and import.meta.env falls back to defaults. Keeps publishing decoupled
+      # from vault availability (the gate shouldn't fail just because the vault is unreachable).
       - name: Build
         run: bun run build
-        env:
-          # On push to main, the prebuild pulls VITE_* from Vaultwarden's PROD collection; on PRs
-          # these are blank so it no-ops and the committed .env is used (PR CI stays independent of
-          # the vault). Needs ENABLE_GITHUB_IP_RANGES on the API to whitelist runner IPs.
-          VAULTWARDEN_API_URL: ${{ github.event_name == 'push' && secrets.VAULTWARDEN_API_URL || '' }}
-          VAULTWARDEN_API_KEY: ${{ github.event_name == 'push' && secrets.VAULTWARDEN_API_KEY || '' }}
-          ASPNETCORE_ENVIRONMENT: ${{ github.event_name == 'push' && 'Production' || '' }}
 
   format:
     needs: build
