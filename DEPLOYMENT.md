@@ -246,6 +246,18 @@ correctness. The flag accepts `true`/`1`/`yes`/`on`.
 | `GET /health/live` | Process is up (no dependency checks). | Liveness probe / restart signal. |
 | `GET /health/ready` | DB reachable **and** migrations applied. | Readiness gate, load-balancer membership, post-deploy smoke check. |
 
+## Redis
+
+Optional (`REDIS_URL`): backs the feed/trending cache, cluster-wide rate limiting, and — when set —
+**DataProtection key persistence** (keys survive restarts instead of an ephemeral in-memory keyring).
+
+> **Do not enable an `allkeys-*` `maxmemory-policy`** on this instance. DataProtection keys are stored
+> as ordinary (non-expiring) Redis keys, so an all-keys eviction policy could silently drop them under
+> memory pressure — invalidating everything they protect. The default `redis:7` config (no eviction)
+> is correct; if you set a `maxmemory` limit, keep the policy at `noeviction` or a `volatile-*` one
+> (those only evict keys that carry a TTL, which the DP keys don't). Keys are persisted unencrypted at
+> rest, so keep this Redis on the internal network.
+
 ## Worker toggles (media pipeline)
 
 The media pipeline can be split across hosts (see the table in [CLAUDE.md](CLAUDE.md) under
