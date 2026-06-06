@@ -5,6 +5,11 @@
     <link rel="icon" href="/favicon.ico">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GankedTV</title>
+    <!-- Runtime config: the production image's entrypoint overwrites /config.js from container env
+         before Caddy serves it, so the same bundle works in any environment. Blocking + ahead of the
+         module script so window.__APP_CONFIG__ is set first. The committed default (public/config.js)
+         is empty, so dev/local falls back to import.meta.env (see src/config.ts). -->
+    <script src="/config.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Barlow+Condensed:wght@500;700&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">

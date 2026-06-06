@@ -1,0 +1,158 @@
+name: Release
+
+# Build + push the three service images to GHCR on every push to main. No deploy step — an
+# auto-updater on the host (Watchtower / freshdock) pulls the moved :latest tag. Each image is also
+# tagged with the full commit SHA for pinning/rollback. A per-image change filter avoids rebuilding
+# images whose sources didn't change; their existing :latest still points at the correct digest.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - 'web/**'
+      - 'discord/**'
+      - 'shared/**'
+      - '.dockerignore'
+      - '.github/workflows/release.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false # never abort a half-published release
+
+# Least-privilege: read-only by default; only the publish jobs below get packages: write.
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      web: ${{ steps.filter.outputs.web }}
+      discord: ${{ steps.filter.outputs.discord }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            api:
+              - 'server/**'
+              - '.github/workflows/release.yml'
+            web:
+              - 'web/**'
+              - 'shared/**'
+              - '.dockerignore'        # root context allowlist for the web image
+              - '.github/workflows/release.yml'
+            discord:
+              - 'discord/**'
+              - 'shared/**'
+              - '.dockerignore'        # root context allowlist for the discord image
+              - '.github/workflows/release.yml'
+
+  api:
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/gankedtv-api
+          tags: |
+            type=sha,prefix=,format=long
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: server # server/-scoped: Dockerfile.api COPYs GankedTV.slnx + src/ relative to server/
+          file: server/Dockerfile.api
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+
+  web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/gankedtv-web
+          tags: |
+            type=sha,prefix=,format=long
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: . # repo root: web build needs web/ + shared/ (see web/Dockerfile + .dockerignore)
+          file: web/Dockerfile
+          push: true
+          # No build-args: the bundle is environment-agnostic. Per-deployment VITE_* are injected at
+          # container start (web/docker-entrypoint.sh), so this one image works for every deployment.
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+
+  discord:
+    needs: changes
+    if: needs.changes.outputs.discord == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/gankedtv-discord
+          tags: |
+            type=sha,prefix=,format=long
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: . # repo root: discord/Dockerfile COPYs shared/
+          file: discord/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=discord
+          cache-to: type=gha,scope=discord,mode=max

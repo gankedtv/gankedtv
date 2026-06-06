@@ -28,6 +28,9 @@ services:
       timeout: 5s
       retries: 5
 
+  # Dev intentionally stays on the (archived but functional) community MinIO: it needs no license and
+  # keeps `make up`/`make seed` zero-config for throwaway local data. Production uses its maintained
+  # successor AIStor — see docker-compose.prod.yml and DEPLOYMENT.md.
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     ports:

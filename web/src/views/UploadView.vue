@@ -2,6 +2,7 @@
 import { ref, computed, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ApiError } from '@/api/client'
+import { config } from '@/config'
 import { clips } from '@/api/clips'
 import type { ClipStatus, GameSummary } from '@/api/clips'
 import GameSelector from '@/components/GameSelector.vue'
@@ -20,7 +21,7 @@ const router = useRouter()
 // Guard against a missing/garbage env value: Number('foo') is NaN, and `f.size > NaN`
 // is always false — silently disabling the size cap. Fall back to a safe default instead.
 const MAX_UPLOAD_MB = (() => {
-  const parsed = Number(String(import.meta.env.VITE_MAX_UPLOAD_SIZE_MB ?? '').trim())
+  const parsed = Number(String(config.maxUploadSizeMb ?? '').trim())
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 500
 })()
 const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
