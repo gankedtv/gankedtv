@@ -8,8 +8,9 @@
 	try_files {path} /index.html
 	file_server
 
-	# Hashed asset filenames are content-addressed, so cache them forever; the HTML shell must
-	# revalidate every load so a new deploy is picked up without a hard refresh.
+	# Hashed asset filenames are content-addressed, so cache them forever; the HTML shell and the
+	# runtime config must revalidate every load so a new deploy / config change is picked up.
 	header /assets/* Cache-Control "public, max-age=31536000, immutable"
 	header /index.html Cache-Control "no-cache"
+	header /config.js Cache-Control "no-cache"
 }

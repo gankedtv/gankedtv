@@ -4,10 +4,8 @@ import type { Router } from 'vue-router'
 import type { Breadcrumb, ErrorEvent } from '@sentry/vue'
 import * as Sentry from '@sentry/vue'
 
+import { config } from '../config'
 import { stripSensitiveParams } from './sensitiveParams'
-
-const API_BASE_URL =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:5050'
 
 /** Strip credential-bearing query params from any captured URL string. */
 function redactUrl(url: unknown): unknown {
@@ -36,10 +34,10 @@ export function scrubBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb {
 
 /** No DSN ⇒ no-op. Must run before `app.use(router)` so the router/tracing integration binds. */
 export function initSentry(app: App, router: Router): void {
-  const dsn = import.meta.env.VITE_SENTRY_DSN?.trim()
+  const dsn = config.sentryDsn
   if (!dsn) return
 
-  const parsedSampleRate = Number.parseFloat(import.meta.env.VITE_SENTRY_TRACES_SAMPLE_RATE ?? '')
+  const parsedSampleRate = Number.parseFloat(config.sentryTracesSampleRate ?? '')
   // Reject NaN/Infinity and out-of-range values — Sentry expects a probability in [0,1].
   const tracesSampleRate =
     Number.isFinite(parsedSampleRate) && parsedSampleRate >= 0 && parsedSampleRate <= 1
@@ -49,11 +47,11 @@ export function initSentry(app: App, router: Router): void {
   Sentry.init({
     app,
     dsn,
-    environment: import.meta.env.VITE_SENTRY_ENVIRONMENT?.trim() || import.meta.env.MODE,
-    release: import.meta.env.VITE_SENTRY_RELEASE?.trim() || __APP_VERSION__,
+    environment: config.sentryEnvironment || import.meta.env.MODE,
+    release: config.sentryRelease || __APP_VERSION__,
     integrations: [Sentry.browserTracingIntegration({ router })],
     tracesSampleRate,
-    tracePropagationTargets: [API_BASE_URL],
+    tracePropagationTargets: [config.apiBaseUrl],
     // PII off; the helpers above scrub defensively.
     sendDefaultPii: false,
     beforeSend: scrubEvent,

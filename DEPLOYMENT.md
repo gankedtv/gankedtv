@@ -35,11 +35,13 @@ the correct digest. **There is no deploy job**: the host pulls the moved `latest
 freshdock, or a manual `docker compose pull && up -d`). The full commit-SHA tag is there for pinning
 and rollback (`IMAGE_TAG=<sha>`).
 
-The web image bakes its `VITE_*` values **at build time** from repo **Variables** (Settings → Secrets
-and variables → Actions → *Variables*) — they're public (they ship in the bundle), so they're plain
-build-args, not secrets: `VITE_API_BASE_URL` (required for prod), `VITE_GA_MEASUREMENT_ID`,
-`VITE_USE_SECURE_COOKIES`, `VITE_MAX_UPLOAD_SIZE_MB`, `VITE_SENTRY_DSN`, `VITE_SENTRY_TRACES_SAMPLE_RATE`.
-`VITE_SENTRY_RELEASE` is set to the commit SHA automatically.
+The web image is **environment-agnostic — nothing is baked at build time**, so the one published
+image works for every deployment. Its `VITE_*` config is injected at **container start**: the image's
+entrypoint ([web/docker-entrypoint.sh](web/docker-entrypoint.sh)) writes `/srv/config.js` from the
+container's env, and the app reads `window.__APP_CONFIG__` with a fallback to build-time
+`import.meta.env` for dev ([web/src/config.ts](web/src/config.ts)). So **no GitHub Variables/Secrets
+are needed for the web image** — set the `VITE_*` values as runtime env on the web container instead
+(see [Single-host deployment](#single-host-deployment) and `.env.prod.example`).
 
 **Package visibility.** For an unauthenticated host to pull, set the three GHCR packages **public**
 (repo → Packages → each package → Package settings). If kept private, give the host a `read:packages`
@@ -223,9 +225,9 @@ it to the manifests when that lands.
 **CI.** The web build workflow pulls `VITE_*` from the PROD collection on pushes to `main` (using a
 `VAULTWARDEN_API_KEY` GitHub secret and the API's `ENABLE_GITHUB_IP_RANGES` to whitelist runner IPs);
 PR builds skip the fetch and use the committed `.env`, so PR CI doesn't depend on vault availability.
-The release **image** build ([release.yml](.github/workflows/release.yml)) instead bakes `VITE_*` from
-repo Variables, so it needs no vault access; runtime API/bot secrets come from the host `.env` or
-Vaultwarden at container startup.
+The release **image** build ([release.yml](.github/workflows/release.yml)) needs none of this — the web
+image is environment-agnostic (no `VITE_*` baked); all runtime config/secrets come from the host `.env`
+(or Vaultwarden) at container startup.
 
 ## Startup database migrations
 
@@ -260,22 +262,25 @@ compression; to offload to a GPU host instead, see [Split deployment across host
 | Main API server (GPU split) | `true` | `false` | — |
 | GPU box (NVENC) | `false` | `true` | `MEDIA_VIDEO_ENCODER=av1_nvenc`, `MEDIA_VIDEO_CODEC=av1`, `MEDIA_JIT_VIDEO_ENCODER=h264_nvenc` |
 
-## Web frontend (build-time config)
+## Web frontend (runtime config)
 
-The web app is a static bundle; its config is baked in **at build time** by Vite (Vite reads the
-repo-root `.env` via `envDir: '../'`). These must be set when running `bun run build`, not at
-runtime:
+The web app is a static bundle, but its config is **not** baked at build time — so one published image
+works for every deployment. The image's entrypoint ([web/docker-entrypoint.sh](web/docker-entrypoint.sh))
+writes `/srv/config.js` from the container's env at startup, and the app reads `window.__APP_CONFIG__`,
+falling back to build-time `import.meta.env` for `bun dev` ([web/src/config.ts](web/src/config.ts)). Set
+these as **runtime env on the web container** (see [.env.prod.example](.env.prod.example)):
 
 | Var | Purpose |
 |---|---|
-| `VITE_API_BASE_URL` | API base URL the built frontend calls (e.g. `https://api.ganked.tv`). Falls back to `http://localhost:5050` if unset — so it **must** be set for prod builds. |
-| `VITE_GA_MEASUREMENT_ID` | GA4 measurement id (`G-XXXXXXX`). Analytics is a complete no-op (no script, no cookies) when empty, so it stays off in dev/preview. |
-| `VITE_SENTRY_DSN` | Sentry/GlitchTip DSN for the web project. Error monitoring is a no-op when empty. Optional: `VITE_SENTRY_ENVIRONMENT`, `VITE_SENTRY_RELEASE`, `VITE_SENTRY_TRACES_SAMPLE_RATE`. |
+| `VITE_API_BASE_URL` | API base URL the frontend calls (e.g. `https://api.ganked.tv`). Falls back to `http://localhost:5050` if unset — set it for prod. |
+| `VITE_GA_MEASUREMENT_ID` | GA4 measurement id (`G-XXXXXXX`). Analytics is a complete no-op (no script, no cookies) when empty. |
+| `VITE_USE_SECURE_COOKIES` | `true` to skip localStorage token persistence (HttpOnly-cookie strategy). |
+| `VITE_MAX_UPLOAD_SIZE_MB` | Max upload size shown in the UI (default 500). |
+| `VITE_SENTRY_DSN` | Sentry/GlitchTip DSN. No-op when empty. Optional: `VITE_SENTRY_ENVIRONMENT`, `VITE_SENTRY_RELEASE`, `VITE_SENTRY_TRACES_SAMPLE_RATE`. |
 
-> These feed the production web image as build-args ([web/Dockerfile](web/Dockerfile)); the release
-> workflow sources them from repo Variables — see [Container images](#container-images-ghcr).
-> **Cookie-consent gating for analytics is a known follow-up** — GA currently loads whenever the
-> measurement id is present.
+> For local dev the committed `public/config.js` is empty, so the app falls back to `import.meta.env`
+> (the `VITE_*` from `.env` / Vaultwarden). **Cookie-consent gating for analytics is a known follow-up**
+> — GA currently loads whenever the measurement id is present.
 
 ## Error monitoring (Sentry → self-hosted GlitchTip)
 
@@ -293,14 +298,13 @@ too, hence the `DISCORD_`-prefix:
 | App | DSN var | Environment / Release source |
 |---|---|---|
 | API (.NET) | `SENTRY_DSN` | env `SENTRY_ENVIRONMENT` → falls back to `ASPNETCORE_ENVIRONMENT`; `SENTRY_RELEASE` → entry-assembly version |
-| Web (Vite) | `VITE_SENTRY_DSN` (build-time) | `VITE_SENTRY_ENVIRONMENT` → Vite mode; `VITE_SENTRY_RELEASE` → package version |
+| Web (Vite) | `VITE_SENTRY_DSN` (runtime) | `VITE_SENTRY_ENVIRONMENT` → Vite mode; `VITE_SENTRY_RELEASE` → package version |
 | Discord bot (Bun) | `DISCORD_SENTRY_DSN` | `DISCORD_SENTRY_ENVIRONMENT` → `NODE_ENV`; `DISCORD_SENTRY_RELEASE` → package version |
 
 `SENTRY_TRACES_SAMPLE_RATE` / `VITE_SENTRY_TRACES_SAMPLE_RATE` / `DISCORD_SENTRY_TRACES_SAMPLE_RATE`
-override the `0.01` default. The web image sets `VITE_SENTRY_RELEASE` to the commit SHA at build (via
-[release.yml](.github/workflows/release.yml)); for the API and bot, set `SENTRY_RELEASE` /
-`DISCORD_SENTRY_RELEASE` in the deploy env to map issues to a release, or leave them unset to fall back
-to the assembly/package version.
+override the `0.01` default. All three apps take their config from runtime env, so set `SENTRY_RELEASE`
+/ `VITE_SENTRY_RELEASE` / `DISCORD_SENTRY_RELEASE` in the deploy env to map issues to a release; left
+unset they fall back to the assembly/package version.
 
 ## Reference
 

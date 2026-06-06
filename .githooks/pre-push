@@ -88,12 +88,14 @@ run_stages() {
 fmt_server() { cd "$repo_root/server"; dotnet format; }
 fmt_web() {
   cd "$repo_root/web"
-  if [ -n "$web_manifest_changed" ]; then bun install --frozen-lockfile; fi
+  # Install when a manifest changed OR deps are missing (fresh/clean checkout) — otherwise the bun
+  # steps below run against an absent node_modules and fail.
+  if [ -n "$web_manifest_changed" ] || [ ! -d node_modules ]; then bun install --frozen-lockfile; fi
   bun run format
 }
 fmt_discord() {
   cd "$repo_root/discord"
-  if [ -n "$discord_manifest_changed" ]; then bun install --frozen-lockfile; fi
+  if [ -n "$discord_manifest_changed" ] || [ ! -d node_modules ]; then bun install --frozen-lockfile; fi
   bun run format
 }
 

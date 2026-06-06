@@ -1,11 +1,12 @@
 import { defineStore } from 'pinia'
 import { ApiError } from '@/api/client'
+import { config } from '@/config'
 import type { MeResponse } from '@/api/auth'
 
 const REFRESH_KEY = 'refresh_token'
 
 function loadRefreshFromLocalStorage(): string | null {
-  if (import.meta.env.VITE_USE_SECURE_COOKIES === 'true') {
+  if (config.useSecureCookies) {
     return null
   }
   try {
@@ -19,7 +20,7 @@ function persistRefresh(token: string | null): void {
   // WARNING: Storing refresh tokens in localStorage is susceptible to XSS attacks.
   // We intentionally accept this risk for now. Setting VITE_USE_SECURE_COOKIES=true
   // will stop writing to localStorage (this requires backend modifications to send the Secure, HttpOnly cookie).
-  if (import.meta.env.VITE_USE_SECURE_COOKIES === 'true') {
+  if (config.useSecureCookies) {
     // TODO: POST the token to an endpoint that sets the HttpOnly cookie.
     // e.g., fetch('/api/auth/refresh-cookie', { method: 'POST', body: JSON.stringify({ token }) })
     if (token === null) {

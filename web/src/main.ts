@@ -6,6 +6,7 @@ import router from './router'
 import { useThemeStore } from './stores/theme'
 import { useAuthStore } from './stores/auth'
 import { configureAuth } from './api/client'
+import { config } from './config'
 import { initAnalytics } from './lib/analytics'
 import { initSentry } from './lib/sentry'
 import './assets/main.css'
@@ -30,8 +31,8 @@ configureAuth({
 
 await auth.bootstrap()
 
-// No-op unless VITE_GA_MEASUREMENT_ID is set at build time (production only).
-initAnalytics(import.meta.env.VITE_GA_MEASUREMENT_ID)
+// No-op unless a GA measurement id is configured (production only).
+initAnalytics(config.gaMeasurementId)
 
 // No-op unless VITE_SENTRY_DSN is set. Before `app.use(router)` so the router/tracing
 // integration is registered against the router instance.
