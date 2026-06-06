@@ -20,7 +20,8 @@ public class ImportWorkerTests
         IClipMediaJobStore Store,
         IClipImportSource Source,
         IObjectStorageService Storage,
-        IClipImportUrlValidator Validator);
+        IClipImportUrlValidator Validator,
+        IFfmpegRunner Ffmpeg);
 
     // ffprobeStdout, when non-null, replaces the default empty-JSON ffmpeg/ffprobe stdout —
     // lets tests simulate "ffprobe says duration=240s" without rebuilding the harness.
@@ -73,7 +74,7 @@ public class ImportWorkerTests
             ffmpeg,
             monitor,
             NullLogger<ImportWorker>.Instance);
-        return new Harness(worker, store, source, storage, validator);
+        return new Harness(worker, store, source, storage, validator, ffmpeg);
     }
 
     private static ClaimedImportJob ImportJob(int attempt = 1) =>
@@ -82,6 +83,32 @@ public class ImportWorkerTests
             ImportSourceUrl: "https://medal.tv/clips/abc",
             Title: "from import",
             AttemptNumber: attempt);
+
+    [Fact]
+    public async Task ImportWorker_StartupProbe_ProbesYtdlpWithDoubleDashVersion()
+    {
+        var h = Build(new MediaJobOptions { Enabled = true, PollInterval = TimeSpan.FromMinutes(5), MaxAttempts = 3 });
+        h.Store.ClaimNextImportAsync(Arg.Any<TimeSpan>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns((ClaimedImportJob?)null);
+
+        await h.Worker.StartAsync(CancellationToken.None);
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(2);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (h.Ffmpeg.ReceivedCalls().Count(c => c.GetMethodInfo().Name == nameof(IFfmpegRunner.RunAsync)) >= 3) break;
+            await Task.Delay(10);
+        }
+        await h.Worker.StopAsync(CancellationToken.None);
+
+        // yt-dlp needs GNU-style --version (a single dash misparses as bundled short flags);
+        // ffmpeg/ffprobe keep the single-dash form.
+        await h.Ffmpeg.Received(1).RunAsync("yt-dlp",
+            Arg.Is<IReadOnlyList<string>>(a => a.Contains("--version")), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>());
+        await h.Ffmpeg.Received(1).RunAsync("ffmpeg",
+            Arg.Is<IReadOnlyList<string>>(a => a.Contains("-version")), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>());
+        await h.Ffmpeg.Received(1).RunAsync("ffprobe",
+            Arg.Is<IReadOnlyList<string>>(a => a.Contains("-version")), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>());
+    }
 
     [Fact]
     public async Task ImportWorker_NoJob_ReturnsFalse()

@@ -44,7 +44,7 @@ public sealed class ImportWorker : MediaStageWorker<ClaimedImportJob>
     protected override async Task ProbeBinariesAsync(MediaJobOptions opts, CancellationToken ct)
     {
         await base.ProbeBinariesAsync(opts, ct);
-        await ProbeOneAsync(opts.Import.YtdlpPath, ct);
+        await ProbeOneAsync(opts.Import.YtdlpPath, ct, "--version");
     }
 
     protected override Guid ClipIdOf(ClaimedImportJob job) => job.ClipId;

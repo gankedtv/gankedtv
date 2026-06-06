@@ -1,0 +1,34 @@
+# Dedicated GPU encoder image: gankedtv-server (the same API/worker binary) + an NVENC-capable
+# ffmpeg, for the box that runs the compress + JIT (+ thumbnail) media workers on its GPU. The base
+# gankedtv-server image ships Debian's SOFTWARE ffmpeg, so av1_nvenc / h264_nvenc would fail at
+# encode time; this layer drops in a static NVENC build and points FFMPEG_PATH / FFPROBE_PATH at it.
+# NVENC needs the host's NVIDIA driver libs at runtime, provided by GPU passthrough (TrueNAS Scale
+# apps wire this out of the box). Nothing in the image is GPU-specific until those libs are present,
+# so the build itself needs no GPU. It's the same binary as gankedtv-server — runtime env
+# (MEDIA_*_WORKER_ENABLED, MEDIA_VIDEO_ENCODER=av1_nvenc, …) is what makes it the encoder; see
+# DEPLOYMENT.md.
+
+ARG BASE_IMAGE=ghcr.io/gankedtv/gankedtv-server:latest
+FROM ${BASE_IMAGE}
+
+# Static, self-contained GPL build with NVENC/NVDEC + libsvtav1. Pin via --build-arg for a
+# reproducible image; "latest" tracks upstream for this personal box.
+ARG FFMPEG_URL=https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz
+
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl xz-utils ca-certificates \
+    && mkdir -p /opt/ffmpeg \
+    && curl -fsSL "$FFMPEG_URL" -o /tmp/ffmpeg.tar.xz \
+    && tar -xJf /tmp/ffmpeg.tar.xz -C /opt/ffmpeg --strip-components=1 \
+    && rm /tmp/ffmpeg.tar.xz \
+    && apt-get purge -y xz-utils \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/* \
+    && /opt/ffmpeg/bin/ffmpeg -hide_banner -encoders | grep -q nvenc
+
+# Override the bundled software ffmpeg/ffprobe (MediaJobOptions reads these).
+ENV FFMPEG_PATH=/opt/ffmpeg/bin/ffmpeg \
+    FFPROBE_PATH=/opt/ffmpeg/bin/ffprobe
+
+USER gankedtv
