@@ -29,6 +29,7 @@ each tagged with the commit SHA **and** `latest`:
 | `ghcr.io/gankedtv/gankedtv-server` | [server/Dockerfile.api](server/Dockerfile.api) | API + media workers (bundles `ffmpeg`, `yt-dlp`, `curl`) |
 | `ghcr.io/gankedtv/gankedtv-web` | [web/Dockerfile](web/Dockerfile) | Built Vue bundle served by Caddy (internal `:80`, no TLS) |
 | `ghcr.io/gankedtv/gankedtv-discord` | [discord/Dockerfile](discord/Dockerfile) | Discord bot |
+| `ghcr.io/gankedtv/gankedtv-dedicated-encoder` | [server/Dockerfile.dedicated-encoder](server/Dockerfile.dedicated-encoder) | `gankedtv-server` + NVENC ffmpeg for the GPU box. **Keep this package private** — it's deployment-specific. Built only when `server/` changes. |
 
 A per-image change filter skips images whose sources didn't change — their `latest` already points at
 the correct digest. **There is no deploy job**: the host pulls the moved `latest` itself (Watchtower /
@@ -119,46 +120,62 @@ S3_PUBLIC_URL=https://cdn.example.com          # browser-facing, via your revers
 Buckets are still auto-created on api boot — no manual setup. The app-host api reaches the store over
 the LAN; browsers use `S3_PUBLIC_URL` (presigned URLs are host-rewritten to it).
 
-**GPU transcode worker** — the compress + JIT stages are GPU-heavy and location-independent. Leave the
-app-host api on thumbnails only (`MEDIA_TRANSCODE_WORKER_ENABLED=false`) and run a second container of
-the **same** api image on the GPU host:
+**GPU media worker** — the compress + JIT stages are GPU-heavy and location-independent (the job
+queues use `FOR UPDATE SKIP LOCKED`), so they run on a separate GPU host using the
+**`gankedtv-dedicated-encoder`** image (= `gankedtv-server` with an NVENC ffmpeg baked in). Run the
+media workers there and leave the app-host api as pure API:
+
+| Toggle | App-host api | GPU host (encoder) |
+|---|---|---|
+| `MEDIA_THUMBNAIL_WORKER_ENABLED` | `false` | `true` |
+| `MEDIA_TRANSCODE_WORKER_ENABLED` | `false` | `true` |
+| `MEDIA_TRANSCODE_ENABLED` | `true` | `true` |
+| `MEDIA_IMPORT_WORKER_ENABLED` | `true` | `false` |
+| `MEDIA_VIDEO_ENCODER` / `MEDIA_VIDEO_CODEC` | — | `av1_nvenc` / `av1` |
+| `MEDIA_JIT_VIDEO_ENCODER` | — | `h264_nvenc` |
+| `RUN_MIGRATIONS_ON_STARTUP` | `true` | `false` |
+
+(Thumbnail is a software frame-grab — it doesn't use the GPU — so you can leave it `true` on the
+app-host instead if you'd rather posters keep generating when the GPU host is down. Either works.)
 
 ```yaml
-# GPU host — shares the app host's Postgres + the storage host's MinIO over the LAN
+# GPU host — shares the app-host Postgres + the storage-host object store over the LAN
 services:
-  transcode:
-    image: ghcr.io/gankedtv/gankedtv-server:latest
+  encoder:
+    image: ghcr.io/gankedtv/gankedtv-dedicated-encoder:latest   # NVENC ffmpeg baked in
     environment:
       ASPNETCORE_ENVIRONMENT: Production
-      RUN_MIGRATIONS_ON_STARTUP: "false"       # MUST stay off — the app-host api migrates; avoid races
-      MEDIA_THUMBNAIL_WORKER_ENABLED: "false"
+      RUN_MIGRATIONS_ON_STARTUP: "false"        # the app-host api migrates — keep off here
+      MEDIA_THUMBNAIL_WORKER_ENABLED: "true"
       MEDIA_TRANSCODE_WORKER_ENABLED: "true"
       MEDIA_TRANSCODE_ENABLED: "true"
-      MEDIA_IMPORT_WORKER_ENABLED: "false"     # URL-import stays on the app-host api
-      MEDIA_VIDEO_ENCODER: av1_nvenc           # GPU master encoder
+      MEDIA_IMPORT_WORKER_ENABLED: "false"
+      MEDIA_VIDEO_ENCODER: av1_nvenc
       MEDIA_VIDEO_CODEC: av1
-      MEDIA_JIT_VIDEO_ENCODER: h264_nvenc      # GPU compatibility ladder
-      DATABASE_URL: "Host=<app-host-lan-ip>;Port=5432;Database=gankedtv;Username=gankedtv;Password=..."
-      S3_ENDPOINT: http://<storage-lan-ip>:9000
-      S3_PUBLIC_URL: https://cdn.example.com
-      S3_ACCESS_KEY: ...
-      S3_SECRET_KEY: ...
-      JWT_SECRET: ...                          # it's a full API boot — the fail-fast secrets still apply
-      WEB_ORIGIN: https://example.com
-      CORS_ORIGINS: https://example.com
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - { driver: nvidia, count: 1, capabilities: [gpu, video] }
+      MEDIA_JIT_VIDEO_ENCODER: h264_nvenc
+      # Full api boot → fetches JWT/S3/etc. from Secrets - PROD, same as the app-host.
+      VAULTWARDEN_API_URL: https://<your-vault-api>
+      VAULTWARDEN_API_KEY: <secrets@ token>
+      # DB over the LAN to the app host (publish 5432 there — see below). Set explicitly so it points
+      # at the app host, not the vault's compose-internal value.
+      DATABASE_URL: "Host=<app-host-lan-ip>;Port=5432;Database=gankedtv;Username=gankedtv;Password=<pw>"
 ```
 
-Requires the **NVIDIA Container Toolkit** on the GPU host. **Caveat:** the stock api image bundles
-Debian's *software* ffmpeg, so `av1_nvenc`/`h264_nvenc` fail at encode time. Give the worker an
-NVENC-enabled ffmpeg — either build a thin image `FROM ghcr.io/gankedtv/gankedtv-server:latest` that drops
-in a `jellyfin/ffmpeg` / `jrottenberg/ffmpeg` build and set `FFMPEG_PATH`/`FFPROBE_PATH`, or bind-mount
-one and point `FFMPEG_PATH` at it. The worker owns no schema and runs no migrations — it only leases
-transcode jobs from the shared DB.
+On **TrueNAS Scale**, just attach the app's GPU device — Apps wire the NVIDIA driver libs / passthrough
+out of the box (no manual NVIDIA Container Toolkit), and the encoder image already bundles the NVENC
+ffmpeg, so `av1_nvenc`/`h264_nvenc` work once the GPU is attached. Keep the `gankedtv-dedicated-encoder`
+GHCR package **private** and give the host a `read:packages` token to pull it.
+
+**App-host changes when you move transcoding to the GPU box:**
+1. Set the api's `MEDIA_TRANSCODE_WORKER_ENABLED=false` (and `MEDIA_THUMBNAIL_WORKER_ENABLED=false` if
+   you moved thumbnails too) — otherwise both hosts race the same jobs.
+2. **Publish Postgres on the LAN** so the GPU host can reach it (the prod compose keeps `postgres`
+   internal-only): add `ports: ["<app-host-lan-ip>:5432:5432"]` to the `postgres` service.
+3. Stand the GPU worker up and confirm it's claiming jobs **before** flipping the app-host workers off,
+   so there's no gap where nothing processes.
+
+The worker owns no schema and runs no migrations — it only leases media jobs from the shared DB and
+reads/writes the shared object store.
 
 ## Fail-fast secret validation
 
