@@ -1,9 +1,10 @@
 name: Release
 
-# Build + push the three service images to GHCR on every push to main. No deploy step — an
+# On push to main: run the per-stack CI (reusable server.yml / web.yml / discord.yml) for whatever
+# changed, then build + push ONLY the images whose tests passed to GHCR. No deploy step — an
 # auto-updater on the host (Watchtower / freshdock) pulls the moved :latest tag. Each image is also
-# tagged with the full commit SHA for pinning/rollback. A per-image change filter avoids rebuilding
-# images whose sources didn't change; their existing :latest still points at the correct digest.
+# tagged with the full commit SHA for pinning/rollback. The change filter avoids touching images
+# whose sources didn't change; their existing :latest still points at the correct digest.
 
 on:
   push:
@@ -28,7 +29,7 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
-      api: ${{ steps.filter.outputs.api }}
+      server: ${{ steps.filter.outputs.server }}
       web: ${{ steps.filter.outputs.web }}
       discord: ${{ steps.filter.outputs.discord }}
     steps:
@@ -39,7 +40,7 @@ jobs:
         id: filter
         with:
           filters: |
-            api:
+            server:
               - 'server/**'
               - '.github/workflows/release.yml'
             web:
@@ -53,9 +54,27 @@ jobs:
               - '.dockerignore'        # root context allowlist for the discord image
               - '.github/workflows/release.yml'
 
-  api:
+  # --- Gate: run each changed stack's full CI; a publish job below only runs if its test job passed.
+  test-server:
     needs: changes
-    if: needs.changes.outputs.api == 'true'
+    if: needs.changes.outputs.server == 'true'
+    uses: ./.github/workflows/server.yml
+    secrets: inherit
+  test-web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    uses: ./.github/workflows/web.yml
+    secrets: inherit
+  test-discord:
+    needs: changes
+    if: needs.changes.outputs.discord == 'true'
+    uses: ./.github/workflows/discord.yml
+    secrets: inherit
+
+  # --- Publish: each build needs its test job, so a failing suite blocks that image's release.
+  server:
+    needs: [changes, test-server]
+    if: needs.changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -73,7 +92,7 @@ jobs:
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          images: ghcr.io/${{ github.repository_owner }}/gankedtv-api
+          images: ghcr.io/${{ github.repository_owner }}/gankedtv-server
           tags: |
             type=sha,prefix=,format=long
             type=raw,value=latest
@@ -84,11 +103,11 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=api
-          cache-to: type=gha,scope=api,mode=max
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,scope=server,mode=max
 
   web:
-    needs: changes
+    needs: [changes, test-web]
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -124,7 +143,7 @@ jobs:
           cache-to: type=gha,scope=web,mode=max
 
   discord:
-    needs: changes
+    needs: [changes, test-discord]
     if: needs.changes.outputs.discord == 'true'
     runs-on: ubuntu-latest
     permissions:

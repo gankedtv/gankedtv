@@ -1,21 +1,20 @@
 name: Web
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'web/**'
-      - 'shared/**'
-      - '.github/workflows/web.yml'
   pull_request:
     branches: [main]
     paths:
       - 'web/**'
       - 'shared/**'
       - '.github/workflows/web.yml'
+  # Reusable: release.yml calls this on push to main to gate image publishing on the tests passing.
+  # (No standalone push:main trigger — release.yml orchestrates main so tests don't run twice.)
+  workflow_call:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Static, stack-specific group so it never collides with the caller's group when invoked via
+  # workflow_call (github.workflow resolves to the CALLER there, not "Web").
+  group: ci-web-${{ github.ref }}
   cancel-in-progress: true
 
 # Least-privilege default: this workflow only reads source and builds/tests.

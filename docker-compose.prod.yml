@@ -75,7 +75,7 @@ services:
     networks: [internal]
 
   api:
-    image: ghcr.io/gankedtv/gankedtv-api:${IMAGE_TAG:-latest}
+    image: ghcr.io/gankedtv/gankedtv-server:${IMAGE_TAG:-latest}
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       # This is the single migrating instance; it self-migrates before serving.

@@ -26,7 +26,7 @@ each tagged with the commit SHA **and** `latest`:
 
 | Image | Built from | Contents |
 |---|---|---|
-| `ghcr.io/gankedtv/gankedtv-api` | [server/Dockerfile.api](server/Dockerfile.api) | API + media workers (bundles `ffmpeg`, `yt-dlp`, `curl`) |
+| `ghcr.io/gankedtv/gankedtv-server` | [server/Dockerfile.api](server/Dockerfile.api) | API + media workers (bundles `ffmpeg`, `yt-dlp`, `curl`) |
 | `ghcr.io/gankedtv/gankedtv-web` | [web/Dockerfile](web/Dockerfile) | Built Vue bundle served by Caddy (internal `:80`, no TLS) |
 | `ghcr.io/gankedtv/gankedtv-discord` | [discord/Dockerfile](discord/Dockerfile) | Discord bot |
 
@@ -127,7 +127,7 @@ the **same** api image on the GPU host:
 # GPU host — shares the app host's Postgres + the storage host's MinIO over the LAN
 services:
   transcode:
-    image: ghcr.io/gankedtv/gankedtv-api:latest
+    image: ghcr.io/gankedtv/gankedtv-server:latest
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       RUN_MIGRATIONS_ON_STARTUP: "false"       # MUST stay off — the app-host api migrates; avoid races
@@ -155,7 +155,7 @@ services:
 
 Requires the **NVIDIA Container Toolkit** on the GPU host. **Caveat:** the stock api image bundles
 Debian's *software* ffmpeg, so `av1_nvenc`/`h264_nvenc` fail at encode time. Give the worker an
-NVENC-enabled ffmpeg — either build a thin image `FROM ghcr.io/gankedtv/gankedtv-api:latest` that drops
+NVENC-enabled ffmpeg — either build a thin image `FROM ghcr.io/gankedtv/gankedtv-server:latest` that drops
 in a `jellyfin/ffmpeg` / `jrottenberg/ffmpeg` build and set `FFMPEG_PATH`/`FFPROBE_PATH`, or bind-mount
 one and point `FFMPEG_PATH` at it. The worker owns no schema and runs no migrations — it only leases
 transcode jobs from the shared DB.
