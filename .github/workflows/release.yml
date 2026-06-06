@@ -13,6 +13,7 @@ on:
       - 'web/**'
       - 'discord/**'
       - 'shared/**'
+      - '.dockerignore'
       - '.github/workflows/release.yml'
 
 concurrency:
@@ -44,10 +45,12 @@ jobs:
             web:
               - 'web/**'
               - 'shared/**'
+              - '.dockerignore'        # root context allowlist for the web image
               - '.github/workflows/release.yml'
             discord:
               - 'discord/**'
               - 'shared/**'
+              - '.dockerignore'        # root context allowlist for the discord image
               - '.github/workflows/release.yml'
 
   api:
