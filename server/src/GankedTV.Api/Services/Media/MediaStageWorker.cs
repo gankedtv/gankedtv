@@ -110,11 +110,13 @@ public abstract class MediaStageWorker<TJob> : BackgroundService
         await ProbeOneAsync(opts.FfprobePath, ct);
     }
 
-    protected async Task ProbeOneAsync(string executable, CancellationToken ct)
+    // versionArg defaults to ffmpeg/ffprobe's single-dash "-version"; yt-dlp needs GNU-style
+    // "--version" — a single dash makes yt-dlp parse "-version" as bundled short flags and error.
+    protected async Task ProbeOneAsync(string executable, CancellationToken ct, string versionArg = "-version")
     {
         try
         {
-            var result = await _ffmpeg.RunAsync(executable, new[] { "-version" }, TimeSpan.FromSeconds(5), ct);
+            var result = await _ffmpeg.RunAsync(executable, new[] { versionArg }, TimeSpan.FromSeconds(5), ct);
             if (result.ExitCode != 0)
             {
                 _logger.LogWarning(

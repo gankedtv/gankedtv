@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.DataProtection.KeyManagement;
+using Microsoft.AspNetCore.DataProtection.StackExchangeRedis;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.Caching.StackExchangeRedis;
 using Microsoft.Extensions.DependencyInjection;
@@ -39,6 +41,17 @@ public static class RedisRegistration
             services.AddOptions<RedisCacheOptions>().Configure<IServiceProvider>((cacheOptions, sp) =>
                 cacheOptions.ConnectionMultiplexerFactory =
                     () => Task.FromResult(sp.GetRequiredService<IConnectionMultiplexer>()));
+
+            // Persist DataProtection keys to Redis so they survive restarts and are shared across
+            // replicas — otherwise ASP.NET Core uses an ephemeral in-memory keyring (the boot
+            // warning), and anything DP-protected breaks on restart. Reuses the same lazy
+            // multiplexer; the factory is only invoked when DP actually reads/writes keys. Without
+            // Redis (local dev) DP stays default — ephemeral is fine there.
+            services.AddDataProtection();
+            services.AddOptions<KeyManagementOptions>().Configure<IServiceProvider>((keyOptions, sp) =>
+                keyOptions.XmlRepository = new RedisXmlRepository(
+                    () => sp.GetRequiredService<IConnectionMultiplexer>().GetDatabase(),
+                    "gankedtv:dataprotection-keys"));
         }
 
         return services;
