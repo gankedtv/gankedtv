@@ -106,6 +106,8 @@ public class ImportWorkerTests
             Arg.Is<IReadOnlyList<string>>(a => a.Contains("--version")), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>());
         await h.Ffmpeg.Received(1).RunAsync("ffmpeg",
             Arg.Is<IReadOnlyList<string>>(a => a.Contains("-version")), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>());
+        await h.Ffmpeg.Received(1).RunAsync("ffprobe",
+            Arg.Is<IReadOnlyList<string>>(a => a.Contains("-version")), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

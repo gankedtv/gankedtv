@@ -38,4 +38,13 @@ public class RedisRegistrationTests
         var km = ResolveKeyOptions(redisUrl: null);
         (km.XmlRepository as RedisXmlRepository).Should().BeNull();
     }
+
+    [Fact]
+    public void AddGankedCaching_WithMalformedRedisUrl_LeavesDataProtectionAtDefault()
+    {
+        // A non-URL value fails TryBuildConfiguration's Uri.TryCreate, degrading to the in-process
+        // fallback (no Redis) — so DP must NOT be wired to Redis.
+        var km = ResolveKeyOptions("not-a-url");
+        (km.XmlRepository as RedisXmlRepository).Should().BeNull();
+    }
 }
