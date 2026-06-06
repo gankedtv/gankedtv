@@ -217,17 +217,15 @@ validation above, so a prod boot supplied with only the two bootstrap vars has t
 |---|---|
 | API | `DATABASE_URL`, `JWT_SECRET`, `OAUTH_STATE_SECRET`, `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_PUBLIC_URL`, `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `IGDB_CLIENT_ID`, `IGDB_CLIENT_SECRET`, `REDIS_URL`, `WEB_ORIGIN`, `CORS_ORIGINS` |
 | Discord bot | `DISCORD_BOT_TOKEN`, `DISCORD_BOT_APP_ID`, `DISCORD_DATABASE_URL` |
-| Web build | `VITE_API_BASE_URL`, `VITE_GA_MEASUREMENT_ID`, `VITE_USE_SECURE_COOKIES`, `VITE_MAX_UPLOAD_SIZE_MB` (baked into the public bundle — single source of truth, not secrecy) |
+| Web build | *(none)* — the web image is runtime-configured; `VITE_*` are supplied as container env at deploy (see [Web frontend](#web-frontend-runtime-config)), not fetched from the vault. |
 
 `SENTRY_DSN` is intentionally **absent** — there's no Sentry integration yet (tracked in #124); add
 it to the manifests when that lands.
 
-**CI.** The web build workflow pulls `VITE_*` from the PROD collection on pushes to `main` (using a
-`VAULTWARDEN_API_KEY` GitHub secret and the API's `ENABLE_GITHUB_IP_RANGES` to whitelist runner IPs);
-PR builds skip the fetch and use the committed `.env`, so PR CI doesn't depend on vault availability.
-The release **image** build ([release.yml](.github/workflows/release.yml)) needs none of this — the web
-image is environment-agnostic (no `VITE_*` baked); all runtime config/secrets come from the host `.env`
-(or Vaultwarden) at container startup.
+**CI.** The web build (`web.yml`) only **compiles** — it does **not** fetch from Vaultwarden, so neither
+PR nor `main`/release CI depends on vault availability or runner-IP whitelisting. The published web
+image is environment-agnostic; all web `VITE_*` config is supplied as container env at deploy. The API
+and Discord bot still fetch their secrets from the host `.env` (or Vaultwarden) at startup.
 
 ## Startup database migrations
 
