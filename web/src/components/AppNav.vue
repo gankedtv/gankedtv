@@ -199,11 +199,16 @@ function updateBellPos() {
   }
 }
 
-const bellPopoverStyle = computed(() => ({
-  top: `${bellPopoverPos.value.top}px`,
-  right: `${bellPopoverPos.value.right}px`,
-  width: '360px',
-}))
+const bellPopoverStyle = computed(() => {
+  const right = bellPopoverPos.value.right
+  return {
+    top: `${bellPopoverPos.value.top}px`,
+    right: `${right}px`,
+    // Cap to the space between the right anchor and an 8px left gutter so the 360px panel
+    // never runs off a narrow viewport (it otherwise overflows the left edge on mobile).
+    width: `min(360px, calc(100vw - ${right}px - 8px))`,
+  }
+})
 
 async function toggleBell() {
   isBellOpen.value = !isBellOpen.value
