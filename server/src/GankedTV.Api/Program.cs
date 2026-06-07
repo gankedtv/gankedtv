@@ -157,6 +157,23 @@ builder.Services.AddSingleton<IAmazonS3>(sp =>
     });
 });
 
+// Presigning client: signs against the BROWSER-FACING host (S3_PUBLIC_URL) so SigV4's canonical
+// Host header matches the request the browser actually sends. Strict S3 servers (AIStor) reject
+// post-sign host rewriting; community MinIO tolerated it. Used ONLY for GetPreSignedURL — local
+// crypto, never a network call — so pointing it at the public host can't hairpin internal ops.
+// Falls back to the internal endpoint when no public URL is set (dev MinIO), so the dev flow is
+// unchanged: browser hits MinIO directly at the endpoint host the URL is signed with.
+builder.Services.AddKeyedSingleton<IAmazonS3>("presigner", (sp, _) =>
+{
+    var o = sp.GetRequiredService<IOptions<S3Options>>().Value;
+    var signingUrl = string.IsNullOrWhiteSpace(o.PublicUrl) ? o.Endpoint : o.PublicUrl;
+    return new AmazonS3Client(o.AccessKey, o.SecretKey, new AmazonS3Config
+    {
+        ServiceURL = signingUrl,
+        ForcePathStyle = true,
+    });
+});
+
 builder.Services.AddSingleton<IObjectStorageService, S3ObjectStorageService>();
 builder.Services.AddHostedService<BucketBootstrapHostedService>();
 

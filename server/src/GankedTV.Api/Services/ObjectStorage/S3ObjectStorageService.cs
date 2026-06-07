@@ -1,5 +1,6 @@
 using Amazon.S3;
 using Amazon.S3.Model;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 namespace GankedTV.Api.Services.ObjectStorage;
@@ -9,18 +10,28 @@ public sealed class S3ObjectStorageService : IObjectStorageService
     private static readonly TimeSpan DefaultExpiry = TimeSpan.FromMinutes(15);
 
     private readonly IAmazonS3 _s3;
+    // Signs presigned URLs against the browser-facing host (see the "presigner" registration in
+    // Program.cs). Separate from _s3 so real ops stay on the fast internal endpoint.
+    private readonly IAmazonS3 _presigner;
     private readonly S3Options _options;
     private readonly ILogger<S3ObjectStorageService> _logger;
 
     public S3ObjectStorageService(
         IAmazonS3 s3,
+        [FromKeyedServices("presigner")] IAmazonS3 presigner,
         IOptions<S3Options> options,
         ILogger<S3ObjectStorageService> logger)
     {
         _s3 = s3;
+        _presigner = presigner;
         _options = options.Value;
         _logger = logger;
     }
+
+    // The host SigV4 signs against: the browser-facing PublicUrl when set, else the internal
+    // endpoint (dev). Mirrors the "presigner" client's ServiceURL so the protocol matches.
+    private string SigningUrl =>
+        string.IsNullOrWhiteSpace(_options.PublicUrl) ? _options.Endpoint : _options.PublicUrl;
 
     public async Task EnsureBucketsAsync(CancellationToken ct = default)
     {
@@ -141,10 +152,10 @@ public sealed class S3ObjectStorageService : IObjectStorageService
             Verb = HttpVerb.PUT,
             ContentType = contentType,
             Expires = DateTime.UtcNow.Add(expiry ?? DefaultExpiry),
-            Protocol = ResolveProtocol(_options.Endpoint),
+            Protocol = ResolveProtocol(SigningUrl),
         };
 
-        return RewriteHost(_s3.GetPreSignedURL(request), _options.PublicUrl);
+        return RewriteHost(_presigner.GetPreSignedURL(request), _options.PublicUrl);
     }
 
     public string GetPresignedGetUrl(
@@ -158,10 +169,10 @@ public sealed class S3ObjectStorageService : IObjectStorageService
             Key = key,
             Verb = HttpVerb.GET,
             Expires = DateTime.UtcNow.Add(expiry ?? DefaultExpiry),
-            Protocol = ResolveProtocol(_options.Endpoint),
+            Protocol = ResolveProtocol(SigningUrl),
         };
 
-        return RewriteHost(_s3.GetPreSignedURL(request), _options.PublicUrl);
+        return RewriteHost(_presigner.GetPreSignedURL(request), _options.PublicUrl);
     }
 
     // GetPreSignedURL defaults to https:// regardless of the ServiceURL scheme. For MinIO dev
@@ -249,12 +260,11 @@ public sealed class S3ObjectStorageService : IObjectStorageService
         }
     }
 
-    // MinIO signs with the container-internal endpoint (http://minio:9000) but browsers
-    // need to hit the host-visible URL. Preserve path, query, and signature verbatim.
-    // Caveat: SigV4 canonicalizes the Host header into the signature, so post-sign host
-    // rewriting is technically a mismatch. MinIO permits it in practice; if we ever
-    // switch to strict S3, sign with PublicUrl directly and keep a second internal-only
-    // IAmazonS3 for admin ops (ListBuckets / PutBucket / DeleteObject).
+    // Presigned URLs are now signed against PublicUrl directly (the "presigner" client), so the
+    // SigV4 host is already correct and this is a defensive scheme/host normalization, not the
+    // primary mechanism. It stays for the dev/no-PublicUrl path (where it's a no-op) and to assert
+    // S3_PUBLIC_URL is a valid absolute URL. Strict S3 servers (AIStor) reject the old approach of
+    // signing with the internal endpoint and rewriting the host afterwards; community MinIO didn't.
     internal static string RewriteHost(string signedUrl, string? publicUrl)
     {
         if (string.IsNullOrWhiteSpace(publicUrl))
