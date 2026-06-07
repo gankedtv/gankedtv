@@ -200,6 +200,7 @@ gankedtv/
 ## Git workflow
 
 - Do not add yourself (Claude / any AI) as a co-author. Never append `Co-Authored-By: Claude ...` trailers to commit messages.
+- Do not add AI attribution to PR descriptions either — no "🤖 Generated with Claude Code" (or similar) trailer in PR bodies.
 
 ## Code comments
 

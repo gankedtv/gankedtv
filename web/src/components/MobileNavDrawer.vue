@@ -2,15 +2,11 @@
 import { nextTick, onMounted, onUnmounted, ref, useId, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { useThemeStore } from '@/stores/theme'
 import ThemePicker from './ThemePicker.vue'
-import IconSun from './icons/IconSun.vue'
-import IconMoon from './icons/IconMoon.vue'
+import ThemeModeToggle from './ThemeModeToggle.vue'
 
-// The drawer is the mobile home for everything the desktop bar exposes inline: the nav links
-// plus profile/admin and the theme controls (which collapse off the top bar on mobile).
+// Mobile home for everything the desktop bar exposes: nav links, profile/admin, theme controls.
 const auth = useAuthStore()
-const theme = useThemeStore()
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ 'update:open': [boolean] }>()
@@ -141,8 +137,7 @@ const linkActive =
               </RouterLink>
             </nav>
 
-            <!-- Theme controls + sign-in pinned to the bottom: they collapse off the mobile
-                 top bar, so the drawer is the only place to reach them on small screens. -->
+            <!-- Theme controls + sign-in pinned to the bottom (off the mobile top bar). -->
             <div class="mt-auto flex flex-col gap-3 border-t border-border px-5 py-4">
               <div class="flex items-center justify-between gap-3">
                 <span class="font-mono text-[10px] uppercase tracking-widest text-text-muted">
@@ -150,17 +145,7 @@ const linkActive =
                 </span>
                 <div class="flex items-center gap-2">
                   <ThemePicker />
-                  <button
-                    type="button"
-                    class="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-border bg-transparent text-text-secondary transition-colors duration-150 hover:border-border-hover hover:text-text-primary"
-                    :title="theme.isDark ? 'Switch to light' : 'Switch to dark'"
-                    :aria-label="theme.isDark ? 'Switch to light mode' : 'Switch to dark mode'"
-                    :aria-pressed="theme.isDark"
-                    @click="theme.toggle()"
-                  >
-                    <IconSun v-if="theme.isDark" :size="16" />
-                    <IconMoon v-else :size="16" />
-                  </button>
+                  <ThemeModeToggle />
                 </div>
               </div>
               <RouterLink

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import IconMoreVertical from '@/components/icons/IconMoreVertical.vue'
 import IconMoreHorizontal from '@/components/icons/IconMoreHorizontal.vue'
 
@@ -33,12 +33,26 @@ withDefaults(
 
 const open = ref(false)
 const rootRef = ref<HTMLDivElement | null>(null)
+const menuRef = ref<HTMLDivElement | null>(null)
+// Nudge the right-0 dropdown back on-screen when the trigger sits near a viewport edge.
+const shiftX = ref(0)
 
 function toggle() {
   open.value = !open.value
 }
 function close() {
   open.value = false
+}
+
+function clampToViewport() {
+  const el = menuRef.value
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  const margin = 8
+  if (rect.left < margin) shiftX.value = margin - rect.left
+  else if (rect.right > window.innerWidth - margin)
+    shiftX.value = window.innerWidth - margin - rect.right
+  else shiftX.value = 0
 }
 
 function onItemClick(item: KebabMenuItem) {
@@ -62,7 +76,9 @@ watch(open, (isOpen) => {
   if (isOpen) {
     window.addEventListener('keydown', onKeydown)
     window.addEventListener('click', onDocumentClick, true)
+    nextTick(clampToViewport)
   } else {
+    shiftX.value = 0
     window.removeEventListener('keydown', onKeydown)
     window.removeEventListener('click', onDocumentClick, true)
   }
@@ -97,7 +113,9 @@ onBeforeUnmount(() => {
 
     <div
       v-if="open"
+      ref="menuRef"
       role="menu"
+      :style="shiftX ? { transform: `translateX(${shiftX}px)` } : undefined"
       class="absolute right-0 top-full z-20 mt-1 min-w-36 rounded-md border border-border-strong bg-surface-overlay shadow-[0_4px_20px_rgba(0,0,0,0.4)]"
     >
       <button
