@@ -2,23 +2,20 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { useThemeStore } from '@/stores/theme'
 import { useNotificationsStore } from '@/stores/notifications'
 import { search, type SearchResponse } from '@/api/search'
 import ThemePicker from './ThemePicker.vue'
+import ThemeModeToggle from './ThemeModeToggle.vue'
 import UserAvatar from './UserAvatar.vue'
 import GameSearchResult from './GameSearchResult.vue'
 import NotificationsDropdown from './notifications/NotificationsDropdown.vue'
 import IconSearch from './icons/IconSearch.vue'
-import IconSun from './icons/IconSun.vue'
-import IconMoon from './icons/IconMoon.vue'
 import IconPlus from './icons/IconPlus.vue'
 import IconBell from './icons/IconBell.vue'
 import IconMenu from './icons/IconMenu.vue'
 import MobileNavDrawer from './MobileNavDrawer.vue'
 
 const auth = useAuthStore()
-const theme = useThemeStore()
 const router = useRouter()
 const notificationsStore = useNotificationsStore()
 
@@ -258,12 +255,9 @@ onBeforeUnmount(() => {
 })
 
 // --- Mobile nav drawer --------------------------------------------------------
-//
-// Below the `tablet` breakpoint (720px), Games/Trending/Leaderboards are hidden via
-// max-tablet:hidden on the desktop nav links. The hamburger + drawer surface them on
-// mobile so two top-level features aren't unreachable. Drawer owns its own escape /
-// route-change / backdrop close handling; we just track open-state here and return
-// focus to the hamburger when it closes.
+// Below 1024px the nav row, theme controls, and admin collapse into the drawer (the full bar
+// overflows at tablet/iPad widths). The drawer owns its own close handling; we return focus
+// to the hamburger when it closes.
 const hamburgerRef = useTemplateRef<HTMLButtonElement>('hamburgerRef')
 const isDrawerOpen = ref(false)
 
@@ -272,11 +266,8 @@ watch(isDrawerOpen, (open) => {
 })
 
 // --- Mobile search overlay ----------------------------------------------------
-//
-// The inline search bar only renders ≥1281px (see template). On narrower screens a
-// search icon opens this full-width overlay over the nav bar, reusing the same query
-// + onSubmit so there's a single search implementation. Submit/Esc close it; we focus
-// the input on open and return focus to the trigger on close.
+// Below 1281px the inline search bar is hidden; a search icon opens this overlay, reusing
+// the same query + onSubmit. Focus the input on open, return focus to the trigger on close.
 const isMobileSearchOpen = ref(false)
 const mobileSearchRef = useTemplateRef<HTMLInputElement>('mobileSearchRef')
 const mobileSearchTriggerRef = useTemplateRef<HTMLButtonElement>('mobileSearchTriggerRef')
@@ -307,12 +298,11 @@ function closeMobileSearch() {
         <span class="max-tablet:hidden">GANKED<span class="logo__tv">.TV</span></span>
       </RouterLink>
 
-      <!-- Hamburger trigger (mobile only). Below the tablet breakpoint, Games / Trending /
-           Leaderboards collapse into the drawer below. -->
+      <!-- Hamburger — shown below 1024px; opens the drawer. -->
       <button
         ref="hamburgerRef"
         type="button"
-        class="hidden h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-border bg-transparent text-text-secondary transition-colors duration-150 hover:border-border-hover hover:text-text-primary max-tablet:inline-flex"
+        class="hidden h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-border bg-transparent text-text-secondary transition-colors duration-150 hover:border-border-hover hover:text-text-primary max-lg:inline-flex"
         aria-label="Open menu"
         :aria-expanded="isDrawerOpen"
         @click="isDrawerOpen = true"
@@ -320,9 +310,8 @@ function closeMobileSearch() {
         <IconMenu :size="16" />
       </button>
 
-      <!-- Nav links (desktop). The whole row collapses into the drawer below the tablet
-           breakpoint so the mobile bar shows only the mark, hamburger, and actions. -->
-      <nav class="flex flex-1 items-center gap-1 max-tablet:hidden" aria-label="Main navigation">
+      <!-- Desktop nav links — collapse into the drawer below 1024px. -->
+      <nav class="flex flex-1 items-center gap-1 max-lg:hidden" aria-label="Main navigation">
         <RouterLink
           to="/"
           class="relative rounded-sm px-3.5 py-2 text-[13px] font-medium uppercase tracking-[0.04em] text-text-secondary no-underline transition-colors duration-150 hover:bg-surface-overlay hover:text-text-primary"
@@ -452,8 +441,7 @@ function closeMobileSearch() {
 
       <!-- Actions -->
       <div class="ml-auto flex items-center gap-2">
-        <!-- Mobile search trigger — the inline search bar is ≥1281px only, so narrower
-             screens get an icon that opens the full-width overlay below. -->
+        <!-- Mobile search trigger (inline bar is ≥1281px only). -->
         <button
           ref="mobileSearchTriggerRef"
           type="button"
@@ -464,22 +452,10 @@ function closeMobileSearch() {
           <IconSearch :size="16" />
         </button>
 
-        <!-- Theme controls — collapse into the drawer below the tablet breakpoint. -->
-        <div class="flex items-center gap-2 max-tablet:hidden">
-          <!-- Theme picker (Underground / Tactical / Arcade) -->
+        <!-- Theme controls — collapse into the drawer below 1024px. -->
+        <div class="flex items-center gap-2 max-lg:hidden">
           <ThemePicker />
-
-          <!-- Light/dark toggle -->
-          <button
-            class="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-border bg-transparent text-text-secondary transition-all duration-150 hover:border-border-hover hover:text-text-primary"
-            :title="theme.isDark ? 'Switch to light' : 'Switch to dark'"
-            :aria-label="theme.isDark ? 'Switch to light mode' : 'Switch to dark mode'"
-            :aria-pressed="theme.isDark"
-            @click="theme.toggle()"
-          >
-            <IconSun v-if="theme.isDark" :size="16" />
-            <IconMoon v-else :size="16" />
-          </button>
+          <ThemeModeToggle />
         </div>
 
         <!-- Notifications bell (authenticated only) -->
@@ -506,7 +482,7 @@ function closeMobileSearch() {
         <RouterLink
           v-if="auth.isModerator"
           to="/admin"
-          class="inline-flex h-9 cursor-pointer items-center rounded-md border border-border bg-transparent px-3 font-heading text-[12px] font-bold uppercase tracking-wider text-text-secondary no-underline transition-colors duration-150 hover:border-border-hover hover:text-text-primary max-tablet:hidden"
+          class="inline-flex h-9 cursor-pointer items-center rounded-md border border-border bg-transparent px-3 font-heading text-[12px] font-bold uppercase tracking-wider text-text-secondary no-underline transition-colors duration-150 hover:border-border-hover hover:text-text-primary max-lg:hidden"
         >
           Admin
         </RouterLink>
@@ -543,9 +519,7 @@ function closeMobileSearch() {
       </div>
     </div>
 
-    <!-- Mobile search overlay — fills the bar when the search icon is tapped (inline search
-         is ≥1281px only). Reuses the same query + onSubmit, so there's one search path;
-         Enter opens the /search results view. -->
+    <!-- Mobile search overlay — fills the bar when the trigger is tapped; Enter opens /search. -->
     <div
       v-if="isMobileSearchOpen"
       class="absolute inset-0 z-20 flex items-center gap-2 bg-surface-base px-6 min-[1281px]:hidden"

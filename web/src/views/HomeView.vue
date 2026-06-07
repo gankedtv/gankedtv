@@ -304,6 +304,11 @@ onMounted(() => {
         </div>
       </div>
 
+      <!-- Mobile hero — the desktop hero is hidden < 900px and the list skips items[0]. -->
+      <div class="mt-7 mb-10 min-[900px]:hidden">
+        <ClipCard :clip="hero" @click="router.push({ name: 'clip', params: { id: hero.id } })" />
+      </div>
+
       <!-- Secondary row (4 cards) -->
       <div v-if="secondary.length" class="mt-7 mb-10">
         <div class="mb-5 flex items-baseline justify-between gap-4">
