@@ -315,6 +315,33 @@ public class ObjectStorageTests
     }
 
     [Fact]
+    public void GetPresignedGetUrl_SignsWithPresignerClient_NotOpsClient()
+    {
+        // Mirror of the PUT guard: the GET presign path must also use the presigner (public host),
+        // never the ops client (internal endpoint), or AIStor rejects the playback signature.
+        var ops = Substitute.For<IAmazonS3>();
+        var presigner = Substitute.For<IAmazonS3>();
+        presigner.GetPreSignedURL(Arg.Any<GetPreSignedUrlRequest>())
+            .Returns("https://cdn.example/clips/key?X-Amz-Signature=pub");
+        var options = Options.Create(new S3Options
+        {
+            Endpoint = "http://minio:9000",
+            AccessKey = "k",
+            SecretKey = "s",
+            PublicUrl = "https://cdn.example",
+            ClipsBucket = "clips",
+            ThumbnailsBucket = "thumbnails",
+        });
+
+        var url = new S3ObjectStorageService(ops, presigner, options, NullLogger<S3ObjectStorageService>.Instance)
+            .GetPresignedGetUrl("clips", "key");
+
+        url.Should().Be("https://cdn.example/clips/key?X-Amz-Signature=pub");
+        presigner.Received(1).GetPreSignedURL(Arg.Any<GetPreSignedUrlRequest>());
+        ops.DidNotReceive().GetPreSignedURL(Arg.Any<GetPreSignedUrlRequest>());
+    }
+
+    [Fact]
     public void RewriteHost_ThrowsOnMalformedPublicUrl()
     {
         var s3 = Substitute.For<IAmazonS3>();

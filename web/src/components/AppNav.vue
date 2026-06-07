@@ -474,7 +474,7 @@ function closeMobileSearch() {
             class="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-border bg-transparent text-text-secondary transition-all duration-150 hover:border-border-hover hover:text-text-primary"
             :title="theme.isDark ? 'Switch to light' : 'Switch to dark'"
             :aria-label="theme.isDark ? 'Switch to light mode' : 'Switch to dark mode'"
-            :aria-pressed="!theme.isDark"
+            :aria-pressed="theme.isDark"
             @click="theme.toggle()"
           >
             <IconSun v-if="theme.isDark" :size="16" />
