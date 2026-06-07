@@ -25,7 +25,8 @@ public class ObjectStorageTests
             GameCoversBucket = "game-covers",
             StreamCacheBucket = "stream-cache",
         });
-        return new S3ObjectStorageService(s3, options, NullLogger<S3ObjectStorageService>.Instance);
+        // Same mock for ops + presigner: presign tests keep mocking GetPreSignedURL on `s3`.
+        return new S3ObjectStorageService(s3, s3, options, NullLogger<S3ObjectStorageService>.Instance);
     }
 
     [Fact]
@@ -107,7 +108,7 @@ public class ObjectStorageTests
             AvatarsBucket = "clips", // and the avatars bucket — must not expose private media either
         });
 
-        await new S3ObjectStorageService(s3, options, NullLogger<S3ObjectStorageService>.Instance)
+        await new S3ObjectStorageService(s3, s3, options, NullLogger<S3ObjectStorageService>.Instance)
             .EnsureBucketsAsync();
 
         await s3.DidNotReceive().PutBucketPolicyAsync(
@@ -286,6 +287,61 @@ public class ObjectStorageTests
     }
 
     [Fact]
+    public void GetPresignedPutUrl_SignsWithPresignerClient_NotOpsClient()
+    {
+        // Ops client = internal endpoint; presigner = public host. Presigned URLs must be signed by
+        // the presigner so SigV4's canonical Host matches the browser's request (AIStor enforces
+        // this; community MinIO tolerated post-sign host rewriting).
+        var ops = Substitute.For<IAmazonS3>();
+        var presigner = Substitute.For<IAmazonS3>();
+        presigner.GetPreSignedURL(Arg.Any<GetPreSignedUrlRequest>())
+            .Returns("https://cdn.example/clips/key?X-Amz-Signature=pub");
+        var options = Options.Create(new S3Options
+        {
+            Endpoint = "http://minio:9000",
+            AccessKey = "k",
+            SecretKey = "s",
+            PublicUrl = "https://cdn.example",
+            ClipsBucket = "clips",
+            ThumbnailsBucket = "thumbnails",
+        });
+
+        var url = new S3ObjectStorageService(ops, presigner, options, NullLogger<S3ObjectStorageService>.Instance)
+            .GetPresignedPutUrl("clips", "key", "video/mp4");
+
+        url.Should().Be("https://cdn.example/clips/key?X-Amz-Signature=pub");
+        presigner.Received(1).GetPreSignedURL(Arg.Any<GetPreSignedUrlRequest>());
+        ops.DidNotReceive().GetPreSignedURL(Arg.Any<GetPreSignedUrlRequest>());
+    }
+
+    [Fact]
+    public void GetPresignedGetUrl_SignsWithPresignerClient_NotOpsClient()
+    {
+        // Mirror of the PUT guard: the GET presign path must also use the presigner (public host),
+        // never the ops client (internal endpoint), or AIStor rejects the playback signature.
+        var ops = Substitute.For<IAmazonS3>();
+        var presigner = Substitute.For<IAmazonS3>();
+        presigner.GetPreSignedURL(Arg.Any<GetPreSignedUrlRequest>())
+            .Returns("https://cdn.example/clips/key?X-Amz-Signature=pub");
+        var options = Options.Create(new S3Options
+        {
+            Endpoint = "http://minio:9000",
+            AccessKey = "k",
+            SecretKey = "s",
+            PublicUrl = "https://cdn.example",
+            ClipsBucket = "clips",
+            ThumbnailsBucket = "thumbnails",
+        });
+
+        var url = new S3ObjectStorageService(ops, presigner, options, NullLogger<S3ObjectStorageService>.Instance)
+            .GetPresignedGetUrl("clips", "key");
+
+        url.Should().Be("https://cdn.example/clips/key?X-Amz-Signature=pub");
+        presigner.Received(1).GetPreSignedURL(Arg.Any<GetPreSignedUrlRequest>());
+        ops.DidNotReceive().GetPreSignedURL(Arg.Any<GetPreSignedUrlRequest>());
+    }
+
+    [Fact]
     public void RewriteHost_ThrowsOnMalformedPublicUrl()
     {
         var s3 = Substitute.For<IAmazonS3>();
@@ -388,7 +444,7 @@ public class ObjectStorageTests
             ClipsBucket = "clips",
             ThumbnailsBucket = "thumbnails",
         });
-        new S3ObjectStorageService(s3, opts, NullLogger<S3ObjectStorageService>.Instance)
+        new S3ObjectStorageService(s3, s3, opts, NullLogger<S3ObjectStorageService>.Instance)
             .GetPresignedPutUrl("clips", "key", "video/mp4");
 
         captured!.Protocol.Should().Be(Protocol.HTTPS);
