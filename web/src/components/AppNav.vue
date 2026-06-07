@@ -163,6 +163,7 @@ function onSubmit() {
   if (!trimmed) return
   cancelInFlight()
   isFocused.value = false
+  isMobileSearchOpen.value = false
   void router.push({ name: 'search', query: { q: trimmed } })
 }
 
@@ -264,6 +265,26 @@ const isDrawerOpen = ref(false)
 watch(isDrawerOpen, (open) => {
   if (!open) nextTick(() => hamburgerRef.value?.focus())
 })
+
+// --- Mobile search overlay ----------------------------------------------------
+//
+// The inline search bar only renders ≥1281px (see template). On narrower screens a
+// search icon opens this full-width overlay over the nav bar, reusing the same query
+// + onSubmit so there's a single search implementation. Submit/Esc close it; we focus
+// the input on open and return focus to the trigger on close.
+const isMobileSearchOpen = ref(false)
+const mobileSearchRef = useTemplateRef<HTMLInputElement>('mobileSearchRef')
+const mobileSearchTriggerRef = useTemplateRef<HTMLButtonElement>('mobileSearchTriggerRef')
+
+function openMobileSearch() {
+  isMobileSearchOpen.value = true
+  nextTick(() => mobileSearchRef.value?.focus())
+}
+
+function closeMobileSearch() {
+  isMobileSearchOpen.value = false
+  nextTick(() => mobileSearchTriggerRef.value?.focus())
+}
 </script>
 
 <template>
@@ -271,13 +292,14 @@ watch(isDrawerOpen, (open) => {
     class="sticky top-0 z-50 h-16 border-b border-border bg-[color-mix(in_oklab,var(--color-surface-base)_85%,transparent)] backdrop-blur-[14px]"
   >
     <div class="mx-auto flex h-full max-w-360 min-w-0 items-center gap-5 px-6 *:shrink-0">
-      <!-- Logo -->
+      <!-- Logo — wordmark collapses to the mark alone on mobile to free top-bar space. -->
       <RouterLink
         to="/"
+        aria-label="GankedTV home"
         class="flex items-center gap-2 font-display text-[22px] font-bold uppercase tracking-[0.06em] text-text-primary no-underline"
       >
         <span class="logo__mark"></span>
-        GANKED<span class="logo__tv">.TV</span>
+        <span class="max-tablet:hidden">GANKED<span class="logo__tv">.TV</span></span>
       </RouterLink>
 
       <!-- Hamburger trigger (mobile only). Below the tablet breakpoint, Games / Trending /
@@ -293,8 +315,9 @@ watch(isDrawerOpen, (open) => {
         <IconMenu :size="16" />
       </button>
 
-      <!-- Nav links -->
-      <nav class="flex flex-1 items-center gap-1" aria-label="Main navigation">
+      <!-- Nav links (desktop). The whole row collapses into the drawer below the tablet
+           breakpoint so the mobile bar shows only the mark, hamburger, and actions. -->
+      <nav class="flex flex-1 items-center gap-1 max-tablet:hidden" aria-label="Main navigation">
         <RouterLink
           to="/"
           class="relative rounded-sm px-3.5 py-2 text-[13px] font-medium uppercase tracking-[0.04em] text-text-secondary no-underline transition-colors duration-150 hover:bg-surface-overlay hover:text-text-primary"
@@ -304,21 +327,21 @@ watch(isDrawerOpen, (open) => {
         </RouterLink>
         <RouterLink
           to="/games"
-          class="relative rounded-sm px-3.5 py-2 text-[13px] font-medium uppercase tracking-[0.04em] text-text-secondary no-underline transition-colors duration-150 hover:bg-surface-overlay hover:text-text-primary max-tablet:hidden"
+          class="relative rounded-sm px-3.5 py-2 text-[13px] font-medium uppercase tracking-[0.04em] text-text-secondary no-underline transition-colors duration-150 hover:bg-surface-overlay hover:text-text-primary"
           :active-class="navLinkActive"
         >
           Games
         </RouterLink>
         <RouterLink
           to="/trending"
-          class="relative rounded-sm px-3.5 py-2 text-[13px] font-medium uppercase tracking-[0.04em] text-text-secondary no-underline transition-colors duration-150 hover:bg-surface-overlay hover:text-text-primary max-tablet:hidden"
+          class="relative rounded-sm px-3.5 py-2 text-[13px] font-medium uppercase tracking-[0.04em] text-text-secondary no-underline transition-colors duration-150 hover:bg-surface-overlay hover:text-text-primary"
           :active-class="navLinkActive"
         >
           Trending
         </RouterLink>
         <RouterLink
           to="/leaderboards"
-          class="relative rounded-sm px-3.5 py-2 text-[13px] font-medium uppercase tracking-[0.04em] text-text-secondary no-underline transition-colors duration-150 hover:bg-surface-overlay hover:text-text-primary max-tablet:hidden"
+          class="relative rounded-sm px-3.5 py-2 text-[13px] font-medium uppercase tracking-[0.04em] text-text-secondary no-underline transition-colors duration-150 hover:bg-surface-overlay hover:text-text-primary"
           :active-class="navLinkActive"
         >
           Leaderboards
@@ -424,20 +447,35 @@ watch(isDrawerOpen, (open) => {
 
       <!-- Actions -->
       <div class="ml-auto flex items-center gap-2">
-        <!-- Theme picker (Underground / Tactical / Arcade) -->
-        <ThemePicker />
-
-        <!-- Light/dark toggle -->
+        <!-- Mobile search trigger — the inline search bar is ≥1281px only, so narrower
+             screens get an icon that opens the full-width overlay below. -->
         <button
-          class="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-border bg-transparent text-text-secondary transition-all duration-150 hover:border-border-hover hover:text-text-primary"
-          :title="theme.isDark ? 'Switch to light' : 'Switch to dark'"
-          :aria-label="theme.isDark ? 'Switch to light mode' : 'Switch to dark mode'"
-          :aria-pressed="!theme.isDark"
-          @click="theme.toggle()"
+          ref="mobileSearchTriggerRef"
+          type="button"
+          class="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-border bg-transparent text-text-secondary transition-colors duration-150 hover:border-border-hover hover:text-text-primary min-[1281px]:hidden"
+          aria-label="Search"
+          @click="openMobileSearch"
         >
-          <IconSun v-if="theme.isDark" :size="16" />
-          <IconMoon v-else :size="16" />
+          <IconSearch :size="16" />
         </button>
+
+        <!-- Theme controls — collapse into the drawer below the tablet breakpoint. -->
+        <div class="flex items-center gap-2 max-tablet:hidden">
+          <!-- Theme picker (Underground / Tactical / Arcade) -->
+          <ThemePicker />
+
+          <!-- Light/dark toggle -->
+          <button
+            class="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-border bg-transparent text-text-secondary transition-all duration-150 hover:border-border-hover hover:text-text-primary"
+            :title="theme.isDark ? 'Switch to light' : 'Switch to dark'"
+            :aria-label="theme.isDark ? 'Switch to light mode' : 'Switch to dark mode'"
+            :aria-pressed="!theme.isDark"
+            @click="theme.toggle()"
+          >
+            <IconSun v-if="theme.isDark" :size="16" />
+            <IconMoon v-else :size="16" />
+          </button>
+        </div>
 
         <!-- Notifications bell (authenticated only) -->
         <button
@@ -459,11 +497,11 @@ watch(isDrawerOpen, (open) => {
           </span>
         </button>
 
-        <!-- Admin link (moderator / admin only) -->
+        <!-- Admin link (moderator / admin only) — in the drawer on mobile -->
         <RouterLink
           v-if="auth.isModerator"
           to="/admin"
-          class="inline-flex h-9 cursor-pointer items-center rounded-md border border-border bg-transparent px-3 font-heading text-[12px] font-bold uppercase tracking-wider text-text-secondary no-underline transition-colors duration-150 hover:border-border-hover hover:text-text-primary"
+          class="inline-flex h-9 cursor-pointer items-center rounded-md border border-border bg-transparent px-3 font-heading text-[12px] font-bold uppercase tracking-wider text-text-secondary no-underline transition-colors duration-150 hover:border-border-hover hover:text-text-primary max-tablet:hidden"
         >
           Admin
         </RouterLink>
@@ -498,6 +536,34 @@ watch(isDrawerOpen, (open) => {
           <UserAvatar :user="auth.user" :size="36" />
         </RouterLink>
       </div>
+    </div>
+
+    <!-- Mobile search overlay — fills the bar when the search icon is tapped (inline search
+         is ≥1281px only). Reuses the same query + onSubmit, so there's one search path;
+         Enter opens the /search results view. -->
+    <div
+      v-if="isMobileSearchOpen"
+      class="absolute inset-0 z-20 flex items-center gap-2 bg-surface-base px-6 min-[1281px]:hidden"
+    >
+      <IconSearch :size="16" class="shrink-0 text-text-muted" />
+      <input
+        ref="mobileSearchRef"
+        v-model="query"
+        type="search"
+        aria-label="Search clips and games"
+        placeholder="search clips, games"
+        class="min-w-0 flex-1 border-0 bg-transparent font-mono text-sm text-text-primary placeholder:text-text-muted focus:outline-none"
+        @keydown.enter.prevent="onSubmit"
+        @keydown.escape="closeMobileSearch"
+      />
+      <button
+        type="button"
+        aria-label="Close search"
+        class="shrink-0 cursor-pointer px-2 font-mono text-xl leading-none text-text-muted transition-colors duration-150 hover:text-text-primary"
+        @click="closeMobileSearch"
+      >
+        ×
+      </button>
     </div>
 
     <!-- Bell popover — teleported to body so the header's backdrop-filter context can't trap or
