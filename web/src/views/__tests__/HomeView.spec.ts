@@ -4,6 +4,7 @@ import { createRouter, createMemoryHistory, type Router } from 'vue-router'
 import { createPinia } from 'pinia'
 import { defineComponent, h } from 'vue'
 import type { ClipFeedItem, ClipFeedPage } from '@/api/clips'
+import LoadMoreButton from '@/components/LoadMoreButton.vue'
 
 const feed = vi.fn()
 const featured = vi.fn()
@@ -125,6 +126,25 @@ describe('HomeView — newest clip stays visible below the hero', () => {
     expect(bandText(wrapper)).toContain('Newest Clip')
     // The featured clip is the hero; it must not also appear in the bands below.
     expect(bandText(wrapper)).not.toContain('Featured Pick')
+  })
+
+  it('keeps the newest clip in the bands after loading more older clips', async () => {
+    // First page is newest-first with a cursor so "Load more" is offered.
+    feed.mockResolvedValueOnce(
+      makePage([makeClip('a', { title: 'Newest Clip' }), makeClip('b'), makeClip('c')], 'cursor-1'),
+    )
+    featured.mockResolvedValue(makeClip('x', { title: 'Featured Pick' }))
+
+    const wrapper = await mountHome()
+    expect(bandText(wrapper)).toContain('Newest Clip')
+
+    // Loading more appends OLDER clips; the newest must stay in the bands.
+    feed.mockResolvedValueOnce(makePage([makeClip('d', { title: 'Older Clip' }), makeClip('e')]))
+    wrapper.findComponent(LoadMoreButton).vm.$emit('load')
+    await flushPromises()
+
+    expect(bandText(wrapper)).toContain('Newest Clip')
+    expect(bandText(wrapper)).toContain('Older Clip')
   })
 
   it('falls back to the newest clip as hero and lists the rest when there is no featured pick', async () => {

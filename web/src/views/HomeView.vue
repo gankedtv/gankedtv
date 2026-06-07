@@ -54,12 +54,9 @@ const hero = computed<ClipFeedItem | null>(() => featured.value ?? items.value[0
 // True only when the hero is actually today's featured pick — the badge must
 // not lie about provenance.
 const heroIsFeatured = computed(() => featured.value !== null)
-// Bands below the hero, with the hero's own clip removed. The hero isn't always
-// items[0] — when a featured "Clip of the Day" is shown it sits outside the feed
-// ordering — so slicing from a fixed offset would drop the newest clip (items[0])
-// and let the featured pick render twice. Filtering by hero id keeps the newest
-// clip visible and dedupes the featured pick; with no featured pick it collapses
-// back to the original items[1..] behaviour.
+// The hero isn't always items[0] — a featured "Clip of the Day" sits outside the
+// feed ordering. Slicing the bands from a fixed offset would drop the newest clip
+// and double-render the featured pick, so exclude the hero clip by id instead.
 const rest = computed(() => {
   const heroId = hero.value?.id
   return heroId ? items.value.filter((c) => c.id !== heroId) : items.value
