@@ -45,12 +45,18 @@ export async function runMigrations(sql: Sql): Promise<string[]> {
       for (const filename of all) {
         if (appliedSet.has(filename)) continue;
         const body = await readFile(join(MIGRATIONS_DIR, filename), 'utf8');
-        // begin() on the reserved connection inherits the same session, so the
-        // advisory lock held above also covers the DDL transaction.
-        await conn.begin(async (tx) => {
-          await tx.unsafe(body);
-          await tx`INSERT INTO discord_migrations (filename) VALUES (${filename})`;
-        });
+        // Reserved connections (sql.reserve()) don't expose .begin(), so drive the transaction
+        // with explicit statements on the same reserved session — that keeps the DDL under the
+        // advisory lock held above (and rolls back cleanly if a migration body throws).
+        await conn`BEGIN`;
+        try {
+          await conn.unsafe(body);
+          await conn`INSERT INTO discord_migrations (filename) VALUES (${filename})`;
+          await conn`COMMIT`;
+        } catch (err) {
+          await conn`ROLLBACK`;
+          throw err;
+        }
         ranNow.push(filename);
       }
       return ranNow;
