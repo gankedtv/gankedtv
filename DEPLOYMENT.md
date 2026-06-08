@@ -222,22 +222,29 @@ Vault items are named exactly like the env keys, scoped by org + collection so t
 different values in DEV vs PROD without colliding.
 
 **Resilience.** Fetches are sequential (the API rate-limits 30 req/min/IP) and one-shot at
-startup/build — rotate a secret by restarting/rebuilding. In **Production** a required secret that
+startup/build — rotate a secret by restarting/rebuilding. In **Production** a **required** secret that
 can't be fetched **fails the boot** with a clear, Vaultwarden-specific error; in development a
 missing/unreachable vault falls back to `.env`. The API's fetch runs **before** the fail-fast
 validation above, so a prod boot supplied with only the two bootstrap vars has the vault populate
 `DATABASE_URL` / `JWT_SECRET` / `S3_*` / … and then passes validation.
 
+**Two tiers — required vs optional.** Each app fetches a *required* manifest (above behaviour) and an
+*optional* manifest that is **always best-effort**: a key missing/errored in the vault is silently
+skipped and never fails boot, in any environment. Opt-in features (Sentry/GlitchTip) and shared
+config live in the optional tier so the published image stays generic for deployers who don't use
+them. An empty env value (e.g. compose passing `SENTRY_DSN: ${SENTRY_DSN:-}`) counts as "unset", so
+the vault still fills it; a **non-empty** env value always wins over the vault.
+
 **Per-app manifest** (the keys each app fetches):
 
-| App | Keys |
-|---|---|
-| API | `DATABASE_URL`, `JWT_SECRET`, `OAUTH_STATE_SECRET`, `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_PUBLIC_URL`, `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `IGDB_CLIENT_ID`, `IGDB_CLIENT_SECRET`, `REDIS_URL`, `WEB_ORIGIN`, `CORS_ORIGINS` |
-| Discord bot | `DISCORD_BOT_TOKEN`, `DISCORD_BOT_APP_ID`, `DISCORD_DATABASE_URL` |
-| Web build | *(none)* — the web image is runtime-configured; `VITE_*` are supplied as container env at deploy (see [Web frontend](#web-frontend-runtime-config)), not fetched from the vault. |
+| App | Required keys | Optional keys (best-effort) |
+|---|---|---|
+| API | `DATABASE_URL`, `JWT_SECRET`, `OAUTH_STATE_SECRET`, `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_PUBLIC_URL`, `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `IGDB_CLIENT_ID`, `IGDB_CLIENT_SECRET`, `REDIS_URL`, `WEB_ORIGIN`, `CORS_ORIGINS` | `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`, `SENTRY_TRACES_SAMPLE_RATE`, `ADMIN_EMAILS`, `IGDB_SYNC_ENABLED` |
+| Discord bot | `DISCORD_BOT_TOKEN`, `DISCORD_BOT_APP_ID`, `DISCORD_DATABASE_URL` | `DISCORD_SENTRY_DSN`, `DISCORD_SENTRY_ENVIRONMENT`, `DISCORD_SENTRY_RELEASE`, `DISCORD_SENTRY_TRACES_SAMPLE_RATE`, `GANKEDTV_PUBLIC_BASE` |
+| Web build | *(none)* — the web image is runtime-configured; `VITE_*` are supplied as container env at deploy (see [Web frontend](#web-frontend-runtime-config)), not fetched from the vault. The web Sentry DSN is `VITE_SENTRY_DSN` in the host `.env`. |
 
-`SENTRY_DSN` is intentionally **absent** — there's no Sentry integration yet (tracked in #124); add
-it to the manifests when that lands.
+The web bundle has **no vault client**, and all its `VITE_*` values (API URL, GlitchTip DSN, GA id)
+are *public* — they ship to every browser — so they stay host-supplied via `.env`, not vaulted.
 
 **CI.** The web build (`web.yml`) only **compiles** — it does **not** fetch from Vaultwarden, so neither
 PR nor `main`/release CI depends on vault availability or runner-IP whitelisting. The published web

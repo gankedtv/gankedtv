@@ -6,7 +6,9 @@ import {
   loadRootEnv,
   loadVaultwardenSecrets,
   mergeFirstWins,
+  optionalVaultwardenManifest,
   parseEnvFile,
+  vaultwardenManifest,
 } from '../src/loadEnv.ts';
 
 describe('parseEnvFile', () => {
@@ -157,5 +159,39 @@ describe('loadVaultwardenSecrets', () => {
     await expect(
       loadVaultwardenSecrets(target, { fetchImpl, manifest: ['DISCORD_BOT_TOKEN'] }),
     ).rejects.toThrow(/not found/);
+  });
+
+  test('optional tier is best-effort in production: missing key does not throw, present is filled', async () => {
+    const target: Record<string, string | undefined> = {
+      VAULTWARDEN_API_URL: 'https://vault.test',
+      VAULTWARDEN_API_KEY: 'k',
+      ASPNETCORE_ENVIRONMENT: 'Production', // would fail-fast on the required tier
+    };
+    const fetchImpl = (async (input: string | URL | Request) => {
+      const key = decodeURIComponent(String(input).split('/secret/')[1]!.split('?')[0]!);
+      return key === 'DISCORD_SENTRY_DSN'
+        ? new Response(JSON.stringify({ name: key, value: 'https://k@glitchtip/2' }), {
+            status: 200,
+          })
+        : new Response('{"error":"secret not found"}', { status: 404 });
+    }) as typeof fetch;
+
+    await loadVaultwardenSecrets(target, {
+      fetchImpl,
+      manifest: optionalVaultwardenManifest,
+      optional: true,
+    });
+
+    expect(target.DISCORD_SENTRY_DSN).toBe('https://k@glitchtip/2'); // present → filled
+    expect(target.GANKEDTV_PUBLIC_BASE).toBeUndefined(); // missing → skipped, no throw
+  });
+});
+
+describe('manifests', () => {
+  test('Sentry is in the optional tier, not the required one, and the two are disjoint', () => {
+    expect(optionalVaultwardenManifest).toContain('DISCORD_SENTRY_DSN');
+    expect(vaultwardenManifest as readonly string[]).not.toContain('DISCORD_SENTRY_DSN');
+    const required = new Set<string>(vaultwardenManifest);
+    expect(optionalVaultwardenManifest.some((k) => required.has(k))).toBe(false);
   });
 });

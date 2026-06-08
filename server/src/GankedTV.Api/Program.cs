@@ -80,6 +80,16 @@ if (vaultwardenOptions.IsConfigured)
             Environment.SetEnvironmentVariable)
         .GetAwaiter()
         .GetResult();
+    // Opt-in config (Sentry DSN, etc.): best-effort, never fails boot, so a deployer who doesn't
+    // provision these in the vault still starts. Runs before UseSentry so the DSN is visible.
+    vaultwardenLoader
+        .LoadAsync(
+            failFast: false,
+            Environment.GetEnvironmentVariable,
+            Environment.SetEnvironmentVariable,
+            VaultwardenSecretsLoader.OptionalManifest)
+        .GetAwaiter()
+        .GetResult();
 }
 
 // Error monitoring (Sentry → GlitchTip). Opt-in: the SDK throws on a null DSN and treats "" as
