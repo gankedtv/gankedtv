@@ -164,6 +164,11 @@ services:
       DISCORD_SENTRY_RELEASE: ${DISCORD_SENTRY_RELEASE:-}
     depends_on:
       postgres: { condition: service_healthy }
+      # Gate on api health too: startPoller fires its first poll immediately on
+      # boot, so without this the bot races the api container and the first round
+      # throws ECONNREFUSED (noisy GlitchTip boot error). api's healthcheck
+      # transitively waits on postgres/redis/minio.
+      api: { condition: service_healthy }
     restart: unless-stopped
     networks: [internal]
 
