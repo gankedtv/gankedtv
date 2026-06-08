@@ -13,8 +13,8 @@ namespace GankedTV.Api.Configuration;
 public sealed class VaultwardenSecretsLoader
 {
     /// <summary>
-    /// The server's required secrets, fetched by these exact names. No <c>SENTRY_DSN</c> — there's
-    /// no Sentry integration yet.
+    /// The server's required secrets, fetched by these exact names. In Production a missing key
+    /// fails boot — these must exist in the vault. Opt-in config goes in <see cref="OptionalManifest"/>.
     /// </summary>
     public static readonly IReadOnlyList<string> Manifest =
     [
@@ -36,6 +36,21 @@ public sealed class VaultwardenSecretsLoader
         "REDIS_URL",
         "WEB_ORIGIN",
         "CORS_ORIGINS",
+    ];
+
+    /// <summary>
+    /// Best-effort secrets/config: fetched from the vault when present, silently skipped when
+    /// absent (loaded with <c>failFast: false</c>), so the published image stays generic for
+    /// deployers who don't use these opt-in features (e.g. Sentry/GlitchTip).
+    /// </summary>
+    public static readonly IReadOnlyList<string> OptionalManifest =
+    [
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "SENTRY_RELEASE",
+        "SENTRY_TRACES_SAMPLE_RATE",
+        "ADMIN_EMAILS",
+        "IGDB_SYNC_ENABLED",
     ];
 
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);

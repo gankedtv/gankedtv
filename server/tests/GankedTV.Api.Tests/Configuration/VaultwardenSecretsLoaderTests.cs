@@ -36,11 +36,31 @@ public class VaultwardenSecretsLoaderTests
     }
 
     [Fact]
-    public void Manifest_ContainsRequiredKeys_AndNoSentryDsn()
+    public void Manifest_ContainsRequiredKeys_AndSentryIsOptionalNotRequired()
     {
         VaultwardenSecretsLoader.Manifest.Should().HaveCount(18);
         VaultwardenSecretsLoader.Manifest.Should().Contain(["DATABASE_URL", "JWT_SECRET", "S3_SECRET_KEY", "CORS_ORIGINS"]);
+        // Sentry is opt-in: it must live in the optional (best-effort) tier, never the required one,
+        // so a deployer without a DSN still boots.
         VaultwardenSecretsLoader.Manifest.Should().NotContain("SENTRY_DSN");
+        VaultwardenSecretsLoader.OptionalManifest.Should().Contain("SENTRY_DSN");
+        VaultwardenSecretsLoader.OptionalManifest.Should().NotIntersectWith(VaultwardenSecretsLoader.Manifest);
+    }
+
+    [Fact]
+    public async Task LoadAsync_OptionalManifest_AppliesPresentKeys_AndSkipsMissingWithoutThrowing()
+    {
+        // Mixed: SENTRY_DSN resolves, the rest 404. failFast:false mirrors the Program.cs optional call.
+        var handler = new TestHttpMessageHandler()
+            .OnGet(SecretPrefix + "SENTRY_DSN", HttpStatusCode.OK, """{"name":"SENTRY_DSN","value":"https://k@glitchtip/1"}""")
+            .OnGet(SecretPrefix, HttpStatusCode.NotFound, """{"error":"secret not found"}""");
+        var (get, set, store) = FakeEnv();
+
+        var applied = await Build(handler).LoadAsync(
+            failFast: false, get, set, manifest: VaultwardenSecretsLoader.OptionalManifest);
+
+        applied.Should().ContainSingle().Which.Should().Be("SENTRY_DSN");
+        store["SENTRY_DSN"].Should().Be("https://k@glitchtip/1");
     }
 
     [Fact]

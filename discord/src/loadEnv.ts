@@ -56,34 +56,51 @@ export function loadRootEnv(
   mergeFirstWins(target, parseEnvFile(readFileSync(envPath, 'utf8')));
 }
 
-// The bot's required secrets, fetched from Vaultwarden by these exact names. No SENTRY_DSN — no
-// Sentry integration yet.
+// The bot's required secrets, fetched from Vaultwarden by these exact names. In Production a missing
+// key fails boot — these must exist in the vault. Opt-in config goes in optionalVaultwardenManifest.
 export const vaultwardenManifest = [
   'DISCORD_BOT_TOKEN',
   'DISCORD_BOT_APP_ID',
   'DISCORD_DATABASE_URL',
 ] as const;
 
+// Best-effort secrets/config: fetched when present, silently skipped when absent (loaded with
+// `optional: true`), so the published image stays generic for deployers who don't use these opt-in
+// features (e.g. Sentry/GlitchTip).
+export const optionalVaultwardenManifest = [
+  'DISCORD_SENTRY_DSN',
+  'DISCORD_SENTRY_ENVIRONMENT',
+  'DISCORD_SENTRY_RELEASE',
+  'DISCORD_SENTRY_TRACES_SAMPLE_RATE',
+  'GANKEDTV_PUBLIC_BASE',
+] as const;
+
 // Fetches the bot's secrets from Vaultwarden and layers them into `target` via mergeFirstWins, so a
 // shell/.env value still beats the vault. No-op when the bootstrap vars are unset. Production fails
-// fast on a missing/errored secret; dev falls back to .env.
+// fast on a missing/errored secret; dev falls back to .env. With `optional: true` it's always
+// best-effort (never throws on a missing/errored key) regardless of environment.
 export async function loadVaultwardenSecrets(
   target: Record<string, string | undefined> = process.env,
-  opts: { manifest?: readonly string[]; fetchImpl?: typeof fetch; timeoutMs?: number } = {},
+  opts: {
+    manifest?: readonly string[];
+    optional?: boolean;
+    fetchImpl?: typeof fetch;
+    timeoutMs?: number;
+  } = {},
 ): Promise<void> {
   const apiUrl = target.VAULTWARDEN_API_URL?.trim();
   const apiKey = target.VAULTWARDEN_API_KEY?.trim();
   if (!apiUrl || !apiKey) return; // opt-in: no bootstrap vars → no-op
 
   const environment = target.ASPNETCORE_ENVIRONMENT ?? target.NODE_ENV;
-  const failFast = environment?.toLowerCase() === 'production';
+  const failFast = !opts.optional && environment?.toLowerCase() === 'production';
   const fetched = await fetchSecrets({
     apiUrl,
     apiKey,
     collection: resolveCollection(target),
     manifest: opts.manifest ?? vaultwardenManifest,
     organization: target.VAULTWARDEN_ORG?.trim() || undefined,
-    // Production fails fast on anything missing or errored; dev falls back to .env on both.
+    // Production fails fast on anything missing or errored; dev (and the optional tier) fall back.
     throwIfMissing: failFast,
     throwOnError: failFast,
     alreadySet: (key) => Boolean(target[key]?.trim()),

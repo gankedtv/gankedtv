@@ -222,22 +222,29 @@ Vault items are named exactly like the env keys, scoped by org + collection so t
 different values in DEV vs PROD without colliding.
 
 **Resilience.** Fetches are sequential (the API rate-limits 30 req/min/IP) and one-shot at
-startup/build — rotate a secret by restarting/rebuilding. In **Production** a required secret that
+startup/build — rotate a secret by restarting/rebuilding. In **Production** a **required** secret that
 can't be fetched **fails the boot** with a clear, Vaultwarden-specific error; in development a
 missing/unreachable vault falls back to `.env`. The API's fetch runs **before** the fail-fast
 validation above, so a prod boot supplied with only the two bootstrap vars has the vault populate
 `DATABASE_URL` / `JWT_SECRET` / `S3_*` / … and then passes validation.
 
+**Two tiers — required vs optional.** Each app fetches a *required* manifest (above behaviour) and an
+*optional* manifest that is **always best-effort**: a key missing/errored in the vault is silently
+skipped and never fails boot, in any environment. Opt-in features (Sentry/GlitchTip) and shared
+config live in the optional tier so the published image stays generic for deployers who don't use
+them. An empty env value (e.g. compose passing `SENTRY_DSN: ${SENTRY_DSN:-}`) counts as "unset", so
+the vault still fills it; a **non-empty** env value always wins over the vault.
+
 **Per-app manifest** (the keys each app fetches):
 
-| App | Keys |
-|---|---|
-| API | `DATABASE_URL`, `JWT_SECRET`, `OAUTH_STATE_SECRET`, `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_PUBLIC_URL`, `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `IGDB_CLIENT_ID`, `IGDB_CLIENT_SECRET`, `REDIS_URL`, `WEB_ORIGIN`, `CORS_ORIGINS` |
-| Discord bot | `DISCORD_BOT_TOKEN`, `DISCORD_BOT_APP_ID`, `DISCORD_DATABASE_URL` |
-| Web build | *(none)* — the web image is runtime-configured; `VITE_*` are supplied as container env at deploy (see [Web frontend](#web-frontend-runtime-config)), not fetched from the vault. |
+| App | Required keys | Optional keys (best-effort) |
+|---|---|---|
+| API | `DATABASE_URL`, `JWT_SECRET`, `OAUTH_STATE_SECRET`, `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_PUBLIC_URL`, `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `IGDB_CLIENT_ID`, `IGDB_CLIENT_SECRET`, `REDIS_URL`, `WEB_ORIGIN`, `CORS_ORIGINS` | `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`, `SENTRY_TRACES_SAMPLE_RATE`, `ADMIN_EMAILS`, `IGDB_SYNC_ENABLED` |
+| Discord bot | `DISCORD_BOT_TOKEN`, `DISCORD_BOT_APP_ID`, `DISCORD_DATABASE_URL` | `DISCORD_SENTRY_DSN`, `DISCORD_SENTRY_ENVIRONMENT`, `DISCORD_SENTRY_RELEASE`, `DISCORD_SENTRY_TRACES_SAMPLE_RATE`, `GANKEDTV_PUBLIC_BASE` |
+| Web build | *(none)* — the web image is runtime-configured; `VITE_*` are supplied as container env at deploy (see [Web frontend](#web-frontend-runtime-config)), not fetched from the vault. | *(none)* — the web Sentry DSN is `VITE_SENTRY_DSN`, host-supplied in `.env`. |
 
-`SENTRY_DSN` is intentionally **absent** — there's no Sentry integration yet (tracked in #124); add
-it to the manifests when that lands.
+The web bundle has **no vault client**, and all its `VITE_*` values (API URL, GlitchTip DSN, GA id)
+are *public* — they ship to every browser — so they stay host-supplied via `.env`, not vaulted.
 
 **CI.** The web build (`web.yml`) only **compiles** — it does **not** fetch from Vaultwarden, so neither
 PR nor `main`/release CI depends on vault availability or runner-IP whitelisting. The published web
@@ -255,6 +262,34 @@ serialises migration runs via a `__EFMigrationsHistory` lock, so multiple replic
 flag enabled apply migrations safely (they wait, they don't race). For clarity you may still prefer
 to gate the flag to one replica or run migrations as a separate init step, but it isn't required for
 correctness. The flag accepts `true`/`1`/`yes`/`on`.
+
+## Admin bootstrap (`ADMIN_EMAILS`)
+
+There is no special "first user" — everyone registers as a normal user. To grant admin, set
+`ADMIN_EMAILS` (comma-separated) on the API. At each boot [AdminBootstrap](server/src/GankedTV.Api/HostedServices/AdminBootstrap.cs)
+promotes any **existing** user whose email matches (case-insensitive) to `role=admin`.
+
+- The user must have **registered/logged in at least once first** (the row has to exist); the
+  promotion then lands on the next API start. Re-runs are idempotent (already-admin rows are skipped).
+- **Promote-only:** removing an email does **not** demote. To revoke, run SQL directly —
+  `UPDATE users SET role='user' WHERE email='…'`.
+- Source order is env `ADMIN_EMAILS` → appsettings `AdminEmails`. It's also in the API's *optional*
+  Vaultwarden manifest, so it can live in `Secrets - PROD` instead of the host `.env` if you prefer.
+
+## Backups
+
+Durable state lives in three named volumes ([docker-compose.prod.yml](docker-compose.prod.yml)); back
+up the first two — losing them is unrecoverable:
+
+| Volume | Holds | Back up with |
+|---|---|---|
+| `postgres_data` | All app data (users, clips metadata, subscriptions). | `pg_dump` (logical) or a volume/filesystem snapshot with the DB quiesced. |
+| `minio_data` | The clip masters + covers/avatars (the object store). On a split deploy this is the storage host's dataset instead. | Volume/dataset snapshot (or `mc mirror` to off-box storage). |
+| `redis_data` | Cache **and** DataProtection keys. Not business data, but losing the DP keys invalidates every issued auth cookie/token, forcing all users to re-login. | Optional — persist if you want auth sessions to survive a Redis wipe. |
+
+Postgres and the object store must be restored **together** (a clip row whose master is missing, or
+vice-versa, is a broken clip). There's no built-in backup scheduler — wire `pg_dump` + a snapshot into
+your host's cron/backup tooling.
 
 ## Health endpoints
 

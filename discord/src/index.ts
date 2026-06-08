@@ -1,6 +1,6 @@
 // Importing loadEnv runs its side effect (merging the repo-root .env into process.env) and exposes
 // loadVaultwardenSecrets, which main() awaits before loadConfig().
-import { loadVaultwardenSecrets } from './loadEnv.ts';
+import { loadVaultwardenSecrets, optionalVaultwardenManifest } from './loadEnv.ts';
 
 import * as Sentry from '@sentry/bun';
 import { Client, GatewayIntentBits, REST, Routes, type Interaction } from 'discord.js';
@@ -32,6 +32,11 @@ const log: PollerLogger = {
 async function main(): Promise<void> {
   // Pull secrets from Vaultwarden (no-op unless the bootstrap vars are set) before reading config.
   await loadVaultwardenSecrets(process.env);
+  // Opt-in config (Sentry DSN, etc.): best-effort, never fails boot if absent from the vault.
+  await loadVaultwardenSecrets(process.env, {
+    manifest: optionalVaultwardenManifest,
+    optional: true,
+  });
   const config = loadConfig();
 
   // No-op unless DISCORD_SENTRY_DSN is set; before the enabled check so boot crashes still report.
