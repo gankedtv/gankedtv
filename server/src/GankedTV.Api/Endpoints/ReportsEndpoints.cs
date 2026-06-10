@@ -1,5 +1,5 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using GankedTV.Api.Auth;
 using GankedTV.Api.Clips;
 using GankedTV.Api.Contracts.Moderation;
 using GankedTV.Api.Data.Entities;
@@ -47,7 +47,7 @@ public static class ReportsEndpoints
         IReportService reports,
         CancellationToken ct)
     {
-        if (!TryGetUserId(principal, out var reporterId))
+        if (!principal.TryGetUserId(out var reporterId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }
@@ -74,13 +74,5 @@ public static class ReportsEndpoints
             ReportCreateError.DuplicateOpenReport => ProblemResults.Conflict("duplicate_report"),
             _ => ProblemResults.Internal("unmapped_error"),
         };
-    }
-
-    private static bool TryGetUserId(ClaimsPrincipal principal, out Guid userId)
-    {
-        userId = default;
-        var sub = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
-            ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return Guid.TryParse(sub, out userId);
     }
 }

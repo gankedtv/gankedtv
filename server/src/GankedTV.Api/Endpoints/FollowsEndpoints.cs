@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using GankedTV.Api.Auth;
 using GankedTV.Api.Contracts.Users;
 using GankedTV.Api.Data;
 using GankedTV.Api.Notifications;
@@ -32,7 +33,7 @@ public static class FollowsEndpoints
         INotificationService notifications,
         CancellationToken ct)
     {
-        if (!ClipsReadEndpoints.TryGetUserId(principal, out var followerId))
+        if (!principal.TryGetUserId(out var followerId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }
@@ -79,7 +80,7 @@ public static class FollowsEndpoints
         GankedTvDbContext db,
         CancellationToken ct)
     {
-        if (!ClipsReadEndpoints.TryGetUserId(principal, out var followerId))
+        if (!principal.TryGetUserId(out var followerId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }

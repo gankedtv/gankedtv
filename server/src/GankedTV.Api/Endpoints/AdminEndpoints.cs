@@ -1,4 +1,3 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using GankedTV.Api.Auth;
 using GankedTV.Api.Contracts.Moderation;
@@ -137,7 +136,7 @@ public static class AdminEndpoints
         IReportService reports,
         CancellationToken ct)
     {
-        if (!TryGetUserId(principal, out var modId))
+        if (!principal.TryGetUserId(out var modId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }
@@ -167,7 +166,7 @@ public static class AdminEndpoints
         IReportService reports,
         CancellationToken ct)
     {
-        if (!TryGetUserId(principal, out var modId))
+        if (!principal.TryGetUserId(out var modId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }
@@ -217,7 +216,7 @@ public static class AdminEndpoints
         IReportService reports,
         CancellationToken ct)
     {
-        if (!TryGetUserId(principal, out var modId))
+        if (!principal.TryGetUserId(out var modId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }
@@ -269,7 +268,7 @@ public static class AdminEndpoints
         IReportService reports,
         CancellationToken ct)
     {
-        if (!TryGetUserId(principal, out var modId))
+        if (!principal.TryGetUserId(out var modId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }
@@ -296,7 +295,7 @@ public static class AdminEndpoints
         IReportService reports,
         CancellationToken ct)
     {
-        if (!TryGetUserId(principal, out var modId))
+        if (!principal.TryGetUserId(out var modId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }
@@ -338,14 +337,6 @@ public static class AdminEndpoints
             await db.SaveChangesAsync(ct);
         }
         return Results.Ok(new { id, bannedAt = (DateTimeOffset?)null });
-    }
-
-    private static bool TryGetUserId(ClaimsPrincipal principal, out Guid userId)
-    {
-        userId = default;
-        var sub = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
-            ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return Guid.TryParse(sub, out userId);
     }
 
     // Atomic "save the in-memory mutation + close every open report against this target".

@@ -1,3 +1,4 @@
+using GankedTV.Api.Auth;
 using GankedTV.Api.Contracts.Notifications;
 using GankedTV.Api.Data;
 using GankedTV.Api.Pagination;
@@ -28,7 +29,7 @@ public static class NotificationsEndpoints
         GankedTvDbContext db,
         CancellationToken ct)
     {
-        if (!ClipsReadEndpoints.TryGetUserId(principal, out var userId))
+        if (!principal.TryGetUserId(out var userId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }
@@ -71,7 +72,7 @@ public static class NotificationsEndpoints
         GankedTvDbContext db,
         CancellationToken ct)
     {
-        if (!ClipsReadEndpoints.TryGetUserId(principal, out var userId))
+        if (!principal.TryGetUserId(out var userId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }
@@ -90,7 +91,7 @@ public static class NotificationsEndpoints
         GankedTvDbContext db,
         CancellationToken ct)
     {
-        if (!ClipsReadEndpoints.TryGetUserId(principal, out var userId))
+        if (!principal.TryGetUserId(out var userId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }
@@ -109,7 +110,7 @@ public static class NotificationsEndpoints
         GankedTvDbContext db,
         CancellationToken ct)
     {
-        if (!ClipsReadEndpoints.TryGetUserId(principal, out var userId))
+        if (!principal.TryGetUserId(out var userId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }

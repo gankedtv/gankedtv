@@ -1,4 +1,3 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using GankedTV.Api.Auth;
 using GankedTV.Api.Auth.Jwt;
@@ -217,7 +216,7 @@ public static class AuthEndpoints
         CredentialAuthService credentials,
         CancellationToken ct)
     {
-        if (!TryGetUserId(principal, out var userId))
+        if (!principal.TryGetUserId(out var userId))
         {
             return Results.Unauthorized();
         }
@@ -244,14 +243,6 @@ public static class AuthEndpoints
         var token = jwt.Issue(user);
         var refresh = await refreshTokens.IssueAsync(user.Id, ct);
         return Results.Ok(new TokenResponse(token, refresh, jwtOptions.Value.ExpiryMinutes * 60));
-    }
-
-    private static bool TryGetUserId(ClaimsPrincipal principal, out Guid userId)
-    {
-        userId = default;
-        var sub = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
-            ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return Guid.TryParse(sub, out userId);
     }
 
     private static async Task<IResult> Refresh(

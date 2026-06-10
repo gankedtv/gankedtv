@@ -1,4 +1,3 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Linq.Expressions;
 using System.Net;
 using System.Security.Claims;
@@ -65,7 +64,7 @@ public static class ClipsReadEndpoints
         IOptions<ClipValidationOptions> validationOptions,
         CancellationToken ct)
     {
-        if (!TryGetUserId(principal, out var userId))
+        if (!principal.TryGetUserId(out var userId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }
@@ -147,7 +146,7 @@ public static class ClipsReadEndpoints
         var isFollowing = string.Equals(source, "following", StringComparison.OrdinalIgnoreCase);
         if (isFollowing)
         {
-            if (!TryGetUserId(principal, out var me))
+            if (!principal.TryGetUserId(out var me))
             {
                 return ProblemResults.Unauthorized("unauthorized");
             }
@@ -609,7 +608,7 @@ public static class ClipsReadEndpoints
         CancellationToken ct)
     {
         var likedByMe = false;
-        if (TryGetUserId(principal, out var userId))
+        if (principal.TryGetUserId(out var userId))
         {
             likedByMe = await db.Likes.AsNoTracking()
                 .AnyAsync(l => l.ClipId == clip.Id && l.UserId == userId, ct);
@@ -723,7 +722,7 @@ public static class ClipsReadEndpoints
         IEnumerable<Guid> clipIds,
         CancellationToken ct)
     {
-        if (!TryGetUserId(principal, out var userId))
+        if (!principal.TryGetUserId(out var userId))
         {
             return [];
         }
@@ -740,13 +739,5 @@ public static class ClipsReadEndpoints
             .ToListAsync(ct);
 
         return [.. liked];
-    }
-
-    internal static bool TryGetUserId(ClaimsPrincipal principal, out Guid userId)
-    {
-        userId = default;
-        var sub = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
-            ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return Guid.TryParse(sub, out userId);
     }
 }
