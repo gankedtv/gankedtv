@@ -101,6 +101,11 @@ export const useAuthStore = defineStore('auth', {
 
     logout() {
       const refresh = this.refreshToken
+      // Only an actually signed-in user gets bounced to the login page. logout() also
+      // fires via onRefreshFailed during anonymous bootstrap (cookie mode probes /auth/me
+      // for every visitor; no cookie → 401 → failed refresh) — navigating there would
+      // kick anonymous visitors off public pages on every load.
+      const wasAuthenticated = this.user !== null
       // Fire-and-forget server revocation (and cookie clearing in cookie mode) — local
       // state is cleared regardless, so a network failure still logs the client out.
       import('@/api/auth').then(({ logout: serverLogout }) => serverLogout(refresh)).catch(() => {})
@@ -110,6 +115,7 @@ export const useAuthStore = defineStore('auth', {
       this.refreshToken = null
       this.bootstrapped = false
       persistRefresh(null)
+      if (!wasAuthenticated) return
       // Lazy import to avoid circular dependency (router → store → router).
       // isReady() defers navigation until the router is installed (logout can fire during bootstrap).
       import('@/router')
