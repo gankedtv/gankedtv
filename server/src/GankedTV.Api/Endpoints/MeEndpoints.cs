@@ -42,7 +42,7 @@ public static partial class MeEndpoints
         GankedTvDbContext db,
         CancellationToken ct)
     {
-        if (!TryGetUserId(principal, out var userId))
+        if (!principal.TryGetUserId(out var userId))
         {
             return TypedResults.Unauthorized();
         }
@@ -66,7 +66,7 @@ public static partial class MeEndpoints
         GankedTvDbContext db,
         CancellationToken ct)
     {
-        if (!TryGetUserId(principal, out var userId))
+        if (!principal.TryGetUserId(out var userId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }
@@ -242,16 +242,4 @@ public static partial class MeEndpoints
         ex.InnerException is PostgresException pg
         && pg.SqlState == PostgresErrorCodes.UniqueViolation
         && string.Equals(pg.ConstraintName, "idx_users_username", StringComparison.Ordinal);
-
-    private static bool TryGetUserId(ClaimsPrincipal principal, out Guid userId)
-    {
-        userId = default;
-        // JwtBearer's default handler keeps the inbound claim-type map, which remaps
-        // "sub" → ClaimTypes.NameIdentifier during validation. We issue tokens with the
-        // map cleared (so "sub" stays "sub"), but reading from either side makes this
-        // resilient to future changes to the bearer setup.
-        var sub = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
-            ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return Guid.TryParse(sub, out userId);
-    }
 }

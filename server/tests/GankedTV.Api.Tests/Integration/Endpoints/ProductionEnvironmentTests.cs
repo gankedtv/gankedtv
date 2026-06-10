@@ -4,7 +4,7 @@ using GankedTV.Api.Tests.TestSupport;
 
 namespace GankedTV.Api.Tests.Integration.Endpoints;
 
-[Collection("Postgres")]
+[Collection("PostgresServices")]
 public class ProductionEnvironmentTests : IAsyncLifetime
 {
     private readonly PostgresFixture _fx;

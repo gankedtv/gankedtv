@@ -10,7 +10,7 @@ using NSubstitute;
 
 namespace GankedTV.Api.Tests.Integration.Endpoints;
 
-[Collection("Postgres")]
+[Collection("PostgresAdmin")]
 public class ReportsEndpointsTests : IAsyncLifetime
 {
     private readonly PostgresFixture _fx;

@@ -1,5 +1,5 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using GankedTV.Api.Auth;
 using GankedTV.Api.Contracts.Users;
 using GankedTV.Api.Problems;
 using GankedTV.Api.Services.Profile;
@@ -41,7 +41,7 @@ public static class ProfileMediaEndpoints
         ProfileMediaKind kind,
         CancellationToken ct)
     {
-        if (!TryGetUserId(principal, out var userId))
+        if (!principal.TryGetUserId(out var userId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }
@@ -66,7 +66,7 @@ public static class ProfileMediaEndpoints
         ProfileMediaKind kind,
         CancellationToken ct)
     {
-        if (!TryGetUserId(principal, out var userId))
+        if (!principal.TryGetUserId(out var userId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }
@@ -89,7 +89,7 @@ public static class ProfileMediaEndpoints
         ProfileMediaKind kind,
         CancellationToken ct)
     {
-        if (!TryGetUserId(principal, out var userId))
+        if (!principal.TryGetUserId(out var userId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }
@@ -108,12 +108,4 @@ public static class ProfileMediaEndpoints
         ProfileMediaError.InvalidObjectKey => ProblemResults.BadRequest("invalid_object_key"),
         _ => ProblemResults.Internal("unmapped_error", $"Unhandled error: {error}"),
     };
-
-    private static bool TryGetUserId(ClaimsPrincipal principal, out Guid userId)
-    {
-        userId = default;
-        var sub = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
-            ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return Guid.TryParse(sub, out userId);
-    }
 }

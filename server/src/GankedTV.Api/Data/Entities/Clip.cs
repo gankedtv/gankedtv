@@ -25,8 +25,8 @@ public class Clip
     public long? FileSizeBytes { get; set; }
     public int ViewCount { get; set; }
     public int LikeCount { get; set; }
-    public string Status { get; set; } = "processing";
-    public string Visibility { get; set; } = "public";
+    public string Status { get; set; } = ClipStatuses.Processing;
+    public string Visibility { get; set; } = ClipVisibilities.Public;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 

@@ -13,7 +13,7 @@ using NSubstitute;
 
 namespace GankedTV.Api.Tests.Integration.Maintenance;
 
-[Collection("Postgres")]
+[Collection("PostgresServices")]
 public class MaintenanceHostedServiceIntegrationTests
 {
     private readonly PostgresFixture _fx;

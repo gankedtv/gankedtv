@@ -1,5 +1,6 @@
 using Amazon.S3;
 using GankedTV.Api.Auth;
+using GankedTV.Api.Auth.Cookies;
 using GankedTV.Api.Auth.Jwt;
 using GankedTV.Api.Auth.Passwords;
 using GankedTV.Api.Auth.Providers;
@@ -433,6 +434,24 @@ builder.Services.AddHostedService<IgdbSyncHostedService>();
 
 builder.Services.AddSingleton<IJwtService, JwtService>();
 builder.Services.AddSingleton<IStateCookieService, StateCookieService>();
+
+builder.Services.AddOptions<RefreshCookieOptions>()
+    .Configure(opts =>
+    {
+        var enabled = Environment.GetEnvironmentVariable("AUTH_REFRESH_COOKIE_ENABLED")
+            ?? builder.Configuration["Auth:RefreshCookieEnabled"];
+        if (bool.TryParse(enabled, out var e)) opts.Enabled = e;
+    });
+builder.Services.AddSingleton<IRefreshCookieService, RefreshCookieService>();
+
+builder.Services.AddOptions<TrustedOriginOptions>()
+    .Configure(opts =>
+    {
+        opts.CorsOriginsRaw = Environment.GetEnvironmentVariable("CORS_ORIGINS");
+        opts.WebOrigin = Environment.GetEnvironmentVariable("WEB_ORIGIN")
+            ?? builder.Configuration["OAuth:WebOrigin"] ?? "http://localhost:5173";
+    });
+builder.Services.AddSingleton<ITrustedOriginValidator, TrustedOriginValidator>();
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
 builder.Services.AddSingleton<IPasswordHasher, Argon2idPasswordHasher>();
 builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();

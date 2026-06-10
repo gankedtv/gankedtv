@@ -14,7 +14,7 @@ namespace GankedTV.Api.Tests.Integration.Endpoints;
 // Covers the tag-related behaviour of POST /clips and PATCH /clips/{id}. Kept
 // separate from ClipsUploadEndpointsTests / ClipsMutateEndpointsTests so the tag
 // feature lives in one file and is easy to delete or move later.
-[Collection("Postgres")]
+[Collection("PostgresClips")]
 public class ClipsTagsTests : IAsyncLifetime
 {
     private readonly PostgresFixture _fx;

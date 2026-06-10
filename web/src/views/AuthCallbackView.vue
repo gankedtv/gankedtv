@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { config } from '@/config'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,14 +23,16 @@ onMounted(async () => {
     returnTo = rawReturnTo
   }
 
-  if (!token || !refresh) {
+  // Cookie mode: the server set the HttpOnly refresh cookie during the callback redirect
+  // and deliberately omits the refresh query param, so only the access token is required.
+  if (!token || (!refresh && !config.useSecureCookies)) {
     status.value = 'error'
     await router.replace({ name: 'login', query: { error: 'oauth_failed' } })
     return
   }
 
   try {
-    auth.setSession(token, refresh)
+    auth.setSession(token, refresh ?? '')
     await auth.fetchMe()
     await router.replace(returnTo)
   } catch {

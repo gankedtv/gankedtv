@@ -16,8 +16,8 @@ import {
   type CommandContext,
 } from './commands/index.ts';
 import { ephemeral } from './commands/replies.ts';
-import { buildMessage, postToChannel } from './posting.ts';
-import { startPoller, type Fanout, type PollerLogger } from './poller.ts';
+import { createFanout } from './fanout.ts';
+import { startPoller, type PollerLogger } from './poller.ts';
 
 // Off-by-default contract mirrors IgdbSyncHostedService: if the bot token is
 // missing, log "disabled" and exit cleanly. The compose service still starts,
@@ -140,54 +140,12 @@ async function main(): Promise<void> {
 
   await client.login(config.DISCORD_BOT_TOKEN!);
 
-  // One channel per call. The poller invokes this per matched (clip, sub) pair
-  // and the return value (true=delivered, false=transient failure) drives
-  // whether the post-log row is written. Returning false here means the poller
-  // will isPosted()-check this pair again next round and retry.
-  const fanout: Fanout = async (clip, target) => {
-    // fetch() pulls from the cache when warm, REST when cold. discord.js v14
-    // THROWS `DiscordAPIError` for missing/inaccessible resources (codes 10003,
-    // 10004, 50001, 50007 etc.); the `null` return is reserved for forced
-    // cache-miss configurations. The try/catch below (and the dead-channel
-    // cleanup) handles both paths.
-    let channel;
-    try {
-      channel = await client.channels.fetch(target.channelId);
-    } catch (err) {
-      const apiCode =
-        err && typeof err === 'object' && 'code' in err ? (err as { code: number }).code : null;
-      // Terminal channel errors → remove the sub so we don't loop on this
-      // channel for every future clip (M4 from review #111). 10003: Unknown
-      // Channel · 10004: Unknown Guild · 50001: Missing Access · 50007: Cannot
-      // Send Messages To This User.
-      if (apiCode === 10003 || apiCode === 10004 || apiCode === 50001 || apiCode === 50007) {
-        const removed = await db.removeAllSubscriptionsForChannel(target.channelId);
-        log.warn('channel inaccessible — removed subscriptions', {
-          channelId: target.channelId,
-          clipId: clip.id,
-          code: apiCode,
-          removed,
-        });
-        // Return false so the poller halts the cursor this round; next round
-        // the subs are gone and the cursor will advance cleanly.
-        return false;
-      }
-      throw err;
-    }
-    if (!channel || !channel.isTextBased() || !('send' in channel)) {
-      log.warn('channel unavailable or not text-based', {
-        channelId: target.channelId,
-        clipId: clip.id,
-      });
-      return false;
-    }
-    const content = buildMessage(
-      clip,
-      { pingRoleId: target.pingRoleId },
-      config.GANKEDTV_PUBLIC_BASE,
-    );
-    return postToChannel(channel, content);
-  };
+  const fanout = createFanout({
+    channels: client.channels,
+    db,
+    log,
+    publicBase: config.GANKEDTV_PUBLIC_BASE,
+  });
 
   log.info('Starting poller', { intervalSeconds: config.DISCORD_POLL_INTERVAL_SECONDS });
   await startPoller({ db, api, fanout, log }, config.DISCORD_POLL_INTERVAL_SECONDS, abort.signal);

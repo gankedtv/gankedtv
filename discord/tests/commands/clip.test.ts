@@ -1,8 +1,14 @@
 import { describe, expect, test } from 'bun:test';
+import type { APIEmbed } from 'discord.js';
 import { command } from '../../src/commands/clip.ts';
 import { commandDefinitions, dispatchChatInput, commands } from '../../src/commands/index.ts';
 import { clip } from '../factories.ts';
 import { ctx, fakeApi, fakeAutocomplete, fakeChatInput } from './helpers.ts';
+
+// Replies now carry a rich embed; the share URL lives on the embed title link.
+function embedUrl(payload: unknown): string | undefined {
+  return (payload as { embeds?: APIEmbed[] }).embeds?.[0]?.url;
+}
 
 describe('/clip latest', () => {
   test('posts the share URL of the latest feed clip', async () => {
@@ -17,7 +23,7 @@ describe('/clip latest', () => {
 
     await command.execute(f.interaction, context);
     expect(f.wasDeferred()).toBe(true);
-    expect(f.replies[0]?.payload).toBe('https://gankedtv.com/c/top1');
+    expect(embedUrl(f.replies[0]?.payload)).toBe('https://gankedtv.com/c/top1');
   });
 
   test('replies with "no clips" when feed is empty', async () => {
@@ -40,7 +46,7 @@ describe('/clip latest', () => {
     });
     await command.execute(f.interaction, context);
     expect(called.slug).toBe('valorant');
-    expect(f.replies[0]?.payload).toBe('https://gankedtv.com/c/gamed');
+    expect(embedUrl(f.replies[0]?.payload)).toBe('https://gankedtv.com/c/gamed');
   });
 
   test('/clip latest game filter with no results returns specific message', async () => {
@@ -65,7 +71,7 @@ describe('/clip top', () => {
     });
     await command.execute(f.interaction, context);
     expect(captured).toEqual({ sort: 'trending', window: '7d' });
-    expect(f.replies[0]?.payload).toBe('https://gankedtv.com/c/trnd');
+    expect(embedUrl(f.replies[0]?.payload)).toBe('https://gankedtv.com/c/trnd');
   });
 
   test('defaults to 24h window', async () => {
@@ -95,7 +101,7 @@ describe('/clip search', () => {
       }),
     });
     await command.execute(f.interaction, context);
-    expect(f.replies[0]?.payload).toBe('https://gankedtv.com/c/srch');
+    expect(embedUrl(f.replies[0]?.payload)).toBe('https://gankedtv.com/c/srch');
   });
 
   test('search with no results returns user-facing message', async () => {
@@ -150,7 +156,7 @@ describe('registry', () => {
       api: fakeApi({ getFeed: async () => ({ items: [c], nextCursor: null }) }),
     });
     await dispatchChatInput(f.interaction, context);
-    expect(f.replies[0]?.payload).toBe('https://gankedtv.com/c/route');
+    expect(embedUrl(f.replies[0]?.payload)).toBe('https://gankedtv.com/c/route');
   });
 
   test('dispatchChatInput replies on unknown command', async () => {

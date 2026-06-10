@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GankedTV.Api.Tests.Services.Tags;
 
-[Collection("Postgres")]
+[Collection("PostgresDiscovery")]
 public class TagsResolverTests : IAsyncLifetime
 {
     private readonly PostgresFixture _fx;

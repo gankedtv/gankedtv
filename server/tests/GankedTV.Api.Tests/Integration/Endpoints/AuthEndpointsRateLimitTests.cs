@@ -10,7 +10,7 @@ using GankedTV.Api.Tests.TestSupport;
 
 namespace GankedTV.Api.Tests.Integration.Endpoints;
 
-[Collection("Postgres")]
+[Collection("PostgresAuth")]
 public class AuthEndpointsRateLimitTests : IAsyncLifetime
 {
     private readonly PostgresFixture _fx;

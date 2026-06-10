@@ -18,7 +18,7 @@ namespace GankedTV.Api.Tests.Integration.Endpoints;
 /// cheaper and more maintainable than duplicating across every per-field case already
 /// covered by the endpoint-specific test suites.
 /// </summary>
-[Collection("Postgres")]
+[Collection("PostgresServices")]
 public class ValidationShapeTests : IAsyncLifetime
 {
     private readonly PostgresFixture _fx;
@@ -153,16 +153,18 @@ public class ValidationShapeTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Refresh_EmptyToken_ReturnsValidationProblem()
+    public async Task Refresh_EmptyToken_ReturnsInvalidRefresh()
     {
         await _fx.ResetAsync();
         using var client = _factory!.CreateClient();
 
+        // Refresh is optional at the validation layer (cookie mode posts an empty object);
+        // with no cookie configured an empty token falls through to 401 invalid_refresh.
         var resp = await client.PostAsJsonAsync("/auth/refresh", new { refresh = "" });
 
-        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
-        body.GetProperty("errors").GetProperty("Refresh").GetArrayLength().Should().BeGreaterThan(0);
+        body.GetProperty(ProblemResults.CodeKey).GetString().Should().Be("invalid_refresh");
     }
 
     [Fact]

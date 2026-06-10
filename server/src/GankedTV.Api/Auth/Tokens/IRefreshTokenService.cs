@@ -7,6 +7,12 @@ public interface IRefreshTokenService
     Task<string> IssueAsync(Guid userId, CancellationToken ct = default);
     Task<RotateResult> RotateAsync(string rawToken, CancellationToken ct = default);
     Task RevokeAsync(string rawToken, CancellationToken ct = default);
+
+    /// <summary>
+    /// Logout: revokes every live token sharing the given token's family, so a stolen
+    /// sibling token can't outlive the session. Unknown tokens are a silent no-op.
+    /// </summary>
+    Task RevokeFamilyAsync(string rawToken, CancellationToken ct = default);
 }
 
 public sealed record RotateResult(User User, string NewRawToken);

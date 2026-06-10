@@ -1,4 +1,3 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Linq.Expressions;
 using System.Net;
 using System.Security.Claims;
@@ -65,7 +64,7 @@ public static class ClipsReadEndpoints
         IOptions<ClipValidationOptions> validationOptions,
         CancellationToken ct)
     {
-        if (!TryGetUserId(principal, out var userId))
+        if (!principal.TryGetUserId(out var userId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }
@@ -92,7 +91,7 @@ public static class ClipsReadEndpoints
     {
         // Same visibility rule as the detail endpoint: any ready clip is reachable by link.
         var clip = await db.Clips.AsNoTracking()
-            .Where(c => c.Id == id && c.Status == "ready")
+            .Where(c => c.Id == id && c.Status == ClipStatuses.Ready)
             .Select(c => new { c.VideoCodec })
             .SingleOrDefaultAsync(ct);
         if (clip is null)
@@ -139,7 +138,7 @@ public static class ClipsReadEndpoints
         CancellationToken ct)
     {
         var baseQuery = db.Clips.AsNoTracking()
-            .Where(c => c.Visibility == "public" && c.Status == "ready");
+            .WherePublicReady();
 
         // `source` is treated leniently: only the literal "following" switches behaviour;
         // anything else (null, "public", garbage) falls through to the global feed. Matches
@@ -147,7 +146,7 @@ public static class ClipsReadEndpoints
         var isFollowing = string.Equals(source, "following", StringComparison.OrdinalIgnoreCase);
         if (isFollowing)
         {
-            if (!TryGetUserId(principal, out var me))
+            if (!principal.TryGetUserId(out var me))
             {
                 return ProblemResults.Unauthorized("unauthorized");
             }
@@ -487,7 +486,7 @@ public static class ClipsReadEndpoints
         }
 
         var clip = await db.Clips.AsNoTracking()
-            .Where(c => c.Id == winnerId.Value && c.Visibility == "public" && c.Status == "ready")
+            .Where(c => c.Id == winnerId.Value).WherePublicReady()
             .IncludeFeedRelations()
             .FirstOrDefaultAsync(ct);
 
@@ -521,7 +520,7 @@ public static class ClipsReadEndpoints
         var todayStart = new DateTimeOffset(DateTimeOffset.UtcNow.Date, TimeSpan.Zero);
 
         var candidates = await db.Clips.AsNoTracking()
-            .Where(c => c.Visibility == "public" && c.Status == "ready")
+            .WherePublicReady()
             .Where(c => db.Likes.Any(l => l.ClipId == c.Id && l.CreatedAt >= todayStart)
                      || db.ClipViews.Any(v => v.ClipId == c.Id && v.CreatedAt >= todayStart))
             .Select(c => new
@@ -565,7 +564,7 @@ public static class ClipsReadEndpoints
         IOptions<S3Options> s3,
         CancellationToken ct) =>
         ResolveClipByPredicateAsync(
-            c => c.Id == id && c.Status == "ready",
+            c => c.Id == id && c.Status == ClipStatuses.Ready,
             principal, db, storage, s3, ct);
 
     private static async Task<IResult> GetByShareCode(
@@ -579,7 +578,7 @@ public static class ClipsReadEndpoints
         CancellationToken ct)
     {
         var result = await LoadClipWithUrlsAsync(
-            c => c.ShareCode == code && c.Status == "ready",
+            c => c.ShareCode == code && c.Status == ClipStatuses.Ready,
             db, storage, s3, ct);
 
         if (result is null)
@@ -609,7 +608,7 @@ public static class ClipsReadEndpoints
         CancellationToken ct)
     {
         var likedByMe = false;
-        if (TryGetUserId(principal, out var userId))
+        if (principal.TryGetUserId(out var userId))
         {
             likedByMe = await db.Likes.AsNoTracking()
                 .AnyAsync(l => l.ClipId == clip.Id && l.UserId == userId, ct);
@@ -723,7 +722,7 @@ public static class ClipsReadEndpoints
         IEnumerable<Guid> clipIds,
         CancellationToken ct)
     {
-        if (!TryGetUserId(principal, out var userId))
+        if (!principal.TryGetUserId(out var userId))
         {
             return [];
         }
@@ -740,13 +739,5 @@ public static class ClipsReadEndpoints
             .ToListAsync(ct);
 
         return [.. liked];
-    }
-
-    internal static bool TryGetUserId(ClaimsPrincipal principal, out Guid userId)
-    {
-        userId = default;
-        var sub = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
-            ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return Guid.TryParse(sub, out userId);
     }
 }

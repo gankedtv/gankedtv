@@ -11,7 +11,7 @@ using NSubstitute;
 
 namespace GankedTV.Api.Tests.Integration.Endpoints;
 
-[Collection("Postgres")]
+[Collection("PostgresDiscovery")]
 public class SearchEndpointsTests : IAsyncLifetime
 {
     private readonly PostgresFixture _fx;

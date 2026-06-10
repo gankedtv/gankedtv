@@ -1,4 +1,5 @@
 import { api, BASE_URL } from './client'
+import { config } from '@/config'
 
 export type UserRole = 'user' | 'moderator' | 'admin'
 
@@ -90,6 +91,17 @@ export function register(payload: RegisterPayload): Promise<TokenResponse> {
 
 export function login(payload: LoginPayload): Promise<TokenResponse> {
   return api<TokenResponse>('/auth/login', { method: 'POST', body: payload })
+}
+
+// Revokes the refresh-token family server-side. Body token in localStorage mode; in
+// cookie mode the body is empty and credentials: 'include' lets the server read (and
+// clear) the HttpOnly cookie.
+export function logout(refresh: string | null): Promise<void> {
+  return api('/auth/logout', {
+    method: 'POST',
+    body: refresh ? { refresh } : {},
+    ...(config.useSecureCookies ? { credentials: 'include' as const } : {}),
+  })
 }
 
 // `currentPassword` is required only when the caller already has a password on file.

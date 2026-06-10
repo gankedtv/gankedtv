@@ -13,7 +13,7 @@ using NSubstitute.ExceptionExtensions;
 
 namespace GankedTV.Api.Tests.Services.Clips;
 
-[Collection("Postgres")]
+[Collection("PostgresServices")]
 public class ClipImportServiceTests
 {
     private readonly PostgresFixture _fx;

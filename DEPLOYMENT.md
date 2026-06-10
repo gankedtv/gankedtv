@@ -336,7 +336,7 @@ these as **runtime env on the web container** (see [.env.prod.example](.env.prod
 |---|---|
 | `VITE_API_BASE_URL` | API base URL the frontend calls (e.g. `https://api.ganked.tv`). Falls back to `http://localhost:5050` if unset — set it for prod. |
 | `VITE_GA_MEASUREMENT_ID` | GA4 measurement id (`G-XXXXXXX`). Analytics is a complete no-op (no script, no cookies) when empty. |
-| `VITE_USE_SECURE_COOKIES` | `true` to skip localStorage token persistence (HttpOnly-cookie strategy). |
+| `VITE_USE_SECURE_COOKIES` | `true` to keep refresh tokens in an HttpOnly cookie instead of localStorage. **Must match the API's `AUTH_REFRESH_COOKIE_ENABLED`** — flip both together or login persistence breaks. |
 | `VITE_MAX_UPLOAD_SIZE_MB` | Max upload size shown in the UI (default 500). |
 | `VITE_SENTRY_DSN` | Sentry/GlitchTip DSN. No-op when empty. Optional: `VITE_SENTRY_ENVIRONMENT`, `VITE_SENTRY_RELEASE`, `VITE_SENTRY_TRACES_SAMPLE_RATE`. |
 

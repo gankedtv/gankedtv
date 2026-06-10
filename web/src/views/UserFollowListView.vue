@@ -16,7 +16,7 @@ type Kind = 'followers' | 'following'
 // Route meta carries the static "kind" of the list so a single view component
 // services both /user/:username/followers and /user/:username/following without
 // the URL-path sniffing being duplicated here.
-const kind = computed<Kind>(() => (route.meta.kind as Kind) ?? 'followers')
+const kind = computed<Kind>(() => route.meta.kind ?? 'followers')
 
 const username = computed(() => {
   const u = route.params.username

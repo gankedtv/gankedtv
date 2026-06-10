@@ -10,7 +10,7 @@ namespace GankedTV.Api.Tests.Integration.Auth;
 // Direct service-level tests for branches the endpoint can't reach in practice
 // (DataAnnotations [EmailAddress] intercepts malformed emails before the handler
 // runs, but the service must still handle them defensively for unit consumers).
-[Collection("Postgres")]
+[Collection("PostgresAuth")]
 public class CredentialAuthServiceTests
 {
     private readonly PostgresFixture _fx;

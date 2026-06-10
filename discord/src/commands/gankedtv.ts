@@ -5,7 +5,8 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import type { Command, CommandContext } from './index.ts';
-import { ephemeral } from './replies.ts';
+import { ephemeral, safeDefer } from './replies.ts';
+import { resolveGameId, respondGameAutocomplete } from '../lib/games.ts';
 import { requireManageChannels } from '../lib/permissions.ts';
 import type { Subscription } from '../db.ts';
 
@@ -107,24 +108,6 @@ async function execute(
 // that surfaces to the user as a generic "Something went wrong").
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-async function resolveGameId(
-  ctx: CommandContext,
-  raw: string | null,
-): Promise<{ gameId: number | null; gameName: string | null; error: string | null }> {
-  if (!raw) return { gameId: null, gameName: null, error: null };
-  // The autocomplete handler returns `value: g.slug`, so the happy path here
-  // is a slug match. Manual typing falls back to a name search.
-  const matches = await ctx.api.listGames({ search: raw, limit: 25 });
-  if (matches.length === 0)
-    return { gameId: null, gameName: null, error: `No game matched "${raw}".` };
-  // Prefer an exact slug hit (autocomplete-supplied) over the top name match,
-  // so picking a less-popular autocomplete suggestion doesn't get overridden
-  // by a more popular substring match.
-  const exact = matches.find((g) => g.slug === raw);
-  const chosen = exact ?? matches[0]!;
-  return { gameId: chosen.id, gameName: chosen.name, error: null };
-}
-
 function validateCreator(raw: string | null): { creatorId: string | null; error: string | null } {
   if (!raw) return { creatorId: null, error: null };
   if (!UUID_RE.test(raw))
@@ -136,13 +119,13 @@ async function handleSubscribe(
   interaction: ChatInputCommandInteraction,
   ctx: CommandContext,
 ): Promise<void> {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await safeDefer(interaction, { flags: MessageFlags.Ephemeral }))) return;
 
   const gameRaw = interaction.options.getString('game');
   const creatorRaw = interaction.options.getString('creator');
   const pingRole = interaction.options.getRole('ping_role');
 
-  const { gameId, gameName, error: gameErr } = await resolveGameId(ctx, gameRaw);
+  const { gameId, gameName, error: gameErr } = await resolveGameId(ctx.api, gameRaw);
   if (gameErr) {
     await interaction.editReply(gameErr);
     return;
@@ -180,7 +163,7 @@ async function handleUnsubscribe(
   interaction: ChatInputCommandInteraction,
   ctx: CommandContext,
 ): Promise<void> {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await safeDefer(interaction, { flags: MessageFlags.Ephemeral }))) return;
 
   const gameRaw = interaction.options.getString('game');
   const creatorRaw = interaction.options.getString('creator');
@@ -208,7 +191,7 @@ async function handleUnsubscribe(
     return;
   }
 
-  const { gameId, error: gameErr } = await resolveGameId(ctx, gameRaw);
+  const { gameId, error: gameErr } = await resolveGameId(ctx.api, gameRaw);
   if (gameErr) {
     await interaction.editReply(gameErr);
     return;
@@ -235,7 +218,7 @@ async function handleList(
   interaction: ChatInputCommandInteraction,
   ctx: CommandContext,
 ): Promise<void> {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await safeDefer(interaction, { flags: MessageFlags.Ephemeral }))) return;
   const subs = await ctx.db.listSubscriptionsForChannel(interaction.channelId);
   if (subs.length === 0) {
     await interaction.editReply(
@@ -282,7 +265,7 @@ async function handlePauseToggle(
   ctx: CommandContext,
   paused: boolean,
 ): Promise<void> {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  if (!(await safeDefer(interaction, { flags: MessageFlags.Ephemeral }))) return;
   const changed = await ctx.db.setPaused(interaction.channelId, paused);
   if (changed === 0) {
     await interaction.editReply('No subscriptions in this channel.');
@@ -299,27 +282,7 @@ async function autocomplete(
   interaction: AutocompleteInteraction,
   ctx: CommandContext,
 ): Promise<void> {
-  const focused = interaction.options.getFocused(true);
-  if (focused.name !== 'game') return;
-  const query = focused.value?.toString() ?? '';
-  // Empty input: show first 25 games-with-clips so users see *something* rather
-  // than nothing. Non-empty: case-insensitive substring search via the games API.
-  // Returns slug values (matching /clip autocomplete) so resolveGameId can take
-  // an exact-slug shortcut over the noisier name search.
-  // Tight 2.5s timeout: Discord deadlines autocomplete at 3s — a slow games
-  // API would otherwise leave the interaction token expired (UnknownInteraction).
-  let games: { name: string; slug: string }[];
-  try {
-    games = await ctx.api.listGames({
-      search: query.length > 0 ? query : undefined,
-      limit: 25,
-      hasClips: true,
-      timeoutMs: 2500,
-    });
-  } catch {
-    games = [];
-  }
-  await interaction.respond(games.slice(0, 25).map((g) => ({ name: g.name, value: g.slug })));
+  await respondGameAutocomplete(interaction, ctx.api);
 }
 
 export const command: Command = { data, execute, autocomplete };

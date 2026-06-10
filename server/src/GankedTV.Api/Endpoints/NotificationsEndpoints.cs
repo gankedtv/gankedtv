@@ -1,3 +1,4 @@
+using GankedTV.Api.Auth;
 using GankedTV.Api.Contracts.Notifications;
 using GankedTV.Api.Data;
 using GankedTV.Api.Pagination;
@@ -28,7 +29,7 @@ public static class NotificationsEndpoints
         GankedTvDbContext db,
         CancellationToken ct)
     {
-        if (!ClipsReadEndpoints.TryGetUserId(principal, out var userId))
+        if (!principal.TryGetUserId(out var userId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }
@@ -41,9 +42,7 @@ public static class NotificationsEndpoints
 
         if (hasCursor)
         {
-            query = query.Where(n =>
-                n.CreatedAt < cursorCreatedAt
-                || (n.CreatedAt == cursorCreatedAt && n.Id.CompareTo(cursorId) < 0));
+            query = query.WhereKeysetBefore(n => n.CreatedAt, n => n.Id, cursorCreatedAt, cursorId);
         }
 
         // Include the actor (always present), and the clip / comment when set so the dropdown
@@ -58,11 +57,9 @@ public static class NotificationsEndpoints
             .Take(clampedLimit + 1)
             .ToListAsync(ct);
 
-        var hasMore = rows.Count > clampedLimit;
-        var page = hasMore ? rows.GetRange(0, clampedLimit) : rows;
+        var (page, nextCursor) = KeysetPagination.TakePage(rows, clampedLimit, n => n.CreatedAt, n => n.Id);
 
         var items = page.Select(n => n.ToItem()).ToList();
-        var nextCursor = hasMore ? KeysetCursor.Build(page[^1].CreatedAt, page[^1].Id) : null;
         return Results.Ok(new NotificationListResponse(items, nextCursor));
     }
 
@@ -71,7 +68,7 @@ public static class NotificationsEndpoints
         GankedTvDbContext db,
         CancellationToken ct)
     {
-        if (!ClipsReadEndpoints.TryGetUserId(principal, out var userId))
+        if (!principal.TryGetUserId(out var userId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }
@@ -90,7 +87,7 @@ public static class NotificationsEndpoints
         GankedTvDbContext db,
         CancellationToken ct)
     {
-        if (!ClipsReadEndpoints.TryGetUserId(principal, out var userId))
+        if (!principal.TryGetUserId(out var userId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }
@@ -109,7 +106,7 @@ public static class NotificationsEndpoints
         GankedTvDbContext db,
         CancellationToken ct)
     {
-        if (!ClipsReadEndpoints.TryGetUserId(principal, out var userId))
+        if (!principal.TryGetUserId(out var userId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }

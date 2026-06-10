@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GankedTV.Api.Tests.Integration.Media;
 
-[Collection("Postgres")]
+[Collection("PostgresServices")]
 public class ClipStreamJobStoreIntegrationTests
 {
     private readonly PostgresFixture _fx;

@@ -2,6 +2,14 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { stripSensitiveParams, trackPageView } from '@/lib/analytics'
 
+declare module 'vue-router' {
+  interface RouteMeta {
+    requiresAuth?: boolean
+    requiresRole?: 'admin' | 'moderator'
+    kind?: 'followers' | 'following'
+  }
+}
+
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
@@ -136,7 +144,7 @@ router.beforeEach((to) => {
   }
   // Role gates redirect to home (not 403) so users who navigate to /admin via address-bar
   // typing land somewhere usable. The nav link itself is hidden for non-mods.
-  const required = (to.meta as { requiresRole?: 'admin' | 'moderator' }).requiresRole
+  const required = to.meta.requiresRole
   if (required === 'admin' && !auth.isAdmin) {
     return { name: 'home' }
   }

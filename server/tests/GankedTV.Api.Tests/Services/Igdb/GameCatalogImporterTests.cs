@@ -10,7 +10,7 @@ using NSubstitute;
 
 namespace GankedTV.Api.Tests.Services.Igdb;
 
-[Collection("Postgres")]
+[Collection("PostgresServices")]
 public class GameCatalogImporterTests : IAsyncLifetime
 {
     private readonly PostgresFixture _fx;

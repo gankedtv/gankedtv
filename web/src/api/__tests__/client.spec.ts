@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { api, ApiError, configureAuth } from '../client'
+import { api, ApiError, bumpSessionEpoch, configureAuth } from '../client'
 
 const mockLogout = vi.fn()
 const mockOnTokenRefreshed = vi.fn()
@@ -292,5 +292,63 @@ describe('api client', () => {
     expect(mockOnTokenRefreshed).not.toHaveBeenCalled()
     expect(mockLogout).toHaveBeenCalled()
     expect(callCount).toBeGreaterThanOrEqual(2)
+  })
+})
+
+describe('api client — secure-cookie mode', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('refreshes via empty body + credentials include, ignoring the missing client token', async () => {
+    vi.stubEnv('VITE_USE_SECURE_COOKIES', 'true')
+    setupAuth({ refreshToken: null })
+    mockFetch([
+      { status: 401, body: {} },
+      { status: 200, body: { token: 'new-tok', refresh: '', expiresIn: 900 } },
+      { status: 200, body: { ok: true } },
+    ])
+
+    await api('/thing')
+
+    const calls = vi.mocked(fetch).mock.calls
+    const refreshCall = calls.find(([url]) => String(url).includes('/auth/refresh'))!
+    const init = refreshCall[1] as RequestInit
+    expect(init.credentials).toBe('include')
+    expect(init.body).toBe('{}')
+    expect(mockOnTokenRefreshed).toHaveBeenCalledWith('new-tok', '')
+  })
+
+  it('does not attempt refresh in localStorage mode without a token', async () => {
+    setupAuth({ refreshToken: null })
+    mockFetch([{ status: 401, body: {} }])
+
+    await expect(api('/thing')).rejects.toBeInstanceOf(ApiError)
+    expect(vi.mocked(fetch).mock.calls).toHaveLength(1)
+  })
+
+  it('discards an in-flight refresh when the session epoch changes', async () => {
+    vi.stubEnv('VITE_USE_SECURE_COOKIES', 'true')
+    setupAuth()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input instanceof Request ? input.url : input)
+        if (url.includes('/auth/refresh')) {
+          // A different login completed while this refresh was in flight.
+          bumpSessionEpoch()
+          return new Response(JSON.stringify({ token: 'stale', refresh: '', expiresIn: 900 }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          })
+        }
+        return new Response('{}', { status: 401, headers: { 'content-type': 'application/json' } })
+      }),
+    )
+
+    await expect(api('/thing')).rejects.toBeInstanceOf(ApiError)
+    // Neither callback fires: the new session must not be overwritten or logged out.
+    expect(mockOnTokenRefreshed).not.toHaveBeenCalled()
+    expect(mockLogout).not.toHaveBeenCalled()
   })
 })

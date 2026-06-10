@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GankedTV.Api.Tests.Integration.Auth;
 
-[Collection("Postgres")]
+[Collection("PostgresAuth")]
 public class UserUpsertServiceTests
 {
     private readonly PostgresFixture _fx;

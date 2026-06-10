@@ -17,7 +17,7 @@ using NSubstitute.ExceptionExtensions;
 
 namespace GankedTV.Api.Tests.Integration.Endpoints;
 
-[Collection("Postgres")]
+[Collection("PostgresSocial")]
 public class CommentsEndpointsTests : IAsyncLifetime
 {
     private readonly PostgresFixture _fx;

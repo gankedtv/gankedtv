@@ -2,6 +2,7 @@ using System.Security.Claims;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Contracts.Games;
 using GankedTV.Api.Contracts.Leaderboards;
+using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Data;
 using GankedTV.Api.Problems;
 using GankedTV.Api.Services.Caching;
@@ -61,7 +62,7 @@ public static class GamesEndpoints
         if (hasClips == true)
         {
             query = query.Where(g => db.Clips.Any(c =>
-                c.GameId == g.Id && c.Visibility == "public" && c.Status == "ready"));
+                c.GameId == g.Id && c.Visibility == ClipVisibilities.Public && c.Status == ClipStatuses.Ready));
         }
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -114,7 +115,7 @@ public static class GamesEndpoints
             {
                 Game = g,
                 ClipCount = db.Clips.Count(c =>
-                    c.GameId == g.Id && c.Visibility == "public" && c.Status == "ready"),
+                    c.GameId == g.Id && c.Visibility == ClipVisibilities.Public && c.Status == ClipStatuses.Ready),
             })
             .FirstOrDefaultAsync(ct);
 
@@ -143,7 +144,7 @@ public static class GamesEndpoints
             return ProblemResults.NotFound("not_found");
 
         var baseQuery = db.Clips.AsNoTracking()
-            .Where(c => c.GameId == gameId && c.Visibility == "public" && c.Status == "ready");
+            .Where(c => c.GameId == gameId).WherePublicReady();
 
         // Cache only the first page per game (no cursor). Cursor pages bypass the cache.
         if (cursor is null)
@@ -202,7 +203,7 @@ public static class GamesEndpoints
             c =>
             {
                 var baseQuery = db.Clips.AsNoTracking()
-                    .Where(cl => cl.GameId == gameId && cl.Visibility == "public" && cl.Status == "ready");
+                    .Where(cl => cl.GameId == gameId).WherePublicReady();
                 return new ValueTask<List<LeaderboardEntry>>(
                     LeaderboardsEndpoints.BuildAnonymousEntriesAsync(baseQuery, since, cap, db, storage, s3, c));
             },

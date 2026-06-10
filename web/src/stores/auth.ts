@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ApiError } from '@/api/client'
+import { ApiError, bumpSessionEpoch } from '@/api/client'
 import { config } from '@/config'
 import type { MeResponse } from '@/api/auth'
 
@@ -18,11 +18,10 @@ function loadRefreshFromLocalStorage(): string | null {
 
 function persistRefresh(token: string | null): void {
   // WARNING: Storing refresh tokens in localStorage is susceptible to XSS attacks.
-  // We intentionally accept this risk for now. Setting VITE_USE_SECURE_COOKIES=true
-  // will stop writing to localStorage (this requires backend modifications to send the Secure, HttpOnly cookie).
+  // Cookie mode (VITE_USE_SECURE_COOKIES=true + the server's AUTH_REFRESH_COOKIE_ENABLED)
+  // avoids that: the server keeps the token in an HttpOnly cookie and nothing is
+  // persisted here — we only clear a stale key left over from a localStorage deploy.
   if (config.useSecureCookies) {
-    // TODO: POST the token to an endpoint that sets the HttpOnly cookie.
-    // e.g., fetch('/api/auth/refresh-cookie', { method: 'POST', body: JSON.stringify({ token }) })
     if (token === null) {
       try {
         localStorage.removeItem(REFRESH_KEY)
@@ -61,9 +60,10 @@ export const useAuthStore = defineStore('auth', {
 
   actions: {
     setSession(token: string, refresh: string) {
+      bumpSessionEpoch()
       this.accessToken = token
-      this.refreshToken = refresh
-      persistRefresh(refresh)
+      this.refreshToken = refresh || null
+      persistRefresh(refresh || null)
     },
 
     setUser(user: MeResponse) {
@@ -82,7 +82,9 @@ export const useAuthStore = defineStore('auth', {
     async bootstrap() {
       if (this.bootstrapped) return
       this.bootstrapped = true
-      if (!this.refreshToken) return
+      // Cookie mode always attempts /me: the credential is the HttpOnly cookie, which the
+      // client can't see — the api client's 401-refresh-retry path exercises it.
+      if (!this.refreshToken && !config.useSecureCookies) return
       try {
         await this.fetchMe()
       } catch (err) {
@@ -98,11 +100,22 @@ export const useAuthStore = defineStore('auth', {
     },
 
     logout() {
+      const refresh = this.refreshToken
+      // Only an actually signed-in user gets bounced to the login page. logout() also
+      // fires via onRefreshFailed during anonymous bootstrap (cookie mode probes /auth/me
+      // for every visitor; no cookie → 401 → failed refresh) — navigating there would
+      // kick anonymous visitors off public pages on every load.
+      const wasAuthenticated = this.user !== null
+      // Fire-and-forget server revocation (and cookie clearing in cookie mode) — local
+      // state is cleared regardless, so a network failure still logs the client out.
+      import('@/api/auth').then(({ logout: serverLogout }) => serverLogout(refresh)).catch(() => {})
+      bumpSessionEpoch()
       this.user = null
       this.accessToken = null
       this.refreshToken = null
       this.bootstrapped = false
       persistRefresh(null)
+      if (!wasAuthenticated) return
       // Lazy import to avoid circular dependency (router → store → router).
       // isReady() defers navigation until the router is installed (logout can fire during bootstrap).
       import('@/router')

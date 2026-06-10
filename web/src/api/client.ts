@@ -33,29 +33,55 @@ export function configureAuth(callbacks: AuthCallbacks): void {
 // Single in-flight refresh promise shared across concurrent 401s
 let refreshing: Promise<void> | null = null
 
+// Monotonic session identity. The auth store bumps it on every setSession/logout so a
+// refresh that was in flight for a PREVIOUS session is discarded without touching the
+// current one — comparing refresh-token strings can't catch a logout-then-login switch,
+// and cookie mode has no client-visible token to compare at all.
+let sessionEpoch = 0
+
+export function bumpSessionEpoch(): void {
+  sessionEpoch++
+}
+
 async function runRefresh(): Promise<void> {
-  const capturedRefreshToken = _auth.getRefreshToken()
-  if (!capturedRefreshToken) {
+  const capturedEpoch = sessionEpoch
+  const useCookies = config.useSecureCookies
+  const capturedRefreshToken = useCookies ? null : _auth.getRefreshToken()
+  if (!useCookies && !capturedRefreshToken) {
     _auth.onRefreshFailed()
     throw new ApiError(401, null)
   }
+  // Cookie mode posts an empty object — the server reads the HttpOnly cookie, which only
+  // flows cross-origin with credentials: 'include'.
   const res = await fetch(`${BASE_URL}/auth/refresh`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ refresh: capturedRefreshToken }),
+    body: JSON.stringify(useCookies ? {} : { refresh: capturedRefreshToken }),
+    ...(useCookies ? { credentials: 'include' as const } : {}),
   })
+  if (sessionEpoch !== capturedEpoch) {
+    // A different session took over mid-flight; fail this caller without clobbering it.
+    throw new ApiError(401, null)
+  }
   if (!res.ok) {
     _auth.onRefreshFailed()
     throw new ApiError(res.status, null)
   }
   const data = (await res.json()) as { token: string; refresh: string }
-  // Guard against session changes that occurred while the network request was in flight.
-  const currentRefreshToken = _auth.getRefreshToken()
-  if (!currentRefreshToken || currentRefreshToken !== capturedRefreshToken) {
-    _auth.onRefreshFailed()
+  if (sessionEpoch !== capturedEpoch) {
     throw new ApiError(401, null)
   }
-  _auth.onTokenRefreshed(data.token, data.refresh)
+  if (!useCookies) {
+    // Plain logout clears the token without necessarily bumping the epoch from this
+    // module's perspective (callbacks may be wired before the store exists) — keep the
+    // token-identity check as a second line of defense in localStorage mode.
+    const currentRefreshToken = _auth.getRefreshToken()
+    if (!currentRefreshToken || currentRefreshToken !== capturedRefreshToken) {
+      _auth.onRefreshFailed()
+      throw new ApiError(401, null)
+    }
+  }
+  _auth.onTokenRefreshed(data.token, data.refresh ?? '')
 }
 
 function refreshTokensOnce(): Promise<void> {
@@ -106,7 +132,12 @@ export async function api<T = undefined>(path: string, init: ApiInit = {}): Prom
     body: fetchInit.body as BodyInit | null | undefined,
   })
 
-  if (response.status === 401 && !_isRetry && _auth.getRefreshToken()) {
+  // Cookie mode can always attempt a refresh — the credential is server-side.
+  if (
+    response.status === 401 &&
+    !_isRetry &&
+    (_auth.getRefreshToken() || config.useSecureCookies)
+  ) {
     // Streaming request bodies cannot be replayed on retry.
     if (init.body instanceof ReadableStream) {
       throw new ApiError(401, null)

@@ -14,7 +14,7 @@ using Microsoft.Extensions.Options;
 
 namespace GankedTV.Api.Tests.Tools;
 
-[Collection("Postgres")]
+[Collection("PostgresServices")]
 public class SeedCommandTests : IAsyncLifetime
 {
     private readonly PostgresFixture _fx;

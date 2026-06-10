@@ -17,4 +17,13 @@ public static class ClipQueryExtensions
             .Include(c => c.User)
             .Include(c => c.Game)
             .Include(c => c.ClipTags).ThenInclude(ct => ct.Tag);
+
+    /// <summary>
+    /// The canonical "publicly watchable" predicate shared by every feed, search, and
+    /// leaderboard query. Only works on a top-level clip query — predicates nested inside
+    /// projection expression trees must inline the same two comparisons (EF cannot
+    /// translate method calls there).
+    /// </summary>
+    public static IQueryable<Clip> WherePublicReady(this IQueryable<Clip> query) =>
+        query.Where(c => c.Visibility == ClipVisibilities.Public && c.Status == ClipStatuses.Ready);
 }

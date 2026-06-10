@@ -1,5 +1,5 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using GankedTV.Api.Auth;
 using GankedTV.Api.Clips;
 using GankedTV.Api.Contracts.Comments;
 using GankedTV.Api.Data;
@@ -48,7 +48,7 @@ public static class CommentsEndpoints
         INotificationService notifications,
         CancellationToken ct)
     {
-        if (!TryGetUserId(principal, out var userId))
+        if (!principal.TryGetUserId(out var userId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }
@@ -134,9 +134,7 @@ public static class CommentsEndpoints
 
         if (hasCursor)
         {
-            query = query.Where(c =>
-                c.CreatedAt < cursorCreatedAt
-                || (c.CreatedAt == cursorCreatedAt && c.Id.CompareTo(cursorId) < 0));
+            query = query.WhereKeysetBefore(c => c.CreatedAt, c => c.Id, cursorCreatedAt, cursorId);
         }
 
         var rows = await query
@@ -146,8 +144,7 @@ public static class CommentsEndpoints
             .Take(clampedLimit + 1)
             .ToListAsync(ct);
 
-        var hasMore = rows.Count > clampedLimit;
-        var page = hasMore ? rows.GetRange(0, clampedLimit) : rows;
+        var (page, nextCursor) = KeysetPagination.TakePage(rows, clampedLimit, c => c.CreatedAt, c => c.Id);
 
         var repliesByParent = await LoadRepliesForParentsAsync(db, page.Select(c => c.Id), ct);
 
@@ -165,7 +162,6 @@ public static class CommentsEndpoints
             return c.ToItem(replyCount: entry.Count, replies: preview, repliesNextCursor: repliesNextCursor);
         }).ToList();
 
-        var nextCursor = hasMore ? KeysetCursor.Build(page[^1].CreatedAt, page[^1].Id) : null;
         return Results.Ok(new CommentListResponse(items, nextCursor));
     }
 
@@ -186,9 +182,7 @@ public static class CommentsEndpoints
 
         if (hasCursor)
         {
-            query = query.Where(c =>
-                c.CreatedAt > cursorCreatedAt
-                || (c.CreatedAt == cursorCreatedAt && c.Id.CompareTo(cursorId) > 0));
+            query = query.WhereKeysetAfter(c => c.CreatedAt, c => c.Id, cursorCreatedAt, cursorId);
         }
 
         var rows = await query
@@ -198,11 +192,9 @@ public static class CommentsEndpoints
             .Take(clampedLimit + 1)
             .ToListAsync(ct);
 
-        var hasMore = rows.Count > clampedLimit;
-        var page = hasMore ? rows.GetRange(0, clampedLimit) : rows;
+        var (page, nextCursor) = KeysetPagination.TakePage(rows, clampedLimit, c => c.CreatedAt, c => c.Id);
 
         var items = page.Select(c => c.ToItem()).ToList();
-        var nextCursor = hasMore ? KeysetCursor.Build(page[^1].CreatedAt, page[^1].Id) : null;
         return Results.Ok(new CommentListResponse(items, nextCursor));
     }
 
@@ -212,7 +204,7 @@ public static class CommentsEndpoints
         GankedTvDbContext db,
         CancellationToken ct)
     {
-        if (!TryGetUserId(principal, out var userId))
+        if (!principal.TryGetUserId(out var userId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }
@@ -286,16 +278,5 @@ public static class CommentsEndpoints
         return counts.ToDictionary(
             c => c.ParentId,
             c => (c.Count, previewsByParent.GetValueOrDefault(c.ParentId) ?? []));
-    }
-
-    // Mirrors the local helper in every other endpoint module (ClipsRead/Mutate, Likes, Auth, Me).
-    // Lifting this into a shared auth helper is a worthwhile follow-up across all callers, but
-    // this PR keeps the change scoped — comments no longer reach across to ClipsReadEndpoints.
-    private static bool TryGetUserId(ClaimsPrincipal principal, out Guid userId)
-    {
-        userId = default;
-        var sub = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
-            ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return Guid.TryParse(sub, out userId);
     }
 }

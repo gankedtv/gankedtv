@@ -16,7 +16,7 @@ using NSubstitute;
 
 namespace GankedTV.Api.Tests.Integration.Endpoints;
 
-[Collection("Postgres")]
+[Collection("PostgresClips")]
 public class ClipsMutateEndpointsTests : IAsyncLifetime
 {
     private readonly PostgresFixture _fx;

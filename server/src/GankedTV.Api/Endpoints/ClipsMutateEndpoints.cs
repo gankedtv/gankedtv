@@ -1,5 +1,5 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using GankedTV.Api.Auth;
 using GankedTV.Api.Clips;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Data;
@@ -19,7 +19,7 @@ namespace GankedTV.Api.Endpoints;
 
 public static class ClipsMutateEndpoints
 {
-    private static readonly string[] AllowedVisibilities = ["public", "unlisted"];
+    private static readonly string[] AllowedVisibilities = [ClipVisibilities.Public, ClipVisibilities.Unlisted];
     private static readonly TimeSpan VideoUrlLifetime = TimeSpan.FromHours(1);
     private static readonly string LogCategory = typeof(ClipsMutateEndpoints).FullName!;
 
@@ -49,7 +49,7 @@ public static class ClipsMutateEndpoints
         ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
-        if (!TryGetUserId(principal, out var userId))
+        if (!principal.TryGetUserId(out var userId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }
@@ -169,7 +169,7 @@ public static class ClipsMutateEndpoints
         IFeedCache feedCache,
         CancellationToken ct)
     {
-        if (!TryGetUserId(principal, out var userId))
+        if (!principal.TryGetUserId(out var userId))
         {
             return ProblemResults.Unauthorized("unauthorized");
         }
@@ -218,13 +218,5 @@ public static class ClipsMutateEndpoints
             loggerFactory.CreateLogger(LogCategory).LogWarning(ex,
                 "Feed cache invalidation failed after a clip mutation; entries will expire via TTL.");
         }
-    }
-
-    private static bool TryGetUserId(ClaimsPrincipal principal, out Guid userId)
-    {
-        userId = default;
-        var sub = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value
-            ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return Guid.TryParse(sub, out userId);
     }
 }

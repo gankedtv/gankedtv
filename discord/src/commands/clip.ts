@@ -4,8 +4,9 @@ import {
   type AutocompleteInteraction,
 } from 'discord.js';
 import type { Command, CommandContext } from './index.ts';
-import { ephemeral } from './replies.ts';
-import { shareUrl } from '../lib/shareUrl.ts';
+import { ephemeral, safeDefer } from './replies.ts';
+import { buildClipEmbed } from '../embeds.ts';
+import { respondGameAutocomplete } from '../lib/games.ts';
 
 const data = new SlashCommandBuilder()
   .setName('clip')
@@ -62,7 +63,7 @@ async function handleLatest(
   interaction: ChatInputCommandInteraction,
   ctx: CommandContext,
 ): Promise<void> {
-  await interaction.deferReply();
+  if (!(await safeDefer(interaction))) return;
   const gameSlug = interaction.options.getString('game');
 
   const page = gameSlug
@@ -76,14 +77,14 @@ async function handleLatest(
     );
     return;
   }
-  await interaction.editReply(shareUrl(clip.shareCode, ctx.publicBase));
+  await interaction.editReply({ embeds: [buildClipEmbed(clip, ctx.publicBase).toJSON()] });
 }
 
 async function handleTop(
   interaction: ChatInputCommandInteraction,
   ctx: CommandContext,
 ): Promise<void> {
-  await interaction.deferReply();
+  if (!(await safeDefer(interaction))) return;
   const window = (interaction.options.getString('window') ?? '24h') as '24h' | '7d';
   const page = await ctx.api.getFeed({ sort: 'trending', window, limit: 1 });
   const clip = page.items[0];
@@ -91,14 +92,14 @@ async function handleTop(
     await interaction.editReply(`No trending clips in the last ${window}.`);
     return;
   }
-  await interaction.editReply(shareUrl(clip.shareCode, ctx.publicBase));
+  await interaction.editReply({ embeds: [buildClipEmbed(clip, ctx.publicBase).toJSON()] });
 }
 
 async function handleSearch(
   interaction: ChatInputCommandInteraction,
   ctx: CommandContext,
 ): Promise<void> {
-  await interaction.deferReply();
+  if (!(await safeDefer(interaction))) return;
   const query = interaction.options.getString('query', true);
   const res = await ctx.api.search(query, { type: 'clips', limit: 1 });
   const clip = res.clips[0];
@@ -106,32 +107,14 @@ async function handleSearch(
     await interaction.editReply(`No clips matched "${query}".`);
     return;
   }
-  await interaction.editReply(shareUrl(clip.shareCode, ctx.publicBase));
+  await interaction.editReply({ embeds: [buildClipEmbed(clip, ctx.publicBase).toJSON()] });
 }
 
 async function autocomplete(
   interaction: AutocompleteInteraction,
   ctx: CommandContext,
 ): Promise<void> {
-  const focused = interaction.options.getFocused(true);
-  if (focused.name !== 'game') return;
-  const query = focused.value?.toString() ?? '';
-  // Autocomplete sends slugs (matching what /games/{slug}/clips expects) so the
-  // returned value can flow straight back into the API call. Tighter timeout
-  // than the default 10s because Discord deadlines autocomplete at 3s — if the
-  // games API is slow we'd rather respond with [] than throw UnknownInteraction.
-  let games: { name: string; slug: string }[];
-  try {
-    games = await ctx.api.listGames({
-      search: query.length > 0 ? query : undefined,
-      limit: 25,
-      hasClips: true,
-      timeoutMs: 2500,
-    });
-  } catch {
-    games = [];
-  }
-  await interaction.respond(games.slice(0, 25).map((g) => ({ name: g.name, value: g.slug })));
+  await respondGameAutocomplete(interaction, ctx.api);
 }
 
 export const command: Command = { data, execute, autocomplete };

@@ -5,7 +5,7 @@ using GankedTV.Api.Tests.TestSupport;
 
 namespace GankedTV.Api.Tests.Integration.Auth;
 
-[Collection("Postgres")]
+[Collection("PostgresAuth")]
 public class UsernameGeneratorUniqueTests
 {
     private readonly PostgresFixture _fx;

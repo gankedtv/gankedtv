@@ -5,9 +5,11 @@ import { createLocalStorageMock, type MockLocalStorage } from '@/test/helpers'
 import { useAuthStore } from '../auth'
 
 const mockMe = vi.fn()
+const mockServerLogout = vi.fn(async (_refresh: string | null) => {})
 
 vi.mock('@/api/auth', () => ({
   me: () => mockMe(),
+  logout: (refresh: string | null) => mockServerLogout(refresh),
 }))
 
 vi.mock('@/router', () => ({
@@ -28,6 +30,7 @@ beforeEach(() => {
   localStorageMock = createLocalStorageMock()
   setActivePinia(createPinia())
   mockMe.mockClear()
+  mockServerLogout.mockClear()
 })
 
 describe('useAuthStore', () => {
@@ -219,6 +222,8 @@ describe('useAuthStore', () => {
   it('logout swallows router navigation failures', async () => {
     const auth = useAuthStore()
     auth.setSession('tok', 'ref')
+    // Navigation only happens for a signed-in user.
+    auth.setUser({ id: '1', username: 'u' } as never)
 
     // Earlier tests (`logout clears state…`, `logout with VITE_USE_SECURE_COOKIES=true…`)
     // fire `auth.logout()` without awaiting — the dynamic `import('@/router').then(isReady)`
@@ -285,5 +290,70 @@ describe('useAuthStore', () => {
     auth.setUser({ ...base, role: 'admin' })
     expect(auth.isAdmin).toBe(true)
     expect(auth.isModerator).toBe(true)
+  })
+
+  it('logout without a signed-in user does not navigate (anonymous bootstrap path)', async () => {
+    const auth = useAuthStore()
+    const routerMod = (await import('@/router')) as unknown as {
+      default: { push: ReturnType<typeof vi.fn> }
+    }
+    routerMod.default.push.mockClear()
+
+    // onRefreshFailed wires here during anonymous cookie-mode bootstrap: no user was ever
+    // signed in, so public-page visitors must not be bounced to /login.
+    auth.logout()
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(routerMod.default.push).not.toHaveBeenCalled()
+  })
+
+  it('logout with a signed-in user navigates to login', async () => {
+    const auth = useAuthStore()
+    auth.setSession('tok', 'ref')
+    auth.setUser({ id: '1', username: 'u' } as never)
+    const routerMod = (await import('@/router')) as unknown as {
+      default: { push: ReturnType<typeof vi.fn> }
+    }
+    routerMod.default.push.mockClear()
+
+    auth.logout()
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(routerMod.default.push).toHaveBeenCalledWith({ name: 'login' })
+  })
+
+  it('logout fires server-side revocation with the current refresh token', async () => {
+    const auth = useAuthStore()
+    auth.setSession('tok', 'ref')
+
+    auth.logout()
+    // The dynamic import inside logout() resolves on a microtask.
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(mockServerLogout).toHaveBeenCalledWith('ref')
+    expect(auth.refreshToken).toBeNull()
+  })
+
+  it('bootstrap with VITE_USE_SECURE_COOKIES=true attempts /me without a client token', async () => {
+    vi.stubEnv('VITE_USE_SECURE_COOKIES', 'true')
+    try {
+      vi.resetModules()
+      const { useAuthStore: useFresh } = await import('../auth')
+      // resetModules gave the store a fresh ApiError class — the rejection must be an
+      // instance of THAT class or bootstrap's instanceof check rethrows.
+      const { ApiError: FreshApiError } = await import('@/api/client')
+      setActivePinia(createPinia())
+      const auth = useFresh()
+      mockMe.mockRejectedValueOnce(new FreshApiError(401, null))
+
+      await auth.bootstrap()
+
+      // The cookie is the credential — /me must be attempted even with no stored token,
+      // and a 401 (no/expired cookie) resolves to a clean logged-out state.
+      expect(mockMe).toHaveBeenCalled()
+      expect(auth.user).toBeNull()
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 })

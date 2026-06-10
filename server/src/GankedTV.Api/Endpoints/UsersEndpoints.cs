@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using GankedTV.Api.Auth;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Contracts.Users;
 using GankedTV.Api.Data;
@@ -56,11 +57,11 @@ public static class UsersEndpoints
         // own private-link uploads; everyone else sees public only. Hidden (moderated) clips
         // stay invisible to everyone here — restoring them is an admin action, not something
         // the owner can route around by checking their own profile.
-        var isOwner = ClipsReadEndpoints.TryGetUserId(principal, out var viewerId)
+        var isOwner = principal.TryGetUserId(out var viewerId)
             && viewerId == user.Id;
         var clips = await db.Clips.AsNoTracking()
             .Where(c => c.UserId == user.Id
-                && c.Status == "ready"
+                && c.Status == ClipStatuses.Ready
                 && (c.Visibility == ClipVisibilities.Public
                     || (isOwner && c.Visibility == ClipVisibilities.Unlisted)))
             .OrderByDescending(c => c.CreatedAt)
@@ -90,7 +91,7 @@ public static class UsersEndpoints
         // serializes as `"followedByMe": null` — clients should treat null and absent
         // identically.
         bool? followedByMe = null;
-        if (ClipsReadEndpoints.TryGetUserId(principal, out var callerId) && callerId != user.Id)
+        if (principal.TryGetUserId(out var callerId) && callerId != user.Id)
         {
             followedByMe = await db.Follows.AsNoTracking()
                 .AnyAsync(f => f.FollowerId == callerId && f.FolloweeId == user.Id, ct);

@@ -48,7 +48,7 @@ public static class ClipsViewEndpoints
         await using var tx = await db.Database.BeginTransactionAsync(ct);
 
         var rows = await db.Clips
-            .Where(c => c.Id == id && c.Visibility == "public" && c.Status == "ready")
+            .Where(c => c.Id == id).WherePublicReady()
             .ExecuteUpdateAsync(s => s.SetProperty(c => c.ViewCount, c => c.ViewCount + 1), ct);
 
         if (rows == 0)

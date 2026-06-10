@@ -1,32 +1,44 @@
+import type { APIEmbed } from 'discord.js';
 import type { ClipFeedItem } from './api.ts';
 import type { Subscription } from './db.ts';
-import { shareUrl } from './lib/shareUrl.ts';
+import { buildClipEmbed } from './embeds.ts';
 
-// Discord auto-unfurls the share URL into an embed (OG meta tags from
-// ClipsReadEndpoints.GetByShareCode). All we have to do is post a plain message
-// with the URL — no manual EmbedBuilder, no thumbnail download, no S3 round-trip.
-// If the subscription has a ping role, prepend a role mention.
+// Self-built embed instead of relying on Discord auto-unfurling the share URL:
+// unfurls on bot-authored messages are inconsistent, and the OG images are
+// presigned URLs Discord's crawler may fetch too late. The share URL lives in
+// the embed title link only — putting it in `content` too would trigger a
+// second, competing auto-unfurl embed.
+export type ClipMessage = {
+  content?: string;
+  embeds: APIEmbed[];
+};
+
 export function buildMessage(
   clip: ClipFeedItem,
   sub: Pick<Subscription, 'pingRoleId'>,
   publicBase: string,
-): string {
-  const url = shareUrl(clip.shareCode, publicBase);
-  return sub.pingRoleId ? `<@&${sub.pingRoleId}> ${url}` : url;
+): ClipMessage {
+  const embeds = [buildClipEmbed(clip, publicBase).toJSON()];
+  // The role mention must stay in `content` — mentions inside embeds don't ping.
+  return sub.pingRoleId ? { content: `<@&${sub.pingRoleId}>`, embeds } : { embeds };
 }
 
 // Minimal duck-typed sendable: anything with a `send` method that accepts a
-// content payload. Lets the poller pass a real discord.js TextChannel while
+// message payload. Lets the poller pass a real discord.js TextChannel while
 // tests can pass a fake — the caller has already narrowed via isTextBased().
 export type Sendable = {
-  send(payload: {
-    content: string;
-    allowedMentions: { parse: ('roles' | 'users' | 'everyone')[] };
-  }): Promise<unknown>;
+  send(
+    payload: ClipMessage & {
+      allowedMentions: { parse: ('roles' | 'users' | 'everyone')[] };
+    },
+  ): Promise<unknown>;
 };
 
-export async function postToChannel(channel: Sendable | null, content: string): Promise<boolean> {
+export async function postToChannel(
+  channel: Sendable | null,
+  message: ClipMessage,
+): Promise<boolean> {
   if (!channel) return false;
-  await channel.send({ content, allowedMentions: { parse: ['roles'] } });
+  await channel.send({ ...message, allowedMentions: { parse: ['roles'] } });
   return true;
 }
