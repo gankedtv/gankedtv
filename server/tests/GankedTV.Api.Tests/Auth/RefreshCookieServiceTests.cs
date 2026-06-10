@@ -69,7 +69,7 @@ public class RefreshCookieServiceTests
         var header = SetCookieHeader(ctx);
         header.Should().StartWith($"{RefreshCookieService.CookieName}=");
         header.Should().Contain("path=/auth");
-        header.Should().MatchRegex("expires=|max-age=0");
+        header.Should().MatchRegex("expires=\\w+, 0?1 Jan 1970|max-age=0");
     }
 
     [Fact]

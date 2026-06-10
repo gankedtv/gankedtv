@@ -198,7 +198,7 @@ public class AuthRefreshCookieTests : IAsyncLifetime
         logout.StatusCode.Should().Be(HttpStatusCode.NoContent);
         var deletion = logout.Headers.GetValues("Set-Cookie")
             .Single(h => h.StartsWith(RefreshCookieService.CookieName));
-        deletion.Should().MatchRegex("expires=|max-age=0");
+        deletion.Should().MatchRegex("expires=\\w+, 0?1 Jan 1970|max-age=0");
 
         // The revoked family must reject the old token even via the body path.
         var replay = await client.PostAsJsonAsync("/auth/refresh", new { refresh = cookieValue });
