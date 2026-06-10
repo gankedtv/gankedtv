@@ -90,6 +90,9 @@ services:
       OAUTH_STATE_SECRET: ${OAUTH_STATE_SECRET:-}
       WEB_ORIGIN: ${WEB_ORIGIN:?set WEB_ORIGIN in .env}
       CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS in .env}
+      # Must match the web container's VITE_USE_SECURE_COOKIES — flip both together. With the
+      # cookie mode split across the two containers, a mismatch breaks login persistence.
+      AUTH_REFRESH_COOKIE_ENABLED: ${AUTH_REFRESH_COOKIE_ENABLED:-true}
       # S3_ENDPOINT: internal (api -> minio). S3_PUBLIC_URL: browser-facing (via your reverse proxy).
       S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
       S3_PUBLIC_URL: ${S3_PUBLIC_URL:?set S3_PUBLIC_URL in .env}
