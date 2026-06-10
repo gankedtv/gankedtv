@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { login, me, oauthStartUrl, register, setPassword, updateMe } from '../auth'
+import { login, logout, me, oauthStartUrl, register, setPassword, updateMe } from '../auth'
 import { configureAuth, BASE_URL } from '../client'
 
 beforeEach(() => {
@@ -210,6 +210,42 @@ describe('api/auth', () => {
         currentPassword: null,
         newPassword: 'new-strong-password',
       })
+    })
+  })
+
+  describe('logout()', () => {
+    function stub204() {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response(null, { status: 204 })),
+      )
+    }
+
+    it('POSTs the refresh token in the body (localStorage mode)', async () => {
+      stub204()
+
+      await logout('my-refresh')
+
+      const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(url).toBe(`${BASE_URL}/auth/logout`)
+      expect(init.method).toBe('POST')
+      expect(init.body).toBe(JSON.stringify({ refresh: 'my-refresh' }))
+      expect(init.credentials).toBeUndefined()
+    })
+
+    it('POSTs an empty body with credentials include in cookie mode', async () => {
+      vi.stubEnv('VITE_USE_SECURE_COOKIES', 'true')
+      try {
+        stub204()
+
+        await logout(null)
+
+        const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+        expect(init.body).toBe('{}')
+        expect(init.credentials).toBe('include')
+      } finally {
+        vi.unstubAllEnvs()
+      }
     })
   })
 })

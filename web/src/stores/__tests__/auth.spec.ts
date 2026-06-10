@@ -5,9 +5,11 @@ import { createLocalStorageMock, type MockLocalStorage } from '@/test/helpers'
 import { useAuthStore } from '../auth'
 
 const mockMe = vi.fn()
+const mockServerLogout = vi.fn(async (_refresh: string | null) => {})
 
 vi.mock('@/api/auth', () => ({
   me: () => mockMe(),
+  logout: (refresh: string | null) => mockServerLogout(refresh),
 }))
 
 vi.mock('@/router', () => ({
@@ -28,6 +30,7 @@ beforeEach(() => {
   localStorageMock = createLocalStorageMock()
   setActivePinia(createPinia())
   mockMe.mockClear()
+  mockServerLogout.mockClear()
 })
 
 describe('useAuthStore', () => {
@@ -285,5 +288,40 @@ describe('useAuthStore', () => {
     auth.setUser({ ...base, role: 'admin' })
     expect(auth.isAdmin).toBe(true)
     expect(auth.isModerator).toBe(true)
+  })
+
+  it('logout fires server-side revocation with the current refresh token', async () => {
+    const auth = useAuthStore()
+    auth.setSession('tok', 'ref')
+
+    auth.logout()
+    // The dynamic import inside logout() resolves on a microtask.
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(mockServerLogout).toHaveBeenCalledWith('ref')
+    expect(auth.refreshToken).toBeNull()
+  })
+
+  it('bootstrap with VITE_USE_SECURE_COOKIES=true attempts /me without a client token', async () => {
+    vi.stubEnv('VITE_USE_SECURE_COOKIES', 'true')
+    try {
+      vi.resetModules()
+      const { useAuthStore: useFresh } = await import('../auth')
+      // resetModules gave the store a fresh ApiError class — the rejection must be an
+      // instance of THAT class or bootstrap's instanceof check rethrows.
+      const { ApiError: FreshApiError } = await import('@/api/client')
+      setActivePinia(createPinia())
+      const auth = useFresh()
+      mockMe.mockRejectedValueOnce(new FreshApiError(401, null))
+
+      await auth.bootstrap()
+
+      // The cookie is the credential — /me must be attempted even with no stored token,
+      // and a 401 (no/expired cookie) resolves to a clean logged-out state.
+      expect(mockMe).toHaveBeenCalled()
+      expect(auth.user).toBeNull()
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 })
