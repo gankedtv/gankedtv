@@ -482,4 +482,77 @@ public class RefreshTokenServiceTests
         rows.Should().ContainSingle("the old token is revoked but no successor row is inserted");
         rows[0].RevokedAt.Should().NotBeNull();
     }
+
+    [Fact]
+    public async Task RevokeFamilyAsync_RevokesAllLiveTokensInFamily()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("famuser");
+
+        string first;
+        string second;
+        await using (var db = _fx.CreateContext())
+        {
+            var svc = new RefreshTokenService(db, DefaultOpts());
+            first = await svc.IssueAsync(userId);
+            // Rotation keeps the FamilyId, so first (revoked) and second (live) share a family.
+            second = (await svc.RotateAsync(first)).NewRawToken;
+        }
+
+        await using (var db = _fx.CreateContext())
+        {
+            await new RefreshTokenService(db, DefaultOpts()).RevokeFamilyAsync(second);
+        }
+
+        await using var verify = _fx.CreateContext();
+        var rows = await verify.RefreshTokens.AsNoTracking().ToListAsync();
+        rows.Should().HaveCount(2);
+        rows.Should().OnlyContain(t => t.RevokedAt != null);
+    }
+
+    [Fact]
+    public async Task RevokeFamilyAsync_UnknownToken_IsNoOp()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("famuser2");
+
+        string raw;
+        await using (var db = _fx.CreateContext())
+        {
+            raw = await new RefreshTokenService(db, DefaultOpts()).IssueAsync(userId);
+        }
+
+        await using (var db = _fx.CreateContext())
+        {
+            await new RefreshTokenService(db, DefaultOpts()).RevokeFamilyAsync("not-a-real-token");
+        }
+
+        await using var verify = _fx.CreateContext();
+        (await verify.RefreshTokens.AsNoTracking().SingleAsync(t => t.TokenHash == RefreshTokenService.Hash(raw)))
+            .RevokedAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task RevokeFamilyAsync_Idempotent()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("famuser3");
+
+        string raw;
+        await using (var db = _fx.CreateContext())
+        {
+            raw = await new RefreshTokenService(db, DefaultOpts()).IssueAsync(userId);
+        }
+
+        await using (var db = _fx.CreateContext())
+        {
+            var svc = new RefreshTokenService(db, DefaultOpts());
+            await svc.RevokeFamilyAsync(raw);
+            await svc.RevokeFamilyAsync(raw);
+        }
+
+        await using var verify = _fx.CreateContext();
+        (await verify.RefreshTokens.AsNoTracking().SingleAsync())
+            .RevokedAt.Should().NotBeNull();
+    }
 }

@@ -68,13 +68,15 @@ public class AuthEndpointsSmokeTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Refresh_EmptyBody_Returns400()
+    public async Task Refresh_EmptyToken_Returns401()
     {
         using var client = _factory!.CreateClient();
 
+        // Empty token is valid at the validation layer (cookie mode posts an empty object);
+        // with no cookie present it falls through to 401 invalid_refresh.
         var resp = await client.PostAsJsonAsync("/auth/refresh", new { refresh = "" });
 
-        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Fact]

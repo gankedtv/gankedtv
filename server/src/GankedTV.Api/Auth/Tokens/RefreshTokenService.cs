@@ -110,6 +110,25 @@ public sealed class RefreshTokenService : IRefreshTokenService
         await _db.SaveChangesAsync(ct);
     }
 
+    public async Task RevokeFamilyAsync(string rawToken, CancellationToken ct = default)
+    {
+        var hash = Hash(rawToken);
+        var familyId = await _db.RefreshTokens
+            .AsNoTracking()
+            .Where(t => t.TokenHash == hash)
+            .Select(t => (Guid?)t.FamilyId)
+            .SingleOrDefaultAsync(ct);
+        if (familyId is null)
+        {
+            return;
+        }
+
+        var now = _clock.GetUtcNow();
+        await _db.RefreshTokens
+            .Where(t => t.FamilyId == familyId && t.RevokedAt == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedAt, now), ct);
+    }
+
     public static string Hash(string raw)
     {
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(raw));

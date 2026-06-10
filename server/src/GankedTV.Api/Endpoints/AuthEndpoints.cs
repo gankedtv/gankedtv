@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using GankedTV.Api.Auth;
+using GankedTV.Api.Auth.Cookies;
 using GankedTV.Api.Auth.Jwt;
 using GankedTV.Api.Auth.Providers;
 using GankedTV.Api.Auth.State;
@@ -27,6 +28,11 @@ public static class AuthEndpoints
             .Produces<TokenResponse>(StatusCodes.Status200OK)
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden);
+
+        app.MapPost("/auth/logout", Logout)
+            .Produces(StatusCodes.Status204NoContent)
+            // 403 covers the CSRF origin check on cookie-sourced tokens.
             .ProducesProblem(StatusCodes.Status403Forbidden);
 
         app.MapPost("/auth/register", Register)
@@ -99,6 +105,7 @@ public static class AuthEndpoints
         UserUpsertService users,
         IOptions<JwtOptions> jwtOptions,
         IOptions<OAuthOptions> oauthOptions,
+        IRefreshCookieService refreshCookies,
         CancellationToken ct)
     {
         if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(state))
@@ -145,7 +152,18 @@ public static class AuthEndpoints
 
         var webOrigin = oauthOptions.Value.WebOrigin.TrimEnd('/');
         var returnTo = stateResult.ReturnTo;
-        var location = $"{webOrigin}/auth/callback?token={Uri.EscapeDataString(token)}&refresh={Uri.EscapeDataString(refresh)}";
+        var location = $"{webOrigin}/auth/callback?token={Uri.EscapeDataString(token)}";
+        if (refreshCookies.Enabled)
+        {
+            // The redirect is a top-level navigation on the API origin, so Set-Cookie works
+            // here. Keeping the refresh token out of the redirect URL keeps it out of
+            // browser history, proxy logs, and Referer headers.
+            refreshCookies.Append(http.Response, refresh);
+        }
+        else
+        {
+            location += $"&refresh={Uri.EscapeDataString(refresh)}";
+        }
         if (!string.IsNullOrEmpty(returnTo))
         {
             location += $"&returnTo={Uri.EscapeDataString(returnTo)}";
@@ -159,16 +177,19 @@ public static class AuthEndpoints
     // body can treat the request as effectively non-null.
     private static async Task<IResult> Register(
         [FromBody] RegisterRequest? req,
+        HttpContext http,
         CredentialAuthService credentials,
         IJwtService jwt,
         IRefreshTokenService refreshTokens,
+        IRefreshCookieService refreshCookies,
         IOptions<JwtOptions> jwtOptions,
         CancellationToken ct)
     {
         var result = await credentials.TryRegisterAsync(req!.Email, req.Username, req.Password, ct);
         return result switch
         {
-            RegisterResult.SuccessResult ok => await IssueTokenResponseAsync(ok.User, jwt, refreshTokens, jwtOptions, ct),
+            RegisterResult.SuccessResult ok => await IssueTokenResponseAsync(
+                ok.User, http, jwt, refreshTokens, refreshCookies, jwtOptions, ct),
             // 409 with a code the SPA can branch on to nudge users into the OAuth-then-attach
             // flow. Account-takeover on a verified-email OAuth account would otherwise be
             // possible without an email-verification step (deliberately deferred).
@@ -185,9 +206,11 @@ public static class AuthEndpoints
 
     private static async Task<IResult> Login(
         [FromBody] LoginRequest? req,
+        HttpContext http,
         CredentialAuthService credentials,
         IJwtService jwt,
         IRefreshTokenService refreshTokens,
+        IRefreshCookieService refreshCookies,
         IOptions<JwtOptions> jwtOptions,
         CancellationToken ct)
     {
@@ -207,7 +230,7 @@ public static class AuthEndpoints
             return ProblemResults.Forbidden("account_banned");
         }
 
-        return await IssueTokenResponseAsync(user, jwt, refreshTokens, jwtOptions, ct);
+        return await IssueTokenResponseAsync(user, http, jwt, refreshTokens, refreshCookies, jwtOptions, ct);
     }
 
     private static async Task<IResult> SetPassword(
@@ -235,21 +258,34 @@ public static class AuthEndpoints
 
     private static async Task<IResult> IssueTokenResponseAsync(
         Data.Entities.User user,
+        HttpContext http,
         IJwtService jwt,
         IRefreshTokenService refreshTokens,
+        IRefreshCookieService refreshCookies,
         IOptions<JwtOptions> jwtOptions,
         CancellationToken ct)
     {
         var token = jwt.Issue(user);
         var refresh = await refreshTokens.IssueAsync(user.Id, ct);
+        if (refreshCookies.Enabled)
+        {
+            // Cookie mode: the refresh token must never reach script-readable space, so the
+            // JSON body carries an empty refresh field and the HttpOnly cookie is the only
+            // copy — otherwise an XSS payload could exfiltrate the long-lived credential.
+            refreshCookies.Append(http.Response, refresh);
+            return Results.Ok(new TokenResponse(token, "", jwtOptions.Value.ExpiryMinutes * 60));
+        }
         return Results.Ok(new TokenResponse(token, refresh, jwtOptions.Value.ExpiryMinutes * 60));
     }
 
     private static async Task<IResult> Refresh(
         // Nullable so a literal JSON `null` body reaches the ValidationEndpointFilter.
         [FromBody] RefreshRequest? req,
+        HttpContext http,
         IJwtService jwt,
         IRefreshTokenService refreshTokens,
+        IRefreshCookieService refreshCookies,
+        ITrustedOriginValidator origins,
         IOptions<JwtOptions> jwtOptions,
         CancellationToken ct)
     {
@@ -259,10 +295,34 @@ public static class AuthEndpoints
             return ProblemResults.InvalidBody();
         }
 
+        // Body first, cookie fallback. A body token is an explicit, script-initiated call
+        // (localStorage mode) and needs no CSRF check; the cookie travels automatically on
+        // any cross-site POST, so cookie-sourced tokens require a trusted Origin/Referer.
+        var raw = req.Refresh;
+        var fromCookie = false;
+        if (string.IsNullOrEmpty(raw) && refreshCookies.Enabled)
+        {
+            raw = refreshCookies.Read(http.Request);
+            fromCookie = raw is not null;
+        }
+        if (string.IsNullOrEmpty(raw))
+        {
+            return ProblemResults.Unauthorized("invalid_refresh");
+        }
+        if (fromCookie && !origins.IsTrusted(http.Request))
+        {
+            return ProblemResults.Forbidden("csrf_origin_rejected");
+        }
+
         try
         {
-            var result = await refreshTokens.RotateAsync(req.Refresh, ct);
+            var result = await refreshTokens.RotateAsync(raw, ct);
             var token = jwt.Issue(result.User);
+            if (refreshCookies.Enabled)
+            {
+                refreshCookies.Append(http.Response, result.NewRawToken);
+                return Results.Ok(new TokenResponse(token, "", jwtOptions.Value.ExpiryMinutes * 60));
+            }
             return Results.Ok(result.ToTokenResponse(
                 token,
                 jwtOptions.Value.ExpiryMinutes * 60));
@@ -279,5 +339,41 @@ public static class AuthEndpoints
         {
             return ProblemResults.Unauthorized("invalid_refresh");
         }
+    }
+
+    private static async Task<IResult> Logout(
+        // Nullable so an empty body is valid — cookie-mode clients send nothing.
+        [FromBody] LogoutRequest? req,
+        HttpContext http,
+        IRefreshTokenService refreshTokens,
+        IRefreshCookieService refreshCookies,
+        ITrustedOriginValidator origins,
+        CancellationToken ct)
+    {
+        var raw = req?.Refresh;
+        var fromCookie = false;
+        if (string.IsNullOrEmpty(raw) && refreshCookies.Enabled)
+        {
+            raw = refreshCookies.Read(http.Request);
+            fromCookie = raw is not null;
+        }
+        // Same CSRF rule as Refresh. A forged logout is "only" a nuisance, but family
+        // revocation is a write — don't let hostile pages trigger it.
+        if (fromCookie && !origins.IsTrusted(http.Request))
+        {
+            return ProblemResults.Forbidden("csrf_origin_rejected");
+        }
+
+        if (!string.IsNullOrEmpty(raw))
+        {
+            await refreshTokens.RevokeFamilyAsync(raw, ct);
+        }
+        if (refreshCookies.Enabled)
+        {
+            refreshCookies.Clear(http.Response);
+        }
+        // 204 regardless of whether the token was known — logout is idempotent and the
+        // response must not leak token validity.
+        return Results.NoContent();
     }
 }

@@ -153,16 +153,18 @@ public class ValidationShapeTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Refresh_EmptyToken_ReturnsValidationProblem()
+    public async Task Refresh_EmptyToken_ReturnsInvalidRefresh()
     {
         await _fx.ResetAsync();
         using var client = _factory!.CreateClient();
 
+        // Refresh is optional at the validation layer (cookie mode posts an empty object);
+        // with no cookie configured an empty token falls through to 401 invalid_refresh.
         var resp = await client.PostAsJsonAsync("/auth/refresh", new { refresh = "" });
 
-        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
-        body.GetProperty("errors").GetProperty("Refresh").GetArrayLength().Should().BeGreaterThan(0);
+        body.GetProperty(ProblemResults.CodeKey).GetString().Should().Be("invalid_refresh");
     }
 
     [Fact]
