@@ -61,7 +61,7 @@ public static class UsersEndpoints
             && viewerId == user.Id;
         var clips = await db.Clips.AsNoTracking()
             .Where(c => c.UserId == user.Id
-                && c.Status == "ready"
+                && c.Status == ClipStatuses.Ready
                 && (c.Visibility == ClipVisibilities.Public
                     || (isOwner && c.Visibility == ClipVisibilities.Unlisted)))
             .OrderByDescending(c => c.CreatedAt)

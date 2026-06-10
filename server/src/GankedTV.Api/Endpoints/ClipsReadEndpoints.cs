@@ -91,7 +91,7 @@ public static class ClipsReadEndpoints
     {
         // Same visibility rule as the detail endpoint: any ready clip is reachable by link.
         var clip = await db.Clips.AsNoTracking()
-            .Where(c => c.Id == id && c.Status == "ready")
+            .Where(c => c.Id == id && c.Status == ClipStatuses.Ready)
             .Select(c => new { c.VideoCodec })
             .SingleOrDefaultAsync(ct);
         if (clip is null)
@@ -138,7 +138,7 @@ public static class ClipsReadEndpoints
         CancellationToken ct)
     {
         var baseQuery = db.Clips.AsNoTracking()
-            .Where(c => c.Visibility == "public" && c.Status == "ready");
+            .WherePublicReady();
 
         // `source` is treated leniently: only the literal "following" switches behaviour;
         // anything else (null, "public", garbage) falls through to the global feed. Matches
@@ -486,7 +486,7 @@ public static class ClipsReadEndpoints
         }
 
         var clip = await db.Clips.AsNoTracking()
-            .Where(c => c.Id == winnerId.Value && c.Visibility == "public" && c.Status == "ready")
+            .Where(c => c.Id == winnerId.Value).WherePublicReady()
             .IncludeFeedRelations()
             .FirstOrDefaultAsync(ct);
 
@@ -520,7 +520,7 @@ public static class ClipsReadEndpoints
         var todayStart = new DateTimeOffset(DateTimeOffset.UtcNow.Date, TimeSpan.Zero);
 
         var candidates = await db.Clips.AsNoTracking()
-            .Where(c => c.Visibility == "public" && c.Status == "ready")
+            .WherePublicReady()
             .Where(c => db.Likes.Any(l => l.ClipId == c.Id && l.CreatedAt >= todayStart)
                      || db.ClipViews.Any(v => v.ClipId == c.Id && v.CreatedAt >= todayStart))
             .Select(c => new
@@ -564,7 +564,7 @@ public static class ClipsReadEndpoints
         IOptions<S3Options> s3,
         CancellationToken ct) =>
         ResolveClipByPredicateAsync(
-            c => c.Id == id && c.Status == "ready",
+            c => c.Id == id && c.Status == ClipStatuses.Ready,
             principal, db, storage, s3, ct);
 
     private static async Task<IResult> GetByShareCode(
@@ -578,7 +578,7 @@ public static class ClipsReadEndpoints
         CancellationToken ct)
     {
         var result = await LoadClipWithUrlsAsync(
-            c => c.ShareCode == code && c.Status == "ready",
+            c => c.ShareCode == code && c.Status == ClipStatuses.Ready,
             db, storage, s3, ct);
 
         if (result is null)

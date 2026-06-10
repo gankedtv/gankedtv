@@ -114,8 +114,8 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             e.HasKey(c => c.Id);
             e.Property(c => c.Id).HasDefaultValueSql("gen_random_uuid()");
             e.Property(c => c.Title).HasMaxLength(255);
-            e.Property(c => c.Status).HasMaxLength(20).HasDefaultValue("processing");
-            e.Property(c => c.Visibility).HasMaxLength(20).HasDefaultValue("public");
+            e.Property(c => c.Status).HasMaxLength(20).HasDefaultValue(ClipStatuses.Processing);
+            e.Property(c => c.Visibility).HasMaxLength(20).HasDefaultValue(ClipVisibilities.Public);
             e.Property(c => c.ViewCount).HasDefaultValue(0);
             e.Property(c => c.LikeCount).HasDefaultValue(0);
             e.Property(c => c.ProcessingAttempts).HasDefaultValue(0);

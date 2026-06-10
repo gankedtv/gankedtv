@@ -36,7 +36,7 @@ internal static class RankedFeedBuilder
         IQueryable<Clip> query = db.Clips.AsNoTracking().Where(c => orderedIds.Contains(c.Id));
         if (reapplyPublicReadyFilter)
         {
-            query = query.Where(c => c.Visibility == "public" && c.Status == "ready");
+            query = query.WherePublicReady();
         }
         var hydrated = await query.IncludeFeedRelations().ToListAsync(ct);
 

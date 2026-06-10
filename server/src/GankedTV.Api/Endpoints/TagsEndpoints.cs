@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Contracts.Tags;
+using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Data;
 using GankedTV.Api.Problems;
 using GankedTV.Api.Services.Caching;
@@ -65,8 +66,8 @@ public static class TagsEndpoints
                 t.Name,
                 ClipCount = db.Clips.Count(c =>
                     c.ClipTags.Any(ct => ct.TagId == t.Id)
-                    && c.Visibility == "public"
-                    && c.Status == "ready"),
+                    && c.Visibility == ClipVisibilities.Public
+                    && c.Status == ClipStatuses.Ready),
             })
             .OrderByDescending(r => r.ClipCount)
             .ThenBy(r => r.Slug)
@@ -91,8 +92,8 @@ public static class TagsEndpoints
                 Tag = t,
                 ClipCount = db.Clips.Count(c =>
                     c.ClipTags.Any(ct => ct.TagId == t.Id)
-                    && c.Visibility == "public"
-                    && c.Status == "ready"),
+                    && c.Visibility == ClipVisibilities.Public
+                    && c.Status == ClipStatuses.Ready),
             })
             .FirstOrDefaultAsync(ct);
 
@@ -125,8 +126,8 @@ public static class TagsEndpoints
         var resolvedTagId = tagId.Value;
         var baseQuery = db.Clips.AsNoTracking()
             .Where(c => c.ClipTags.Any(ct => ct.TagId == resolvedTagId)
-                && c.Visibility == "public"
-                && c.Status == "ready");
+                && c.Visibility == ClipVisibilities.Public
+                && c.Status == ClipStatuses.Ready);
 
         // Cache only the first page per tag (no cursor). Cursor pages bypass. Same pattern as
         // GamesEndpoints.GetClipsForGame — the entry rides the shared clips-feed tag, so any clip

@@ -19,7 +19,7 @@ namespace GankedTV.Api.Endpoints;
 
 public static class ClipsMutateEndpoints
 {
-    private static readonly string[] AllowedVisibilities = ["public", "unlisted"];
+    private static readonly string[] AllowedVisibilities = [ClipVisibilities.Public, ClipVisibilities.Unlisted];
     private static readonly TimeSpan VideoUrlLifetime = TimeSpan.FromHours(1);
     private static readonly string LogCategory = typeof(ClipsMutateEndpoints).FullName!;
 

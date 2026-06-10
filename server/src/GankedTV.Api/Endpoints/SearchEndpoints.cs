@@ -117,7 +117,7 @@ public static class SearchEndpoints
         // Two ToTsQuery calls (one in Where, one in OrderBy) — Postgres folds identical
         // immutable expressions, and the GIN index still drives the @@ predicate.
         var rows = await db.Clips.AsNoTracking()
-            .Where(c => c.Visibility == "public" && c.Status == "ready")
+            .WherePublicReady()
             .Where(c => c.SearchVector.Matches(EF.Functions.ToTsQuery("simple", tsQuery)))
             .OrderByDescending(c => c.SearchVector.Rank(EF.Functions.ToTsQuery("simple", tsQuery)))
             .ThenByDescending(c => c.CreatedAt)

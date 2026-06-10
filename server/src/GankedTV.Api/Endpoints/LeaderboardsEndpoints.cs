@@ -58,7 +58,7 @@ public static class LeaderboardsEndpoints
             async c =>
             {
                 var clipsBase = db.Clips.AsNoTracking()
-                    .Where(cl => cl.Visibility == "public" && cl.Status == "ready");
+                    .WherePublicReady();
                 var topClips = await BuildAnonymousEntriesAsync(clipsBase, since, clipsCap, db, storage, s3, c);
                 var topGames = await BuildTopGamesAsync(since, gamesCap, db, c);
                 return new GlobalLeaderboardResponse(windowKey, topClips, topGames);
@@ -176,10 +176,10 @@ public static class LeaderboardsEndpoints
                 WindowLikes = db.Likes.Count(l =>
                     l.CreatedAt >= since
                     && l.Clip.GameId == g.Id
-                    && l.Clip.Visibility == "public"
-                    && l.Clip.Status == "ready"),
+                    && l.Clip.Visibility == ClipVisibilities.Public
+                    && l.Clip.Status == ClipStatuses.Ready),
                 ClipCount = db.Clips.Count(c =>
-                    c.GameId == g.Id && c.Visibility == "public" && c.Status == "ready"),
+                    c.GameId == g.Id && c.Visibility == ClipVisibilities.Public && c.Status == ClipStatuses.Ready),
             })
             .Where(x => x.WindowLikes > 0)
             .OrderByDescending(x => x.WindowLikes)
