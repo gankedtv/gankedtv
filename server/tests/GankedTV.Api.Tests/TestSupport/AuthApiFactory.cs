@@ -58,7 +58,14 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        Environment.SetEnvironmentVariable("DATABASE_URL", _connectionString);
+        // Env vars are process-global and factories boot concurrently across parallel test
+        // collections, so everything written here must be a CONSTANT — concurrent identical
+        // writes are benign. DATABASE_URL therefore points at the container's admin database
+        // (only read by ProductionStartupValidator and the default AddDbContext registration,
+        // which is replaced below); the per-collection database flows exclusively through the
+        // DbContextOptions override. Tests that need a DIFFERENT env value (CORS_ORIGINS,
+        // ADMIN_EMAILS, ...) must live in the PostgresServices collection so they serialize.
+        Environment.SetEnvironmentVariable("DATABASE_URL", PostgresFixture.AdminConnectionString);
         Environment.SetEnvironmentVariable("JWT_SECRET", "smoke-test-jwt-secret-at-least-32-bytes-xx");
         Environment.SetEnvironmentVariable("OAUTH_STATE_SECRET", "smoke-test-state-secret-at-least-32-bytes");
         Environment.SetEnvironmentVariable("WEB_ORIGIN", "http://localhost:5173");
@@ -83,7 +90,7 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("GOOGLE_REDIRECT_URI", "http://localhost:5000/auth/google/callback");
         // Force the in-process rate limiter inside the test rig. Without this, a worktree that
         // sets REDIS_URL (per the `parallel worktrees` workflow) makes every AuthApiFactory
-        // instance share one Redis-backed rate-limit bucket — `[Collection("Postgres")]`
+        // instance share one Redis-backed rate-limit bucket — a test collection
         // serialises tests within a class but each test still creates a fresh factory, and the
         // 5-req/min credentials bucket collapses across all of them, surfacing as cascading 429s
         // and downstream 401s in tests that depend on a successful register.

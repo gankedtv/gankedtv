@@ -11,7 +11,7 @@ using NSubstitute;
 
 namespace GankedTV.Api.Tests.Integration.Endpoints;
 
-[Collection("Postgres")]
+[Collection("PostgresAdmin")]
 public class AdminEndpointsTests : IAsyncLifetime
 {
     private readonly PostgresFixture _fx;

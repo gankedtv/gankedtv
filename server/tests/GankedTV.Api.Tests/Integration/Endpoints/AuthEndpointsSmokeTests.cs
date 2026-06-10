@@ -10,7 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace GankedTV.Api.Tests.Integration.Endpoints;
 
-[Collection("Postgres")]
+[Collection("PostgresAuth")]
 public class AuthEndpointsSmokeTests : IAsyncLifetime
 {
     private readonly PostgresFixture _fx;

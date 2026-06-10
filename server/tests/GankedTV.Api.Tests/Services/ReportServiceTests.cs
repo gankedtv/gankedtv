@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GankedTV.Api.Tests.Services;
 
-[Collection("Postgres")]
+[Collection("PostgresServices")]
 public class ReportServiceTests
 {
     private readonly PostgresFixture _fx;

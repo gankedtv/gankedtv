@@ -18,7 +18,7 @@ namespace GankedTV.Api.Tests.Integration.Endpoints;
 /// cheaper and more maintainable than duplicating across every per-field case already
 /// covered by the endpoint-specific test suites.
 /// </summary>
-[Collection("Postgres")]
+[Collection("PostgresServices")]
 public class ValidationShapeTests : IAsyncLifetime
 {
     private readonly PostgresFixture _fx;
