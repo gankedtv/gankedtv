@@ -134,9 +134,7 @@ public static class CommentsEndpoints
 
         if (hasCursor)
         {
-            query = query.Where(c =>
-                c.CreatedAt < cursorCreatedAt
-                || (c.CreatedAt == cursorCreatedAt && c.Id.CompareTo(cursorId) < 0));
+            query = query.WhereKeysetBefore(c => c.CreatedAt, c => c.Id, cursorCreatedAt, cursorId);
         }
 
         var rows = await query
@@ -146,8 +144,7 @@ public static class CommentsEndpoints
             .Take(clampedLimit + 1)
             .ToListAsync(ct);
 
-        var hasMore = rows.Count > clampedLimit;
-        var page = hasMore ? rows.GetRange(0, clampedLimit) : rows;
+        var (page, nextCursor) = KeysetPagination.TakePage(rows, clampedLimit, c => c.CreatedAt, c => c.Id);
 
         var repliesByParent = await LoadRepliesForParentsAsync(db, page.Select(c => c.Id), ct);
 
@@ -165,7 +162,6 @@ public static class CommentsEndpoints
             return c.ToItem(replyCount: entry.Count, replies: preview, repliesNextCursor: repliesNextCursor);
         }).ToList();
 
-        var nextCursor = hasMore ? KeysetCursor.Build(page[^1].CreatedAt, page[^1].Id) : null;
         return Results.Ok(new CommentListResponse(items, nextCursor));
     }
 
@@ -186,9 +182,7 @@ public static class CommentsEndpoints
 
         if (hasCursor)
         {
-            query = query.Where(c =>
-                c.CreatedAt > cursorCreatedAt
-                || (c.CreatedAt == cursorCreatedAt && c.Id.CompareTo(cursorId) > 0));
+            query = query.WhereKeysetAfter(c => c.CreatedAt, c => c.Id, cursorCreatedAt, cursorId);
         }
 
         var rows = await query
@@ -198,11 +192,9 @@ public static class CommentsEndpoints
             .Take(clampedLimit + 1)
             .ToListAsync(ct);
 
-        var hasMore = rows.Count > clampedLimit;
-        var page = hasMore ? rows.GetRange(0, clampedLimit) : rows;
+        var (page, nextCursor) = KeysetPagination.TakePage(rows, clampedLimit, c => c.CreatedAt, c => c.Id);
 
         var items = page.Select(c => c.ToItem()).ToList();
-        var nextCursor = hasMore ? KeysetCursor.Build(page[^1].CreatedAt, page[^1].Id) : null;
         return Results.Ok(new CommentListResponse(items, nextCursor));
     }
 

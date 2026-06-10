@@ -103,11 +103,10 @@ public static class FollowsEndpoints
 
     // ListFollowers and ListFollowing are intentionally near-duplicates rather than
     // a shared helper parameterised over which side of the row to project: the two
-    // queries differ in which column they filter on, which navigation they Include,
-    // and which Guid they keyset on. A generic helper would need EF-translatable
-    // expression-tree parameters for all three, which complicates the query trees
-    // and obscures what each endpoint actually emits. Two straightforward methods
-    // read better and let EF generate the cleanest SQL.
+    // queries differ in which column they filter on and which navigation they
+    // Include, and folding those behind expression parameters would obscure what
+    // each endpoint actually emits. Only the keyset predicate/page slicing is
+    // shared (KeysetPagination), which takes the keyset Guid as a selector.
 
     private static async Task<IResult> ListFollowers(
         string username, string? cursor, int? limit,
@@ -125,8 +124,7 @@ public static class FollowsEndpoints
         var query = db.Follows.AsNoTracking().Where(f => f.FolloweeId == target.Id);
         if (hasCursor)
         {
-            query = query.Where(f =>
-                f.CreatedAt < cAt || (f.CreatedAt == cAt && f.FollowerId.CompareTo(cId) < 0));
+            query = query.WhereKeysetBefore(f => f.CreatedAt, f => f.FollowerId, cAt, cId);
         }
 
         var rows = await query
@@ -135,12 +133,10 @@ public static class FollowsEndpoints
             .Take(clampedLimit + 1)
             .ToListAsync(ct);
 
-        var hasMore = rows.Count > clampedLimit;
-        var page = hasMore ? rows.GetRange(0, clampedLimit) : rows;
+        var (page, nextCursor) = KeysetPagination.TakePage(rows, clampedLimit, f => f.CreatedAt, f => f.FollowerId);
         var items = page
             .Select(f => new UserSummary(f.Follower.Id, f.Follower.Username, f.Follower.AvatarUrl))
             .ToList();
-        var nextCursor = hasMore ? KeysetCursor.Build(page[^1].CreatedAt, page[^1].FollowerId) : null;
 
         return Results.Ok(new UserSummaryPage(items, nextCursor));
     }
@@ -158,8 +154,7 @@ public static class FollowsEndpoints
         var query = db.Follows.AsNoTracking().Where(f => f.FollowerId == target.Id);
         if (hasCursor)
         {
-            query = query.Where(f =>
-                f.CreatedAt < cAt || (f.CreatedAt == cAt && f.FolloweeId.CompareTo(cId) < 0));
+            query = query.WhereKeysetBefore(f => f.CreatedAt, f => f.FolloweeId, cAt, cId);
         }
 
         var rows = await query
@@ -168,12 +163,10 @@ public static class FollowsEndpoints
             .Take(clampedLimit + 1)
             .ToListAsync(ct);
 
-        var hasMore = rows.Count > clampedLimit;
-        var page = hasMore ? rows.GetRange(0, clampedLimit) : rows;
+        var (page, nextCursor) = KeysetPagination.TakePage(rows, clampedLimit, f => f.CreatedAt, f => f.FolloweeId);
         var items = page
             .Select(f => new UserSummary(f.Followee.Id, f.Followee.Username, f.Followee.AvatarUrl))
             .ToList();
-        var nextCursor = hasMore ? KeysetCursor.Build(page[^1].CreatedAt, page[^1].FolloweeId) : null;
 
         return Results.Ok(new UserSummaryPage(items, nextCursor));
     }
