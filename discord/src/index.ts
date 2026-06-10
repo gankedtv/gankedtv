@@ -181,12 +181,12 @@ async function main(): Promise<void> {
       });
       return false;
     }
-    const content = buildMessage(
+    const message = buildMessage(
       clip,
       { pingRoleId: target.pingRoleId },
       config.GANKEDTV_PUBLIC_BASE,
     );
-    return postToChannel(channel, content);
+    return postToChannel(channel, message);
   };
 
   log.info('Starting poller', { intervalSeconds: config.DISCORD_POLL_INTERVAL_SECONDS });

@@ -5,7 +5,7 @@ import {
 } from 'discord.js';
 import type { Command, CommandContext } from './index.ts';
 import { ephemeral } from './replies.ts';
-import { shareUrl } from '../lib/shareUrl.ts';
+import { buildClipEmbed } from '../embeds.ts';
 
 const data = new SlashCommandBuilder()
   .setName('clip')
@@ -76,7 +76,7 @@ async function handleLatest(
     );
     return;
   }
-  await interaction.editReply(shareUrl(clip.shareCode, ctx.publicBase));
+  await interaction.editReply({ embeds: [buildClipEmbed(clip, ctx.publicBase).toJSON()] });
 }
 
 async function handleTop(
@@ -91,7 +91,7 @@ async function handleTop(
     await interaction.editReply(`No trending clips in the last ${window}.`);
     return;
   }
-  await interaction.editReply(shareUrl(clip.shareCode, ctx.publicBase));
+  await interaction.editReply({ embeds: [buildClipEmbed(clip, ctx.publicBase).toJSON()] });
 }
 
 async function handleSearch(
@@ -106,7 +106,7 @@ async function handleSearch(
     await interaction.editReply(`No clips matched "${query}".`);
     return;
   }
-  await interaction.editReply(shareUrl(clip.shareCode, ctx.publicBase));
+  await interaction.editReply({ embeds: [buildClipEmbed(clip, ctx.publicBase).toJSON()] });
 }
 
 async function autocomplete(
