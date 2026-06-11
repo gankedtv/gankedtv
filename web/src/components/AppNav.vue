@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import { search, type SearchResponse } from '@/api/search'
-import ThemePicker from './ThemePicker.vue'
+import { volIssMeta } from '@/lib/issue'
 import ThemeModeToggle from './ThemeModeToggle.vue'
 import UserAvatar from './UserAvatar.vue'
 import GameSearchResult from './GameSearchResult.vue'
@@ -12,8 +12,6 @@ import NotificationsDropdown from './notifications/NotificationsDropdown.vue'
 import IconSearch from './icons/IconSearch.vue'
 import IconPlus from './icons/IconPlus.vue'
 import IconBell from './icons/IconBell.vue'
-import IconMenu from './icons/IconMenu.vue'
-import MobileNavDrawer from './MobileNavDrawer.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -35,17 +33,15 @@ watch(
 )
 onBeforeUnmount(() => notificationsStore.stopPolling())
 
-const navLinkActive =
-  "text-text-primary after:content-[''] after:absolute after:left-3.5 after:right-3.5 after:bottom-0.5 after:h-0.5 after:bg-brand-light"
+// 2px ink underline that overlaps the nav's bottom rule — the printed
+// active-tab gesture (padding-bottom 6px / margin-bottom -8px per spec).
+const navLinkActive = 'text-text-primary border-ink'
 
 // --- Search box state ---------------------------------------------------------
 //
 // Decorative input until now (issue #86). Wires to GET /search via api/search.ts.
 // Layout: combobox-pattern input with a popover listbox below, top 5 clips + top
 // 3 games. Enter navigates to the full /search results view.
-//
-// Tokens used: kept the existing `border-border bg-surface-overlay` shell from
-// the prior decorative div so the visual mass of the navbar doesn't shift.
 
 const SEARCH_DEBOUNCE_MS = 250
 const DROPDOWN_CLIP_LIMIT = 5
@@ -56,10 +52,9 @@ const isFocused = ref(false)
 const results = ref<SearchResponse>({ clips: [], games: [] })
 const loading = ref(false)
 
-// The dropdown is teleported to <body> so it doesn't get clipped/stack-trapped by
-// the header's `backdrop-filter` paint context — which was rendering page content
-// over the dropdown's bottom rows and breaking hit-testing for clicks. Living in
-// the root stacking context means it just needs a high z-index to beat the header.
+// The dropdown is teleported to <body> so it escapes the header's stacking
+// context and never gets clipped by it. Living in the root stacking context
+// means it just needs a high z-index to beat the header.
 const inputWrapperRef = useTemplateRef<HTMLDivElement>('inputWrapperRef')
 // Coordinates the teleported popover anchors to. Recomputed on focus + on resize
 // while the popover is visible — scroll isn't tracked because the header is sticky,
@@ -254,17 +249,6 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', onDocumentKeyDown)
 })
 
-// --- Mobile nav drawer --------------------------------------------------------
-// Below 1024px the nav row, theme controls, and admin collapse into the drawer (the full bar
-// overflows at tablet/iPad widths). The drawer owns its own close handling; we return focus
-// to the hamburger when it closes.
-const hamburgerRef = useTemplateRef<HTMLButtonElement>('hamburgerRef')
-const isDrawerOpen = ref(false)
-
-watch(isDrawerOpen, (open) => {
-  if (!open) nextTick(() => hamburgerRef.value?.focus())
-})
-
 // --- Mobile search overlay ----------------------------------------------------
 // Below 1281px the inline search bar is hidden; a search icon opens this overlay, reusing
 // the same query + onSubmit. Focus the input on open, return focus to the trigger on close.
@@ -284,58 +268,48 @@ function closeMobileSearch() {
 </script>
 
 <template>
-  <header
-    class="sticky top-0 z-50 h-16 border-b border-border bg-[color-mix(in_oklab,var(--color-surface-base)_85%,transparent)] backdrop-blur-[14px]"
-  >
-    <div class="mx-auto flex h-full max-w-360 min-w-0 items-center gap-5 px-6 *:shrink-0">
-      <!-- Logo — wordmark collapses to the mark alone on mobile to free top-bar space. -->
+  <header class="sticky top-0 z-50 h-16 border-b border-border bg-surface-base">
+    <div class="mx-auto flex h-full max-w-360 min-w-0 items-center gap-6 px-6 *:shrink-0 max-tablet:px-4">
+      <!-- Logo — wordmark collapses to the mark alone on the smallest screens. -->
       <RouterLink
         to="/"
         aria-label="GankedTV home"
-        class="flex items-center gap-2 font-display text-[22px] font-bold uppercase tracking-[0.06em] text-text-primary no-underline"
+        class="flex items-center gap-2.5 no-underline"
       >
-        <span class="logo__mark"></span>
-        <span class="max-tablet:hidden">GANKED<span class="logo__tv">.TV</span></span>
+        <span class="size-2 bg-ink" aria-hidden="true"></span>
+        <span
+          class="font-display text-[17px] font-bold uppercase tracking-[0.04em] text-text-primary max-[420px]:hidden"
+        >
+          GANKED<span class="text-ink">.TV</span>
+        </span>
       </RouterLink>
 
-      <!-- Hamburger — shown below 1024px; opens the drawer. -->
-      <button
-        ref="hamburgerRef"
-        type="button"
-        class="hidden h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-border bg-transparent text-text-secondary transition-colors duration-150 hover:border-border-hover hover:text-text-primary max-lg:inline-flex"
-        aria-label="Open menu"
-        :aria-expanded="isDrawerOpen"
-        @click="isDrawerOpen = true"
-      >
-        <IconMenu :size="16" />
-      </button>
-
-      <!-- Desktop nav links — collapse into the drawer below 1024px. -->
-      <nav class="flex flex-1 items-center gap-1 max-lg:hidden" aria-label="Main navigation">
+      <!-- Desktop nav links — the bottom tab bar takes over below 1024px. -->
+      <nav class="flex flex-1 items-center gap-6 max-lg:hidden" aria-label="Main navigation">
         <RouterLink
           to="/"
-          class="relative rounded-sm px-3.5 py-2 text-[13px] font-medium uppercase tracking-[0.04em] text-text-secondary no-underline transition-colors duration-150 hover:bg-surface-overlay hover:text-text-primary"
+          class="-mb-2 border-b-2 border-transparent pb-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary no-underline transition-colors duration-150 hover:text-ink"
           :exact-active-class="navLinkActive"
         >
           Feed
         </RouterLink>
         <RouterLink
           to="/games"
-          class="relative rounded-sm px-3.5 py-2 text-[13px] font-medium uppercase tracking-[0.04em] text-text-secondary no-underline transition-colors duration-150 hover:bg-surface-overlay hover:text-text-primary"
+          class="-mb-2 border-b-2 border-transparent pb-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary no-underline transition-colors duration-150 hover:text-ink"
           :active-class="navLinkActive"
         >
           Games
         </RouterLink>
         <RouterLink
           to="/trending"
-          class="relative rounded-sm px-3.5 py-2 text-[13px] font-medium uppercase tracking-[0.04em] text-text-secondary no-underline transition-colors duration-150 hover:bg-surface-overlay hover:text-text-primary"
+          class="-mb-2 border-b-2 border-transparent pb-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary no-underline transition-colors duration-150 hover:text-ink"
           :active-class="navLinkActive"
         >
           Trending
         </RouterLink>
         <RouterLink
           to="/leaderboards"
-          class="relative rounded-sm px-3.5 py-2 text-[13px] font-medium uppercase tracking-[0.04em] text-text-secondary no-underline transition-colors duration-150 hover:bg-surface-overlay hover:text-text-primary"
+          class="-mb-2 border-b-2 border-transparent pb-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary no-underline transition-colors duration-150 hover:text-ink"
           :active-class="navLinkActive"
         >
           Leaderboards
@@ -346,8 +320,8 @@ function closeMobileSearch() {
       <div class="hidden min-w-0 shrink min-[1281px]:block">
         <div
           ref="inputWrapperRef"
-          class="flex h-9 w-60 max-w-60 items-center gap-2 overflow-hidden rounded-md border bg-surface-overlay px-3 font-mono text-xs whitespace-nowrap transition-colors duration-150"
-          :class="isFocused ? 'border-brand text-text-primary' : 'border-border text-text-muted'"
+          class="flex h-8.5 w-60 max-w-60 items-center gap-2 overflow-hidden border bg-surface-raised px-3 font-mono text-[11px] whitespace-nowrap transition-colors duration-150"
+          :class="isFocused ? 'border-ink text-text-primary' : 'border-border text-text-muted'"
         >
           <IconSearch :size="14" :stroke-width="2.2" class="shrink-0" />
           <input
@@ -358,7 +332,7 @@ function closeMobileSearch() {
             aria-autocomplete="list"
             :aria-expanded="isFocused && query.trim().length > 0"
             placeholder="search clips, games"
-            class="min-w-0 flex-1 border-0 bg-transparent font-mono text-xs text-text-primary placeholder:text-text-muted focus:outline-none"
+            class="min-w-0 flex-1 border-0 bg-transparent font-mono text-[11px] text-text-primary placeholder:text-text-muted focus:outline-none"
             @focus="isFocused = true"
             @blur="onBlur"
             @keydown.enter.prevent="onSubmit"
@@ -366,28 +340,30 @@ function closeMobileSearch() {
           />
         </div>
 
-        <!-- Dropdown — teleported to body so the header's backdrop-filter context
-             can't trap or clip its rendering. Position is computed from the input
-             wrapper's bounding rect (see updatePopoverPos). Panel bg uses
-             surface-raised so the row-hover surface-overlay reads as a brighter band. -->
+        <!-- Dropdown — teleported to body so the header's stacking context can't
+             trap or clip its rendering. Position is computed from the input
+             wrapper's bounding rect (see updatePopoverPos). -->
         <Teleport to="body">
           <div
             v-if="showPopover"
             id="nav-search-results"
             :style="popoverStyle"
-            class="fixed z-[60] overflow-hidden rounded-md border border-border-strong bg-surface-raised shadow-[0_18px_50px_-18px_rgba(0,0,0,0.6)]"
+            class="fixed z-60 overflow-hidden border border-border-strong bg-surface-base"
             @mousedown.prevent
           >
             <div
               v-if="loading && results.clips.length === 0 && results.games.length === 0"
-              class="px-3.5 py-3 font-mono text-[11px] uppercase tracking-widest text-text-muted"
+              class="flex items-center gap-3 px-3.5 py-3"
             >
-              Searching…
+              <span class="block h-1.5 w-5.5 overflow-hidden bg-surface-raised">
+                <span class="block h-full w-full origin-left bg-ink animate-[tick_1.6s_ease-in-out_infinite]"></span>
+              </span>
+              <span class="font-mono text-[11px] uppercase tracking-widest text-text-muted">Searching</span>
             </div>
             <template v-else>
               <div v-if="results.games.length > 0">
                 <div
-                  class="px-3.5 pt-2.5 pb-1 font-mono text-[10px] uppercase tracking-widest text-text-muted"
+                  class="px-3.5 pt-2.5 pb-1 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted"
                 >
                   Games
                 </div>
@@ -403,7 +379,7 @@ function closeMobileSearch() {
               </div>
               <div v-if="results.clips.length > 0">
                 <div
-                  class="px-3.5 pt-2.5 pb-1 font-mono text-[10px] uppercase tracking-widest text-text-muted"
+                  class="px-3.5 pt-2.5 pb-1 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted"
                   :class="{ 'border-t border-border': results.games.length > 0 }"
                 >
                   Clips
@@ -414,13 +390,13 @@ function closeMobileSearch() {
                     :key="c.id"
                     role="option"
                     :aria-selected="false"
-                    class="flex cursor-pointer items-center gap-3 px-3.5 py-2 transition-colors duration-150 hover:bg-surface-overlay"
+                    class="flex cursor-pointer items-center gap-3 px-3.5 py-2 transition-colors duration-150 hover:bg-surface-raised"
                     @mousedown.prevent="onResultClick({ name: 'clip', params: { id: c.id } })"
                   >
                     <img
                       :src="c.thumbnailUrl"
                       alt=""
-                      class="h-9 w-16 shrink-0 rounded-sm object-cover"
+                      class="h-9 w-16 shrink-0 border border-border object-cover"
                     />
                     <span class="min-w-0 flex-1 truncate font-body text-sm text-text-primary">
                       {{ c.title }}
@@ -439,32 +415,35 @@ function closeMobileSearch() {
         </Teleport>
       </div>
 
+      <!-- Vol/Iss meta strip — the page is an issue, not a feed. -->
+      <span
+        class="font-mono text-[10px] uppercase tracking-[0.15em] whitespace-nowrap text-text-muted max-[1100px]:hidden"
+      >
+        {{ volIssMeta() }}
+      </span>
+
       <!-- Actions -->
       <div class="ml-auto flex items-center gap-2">
         <!-- Mobile search trigger (inline bar is ≥1281px only). -->
         <button
           ref="mobileSearchTriggerRef"
           type="button"
-          class="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-border bg-transparent text-text-secondary transition-colors duration-150 hover:border-border-hover hover:text-text-primary min-[1281px]:hidden"
+          class="inline-flex size-8.5 cursor-pointer items-center justify-center border border-border bg-transparent text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink min-[1281px]:hidden"
           aria-label="Search"
           @click="openMobileSearch"
         >
           <IconSearch :size="16" />
         </button>
 
-        <!-- Theme controls — collapse into the drawer below 1024px. -->
-        <div class="flex items-center gap-2 max-lg:hidden">
-          <ThemePicker />
-          <ThemeModeToggle />
-        </div>
+        <ThemeModeToggle />
 
         <!-- Notifications bell (authenticated only) -->
         <button
           v-if="auth.isAuthenticated"
           ref="bellRef"
           type="button"
-          class="relative inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border bg-transparent text-text-secondary transition-all duration-150 hover:border-border-hover hover:text-text-primary"
-          :class="isBellOpen ? 'border-brand text-text-primary' : 'border-border'"
+          class="relative inline-flex size-8.5 cursor-pointer items-center justify-center border bg-transparent text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink"
+          :class="isBellOpen ? 'border-ink text-ink' : 'border-border'"
           :aria-label="`Notifications${unreadBadge ? ` (${unreadBadge} unread)` : ''}`"
           :aria-expanded="isBellOpen"
           @click="toggleBell"
@@ -472,30 +451,30 @@ function closeMobileSearch() {
           <IconBell :size="16" />
           <span
             v-if="unreadBadge"
-            class="absolute -top-1 -right-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-error px-1 font-mono text-[10px] leading-none font-semibold text-white"
+            class="absolute -top-1 -right-1 inline-flex h-4 min-w-4 items-center justify-center bg-ink px-1 font-mono text-[10px] leading-none font-semibold text-signal-text"
           >
             {{ unreadBadge }}
           </span>
         </button>
 
-        <!-- Admin link (moderator / admin only) — in the drawer on mobile -->
+        <!-- Admin link (moderator / admin only) — lives in the footer on mobile -->
         <RouterLink
           v-if="auth.isModerator"
           to="/admin"
-          class="inline-flex h-9 cursor-pointer items-center rounded-md border border-border bg-transparent px-3 font-heading text-[12px] font-bold uppercase tracking-wider text-text-secondary no-underline transition-colors duration-150 hover:border-border-hover hover:text-text-primary max-lg:hidden"
+          class="inline-flex h-8.5 cursor-pointer items-center border border-border bg-transparent px-3 font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary no-underline transition-colors duration-150 hover:border-ink hover:text-ink max-lg:hidden"
         >
           Admin
         </RouterLink>
 
-        <!-- Upload button -->
+        <!-- Upload button — the tab bar carries upload below 1024px -->
         <RouterLink
           v-if="auth.isAuthenticated"
           to="/upload"
-          class="inline-flex h-9 cursor-pointer items-center rounded-md bg-brand px-4 text-[13px] font-semibold uppercase tracking-[0.02em] text-white no-underline transition-colors duration-150 hover:bg-brand-light"
+          class="inline-flex h-8.5 cursor-pointer items-center bg-ink px-4 text-[13px] font-medium uppercase tracking-[0.02em] text-signal-text no-underline transition-[filter] duration-150 hover:brightness-108 max-lg:hidden"
         >
           <span class="inline-flex items-center gap-1.5">
             <IconPlus :size="12" :stroke-width="2.5" />
-            <span class="hidden min-[1041px]:inline">Upload</span>
+            <span>Upload</span>
           </span>
         </RouterLink>
 
@@ -503,18 +482,18 @@ function closeMobileSearch() {
         <RouterLink
           v-else
           to="/login"
-          class="inline-flex h-9 cursor-pointer items-center rounded-md bg-brand px-4 text-[13px] font-semibold uppercase tracking-[0.02em] text-white no-underline transition-colors duration-150 hover:bg-brand-light"
+          class="inline-flex h-8.5 cursor-pointer items-center bg-ink px-4 text-[13px] font-medium uppercase tracking-[0.02em] text-signal-text no-underline transition-[filter] duration-150 hover:brightness-108 max-lg:hidden"
         >
           Sign In
         </RouterLink>
 
-        <!-- Avatar -->
+        <!-- Avatar — the tab bar carries the profile destination below 1024px -->
         <RouterLink
           v-if="auth.isAuthenticated && auth.user"
           :to="`/user/${auth.user.username}`"
-          class="inline-flex"
+          class="inline-flex max-lg:hidden"
         >
-          <UserAvatar :user="auth.user" :size="36" />
+          <UserAvatar :user="auth.user" :size="34" />
         </RouterLink>
       </div>
     </div>
@@ -545,19 +524,17 @@ function closeMobileSearch() {
       </button>
     </div>
 
-    <!-- Bell popover — teleported to body so the header's backdrop-filter context can't trap or
+    <!-- Bell popover — teleported to body so the header's stacking context can't trap or
          clip it (same reasoning as the search dropdown). Positioned by updateBellPos(). -->
     <Teleport to="body">
       <div
         v-if="isBellOpen"
         id="nav-notifications-popover"
         :style="bellPopoverStyle"
-        class="fixed z-[60]"
+        class="fixed z-60"
       >
         <NotificationsDropdown @close="closeBell" />
       </div>
     </Teleport>
-
-    <MobileNavDrawer v-model:open="isDrawerOpen" />
   </header>
 </template>

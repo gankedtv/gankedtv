@@ -36,11 +36,11 @@ const initials = computed(() => {
 
 const fontSize = computed(() => Math.floor(props.size * 0.35))
 
+// Flat single-hue fill — low-chroma so initials stay legible and the palette
+// stays print-adjacent (gradients are banned outside thumbnail fallbacks).
 const bgStyle = computed(() => {
   const hue = hashHue(props.user.username)
-  const a = `hsl(${hue}, 65%, 45%)`
-  const b = `hsl(${(hue + 40) % 360}, 65%, 22%)`
-  return { background: `linear-gradient(135deg, ${a}, ${b})` }
+  return { background: `hsl(${hue}, 35%, 38%)` }
 })
 
 // If the avatar image fails to load, fall back to the initials gradient instead
@@ -62,7 +62,7 @@ function onImageError() {
 
 <template>
   <span
-    class="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-mono font-semibold tracking-tighter text-white"
+    class="inline-flex shrink-0 items-center justify-center overflow-hidden font-mono font-semibold tracking-tighter text-white"
     :style="{
       width: `${size}px`,
       height: `${size}px`,

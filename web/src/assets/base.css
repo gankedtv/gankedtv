@@ -7,33 +7,40 @@
   --font-body: 'DM Sans', sans-serif;
   --font-mono: 'DM Mono', monospace;
 
-  /* Brand */
-  --color-brand: #6d28d9;
-  --color-brand-light: #7c3aed;
-  --color-brand-glow: rgba(124, 58, 237, 0.35);
-  --color-neon: #00e5a0;
-  --color-neon-dim: rgba(0, 229, 160, 0.18);
+  /* ============================================================
+     NEWSPRINT — one palette, dark (default) + light via html.light.
+     Ink is the brand: issue numbers, @usernames, links, hover
+     borders, active underlines. Signal is for earned moments only:
+     LIVE, errors, NEW badges.
+     ============================================================ */
+  --color-surface-base: #161410;
+  --color-surface-raised: #221e16;
+  --color-surface-sunken: #0c0a08;
 
-  /* Dark surfaces (default) */
-  --color-surface-base: #080810;
-  --color-surface-raised: #10101c;
-  --color-surface-overlay: #18182a;
-  --color-surface-sunken: #05050c;
+  --color-text-primary: #f4f1e8;
+  --color-text-secondary: #c5bca7;
+  --color-text-muted: #8a8474;
 
-  /* Text */
-  --color-text-primary: #f0eeff;
-  --color-text-secondary: #8888aa;
-  --color-text-muted: #44445a;
+  --color-border: #2c2820;
+  --color-border-strong: #3c3a30;
 
-  /* Borders */
-  --color-border: #1e1e30;
-  --color-border-hover: #2e2e48;
-  --color-border-strong: #3a3a58;
+  --color-ink: #ed3a47;
+  --color-signal: #6c9bcf;
+  --color-signal-text: #161410;
 
-  /* Feedback */
-  --color-success: #00e5a0;
-  --color-error: #ff4466;
-  --color-warning: #ffaa00;
+  /* ---- Bridge aliases — DELETE IN CLEANUP PHASE. They keep
+     not-yet-migrated views on-palette while pages migrate to
+     ink/signal tokens one phase at a time. ---- */
+  --color-brand: #ed3a47;
+  --color-brand-light: #ed3a47;
+  --color-brand-glow: transparent;
+  --color-neon: #ed3a47;
+  --color-neon-dim: rgba(237, 58, 71, 0.15);
+  --color-surface-overlay: #221e16;
+  --color-border-hover: #3c3a30;
+  --color-success: #c5bca7;
+  --color-error: #6c9bcf;
+  --color-warning: #c5bca7;
 
   /* Vendor brand colors (theme-agnostic — locked to provider identity) */
   --color-discord: #5865f2;
@@ -43,197 +50,46 @@
   --color-google: #131314;
   --color-google-hover: #1f2024;
 
-  /* Radius */
-  --radius-sm: 0.375rem;
-  --radius-md: 0.625rem;
-  --radius-lg: 1rem;
-  --radius-xl: 1.5rem;
+  /* Radius — sharp system. md (2px) is for inputs only.
+     lg/xl neutralized to 0 until consumers are migrated, then deleted. */
+  --radius-sm: 0px;
+  --radius-md: 2px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
 
-  /* Custom breakpoint — 720px is the mobile/tablet boundary used to drop
-     secondary nav links + theme picker. Use `tablet:` and `max-tablet:` modifiers. */
+  /* Custom breakpoint — 720px is the mobile/tablet boundary.
+     Use `tablet:` and `max-tablet:` modifiers. */
   --breakpoint-tablet: 720px;
 }
 
-/* Theme-agnostic ambient defaults (overridden per theme below) */
 :root {
-  --corner-cut: 10px;
-  --grid-bg: radial-gradient(
-    ellipse 80% 60% at 50% -10%,
-    rgba(109, 40, 217, 0.18),
-    transparent 60%
-  );
-  --noise-opacity: 0.035;
-  --scanline-opacity: 0;
-  --feed-gap: 16px;
+  --noise-opacity: 0.025;
 }
 
-/* ============================================================
-   THEMES — three palettes, one CSS-variable contract.
-   Selected via <html data-theme="…"> in stores/theme.ts.
-   ============================================================ */
-
-/* Underground — editorial dark, purple + neon-green, chamfer corners */
-[data-theme='underground'] {
-  --font-display: 'Rajdhani', sans-serif;
-  --font-heading: 'Barlow Condensed', sans-serif;
-  --font-body: 'DM Sans', sans-serif;
-  --font-mono: 'DM Mono', monospace;
-
-  --color-brand: #6d28d9;
-  --color-brand-light: #7c3aed;
-  --color-brand-glow: rgba(124, 58, 237, 0.35);
-  --color-neon: #00e5a0;
-  --color-neon-dim: rgba(0, 229, 160, 0.18);
-
-  --color-surface-base: #080810;
-  --color-surface-raised: #10101c;
-  --color-surface-overlay: #18182a;
-  --color-surface-sunken: #05050c;
-
-  --color-text-primary: #f0eeff;
-  --color-text-secondary: #8888aa;
-  --color-text-muted: #44445a;
-
-  --color-border: #1e1e30;
-  --color-border-hover: #2e2e48;
-  --color-border-strong: #3a3a58;
-
-  --corner-cut: 10px;
-  --grid-bg: radial-gradient(
-    ellipse 80% 60% at 50% -10%,
-    rgba(109, 40, 217, 0.18),
-    transparent 60%
-  );
-  --noise-opacity: 0.035;
-  --scanline-opacity: 0;
-}
-
-/* Tactical — HUD / broadcast, orange + white, square corners, line grid */
-[data-theme='tactical'] {
-  --font-display: 'Rajdhani', sans-serif;
-  --font-heading: 'Rajdhani', sans-serif;
-  --font-body: 'DM Sans', sans-serif;
-  --font-mono: 'DM Mono', monospace;
-
-  --color-brand: #ff7a00;
-  --color-brand-light: #ffa340;
-  --color-brand-glow: rgba(255, 122, 0, 0.35);
-  --color-neon: #ffffff;
-  --color-neon-dim: rgba(255, 255, 255, 0.18);
-
-  --color-surface-base: #0a0d10;
-  --color-surface-raised: #12161b;
-  --color-surface-overlay: #1a1f26;
-  --color-surface-sunken: #060809;
-
-  --color-text-primary: #ecedee;
-  --color-text-secondary: #8a9099;
-  --color-text-muted: #4a5057;
-
-  --color-border: #1e242c;
-  --color-border-hover: #303842;
-  --color-border-strong: #424c58;
-
-  --corner-cut: 0px;
-  --grid-bg:
-    repeating-linear-gradient(
-      0deg,
-      transparent 0,
-      transparent 39px,
-      rgba(255, 255, 255, 0.02) 39px,
-      rgba(255, 255, 255, 0.02) 40px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      transparent 0,
-      transparent 39px,
-      rgba(255, 255, 255, 0.02) 39px,
-      rgba(255, 255, 255, 0.02) 40px
-    );
-  --noise-opacity: 0.02;
-  --scanline-opacity: 0;
-}
-
-/* Arcade — CRT / chunky neon, pink + yellow, scanlines on */
-[data-theme='arcade'] {
-  --font-display: 'Rajdhani', sans-serif;
-  --font-heading: 'Barlow Condensed', sans-serif;
-  --font-body: 'DM Sans', sans-serif;
-  --font-mono: 'DM Mono', monospace;
-
-  --color-brand: #ff3d8b;
-  --color-brand-light: #ff6aa8;
-  --color-brand-glow: rgba(255, 61, 139, 0.45);
-  --color-neon: #ffe600;
-  --color-neon-dim: rgba(255, 230, 0, 0.2);
-
-  --color-surface-base: #0a0818;
-  --color-surface-raised: #14102a;
-  --color-surface-overlay: #1f1840;
-  --color-surface-sunken: #060410;
-
-  --color-text-primary: #fff8e8;
-  --color-text-secondary: #b9a9d8;
-  --color-text-muted: #5d4c88;
-
-  --color-border: #2a1f55;
-  --color-border-hover: #3d2d7a;
-  --color-border-strong: #503d9a;
-
-  --corner-cut: 0px;
-  --grid-bg:
-    linear-gradient(180deg, rgba(255, 61, 139, 0.08), transparent 40%),
-    radial-gradient(ellipse 70% 50% at 50% 100%, rgba(255, 230, 0, 0.05), transparent 60%);
-  --noise-opacity: 0.03;
-  --scanline-opacity: 0.08;
-}
-
-/* Light-mode overrides — toggled via .light class on <html>, scoped per theme */
-html.light[data-theme='underground'] {
-  --color-surface-base: #f7f5ff;
-  --color-surface-raised: #ffffff;
-  --color-surface-overlay: #ecebff;
-  --color-surface-sunken: #efecff;
-  --color-text-primary: #0a0a18;
-  --color-text-secondary: #5a5a7a;
-  --color-text-muted: #a0a0c0;
-  --color-border: #e0dff2;
-  --color-border-hover: #c5c3e5;
-  --color-border-strong: #a8a5d4;
-  --grid-bg: radial-gradient(
-    ellipse 80% 60% at 50% -10%,
-    rgba(109, 40, 217, 0.12),
-    transparent 60%
-  );
-  --noise-opacity: 0.02;
-}
-
-html.light[data-theme='tactical'] {
-  --color-surface-base: #f4f4f2;
-  --color-surface-raised: #ffffff;
-  --color-surface-overlay: #ebebe8;
-  --color-surface-sunken: #eeeeeb;
-  --color-text-primary: #12161b;
-  --color-text-secondary: #5a6069;
-  --color-text-muted: #9aa0a9;
-  --color-border: #dcdcd8;
-  --color-border-hover: #c0c0bc;
-  --color-border-strong: #a0a09c;
-  --color-neon: #12161b;
-}
-
-html.light[data-theme='arcade'] {
-  --color-surface-base: #fff5ec;
-  --color-surface-raised: #ffffff;
-  --color-surface-overlay: #ffe8d0;
-  --color-surface-sunken: #ffeedb;
-  --color-text-primary: #2a0e1e;
-  --color-text-secondary: #6a3a52;
-  --color-text-muted: #b088a0;
-  --color-border: #ffd2b8;
-  --color-border-hover: #ffb890;
-  --color-border-strong: #e89868;
-  --color-neon: #c46b00;
+/* Light mode — toggled via .light class on <html> */
+html.light {
+  --color-surface-base: #f4f1e8;
+  --color-surface-raised: #ece8da;
+  --color-surface-sunken: #d8d3c4;
+  --color-text-primary: #1a1810;
+  --color-text-secondary: #5a5444;
+  --color-text-muted: #6b6553;
+  --color-border: #1a1810;
+  --color-border-strong: #1a1810;
+  --color-ink: #c41825;
+  --color-signal: #3a6fb5;
+  --color-signal-text: #f4f1e8;
+  /* Bridge aliases follow ink in light mode too */
+  --color-brand: #c41825;
+  --color-brand-light: #c41825;
+  --color-neon: #c41825;
+  --color-neon-dim: rgba(196, 24, 37, 0.12);
+  --color-surface-overlay: #ece8da;
+  --color-border-hover: #1a1810;
+  --color-success: #5a5444;
+  --color-error: #3a6fb5;
+  --color-warning: #5a5444;
+  --noise-opacity: 0.018;
 }
 
 html {
@@ -275,30 +131,25 @@ html.light {
   }
 }
 
-/* Ambient grid background */
+/* Top-of-fold printed rule, just under the sticky nav */
 body::before {
   content: '';
   position: fixed;
-  inset: 0;
-  background: var(--grid-bg);
+  top: 64px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--color-border);
   pointer-events: none;
   z-index: 1;
 }
 
-/* Ambient noise + scanlines */
+/* Subtle paper noise — takes the digital sheen off */
 body::after {
   content: '';
   position: fixed;
   inset: 0;
-  background:
-    repeating-linear-gradient(
-      0deg,
-      rgba(255, 255, 255, var(--scanline-opacity)) 0,
-      rgba(255, 255, 255, var(--scanline-opacity)) 1px,
-      transparent 1px,
-      transparent 3px
-    ),
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.5 0'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='1'/></svg>");
+  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.5 0'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='1'/></svg>");
   opacity: var(--noise-opacity);
   pointer-events: none;
   mix-blend-mode: overlay;
@@ -308,54 +159,13 @@ body::after {
 /* Content above ambient layers */
 main,
 header,
-footer {
+footer,
+nav {
   position: relative;
   z-index: 3;
 }
 
-/* Chamfered corner utility (two opposite corners cut) */
-.chamfer {
-  clip-path: polygon(
-    var(--corner-cut) 0,
-    100% 0,
-    100% calc(100% - var(--corner-cut)),
-    calc(100% - var(--corner-cut)) 100%,
-    0 100%,
-    0 var(--corner-cut)
-  );
-}
-
-/* Logo mark shape */
-.logo__mark {
-  width: 22px;
-  height: 22px;
-  background: var(--color-brand);
-  display: inline-block;
-  position: relative;
-  clip-path: polygon(0 0, 100% 0, 100% 70%, 70% 100%, 0 100%);
-  flex-shrink: 0;
-}
-
-.logo__mark::after {
-  content: '';
-  position: absolute;
-  inset: 4px;
-  background: var(--color-surface-base);
-  clip-path: polygon(0 0, 100% 0, 100% 60%, 60% 100%, 0 100%);
-}
-
-.logo__mark::before {
-  content: '';
-  position: absolute;
-  width: 6px;
-  height: 6px;
-  right: 4px;
-  bottom: 4px;
-  background: var(--color-neon);
-  z-index: 2;
-}
-
-/* Page eyebrow pulse dot */
+/* Page eyebrow / live pulse dot */
 @keyframes pulse {
   0%,
   100% {
@@ -385,19 +195,29 @@ footer {
   }
 }
 
-/* Placeholder art (SVG gradient for missing images) */
+/* Loading ticker bar — pulses width like a wire-service feed */
+@keyframes tick {
+  0%,
+  100% {
+    transform: scaleX(0);
+  }
+  50% {
+    transform: scaleX(1);
+  }
+}
+
+/* Placeholder art for missing images — flat stripes, the one
+   sanctioned gradient (an honest render-failure fallback) */
 .placeholder-art {
   width: 100%;
   height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  background:
-    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.03) 0 8px, transparent 8px 16px),
-    linear-gradient(135deg, var(--stop1, #3a2a6a), var(--stop2, #1a1040));
+  background: repeating-linear-gradient(135deg, #221e16 0 14px, #1a160f 14px 28px);
   font-family: var(--font-mono);
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--color-text-muted);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   position: relative;
@@ -410,43 +230,34 @@ footer {
   left: 10px;
 }
 
-/* Section title accent bar */
+/* ============================================================
+   DEPRECATED v1 shims — DELETE IN CLEANUP PHASE.
+   Minimal Newsprint-toned stand-ins so views that haven't been
+   re-skinned yet keep their layout mid-branch.
+   ============================================================ */
+
+.feed-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 28px 22px;
+}
+
 .section-title-bar::before {
   content: '';
   width: 6px;
   height: 22px;
-  background: var(--color-brand);
+  background: var(--color-ink);
   display: inline-block;
 }
 
-/* Feed grid — gap driven by --feed-gap for density toggle */
-.feed-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: var(--feed-gap);
+.logo__mark {
+  width: 8px;
+  height: 8px;
+  background: var(--color-ink);
+  display: inline-block;
+  flex-shrink: 0;
 }
 
-@media (min-width: 1200px) {
-  .feed-grid {
-    grid-template-columns: repeat(4, 1fr);
-  }
-}
-
-/* Tactical and Arcade are square-cornered — chamfer is a no-op. */
-[data-theme='tactical'] .chamfer,
-[data-theme='arcade'] .chamfer {
-  clip-path: none;
-}
-
-/* Logo ".TV" suffix — color is theme-coupled, lives here to override per data-theme */
 .logo__tv {
-  color: var(--color-brand-light);
-}
-
-[data-theme='tactical'] .logo__tv {
-  color: var(--color-brand);
-}
-
-[data-theme='arcade'] .logo__tv {
-  color: var(--color-neon);
+  color: var(--color-ink);
 }

@@ -26,6 +26,16 @@ function onKeydown(e: KeyboardEvent) {
     emit('click')
   }
 }
+
+// Enter fires the link's native synthetic click; Space we preventDefault so it
+// doesn't scroll the page on top of the navigation. Both stop so the parent
+// article's @keydown doesn't also route to the clip detail. One handler — two
+// @keydown bindings would compile to duplicate object keys (TS1117).
+function onLinkKeydown(e: KeyboardEvent) {
+  if (e.key !== 'Enter' && e.key !== ' ') return
+  if (e.key === ' ') e.preventDefault()
+  e.stopPropagation()
+}
 </script>
 
 <template>
@@ -46,17 +56,14 @@ function onKeydown(e: KeyboardEvent) {
       />
       <!-- Game tag — top-left. Links to /game/:slug. The handlers stop both
            pointer and keyboard activation from bubbling to the parent article,
-           whose @click + @keydown otherwise route to the clip detail instead.
-           Enter fires the link's native synthetic click; Space we preventDefault
-           so it doesn't scroll the page on top of the navigation. -->
+           whose @click + @keydown otherwise route to the clip detail instead. -->
       <RouterLink
         v-if="props.clip.game"
         :to="{ name: 'game-detail', params: { slug: props.clip.game.slug } }"
         :aria-label="`Browse ${props.clip.game.name} clips`"
         class="absolute left-2 top-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-brand"
         @click.stop
-        @keydown.enter.stop
-        @keydown.space.prevent.stop
+        @keydown="onLinkKeydown"
       >
         <GameTag :tag="props.clip.game.tag" />
       </RouterLink>

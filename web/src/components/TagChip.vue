@@ -15,6 +15,16 @@ withDefaults(
   }>(),
   { interactive: true },
 )
+
+// Enter fires the link's native synthetic click; Space we preventDefault so it
+// doesn't scroll the page on top of the navigation. Both stop so the parent
+// card's @keydown doesn't also route to the clip detail. One handler — two
+// @keydown bindings would compile to duplicate object keys (TS1117).
+function onLinkKeydown(e: KeyboardEvent) {
+  if (e.key !== 'Enter' && e.key !== ' ') return
+  if (e.key === ' ') e.preventDefault()
+  e.stopPropagation()
+}
 </script>
 
 <template>
@@ -27,8 +37,7 @@ withDefaults(
       size === 'md' ? 'px-2.5 py-1 text-[10px] tracking-[0.08em]' : 'px-1.5 py-0.5 text-[10px]'
     "
     @click.stop
-    @keydown.enter.stop
-    @keydown.space.prevent.stop
+    @keydown="onLinkKeydown"
   >
     #{{ name }}
   </RouterLink>

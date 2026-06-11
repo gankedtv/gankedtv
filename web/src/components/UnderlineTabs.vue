@@ -17,16 +17,16 @@ defineEmits<{
 </script>
 
 <template>
-  <div class="flex items-center border-b border-border">
+  <div class="flex items-center gap-7 border-b border-border">
     <template v-for="t in tabs" :key="t.key">
       <RouterLink
         v-if="t.to"
         :to="t.to"
         :class="[
-          'relative cursor-pointer border-none bg-transparent px-4.5 py-3 font-mono text-xs uppercase tracking-[0.08em] no-underline transition-colors duration-150 hover:text-text-primary',
+          'relative -mb-px cursor-pointer whitespace-nowrap border-b-2 bg-transparent pb-3 font-mono text-[11px] uppercase tracking-[0.15em] no-underline transition-colors duration-150 hover:text-ink',
           t.key === active
-            ? `text-text-primary after:absolute after:right-0 after:-bottom-px after:left-0 after:h-0.5 after:rounded-t-xs after:bg-brand-light after:content-['']`
-            : 'text-text-muted',
+            ? 'border-ink text-text-primary'
+            : 'border-transparent text-text-secondary',
         ]"
       >
         {{ t.label }}
@@ -34,10 +34,10 @@ defineEmits<{
       <button
         v-else
         :class="[
-          'relative cursor-pointer border-none bg-transparent px-4.5 py-3 font-mono text-xs uppercase tracking-[0.08em] transition-colors duration-150 hover:text-text-primary',
+          'relative -mb-px cursor-pointer whitespace-nowrap border-b-2 bg-transparent pb-3 font-mono text-[11px] uppercase tracking-[0.15em] transition-colors duration-150 hover:text-ink',
           t.key === active
-            ? `text-text-primary after:absolute after:right-0 after:-bottom-px after:left-0 after:h-0.5 after:rounded-t-xs after:bg-brand-light after:content-['']`
-            : 'text-text-muted',
+            ? 'border-ink text-text-primary'
+            : 'border-transparent text-text-secondary',
         ]"
         @click="$emit('select', t.key)"
       >

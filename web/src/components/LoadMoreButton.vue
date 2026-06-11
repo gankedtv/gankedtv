@@ -22,9 +22,12 @@ defineEmits<{
     <button
       :disabled="loading"
       @click="$emit('load')"
-      class="cursor-pointer rounded-sm border border-border bg-surface-raised px-6 py-2.5 font-mono text-[11px] uppercase tracking-[0.08em] text-text-primary transition-colors duration-150 hover:border-brand-light disabled:opacity-50"
+      class="inline-flex cursor-pointer items-center gap-3 border border-border bg-transparent px-6 py-2.5 font-mono text-[11px] uppercase tracking-[0.08em] text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink disabled:opacity-50"
     >
-      {{ loading ? 'Loading…' : errored ? 'Retry' : 'Load more' }}
+      <span v-if="loading" class="block h-1.5 w-5.5 overflow-hidden bg-surface-raised">
+        <span class="block h-full w-full origin-left bg-ink animate-[tick_1.6s_ease-in-out_infinite]"></span>
+      </span>
+      {{ loading ? 'Loading' : errored ? 'Retry' : 'Load more' }}
     </button>
   </div>
 </template>
