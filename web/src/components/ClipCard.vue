@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import type { ClipFeedItem } from '@/api/clips'
 import { formatNum, formatRelativeTime } from '@/lib/format'
-import UserAvatar from './UserAvatar.vue'
+import { issueNumber } from '@/lib/issue'
 import GameTag from './GameTag.vue'
 import DurationBadge from './DurationBadge.vue'
 import AuthorHandle from './AuthorHandle.vue'
@@ -39,29 +39,36 @@ function onLinkKeydown(e: KeyboardEvent) {
 </script>
 
 <template>
+  <!-- No card chrome: the clip sits directly on the page surface. Hover is a
+       border + title color swap — never a transform, shadow, or glow. -->
   <article
     role="button"
     tabindex="0"
     :aria-label="clip.title"
-    class="group relative flex cursor-pointer flex-col overflow-hidden rounded-md border border-border bg-surface-raised transition-all duration-200 outline-none hover:-translate-y-0.5 hover:border-brand hover:shadow-[0_14px_40px_-14px_var(--color-brand-glow)] focus-visible:border-brand focus-visible:shadow-[0_14px_40px_-14px_var(--color-brand-glow)]"
+    class="group flex cursor-pointer flex-col gap-2.5 outline-none"
     @click="emit('click')"
     @keydown="onKeydown"
   >
     <!-- Thumbnail -->
-    <div class="relative aspect-video overflow-hidden bg-surface-sunken">
-      <img
-        :src="props.clip.thumbnailUrl"
-        alt=""
-        class="h-full w-full object-cover transition-transform duration-400 group-hover:scale-104"
-      />
-      <!-- Game tag — top-left. Links to /game/:slug. The handlers stop both
+    <div
+      class="relative aspect-video overflow-hidden border border-border bg-surface-sunken transition-colors duration-150 group-hover:border-ink group-focus-visible:border-ink"
+    >
+      <img :src="props.clip.thumbnailUrl" alt="" class="h-full w-full object-cover" />
+      <!-- Issue number — the motif is the brand. -->
+      <span
+        class="absolute left-2.5 top-2 font-heading text-2xl font-bold leading-none text-ink opacity-85"
+        aria-hidden="true"
+      >
+        No. {{ issueNumber(props.clip.id) }}
+      </span>
+      <!-- Game tag — bottom-left. Links to /game/:slug. The handlers stop both
            pointer and keyboard activation from bubbling to the parent article,
            whose @click + @keydown otherwise route to the clip detail instead. -->
       <RouterLink
         v-if="props.clip.game"
         :to="{ name: 'game-detail', params: { slug: props.clip.game.slug } }"
         :aria-label="`Browse ${props.clip.game.name} clips`"
-        class="absolute left-2 top-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-brand"
+        class="absolute bottom-2 left-2 outline-none focus-visible:ring-2 focus-visible:ring-ink"
         @click.stop
         @keydown="onLinkKeydown"
       >
@@ -71,55 +78,47 @@ function onLinkKeydown(e: KeyboardEvent) {
       <DurationBadge :seconds="props.clip.durationSecs" class="absolute bottom-2 right-2" />
     </div>
 
-    <!-- Body -->
-    <div class="flex flex-col gap-2 px-3.5 pb-3.5 pt-3">
-      <h3
-        class="m-0 line-clamp-2 min-h-[2.7em] font-body text-sm font-medium leading-[1.35] text-text-primary"
-      >
-        {{ clip.title }}
-      </h3>
+    <!-- Title -->
+    <h3
+      class="m-0 line-clamp-2 min-h-9 font-heading text-base font-medium uppercase leading-[1.1] text-text-primary transition-colors duration-150 group-hover:text-ink"
+    >
+      {{ clip.title }}
+    </h3>
 
-      <!-- Tag row: up to 3 chips + "+N" overflow indicator. Hidden when the
-           clip has no tags so cards without tags don't grow a blank row. The
-           overflow chip is a plain span — it isn't a link to any tag in
-           particular, just a visual cue that more exist on the detail page.
-           Both elements .stop the click so the chip area doesn't double as a
-           card-click target (TagChip's internal RouterLink also .stops, but
-           the redundancy makes the contract obvious from this template). -->
-      <div v-if="clip.tags.length" class="flex flex-wrap gap-1.5">
-        <TagChip v-for="t in visibleTags" :key="t.id" :slug="t.slug" :name="t.name" @click.stop />
-        <span
-          v-if="overflowCount > 0"
-          class="rounded-[3px] border border-border-strong bg-surface-base px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-text-muted"
-          @click.stop
-        >
-          +{{ overflowCount }}
-        </span>
-      </div>
-
-      <div
-        v-if="showAuthor"
-        class="flex items-center gap-2 overflow-hidden font-mono text-[11px] text-text-secondary"
+    <!-- Tag row: up to 3 chips + "+N" overflow indicator. Hidden when the
+         clip has no tags so cards without tags don't grow a blank row. Both
+         elements .stop the click so the chip area doesn't double as a
+         card-click target. -->
+    <div v-if="clip.tags.length" class="flex flex-wrap gap-1.5">
+      <TagChip v-for="t in visibleTags" :key="t.id" :slug="t.slug" :name="t.name" @click.stop />
+      <span
+        v-if="overflowCount > 0"
+        class="border border-border px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted"
+        @click.stop
       >
-        <UserAvatar :user="clip.author" :size="20" />
-        <AuthorHandle :username="clip.author.username" class="min-w-0 shrink truncate text-neon" />
-        <span class="shrink-0 text-text-muted">·</span>
-        <span class="shrink-0">{{ formatRelativeTime(clip.createdAt) }} ago</span>
-      </div>
+        +{{ overflowCount }}
+      </span>
+    </div>
 
-      <div
-        class="flex gap-2.5 border-t border-dashed border-border pt-1.5 font-mono text-[11px] text-text-muted"
-      >
-        <span class="inline-flex items-center gap-1">
-          <IconHeart :size="11" />
-          {{ formatNum(clip.likeCount) }}
-        </span>
+    <!-- Meta strip — mono caps, @author in ink, stats right-aligned -->
+    <div
+      class="flex items-center gap-2 overflow-hidden font-mono text-[10px] uppercase tracking-[0.06em] text-text-muted"
+    >
+      <template v-if="showAuthor">
+        <AuthorHandle :username="clip.author.username" class="min-w-0 shrink truncate text-ink" />
+        <span class="shrink-0">·</span>
+      </template>
+      <span class="shrink-0">{{ formatRelativeTime(clip.createdAt) }}</span>
+      <span class="ml-auto flex shrink-0 items-center gap-2.5">
         <span class="inline-flex items-center gap-1">
           <IconEye :size="11" />
           {{ formatNum(clip.viewCount) }}
         </span>
-        <span v-if="!showAuthor" class="ml-auto">{{ formatRelativeTime(clip.createdAt) }} ago</span>
-      </div>
+        <span class="inline-flex items-center gap-1">
+          <IconHeart :size="11" />
+          {{ formatNum(clip.likeCount) }}
+        </span>
+      </span>
     </div>
   </article>
 </template>

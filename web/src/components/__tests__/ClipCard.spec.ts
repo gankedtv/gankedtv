@@ -94,7 +94,7 @@ describe('ClipCard', () => {
       global: { plugins: [makeRouter()] },
     })
     expect(wrapper.text()).not.toContain('@phantomveil')
-    expect(wrapper.text()).toContain('ago')
+    expect(wrapper.text()).toContain('2h')
     expect(wrapper.find('img').attributes('src')).toBe('https://cdn.test/thumb.jpg')
   })
 

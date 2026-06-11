@@ -32,7 +32,7 @@ function onLinkKeydown(e: KeyboardEvent) {
     v-if="interactive"
     :to="{ name: 'tag-detail', params: { slug } }"
     :aria-label="`Browse #${slug}`"
-    class="rounded-[3px] border border-border-strong bg-surface-base font-mono font-medium uppercase tracking-[0.06em] text-text-primary outline-none transition-colors duration-150 hover:border-brand-light hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
+    class="border border-border bg-transparent font-mono font-medium uppercase tracking-[0.08em] text-text-secondary outline-none transition-colors duration-150 hover:border-ink hover:text-ink focus-visible:border-ink focus-visible:text-ink"
     :class="
       size === 'md' ? 'px-2.5 py-1 text-[10px] tracking-[0.08em]' : 'px-1.5 py-0.5 text-[10px]'
     "
@@ -43,7 +43,7 @@ function onLinkKeydown(e: KeyboardEvent) {
   </RouterLink>
   <span
     v-else
-    class="rounded-[3px] border border-border-strong bg-surface-base font-mono font-medium uppercase tracking-[0.06em] text-text-muted"
+    class="border border-border bg-transparent font-mono font-medium uppercase tracking-[0.08em] text-text-muted"
     :class="
       size === 'md' ? 'px-2.5 py-1 text-[10px] tracking-[0.08em]' : 'px-1.5 py-0.5 text-[10px]'
     "

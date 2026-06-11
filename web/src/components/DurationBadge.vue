@@ -19,7 +19,7 @@ const text = computed(() => (props.seconds === null ? null : formatDuration(prop
 <template>
   <span
     v-if="text"
-    class="rounded-[3px] bg-black/75 font-mono leading-none text-white backdrop-blur-xs"
+    class="bg-black/55 font-mono leading-none text-[#f4f1e8]"
     :class="
       size === 'md'
         ? 'px-2.5 py-1.25 text-[11px] tracking-[0.06em]'

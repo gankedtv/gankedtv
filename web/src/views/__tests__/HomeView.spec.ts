@@ -76,12 +76,11 @@ async function mountHome(): Promise<VueWrapper> {
   return wrapper
 }
 
-// Text of the two feed bands below the hero (Latest Drops + main grid). The hero
-// renders outside any .feed-grid (and is duplicated across the desktop/mobile
-// breakpoints), so scoping to .feed-grid isolates the non-hero items cleanly.
+// Text of the feed bands below the hero (the Latest Drops ranked list + The
+// Feed grid). Scoping to the testids isolates the non-hero items cleanly.
 function bandText(wrapper: VueWrapper): string {
   return wrapper
-    .findAll('.feed-grid')
+    .findAll('[data-testid="latest-drops"], [data-testid="feed-grid"]')
     .map((g) => g.text())
     .join(' ')
 }
