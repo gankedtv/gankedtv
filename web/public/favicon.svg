@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <polygon points="21,12 52,12 52,43 43,52 12,52 12,21" fill="#161410"></polygon>
+  <path fill-rule="evenodd" fill="#ed3a47" d="M18 4 L60 4 L60 46 L46 60 L4 60 L4 18 Z M21 12 L12 21 L12 52 L43 52 L52 43 L52 12 Z"></path>
+  <polygon points="26,20 46,32 26,44" fill="#f4f1e8"></polygon>
+  <polygon points="45,59 59,45 63,49 49,63" fill="#f4f1e8"></polygon>
+</svg>
