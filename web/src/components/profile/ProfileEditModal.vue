@@ -16,9 +16,9 @@ const AVATAR_MAX = 512
 const BANNER_W = 1600
 const BANNER_H = 400
 
-// Preset accent swatches sourced from the design system brand/neon tokens so users get
-// a tasteful starting set. They're a convenience; the picker still allows any hex value.
-const ACCENT_PRESETS = ['#6D28D9', '#7C3AED', '#00E5A0', '#FF4466', '#F59E0B', '#0EA5E9']
+// Preset accent swatches sourced from the Newsprint palette (ink, signal) plus
+// warm print-adjacent tints. They're a convenience; the picker still allows any hex.
+const ACCENT_PRESETS = ['#ED3A47', '#C41825', '#6C9BCF', '#C9A24A', '#7D8A52', '#9C5F6A']
 
 const username = ref('')
 const bio = ref('')
@@ -303,8 +303,9 @@ async function save() {
 }
 
 const inputClass =
-  'w-full rounded-md border border-border bg-surface-raised px-3.5 py-3 font-body text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-border-hover transition-colors duration-150'
-const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest text-text-muted'
+  'w-full rounded-sm border border-border bg-surface-raised px-3.5 py-3 font-body text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-ink transition-colors duration-150'
+const labelClass =
+  'mb-1.5 block font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary'
 const sectionClass = 'flex flex-col gap-2.5'
 
 const currentAvatarUrl = computed(() => avatarPreview.value ?? safeImageUrl(auth.user?.avatarUrl))
@@ -324,23 +325,30 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
         class="fixed inset-0 z-50 flex items-center justify-center px-4"
         @click.self="emit('close')"
       >
-        <div class="absolute inset-0 bg-black/70" @click="emit('close')" />
+        <div class="absolute inset-0 bg-surface-sunken/90" @click="emit('close')" />
 
         <div
-          class="relative z-10 flex max-h-[90vh] w-full max-w-2xl flex-col rounded-md border border-border bg-surface-raised shadow-[0_0_40px_var(--color-brand-glow)]"
+          class="relative z-10 flex max-h-[90vh] w-full max-w-2xl flex-col border border-border-strong bg-surface-base"
           @click.stop
         >
-          <div class="flex items-center justify-between border-b border-border px-5 py-4">
-            <h2
-              class="font-heading text-lg font-bold uppercase tracking-[0.04em] text-text-primary"
-            >
-              Edit profile
-            </h2>
+          <div class="flex items-start justify-between border-b border-border px-5 py-4">
+            <div>
+              <p
+                class="m-0 font-mono text-[10px] uppercase leading-none tracking-[0.22em] text-text-secondary"
+              >
+                Your file
+              </p>
+              <h2
+                class="m-0 mt-2 font-heading text-xl font-bold uppercase leading-none tracking-[0.02em] text-text-primary"
+              >
+                Edit profile
+              </h2>
+            </div>
             <button
               type="button"
               @click="emit('close')"
               aria-label="Close"
-              class="cursor-pointer font-mono text-xl leading-none text-text-muted transition-colors duration-150 hover:text-text-primary"
+              class="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center border border-border font-mono text-base leading-none text-text-muted transition-colors duration-150 hover:border-ink hover:text-ink"
             >
               ×
             </button>
@@ -351,7 +359,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
             <div :class="sectionClass">
               <label :class="labelClass">Banner</label>
               <div
-                class="relative h-32 w-full overflow-hidden rounded-md border border-border bg-surface-overlay"
+                class="relative h-32 w-full overflow-hidden border border-border bg-surface-raised"
               >
                 <img
                   v-if="currentBannerUrl"
@@ -365,7 +373,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
               </div>
               <div class="flex items-center gap-2">
                 <label
-                  class="cursor-pointer rounded-md border border-border bg-surface-overlay px-3 py-2 font-mono text-[11px] uppercase tracking-widest text-text-secondary transition-colors duration-150 hover:border-border-hover hover:text-text-primary"
+                  class="cursor-pointer border border-border bg-transparent px-3 py-2 font-mono text-[11px] uppercase tracking-widest text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink"
                 >
                   Choose banner…
                   <input type="file" accept="image/*" class="hidden" @change="pickBanner" />
@@ -386,7 +394,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
               <label :class="labelClass">Avatar</label>
               <div class="flex items-center gap-4">
                 <div
-                  class="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-surface-overlay text-xs text-text-muted"
+                  class="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden border border-border bg-surface-raised text-xs text-text-muted"
                 >
                   <img
                     v-if="currentAvatarUrl"
@@ -398,7 +406,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
                 </div>
                 <div class="flex flex-col gap-2">
                   <label
-                    class="cursor-pointer self-start rounded-md border border-border bg-surface-overlay px-3 py-2 font-mono text-[11px] uppercase tracking-widest text-text-secondary transition-colors duration-150 hover:border-border-hover hover:text-text-primary"
+                    class="cursor-pointer self-start border border-border bg-transparent px-3 py-2 font-mono text-[11px] uppercase tracking-widest text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink"
                   >
                     Choose avatar…
                     <input type="file" accept="image/*" class="hidden" @change="pickAvatar" />
@@ -415,7 +423,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
                     v-if="canShowResetAvatar"
                     type="button"
                     :disabled="resetBusy"
-                    class="self-start cursor-pointer font-mono text-[11px] uppercase tracking-widest text-text-muted hover:text-neon disabled:opacity-60"
+                    class="self-start cursor-pointer font-mono text-[11px] uppercase tracking-widest text-text-muted hover:text-ink disabled:opacity-60"
                     @click="resetToOAuthAvatar"
                   >
                     {{ resetBusy ? 'Resetting…' : 'Switch back to my Discord/Google picture' }}
@@ -456,8 +464,8 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
               <div class="flex flex-wrap items-center gap-3">
                 <input
                   type="color"
-                  :value="accent || '#6d28d9'"
-                  class="h-9 w-12 cursor-pointer rounded-sm border border-border bg-transparent"
+                  :value="accent || '#ed3a47'"
+                  class="h-9 w-12 cursor-pointer border border-border bg-transparent"
                   @input="(e) => (accent = (e.target as HTMLInputElement).value.toUpperCase())"
                 />
                 <input
@@ -472,7 +480,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
                     :key="hex"
                     type="button"
                     :title="hex"
-                    class="h-7 w-7 cursor-pointer rounded-full border border-border transition-transform duration-150 hover:scale-110"
+                    class="h-7 w-7 cursor-pointer border border-border transition-colors duration-150 hover:border-ink"
                     :style="{ background: hex }"
                     @click="accent = hex"
                   />
@@ -533,7 +541,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
 
             <p
               v-if="errorMsg"
-              class="rounded-sm border border-[color:var(--color-error)] bg-[color:var(--color-error)]/10 px-3 py-2 font-mono text-[12px] text-[color:var(--color-error)]"
+              class="border border-signal px-3 py-2 font-mono text-[12px] text-signal"
             >
               {{ errorMsg }}
             </p>
@@ -544,7 +552,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
               type="button"
               :disabled="hasUploadInFlight"
               @click="emit('close')"
-              class="cursor-pointer rounded-md border border-border bg-surface-overlay px-5 py-2.5 font-heading text-sm font-bold uppercase tracking-wider text-text-secondary transition-colors duration-150 hover:text-text-primary disabled:opacity-60"
+              class="cursor-pointer border border-border bg-transparent px-5 py-2.5 font-body text-sm font-medium text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink disabled:opacity-60"
             >
               Cancel
             </button>
@@ -552,7 +560,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
               type="button"
               :disabled="hasUploadInFlight"
               @click="save"
-              class="cursor-pointer rounded-md bg-brand-light px-5 py-2.5 font-heading text-sm font-bold uppercase tracking-wider text-white transition-colors duration-150 hover:bg-brand disabled:cursor-not-allowed disabled:bg-surface-overlay disabled:text-text-muted"
+              class="cursor-pointer bg-ink px-5 py-2.5 font-body text-sm font-medium text-signal-text transition-[filter] duration-150 hover:brightness-108 disabled:cursor-not-allowed disabled:bg-surface-raised disabled:text-text-muted"
             >
               {{ hasUploadInFlight ? 'Saving…' : 'Save' }}
             </button>

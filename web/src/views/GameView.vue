@@ -8,7 +8,7 @@ import { useAuthStore } from '@/stores/auth'
 import ClipCard from '@/components/ClipCard.vue'
 import GameTag from '@/components/GameTag.vue'
 import GameLeaderboardBlock from '@/components/GameLeaderboardBlock.vue'
-import PageHeader from '@/components/PageHeader.vue'
+import SectionHeader from '@/components/SectionHeader.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
 
 const route = useRoute()
@@ -180,14 +180,12 @@ watch(slug, () => {
 </script>
 
 <template>
-  <main
-    class="mx-auto max-w-360 px-6 pt-8 pb-30 max-[899px]:px-3.5 max-[899px]:pt-4 max-[899px]:pb-20"
-  >
+  <main class="mx-auto max-w-360 px-8 pt-10 pb-30 max-tablet:px-4 max-tablet:pt-5 max-tablet:pb-20">
     <!-- Not-found state -->
     <StatusPanel v-if="notFound" kind="empty" message="No game with that slug.">
       <RouterLink
         to="/games"
-        class="rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+        class="border border-border px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
       >
         Back to games
       </RouterLink>
@@ -196,7 +194,7 @@ watch(slug, () => {
     <!-- Initial error -->
     <StatusPanel v-else-if="errored" kind="error" message="Couldn't load this game.">
       <button
-        class="cursor-pointer rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+        class="cursor-pointer border border-border bg-transparent px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
         @click="retry"
       >
         Retry
@@ -204,49 +202,39 @@ watch(slug, () => {
     </StatusPanel>
 
     <!-- Initial loading -->
-    <StatusPanel v-else-if="initialLoading && !game" kind="loading" message="Loading…" />
+    <StatusPanel v-else-if="initialLoading && !game" kind="loading" message="Loading" />
 
     <template v-else-if="game">
-      <!-- Header -->
-      <section
-        class="relative mb-10 overflow-hidden rounded-lg border border-border bg-surface-raised"
-      >
-        <!-- Covers are <img> not background-image so a hostile coverUrl can't break out of a CSS
-             url() string. Backdrop: the same art blurred + dimmed to fill the wide banner without
-             showing a hard crop of the portrait source. -->
+      <!-- Editorial header: 3:4 cover tile + kicker + oversized name + meta. -->
+      <section class="mb-10 flex items-end gap-7 border-b border-border pb-7 max-tablet:flex-col max-tablet:items-start max-tablet:gap-4">
+        <!-- Crisp portrait cover (real box-art aspect, no crop). alt="" — decorative: the game
+             name is the visible <h1> right beside it, so a bound alt would re-announce it.
+             Covers are <img> not background-image so a hostile coverUrl can't break out of a
+             CSS url() string. -->
         <img
           v-if="game.coverUrl"
           :src="game.coverUrl"
           alt=""
-          aria-hidden="true"
-          class="absolute inset-0 h-full w-full scale-110 object-cover opacity-25 blur-2xl"
+          class="aspect-3/4 w-30 shrink-0 border border-border object-cover max-tablet:w-24"
         />
-        <div
-          class="absolute inset-0 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--color-surface-raised)_55%,transparent)_0%,var(--color-surface-raised)_100%)]"
-          aria-hidden="true"
-        ></div>
-        <div
-          class="relative flex items-end gap-6 px-8 py-8 max-[899px]:flex-col max-[899px]:items-start max-[899px]:gap-4 max-[899px]:px-5 max-[899px]:py-7"
-        >
-          <!-- Crisp portrait cover (real box-art aspect, no crop). alt="" — decorative: the game
-               name is the visible <h1> right beside it, so a bound alt would re-announce it. -->
-          <img
-            v-if="game.coverUrl"
-            :src="game.coverUrl"
-            alt=""
-            class="aspect-3/4 w-32 shrink-0 rounded-md border border-border-strong object-cover shadow-[0_12px_30px_-14px_var(--color-brand-glow)] max-[899px]:w-24"
-          />
-          <PageHeader :title="game.name" pulse>
-            <template #caption>
-              Game · {{ game.clipCount }} clip{{ game.clipCount === 1 ? '' : 's' }}
-            </template>
-            <div class="mt-3 flex items-center gap-3">
-              <GameTag :tag="game.tag" size="md" />
-              <span class="font-mono text-[11px] uppercase tracking-[0.08em] text-text-muted">
-                /{{ game.slug }}
-              </span>
-            </div>
-          </PageHeader>
+        <div class="min-w-0">
+          <p class="m-0 font-mono text-[10px] uppercase tracking-[0.22em] text-text-secondary">
+            <span class="text-ink">The Catalogue</span> · {{ game.clipCount }} clip{{
+              game.clipCount === 1 ? '' : 's'
+            }}
+            filed
+          </p>
+          <h1
+            class="m-0 mt-2 font-heading text-[clamp(36px,4.5vw,52px)] font-bold uppercase leading-none tracking-[0.01em] text-text-primary"
+          >
+            {{ game.name }}
+          </h1>
+          <div class="mt-3 flex items-center gap-3">
+            <GameTag :tag="game.tag" size="md" />
+            <span class="font-mono text-[11px] uppercase tracking-[0.08em] text-text-muted">
+              /{{ game.slug }}
+            </span>
+          </div>
         </div>
       </section>
 
@@ -255,14 +243,17 @@ watch(slug, () => {
       <GameLeaderboardBlock :slug="game.slug" window="week" :limit="5" />
 
       <!-- Clip grid -->
-      <div v-if="items.length" class="feed-grid">
-        <ClipCard
-          v-for="clip in items"
-          :key="clip.id"
-          :clip="clip"
-          @click="router.push({ name: 'clip', params: { id: clip.id } })"
-        />
-      </div>
+      <section v-if="items.length">
+        <SectionHeader roman="III" kicker="Latest" />
+        <div class="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-x-5.5 gap-y-7 pt-6">
+          <ClipCard
+            v-for="clip in items"
+            :key="clip.id"
+            :clip="clip"
+            @click="router.push({ name: 'clip', params: { id: clip.id } })"
+          />
+        </div>
+      </section>
 
       <!-- Empty. CTA only shown to authenticated users — /upload requires auth
            and would otherwise bounce visitors through login. -->
@@ -270,7 +261,7 @@ watch(slug, () => {
         <RouterLink
           v-if="auth.isAuthenticated"
           to="/upload"
-          class="rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+          class="border border-border px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
         >
           Upload a clip
         </RouterLink>
@@ -298,7 +289,7 @@ watch(slug, () => {
         <button
           :disabled="loading"
           @click="retryLoadMore"
-          class="cursor-pointer rounded-sm border border-border bg-surface-raised px-6 py-2.5 font-mono text-[11px] uppercase tracking-[0.08em] text-text-primary transition-colors duration-150 hover:border-brand-light disabled:opacity-50"
+          class="cursor-pointer border border-border bg-transparent px-6 py-2.5 font-mono text-[11px] uppercase tracking-[0.08em] text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink disabled:opacity-50"
         >
           Retry
         </button>

@@ -13,7 +13,7 @@ defineEmits<{ click: [] }>()
 <template>
   <button
     type="button"
-    class="cursor-pointer rounded-sm border border-border bg-surface-overlay px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted transition-colors duration-150 hover:border-brand-light hover:text-text-primary"
+    class="cursor-pointer border border-border bg-transparent px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted transition-colors duration-150 hover:border-ink hover:text-ink"
     @click="$emit('click')"
   >
     {{ tag }}

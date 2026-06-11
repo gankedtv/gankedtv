@@ -9,6 +9,7 @@ import { safeImageUrl } from '@/lib/url'
 import { formatNum } from '@/lib/format'
 import ClipCard from '@/components/ClipCard.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
+import TelemetryStrip, { type TelemetryCell } from '@/components/TelemetryStrip.vue'
 import UnderlineTabs from '@/components/UnderlineTabs.vue'
 import IconShare from '@/components/icons/IconShare.vue'
 import KebabMenu, { type KebabMenuItem } from '@/components/KebabMenu.vue'
@@ -77,17 +78,13 @@ watch(
 
 // Derive a stable avatar color from the username so the banner/avatar render
 // even though the API doesn't return one yet (Phase 2 will store user-picked colors).
+// Flat, low-chroma fill — gradients are banned outside thumbnail fallbacks.
 const avatarColor = computed(() => {
   const name = profile.value?.username ?? ''
   let hash = 0
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0
-  return `hsl(${Math.abs(hash) % 360}, 65%, 45%)`
+  return `hsl(${Math.abs(hash) % 360}, 35%, 38%)`
 })
-
-const bannerGradient = computed(
-  () =>
-    `linear-gradient(135deg, ${avatarColor.value}, color-mix(in oklab, ${avatarColor.value} 20%, #000))`,
-)
 
 const initials = computed(() => {
   const name = profile.value?.username ?? ''
@@ -151,6 +148,42 @@ const joinedDate = computed(() => {
 
 const totalPlays = computed(() => (profile.value?.clips ?? []).reduce((s, c) => s + c.viewCount, 0))
 const totalLikes = computed(() => (profile.value?.clips ?? []).reduce((s, c) => s + c.likeCount, 0))
+
+// Hybrid-voice telemetry strip. Followers/Following become tappable cells when
+// their count is > 0 so a viewer can drill into the list; a 0-count cell stays
+// inert so it doesn't look clickable when the destination would be empty.
+const telemetryCells = computed<TelemetryCell[]>(() => {
+  const p = profile.value
+  if (!p) return []
+  return [
+    { key: 'clips', label: 'Clips', value: formatNum(p.clips.length) },
+    {
+      key: 'followers',
+      label: 'Followers',
+      value: formatNum(p.followerCount),
+      ink: true,
+      action: p.followerCount > 0,
+    },
+    {
+      key: 'following',
+      label: 'Following',
+      value: formatNum(p.followingCount),
+      action: p.followingCount > 0,
+    },
+    { key: 'plays', label: 'Total plays', value: formatNum(totalPlays.value) },
+    { key: 'likes', label: 'Total likes', value: formatNum(totalLikes.value) },
+  ]
+})
+
+function onTelemetryClick(key: string) {
+  const p = profile.value
+  if (!p) return
+  if (key === 'followers') {
+    router.push({ name: 'user-followers', params: { username: p.username } })
+  } else if (key === 'following') {
+    router.push({ name: 'user-following', params: { username: p.username } })
+  }
+}
 
 async function toggleFollow() {
   if (!profile.value || followBusy.value) return
@@ -247,13 +280,13 @@ const TABS: { key: Tab; label: string }[] = [
          through to a comment) INSIDE the root is harmless — only nodes at the component
          root matter. -->
     <main v-if="loading">
-      <StatusPanel kind="loading" message="Loading…" />
+      <StatusPanel kind="loading" message="Loading" />
     </main>
 
     <main v-else-if="errored">
       <StatusPanel kind="error" message="Couldn't load this profile.">
         <button
-          class="cursor-pointer rounded-sm border border-border bg-surface-raised px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+          class="cursor-pointer border border-border bg-transparent px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
           @click="username && loadProfile(username)"
         >
           Retry
@@ -263,9 +296,13 @@ const TABS: { key: Tab; label: string }[] = [
 
     <main v-else-if="profile" class="relative" :style="accentStyle">
       <!-- ===================== BANNER ===================== -->
+      <!-- User-uploaded banner when present; otherwise a flat username-hashed
+           fill. Hairline bottom rule instead of a fade — borders define regions. -->
       <div
-        class="relative h-70 overflow-hidden"
-        :style="bannerImageUrl ? undefined : { background: bannerGradient }"
+        v-if="bannerImageUrl || !profile.accentColor"
+        data-testid="banner"
+        class="relative h-44 overflow-hidden border-b border-border"
+        :style="bannerImageUrl ? undefined : { background: avatarColor }"
       >
         <img
           v-if="bannerImageUrl"
@@ -273,66 +310,57 @@ const TABS: { key: Tab; label: string }[] = [
           :alt="`${profile.username}'s banner`"
           class="absolute inset-0 h-full w-full object-cover"
         />
-        <div
-          v-if="!bannerImageUrl"
-          class="absolute inset-0 bg-[repeating-linear-gradient(45deg,rgba(255,255,255,0.04)_0_12px,transparent_12px_24px)]"
-        ></div>
-        <div
-          class="absolute inset-0 bg-[linear-gradient(0deg,var(--color-surface-base),transparent_60%)]"
-        ></div>
-
-        <!-- Breadcrumb -->
-        <div class="absolute top-6 right-0 left-0">
-          <div class="mx-auto max-w-7xl px-6">
-            <button
-              class="flex cursor-pointer items-center gap-1.5 border-none bg-transparent p-0 font-mono text-[11px] uppercase tracking-[0.08em] text-white/55"
-              @click="router.push({ name: 'home' })"
-            >
-              ← Feed / @{{ profile.username }}
-            </button>
-          </div>
-        </div>
       </div>
+      <div
+        v-else
+        data-testid="banner"
+        class="relative h-44 overflow-hidden border-b border-border"
+        :style="{ background: profile.accentColor }"
+      ></div>
 
       <!-- ===================== INNER CONTENT ===================== -->
-      <div class="mx-auto max-w-7xl px-6 pb-30">
-        <!-- ---- Profile header ---- -->
-        <!-- relative + z-10 lifts the avatar above the banner's fade overlay so the
-           negative-margin overlap actually paints on top instead of behind. -->
-        <div class="relative z-10 -mt-17.5 flex flex-wrap items-start gap-7">
-          <!-- Large avatar -->
+      <div class="mx-auto max-w-7xl px-6 pb-30 max-tablet:px-4">
+        <!-- Breadcrumb -->
+        <div class="pt-5">
+          <button
+            class="flex cursor-pointer items-center gap-1.5 border-none bg-transparent p-0 font-mono text-[11px] uppercase tracking-[0.08em] text-text-muted transition-colors duration-150 hover:text-ink"
+            @click="router.push({ name: 'home' })"
+          >
+            ← Feed / @{{ profile.username }}
+          </button>
+        </div>
+
+        <!-- ---- Editorial header ---- -->
+        <div class="mt-5 flex flex-wrap items-start gap-7">
+          <!-- Large square avatar -->
           <div
-            class="flex h-35 w-35 shrink-0 select-none items-center justify-center rounded-full border-4 font-heading text-[56px] font-bold tracking-[-0.02em] text-white"
-            :class="profile.accentColor ? '' : 'border-surface-base'"
-            :style="{
-              background: bannerGradient,
-              ...(profile.accentColor ? { borderColor: profile.accentColor } : {}),
-            }"
+            class="flex size-22 shrink-0 select-none items-center justify-center overflow-hidden border border-border font-heading text-4xl font-bold tracking-[-0.02em] text-white"
+            :style="avatarImageUrl ? undefined : { background: avatarColor }"
           >
             <img
               v-if="avatarImageUrl"
               :src="avatarImageUrl"
               :alt="profile.username"
-              class="h-full w-full rounded-full object-cover"
+              class="h-full w-full object-cover"
             />
             <span v-else>{{ initials }}</span>
           </div>
 
           <!-- User info -->
-          <div class="min-w-55 flex-1 pt-19">
-            <div class="mb-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-text-muted">
-              Player · Joined {{ joinedDate }}
+          <div class="min-w-55 flex-1">
+            <div
+              class="mb-1.5 font-mono text-[10px] uppercase tracking-[0.22em] text-text-secondary"
+            >
+              <span class="text-ink">Creator</span> · Filed since {{ joinedDate }}
             </div>
 
-            <div class="flex flex-wrap items-center gap-2.5">
-              <h1
-                class="m-0 font-heading text-[44px] font-bold leading-none uppercase tracking-[0.02em] text-text-primary"
-              >
-                {{ profile.username }}
-              </h1>
-            </div>
+            <h1
+              class="m-0 font-heading text-[clamp(36px,4.5vw,52px)] font-bold leading-none uppercase tracking-[0.01em] text-text-primary"
+            >
+              {{ profile.username }}
+            </h1>
 
-            <div class="mt-1.5 font-mono text-sm tracking-[0.04em] text-neon">
+            <div class="mt-1.5 font-mono text-sm tracking-[0.04em] text-ink">
               @{{ profile.username }}
             </div>
 
@@ -352,7 +380,7 @@ const TABS: { key: Tab; label: string }[] = [
                 :href="entry.href"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="inline-flex items-center rounded-sm border border-border bg-surface-raised px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary transition-colors duration-150 hover:border-border-hover hover:text-text-primary"
+                class="inline-flex items-center border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink"
               >
                 {{ entry.label }}
               </a>
@@ -360,14 +388,14 @@ const TABS: { key: Tab; label: string }[] = [
           </div>
 
           <!-- Action buttons (follow + share + more) -->
-          <div class="flex flex-wrap items-center gap-2 pt-19">
+          <div class="flex flex-wrap items-center gap-2">
             <button
               v-if="canShowFollowButton"
               :class="[
-                'flex h-9 cursor-pointer items-center rounded-sm px-4 font-mono text-[11px] uppercase tracking-[0.08em] transition-all duration-150 disabled:opacity-60',
+                'flex h-9 cursor-pointer items-center px-4 font-mono text-[11px] uppercase tracking-[0.08em] transition-colors duration-150 disabled:opacity-60',
                 profile.followedByMe
-                  ? 'bg-brand text-white hover:bg-brand-light'
-                  : 'border border-border bg-surface-raised text-text-primary hover:border-border-hover',
+                  ? 'border border-border bg-transparent text-text-primary hover:border-ink hover:text-ink'
+                  : 'bg-ink text-signal-text transition-[filter] hover:brightness-108',
               ]"
               :disabled="followBusy"
               :aria-pressed="profile.followedByMe === true"
@@ -376,7 +404,7 @@ const TABS: { key: Tab; label: string }[] = [
               {{ profile.followedByMe ? 'Following' : 'Follow' }}
             </button>
             <button
-              class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-sm border border-border bg-surface-raised text-text-secondary transition-[border-color] duration-150 hover:border-border-hover"
+              class="flex h-9 w-9 cursor-pointer items-center justify-center border border-border bg-transparent text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink"
               aria-label="Share profile"
               @click="copyShareUrl"
             >
@@ -384,7 +412,7 @@ const TABS: { key: Tab; label: string }[] = [
             </button>
             <button
               v-if="canShowFollowButton"
-              class="flex h-9 cursor-pointer items-center rounded-sm border border-border bg-surface-raised px-3 font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary transition-colors duration-150 hover:border-[color:var(--color-error)] hover:text-[color:var(--color-error)]"
+              class="flex h-9 cursor-pointer items-center border border-border bg-transparent px-3 font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink"
               aria-label="Report user"
               @click="reportOpen = true"
             >
@@ -402,90 +430,15 @@ const TABS: { key: Tab; label: string }[] = [
             <span
               v-if="copyMessage"
               aria-live="polite"
-              class="font-mono text-[11px] uppercase tracking-widest text-neon"
+              class="font-mono text-[11px] uppercase tracking-widest text-ink"
             >
               {{ copyMessage }}
             </span>
           </div>
         </div>
 
-        <!-- ---- Stat block ----
-             Followers + Following render as RouterLinks when their count is > 0
-             so a viewer can drill into the list. We keep a 0-count cell as a
-             plain <div> so it doesn't look (or behave) clickable when the
-             destination would just be an empty list. -->
-        <div
-          class="mt-7 grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-px overflow-hidden rounded-md border border-border bg-border"
-        >
-          <div class="flex flex-col gap-1 bg-surface-raised px-5 py-4">
-            <span class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
-              >Clips</span
-            >
-            <span class="font-heading text-[22px] font-bold leading-none text-text-primary">{{
-              formatNum(profile.clips.length)
-            }}</span>
-          </div>
-
-          <component
-            :is="profile.followerCount > 0 ? 'RouterLink' : 'div'"
-            :to="
-              profile.followerCount > 0
-                ? { name: 'user-followers', params: { username: profile.username } }
-                : undefined
-            "
-            :class="[
-              'flex flex-col gap-1 bg-surface-raised px-5 py-4 no-underline',
-              profile.followerCount > 0
-                ? 'cursor-pointer transition-colors duration-150 hover:bg-surface-overlay'
-                : '',
-            ]"
-          >
-            <span class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
-              >Followers</span
-            >
-            <span class="font-heading text-[22px] font-bold leading-none text-text-primary">{{
-              formatNum(profile.followerCount)
-            }}</span>
-          </component>
-
-          <component
-            :is="profile.followingCount > 0 ? 'RouterLink' : 'div'"
-            :to="
-              profile.followingCount > 0
-                ? { name: 'user-following', params: { username: profile.username } }
-                : undefined
-            "
-            :class="[
-              'flex flex-col gap-1 bg-surface-raised px-5 py-4 no-underline',
-              profile.followingCount > 0
-                ? 'cursor-pointer transition-colors duration-150 hover:bg-surface-overlay'
-                : '',
-            ]"
-          >
-            <span class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
-              >Following</span
-            >
-            <span class="font-heading text-[22px] font-bold leading-none text-text-primary">{{
-              formatNum(profile.followingCount)
-            }}</span>
-          </component>
-
-          <div
-            v-for="stat in [
-              { label: 'Total plays', value: formatNum(totalPlays) },
-              { label: 'Total likes', value: formatNum(totalLikes) },
-            ]"
-            :key="stat.label"
-            class="flex flex-col gap-1 bg-surface-raised px-5 py-4"
-          >
-            <span class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">{{
-              stat.label
-            }}</span>
-            <span class="font-heading text-[22px] font-bold leading-none text-text-primary">{{
-              stat.value
-            }}</span>
-          </div>
-        </div>
+        <!-- ---- Telemetry strip ---- -->
+        <TelemetryStrip class="mt-7" :cells="telemetryCells" @cell-click="onTelemetryClick" />
 
         <!-- ---- Tabs ---- -->
         <div class="mt-9">
@@ -498,7 +451,11 @@ const TABS: { key: Tab; label: string }[] = [
               <div v-if="profile.clips.length === 0" class="flex items-center justify-center py-20">
                 <p class="font-mono text-[13px] tracking-[0.06em] text-text-muted">No clips yet.</p>
               </div>
-              <div v-else class="feed-grid">
+              <div
+                v-else
+                data-testid="clips-grid"
+                class="grid grid-cols-3 gap-x-5.5 gap-y-7 max-lg:grid-cols-2 max-tablet:grid-cols-1"
+              >
                 <ClipCard
                   v-for="clip in profile.clips"
                   :key="clip.id"
