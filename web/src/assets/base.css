@@ -87,7 +87,8 @@ html.light {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     min-height: 100vh;
-    overflow-x: hidden;
+    /* clip, not hidden: hidden makes body a scroll container and breaks the sticky nav */
+    overflow-x: clip;
   }
 
   a {
