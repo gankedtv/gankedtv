@@ -106,8 +106,9 @@ async function save() {
 }
 
 const inputClass =
-  'w-full rounded-md border border-border bg-surface-raised px-3.5 py-3 font-body text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-border-hover transition-colors duration-150'
-const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest text-text-muted'
+  'w-full rounded-sm border border-border bg-surface-raised px-3.5 py-3 font-body text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-ink transition-colors duration-150'
+const labelClass =
+  'mb-1.5 block font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary'
 </script>
 
 <template>
@@ -123,26 +124,33 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
         class="fixed inset-0 z-50 flex items-center justify-center px-4"
         @click.self="emit('close')"
       >
-        <!-- Backdrop -->
-        <div class="absolute inset-0 bg-black/70" @click="emit('close')" />
+        <!-- Backdrop — solid high-opacity scrim, no blur. -->
+        <div class="absolute inset-0 bg-surface-sunken/90" @click="emit('close')" />
 
         <!-- Dialog card -->
         <div
-          class="relative z-10 w-full max-w-lg rounded-md border border-border bg-surface-raised shadow-[0_0_40px_var(--color-brand-glow)]"
+          class="relative z-10 w-full max-w-lg border border-border-strong bg-surface-base"
           @click.stop
         >
           <!-- Header -->
-          <div class="flex items-center justify-between border-b border-border px-5 py-4">
-            <h2
-              class="font-heading text-lg font-bold uppercase tracking-[0.04em] text-text-primary"
-            >
-              Edit Clip
-            </h2>
+          <div class="flex items-start justify-between border-b border-border px-5 py-4">
+            <div>
+              <p
+                class="m-0 font-mono text-[10px] uppercase leading-none tracking-[0.22em] text-text-secondary"
+              >
+                Edit filing
+              </p>
+              <h2
+                class="m-0 mt-2 font-heading text-xl font-bold uppercase leading-none tracking-[0.02em] text-text-primary"
+              >
+                Edit Clip
+              </h2>
+            </div>
             <button
               type="button"
               @click="emit('close')"
               aria-label="Close"
-              class="cursor-pointer font-mono text-xl leading-none text-text-muted transition-colors duration-150 hover:text-text-primary"
+              class="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center border border-border font-mono text-base leading-none text-text-muted transition-colors duration-150 hover:border-ink hover:text-ink"
             >
               ×
             </button>
@@ -212,10 +220,10 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
                   type="button"
                   @click="localVisibility = opt"
                   :class="[
-                    'cursor-pointer rounded-md border px-4 py-3 text-left transition-all duration-150',
+                    'cursor-pointer border px-4 py-3 text-left transition-colors duration-150',
                     localVisibility === opt
-                      ? 'border-brand-light bg-brand-glow text-text-primary'
-                      : 'border-border bg-surface-overlay text-text-secondary',
+                      ? 'border-ink text-text-primary'
+                      : 'border-border text-text-secondary hover:border-border-strong',
                   ]"
                 >
                   <div class="mb-1 flex items-center gap-2">
@@ -238,7 +246,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
             <button
               type="button"
               @click="emit('close')"
-              class="cursor-pointer rounded-md border border-border bg-surface-overlay px-5 py-2.5 font-heading text-sm font-bold uppercase tracking-wider text-text-secondary transition-colors duration-150 hover:text-text-primary"
+              class="cursor-pointer border border-border bg-transparent px-5 py-2.5 font-body text-sm font-medium text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
             >
               Cancel
             </button>
@@ -247,10 +255,10 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
               :disabled="!canSave || submitting"
               @click="save"
               :class="[
-                'rounded-md px-5 py-2.5 font-heading text-sm font-bold uppercase tracking-wider transition-all duration-150',
+                'px-5 py-2.5 font-body text-sm font-medium transition-[filter] duration-150',
                 canSave && !submitting
-                  ? 'cursor-pointer bg-brand-light text-white hover:bg-brand'
-                  : 'cursor-not-allowed border border-border bg-surface-overlay text-text-muted',
+                  ? 'cursor-pointer bg-ink text-signal-text hover:brightness-108'
+                  : 'cursor-not-allowed border border-border bg-transparent text-text-muted',
               ]"
             >
               {{ submitting ? 'Saving…' : 'Save' }}

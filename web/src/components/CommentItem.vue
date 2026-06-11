@@ -27,10 +27,10 @@ const isOwn = computed(
     <UserAvatar :user="comment.author" :size="32" class="mt-0.5" />
     <div class="min-w-0 flex-1">
       <div class="flex items-baseline gap-2">
-        <span class="font-mono text-[13px] font-semibold text-text-primary">{{
-          comment.author.username
-        }}</span>
-        <span class="font-mono text-[11px] text-text-muted">{{
+        <span class="font-mono text-[12px] uppercase tracking-[0.06em] text-ink"
+          >@{{ comment.author.username }}</span
+        >
+        <span class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">{{
           formatRelativeTime(comment.createdAt)
         }}</span>
       </div>
@@ -60,7 +60,7 @@ const isOwn = computed(
         <button
           v-if="isOwn"
           type="button"
-          class="cursor-pointer font-mono text-[11px] uppercase tracking-wider text-text-muted transition-colors duration-150 hover:text-[color:var(--color-error)]"
+          class="cursor-pointer font-mono text-[11px] uppercase tracking-wider text-text-muted transition-colors duration-150 hover:text-ink"
           @click="emit('delete', comment.id)"
         >
           Delete
@@ -68,7 +68,7 @@ const isOwn = computed(
         <button
           v-if="!isOwn && currentUserId && !comment.deleted"
           type="button"
-          class="cursor-pointer font-mono text-[11px] uppercase tracking-wider text-text-muted transition-colors duration-150 hover:text-[color:var(--color-error)]"
+          class="cursor-pointer font-mono text-[11px] uppercase tracking-wider text-text-muted transition-colors duration-150 hover:text-ink"
           @click="emit('report', comment.id)"
         >
           Report

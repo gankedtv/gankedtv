@@ -296,14 +296,14 @@ onBeforeUnmount(() => {
       class="block max-h-full max-w-full object-contain"
     />
 
-    <!-- Delayed-fade loading spinner. -->
+    <!-- Delayed loading ticker. -->
     <div
       v-if="spinnerVisible && !detail && !detailErrored"
       class="pointer-events-none absolute inset-0 flex items-center justify-center"
     >
-      <div
-        class="h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-white/80"
-      ></div>
+      <span class="block h-1.5 w-5.5 overflow-hidden bg-white/15">
+        <span class="block h-full w-full origin-left bg-ink animate-[tick_1.6s_ease-in-out_infinite]"></span>
+      </span>
     </div>
 
     <!-- Per-slot detail load error. -->
@@ -316,7 +316,7 @@ onBeforeUnmount(() => {
       </p>
       <button
         type="button"
-        class="cursor-pointer rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+        class="cursor-pointer border border-[#f4f1e8]/35 bg-black/45 px-4 py-2 font-mono text-xs uppercase tracking-widest text-[#f4f1e8] transition-colors duration-150 hover:border-ink hover:text-ink"
         @click="onRetryDetail"
       >
         Retry
@@ -335,7 +335,7 @@ onBeforeUnmount(() => {
       </p>
       <RouterLink
         :to="detailHref"
-        class="rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary no-underline"
+        class="border border-[#f4f1e8]/35 bg-black/45 px-4 py-2 font-mono text-xs uppercase tracking-widest text-[#f4f1e8] no-underline transition-colors duration-150 hover:border-ink hover:text-ink"
       >
         Open in detail →
       </RouterLink>
@@ -350,17 +350,17 @@ onBeforeUnmount(() => {
       @click="handleTapToPlay"
     >
       <span
-        class="inline-flex h-16 w-16 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white backdrop-blur-md"
+        class="inline-flex h-16 w-16 items-center justify-center border border-white/25 bg-black/55 text-white"
       >
         <IconPlay :size="26" />
       </span>
     </button>
 
-    <!-- Top gradient strip — title + game name. -->
+    <!-- Top band — title + game name on a solid legibility band (no gradient scrims). -->
     <div
-      class="pointer-events-none absolute inset-x-0 top-0 flex flex-col gap-1 bg-gradient-to-b from-black/70 to-transparent px-4 pt-4 pb-10 text-white"
+      class="pointer-events-none absolute inset-x-0 top-0 flex flex-col gap-1 bg-black/60 px-4 py-3 text-white"
     >
-      <p v-if="clip.game" class="font-mono text-[10px] uppercase tracking-[0.12em] text-white/70">
+      <p v-if="clip.game" class="m-0 font-mono text-[10px] uppercase tracking-[0.12em] text-white/70">
         {{ clip.game.tag }}
       </p>
       <h2 class="m-0 line-clamp-2 font-heading text-base font-bold uppercase tracking-[0.01em]">
@@ -368,13 +368,13 @@ onBeforeUnmount(() => {
       </h2>
     </div>
 
-    <!-- Bottom gradient — author handle. -->
+    <!-- Bottom band — author handle. -->
     <RouterLink
       :to="authorHref"
-      class="pointer-events-auto absolute inset-x-0 bottom-0 flex items-center gap-2 bg-gradient-to-t from-black/70 to-transparent px-4 pt-10 pb-5 text-white no-underline"
+      class="pointer-events-auto absolute inset-x-0 bottom-0 flex items-center gap-2 bg-black/60 px-4 py-3 text-white no-underline"
     >
       <UserAvatar :user="clip.author" :size="32" />
-      <AuthorHandle :username="clip.author.username" class="text-sm font-semibold" />
+      <AuthorHandle :username="clip.author.username" class="text-sm text-ink" />
     </RouterLink>
 
     <!-- Right-rail actions. -->
@@ -388,8 +388,8 @@ onBeforeUnmount(() => {
         @click="toggleLike"
       >
         <span
-          class="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 backdrop-blur-md"
-          :class="liked ? 'bg-brand text-white' : 'bg-black/45 text-white'"
+          class="inline-flex h-11 w-11 items-center justify-center border"
+          :class="liked ? 'border-ink bg-ink text-signal-text' : 'border-white/25 bg-black/45 text-white'"
         >
           <IconHeart :size="20" />
         </span>
@@ -404,7 +404,7 @@ onBeforeUnmount(() => {
         @click="onToggleMute"
       >
         <span
-          class="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/45 backdrop-blur-md"
+          class="inline-flex h-11 w-11 items-center justify-center border border-white/25 bg-black/45"
         >
           <IconVolumeMute v-if="globalMuted" :size="18" />
           <IconVolume v-else :size="18" />
@@ -419,7 +419,7 @@ onBeforeUnmount(() => {
         @click="openComments"
       >
         <span
-          class="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/45 backdrop-blur-md"
+          class="inline-flex h-11 w-11 items-center justify-center border border-white/25 bg-black/45"
         >
           <IconMessageCircle :size="18" />
         </span>
@@ -448,13 +448,13 @@ onBeforeUnmount(() => {
           >
             <div
               v-if="commentsOpen"
-              class="absolute inset-x-0 bottom-0 flex max-h-[75vh] flex-col rounded-t-xl border-t border-border bg-surface-raised shadow-[0_-12px_36px_rgba(0,0,0,0.5)]"
+              class="absolute inset-x-0 bottom-0 flex max-h-[75vh] flex-col border-t border-border-strong bg-surface-base"
               role="dialog"
               aria-label="Comments"
               @click.stop
             >
               <div
-                class="mx-auto mt-2 h-1.5 w-10 shrink-0 rounded-full bg-border-strong"
+                class="mx-auto mt-2 h-1 w-10 shrink-0 bg-border-strong"
                 aria-hidden="true"
               ></div>
               <div class="flex shrink-0 items-center justify-between gap-3 px-4 py-3">
@@ -466,13 +466,13 @@ onBeforeUnmount(() => {
                 <div class="flex items-center gap-2">
                   <RouterLink
                     :to="detailHref"
-                    class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary no-underline transition-colors hover:text-text-primary"
+                    class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary no-underline transition-colors hover:text-ink"
                   >
                     View full clip →
                   </RouterLink>
                   <button
                     type="button"
-                    class="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-border bg-surface-overlay text-text-secondary transition-colors hover:text-text-primary"
+                    class="inline-flex h-8 w-8 cursor-pointer items-center justify-center border border-border bg-transparent text-text-secondary transition-colors hover:border-ink hover:text-ink"
                     aria-label="Close comments"
                     @click="closeComments"
                   >

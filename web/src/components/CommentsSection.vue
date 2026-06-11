@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import CommentItemRow from '@/components/CommentItem.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ReportDialog from '@/components/ReportDialog.vue'
+import SectionHeader from '@/components/SectionHeader.vue'
 
 const props = defineProps<{ clipId: string }>()
 
@@ -48,7 +49,7 @@ function requestReport(id: string) {
 }
 
 const inputClass =
-  'w-full rounded-md border border-border bg-surface-raised px-3.5 py-2.5 font-body text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-border-hover transition-colors duration-150'
+  'w-full rounded-sm border border-border bg-surface-raised px-3.5 py-2.5 font-body text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-ink transition-colors duration-150'
 
 // Monotonic token guarding against stale list/loadMore responses when props.clipId
 // flips mid-request. Captured pre-await; any response whose token no longer matches
@@ -260,10 +261,10 @@ function markDeleted(id: string) {
 </script>
 
 <template>
-  <section class="mt-6">
-    <h2 class="mb-3 font-heading text-lg font-bold uppercase tracking-[0.04em] text-text-primary">
-      Comments
-    </h2>
+  <section class="mt-10 max-w-190">
+    <div class="mb-5">
+      <SectionHeader roman="III" kicker="The Record" title="Comments" />
+    </div>
 
     <!-- Composer / login CTA -->
     <div class="mb-5">
@@ -281,7 +282,7 @@ function markDeleted(id: string) {
           <button
             type="submit"
             :disabled="posting || newBody.trim().length === 0"
-            class="cursor-pointer rounded-md bg-brand px-4 py-2 font-heading text-sm font-bold uppercase tracking-wider text-white transition-all duration-150 hover:bg-brand-light disabled:cursor-not-allowed disabled:opacity-50"
+            class="cursor-pointer bg-ink px-4 py-2 font-body text-sm font-medium text-signal-text transition-[filter] duration-150 hover:brightness-108 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {{ posting ? 'Posting…' : 'Comment' }}
           </button>
@@ -290,20 +291,20 @@ function markDeleted(id: string) {
       <button
         v-else
         type="button"
-        class="cursor-pointer rounded-md border border-border bg-surface-raised px-4 py-2.5 font-mono text-[13px] text-text-secondary transition-colors duration-150 hover:text-text-primary"
+        class="cursor-pointer border border-border bg-transparent px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink"
         @click="goLogin"
       >
         Log in to comment
       </button>
     </div>
 
-    <p v-if="actionError" class="mb-3 font-mono text-[12px] text-[color:var(--color-error)]">
+    <p v-if="actionError" class="mb-3 font-mono text-[12px] text-signal">
       {{ actionError }}
     </p>
 
     <!-- List -->
     <div v-if="loading" class="font-mono text-[12px] text-text-muted">Loading comments…</div>
-    <div v-else-if="errored" class="font-mono text-[12px] text-[color:var(--color-error)]">
+    <div v-else-if="errored" class="font-mono text-[12px] text-signal">
       Could not load comments.
     </div>
     <div v-else-if="threads.length === 0" class="font-mono text-[12px] text-text-muted">
@@ -339,7 +340,7 @@ function markDeleted(id: string) {
           <div class="mt-2 flex justify-end gap-2">
             <button
               type="button"
-              class="cursor-pointer rounded-md border border-border bg-surface-overlay px-3 py-1.5 font-heading text-xs font-bold uppercase tracking-wider text-text-secondary transition-colors duration-150 hover:text-text-primary"
+              class="cursor-pointer border border-border bg-transparent px-3 py-1.5 font-body text-xs font-medium text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink"
               @click="replyingTo = null"
             >
               Cancel
@@ -347,7 +348,7 @@ function markDeleted(id: string) {
             <button
               type="submit"
               :disabled="replyPosting || replyBody.trim().length === 0"
-              class="cursor-pointer rounded-md bg-brand px-3 py-1.5 font-heading text-xs font-bold uppercase tracking-wider text-white transition-all duration-150 hover:bg-brand-light disabled:cursor-not-allowed disabled:opacity-50"
+              class="cursor-pointer bg-ink px-3 py-1.5 font-body text-xs font-medium text-signal-text transition-[filter] duration-150 hover:brightness-108 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {{ replyPosting ? 'Replying…' : 'Reply' }}
             </button>
@@ -370,7 +371,7 @@ function markDeleted(id: string) {
         <button
           v-if="thread.replyCount > thread.replies.length"
           type="button"
-          class="mt-2 ml-11 cursor-pointer font-mono text-[11px] uppercase tracking-wider text-brand-light transition-colors duration-150 hover:text-brand"
+          class="mt-2 ml-11 cursor-pointer font-mono text-[11px] uppercase tracking-wider text-ink transition-opacity duration-150 hover:underline"
           @click="showMoreReplies(thread)"
         >
           Show {{ thread.replyCount - thread.replies.length }} more
@@ -383,7 +384,7 @@ function markDeleted(id: string) {
       v-if="nextCursor"
       type="button"
       :disabled="loadingMore"
-      class="mt-5 cursor-pointer rounded-md border border-border bg-surface-raised px-4 py-2 font-mono text-[12px] text-text-secondary transition-colors duration-150 hover:text-text-primary disabled:opacity-50"
+      class="mt-5 cursor-pointer border border-border bg-transparent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink disabled:opacity-50"
       @click="loadMore"
     >
       {{ loadingMore ? 'Loading…' : 'Load more comments' }}

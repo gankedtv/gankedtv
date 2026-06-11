@@ -231,6 +231,30 @@ nav {
 }
 
 /* ============================================================
+   PLYR — theme the player to the system: ink accent, sharp
+   corners, no menu shadow. The frame (BroadcastFrame) carries
+   the identity; the player skin stays quiet.
+   ============================================================ */
+
+.plyr {
+  --plyr-color-main: var(--color-ink);
+  --plyr-control-radius: 0;
+  --plyr-menu-radius: 0;
+  --plyr-font-family: var(--font-body);
+  --plyr-tooltip-radius: 0;
+}
+
+.plyr__menu__container {
+  box-shadow: none;
+  border: 1px solid var(--color-border-strong);
+}
+
+.plyr__time,
+.plyr__tooltip {
+  font-family: var(--font-mono);
+}
+
+/* ============================================================
    DEPRECATED v1 shims — DELETE IN CLEANUP PHASE.
    Minimal Newsprint-toned stand-ins so views that haven't been
    re-skinned yet keep their layout mid-branch.

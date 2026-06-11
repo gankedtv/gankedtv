@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/client'
 import { clips, type ClipDetail, type ClipFeedItem } from '@/api/clips'
 import StatusPanel from '@/components/StatusPanel.vue'
+import BroadcastFrame from '@/components/BroadcastFrame.vue'
 import ReelClip from '@/components/reels/ReelClip.vue'
 
 const route = useRoute()
@@ -331,19 +332,21 @@ function onLikedChanged(payload: { id: string; liked: boolean; count: number }) 
 </script>
 
 <template>
-  <div class="fixed inset-x-0 top-16 bottom-0 z-10 flex justify-center bg-surface-base">
+  <div
+    class="fixed inset-x-0 top-16 bottom-15.5 z-10 flex justify-center bg-surface-sunken lg:bottom-0"
+  >
     <!-- Initial load -->
     <StatusPanel
       v-if="loading && items.length === 0 && !errored"
       kind="loading"
-      message="Loading reels…"
+      message="Loading reels"
     />
 
     <!-- Initial error -->
     <StatusPanel v-else-if="errored" kind="error" message="Couldn't load reels.">
       <button
         type="button"
-        class="cursor-pointer rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+        class="cursor-pointer border border-border bg-transparent px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
         @click="loadFirstPage"
       >
         Retry
@@ -358,50 +361,57 @@ function onLikedChanged(payload: { id: string; liked: boolean; count: number }) 
     >
       <RouterLink
         to="/upload"
-        class="rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+        class="border border-border px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
       >
         Upload a clip
       </RouterLink>
     </StatusPanel>
 
-    <!-- Feed -->
-    <div
+    <!-- Feed — the vertical watch surface wears the broadcast frame. -->
+    <BroadcastFrame
       v-else
-      ref="scrollEl"
-      class="h-full w-full max-w-[min(420px,calc(100vh*9/16))] snap-y snap-mandatory overflow-y-scroll overscroll-contain scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      aria-label="Reels feed"
+      class="flex h-full w-full max-w-[min(448px,calc(100vh*9/16+28px))] flex-col"
+      :channel="`REEL ${activeIndex + 1} / ${items.length}`"
+      status="VERTICAL FEED"
+      spec="SWIPE ↑ NEXT"
     >
       <div
-        v-for="clip in items"
-        :key="clip.id"
-        :ref="(el) => registerClip(clip.id, el as HTMLElement | null)"
-        class="h-full w-full snap-start snap-always"
+        ref="scrollEl"
+        class="min-h-0 w-full flex-1 snap-y snap-mandatory overflow-y-scroll overscroll-contain scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        aria-label="Reels feed"
       >
-        <ReelClip
-          :clip="clip"
-          :detail="details.get(clip.id) ?? null"
-          :detail-errored="detailErrors.has(clip.id)"
-          :is-active="items[activeIndex]?.id === clip.id"
-          :global-muted="globalMuted"
-          @toggle-mute="onToggleMute"
-          @retry-detail="retryDetail"
-          @liked-changed="onLikedChanged"
-        />
-      </div>
-
-      <!-- Pagination retry pill, snap-aligned at the bottom. -->
-      <div
-        v-if="paginationErrored"
-        class="flex h-full w-full snap-start snap-always items-center justify-center"
-      >
-        <button
-          type="button"
-          class="cursor-pointer rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
-          @click="loadMore"
+        <div
+          v-for="clip in items"
+          :key="clip.id"
+          :ref="(el) => registerClip(clip.id, el as HTMLElement | null)"
+          class="h-full w-full snap-start snap-always"
         >
-          Couldn't load more — retry
-        </button>
+          <ReelClip
+            :clip="clip"
+            :detail="details.get(clip.id) ?? null"
+            :detail-errored="detailErrors.has(clip.id)"
+            :is-active="items[activeIndex]?.id === clip.id"
+            :global-muted="globalMuted"
+            @toggle-mute="onToggleMute"
+            @retry-detail="retryDetail"
+            @liked-changed="onLikedChanged"
+          />
+        </div>
+
+        <!-- Pagination retry pill, snap-aligned at the bottom. -->
+        <div
+          v-if="paginationErrored"
+          class="flex h-full w-full snap-start snap-always items-center justify-center"
+        >
+          <button
+            type="button"
+            class="cursor-pointer border border-border bg-transparent px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
+            @click="loadMore"
+          >
+            Couldn't load more — retry
+          </button>
+        </div>
       </div>
-    </div>
+    </BroadcastFrame>
   </div>
 </template>
