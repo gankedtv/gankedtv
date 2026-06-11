@@ -134,22 +134,29 @@ async function onFixGameSubmit(gameId: number | null) {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl px-4 py-8">
-    <h1 class="mb-6 font-heading text-3xl font-bold uppercase tracking-[0.04em] text-text-primary">
-      Moderation
-    </h1>
+  <div class="mx-auto max-w-5xl px-4 pt-10 pb-30">
+    <header class="mb-7">
+      <p class="m-0 mb-2 font-mono text-[10px] uppercase tracking-[0.22em] text-text-secondary">
+        <span class="text-ink">Moderation</span> · The report queue
+      </p>
+      <h1
+        class="m-0 font-heading text-[clamp(32px,4vw,44px)] font-bold uppercase leading-none text-text-primary"
+      >
+        Admin Console
+      </h1>
+    </header>
 
     <!-- Tabs -->
-    <div class="mb-6 flex gap-1 border-b border-border">
+    <div class="mb-6 flex gap-7 border-b border-border">
       <button
         v-for="t in TABS"
         :key="t.value"
         type="button"
         :class="[
-          'cursor-pointer px-4 py-2 font-heading text-sm font-bold uppercase tracking-wider transition-colors duration-150',
+          '-mb-px cursor-pointer border-b-2 bg-transparent pb-3 font-mono text-[11px] uppercase tracking-[0.15em] transition-colors duration-150',
           t.value === status
-            ? 'border-b-2 border-brand-light text-text-primary'
-            : 'text-text-muted hover:text-text-secondary',
+            ? 'border-ink text-text-primary'
+            : 'border-transparent text-text-secondary hover:text-ink',
         ]"
         @click="setStatus(t.value)"
       >
@@ -157,19 +164,21 @@ async function onFixGameSubmit(gameId: number | null) {
       </button>
     </div>
 
-    <p v-if="actionError" class="mb-4 font-mono text-sm text-[color:var(--color-error)]">
+    <p v-if="actionError" class="mb-4 font-mono text-sm text-signal">
       {{ actionError }}
     </p>
-    <p v-if="error" class="font-mono text-sm text-[color:var(--color-error)]">{{ error }}</p>
+    <p v-if="error" class="font-mono text-sm text-signal">{{ error }}</p>
 
-    <div v-if="loading" class="font-mono text-sm text-text-muted">Loading…</div>
+    <div v-if="loading" class="font-mono text-sm uppercase tracking-widest text-text-muted">
+      Loading
+    </div>
     <div
       v-else-if="items.length === 0"
-      class="rounded-md border border-border bg-surface-raised p-8 text-center font-body text-text-secondary"
+      class="border-y border-border p-8 text-center font-mono text-sm uppercase tracking-widest text-text-muted"
     >
       No {{ status }} reports.
     </div>
-    <ul v-else class="flex flex-col gap-3">
+    <ul v-else class="m-0 flex list-none flex-col border-t border-border p-0">
       <li v-for="item in items" :key="item.id">
         <ReportRow
           :item="item"
@@ -190,7 +199,7 @@ async function onFixGameSubmit(gameId: number | null) {
       <button
         type="button"
         :disabled="page <= 1"
-        class="cursor-pointer rounded-md border border-border bg-surface-overlay px-4 py-2 font-heading text-xs font-bold uppercase tracking-wider text-text-secondary disabled:pointer-events-none disabled:opacity-40"
+        class="cursor-pointer border border-border bg-transparent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink disabled:pointer-events-none disabled:opacity-40"
         @click="page--"
       >
         Prev
@@ -199,7 +208,7 @@ async function onFixGameSubmit(gameId: number | null) {
       <button
         type="button"
         :disabled="page >= pageCount"
-        class="cursor-pointer rounded-md border border-border bg-surface-overlay px-4 py-2 font-heading text-xs font-bold uppercase tracking-wider text-text-secondary disabled:pointer-events-none disabled:opacity-40"
+        class="cursor-pointer border border-border bg-transparent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink disabled:pointer-events-none disabled:opacity-40"
         @click="page++"
       >
         Next

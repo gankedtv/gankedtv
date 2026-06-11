@@ -254,34 +254,3 @@ nav {
   font-family: var(--font-mono);
 }
 
-/* ============================================================
-   DEPRECATED v1 shims — DELETE IN CLEANUP PHASE.
-   Minimal Newsprint-toned stand-ins so views that haven't been
-   re-skinned yet keep their layout mid-branch.
-   ============================================================ */
-
-.feed-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 28px 22px;
-}
-
-.section-title-bar::before {
-  content: '';
-  width: 6px;
-  height: 22px;
-  background: var(--color-ink);
-  display: inline-block;
-}
-
-.logo__mark {
-  width: 8px;
-  height: 8px;
-  background: var(--color-ink);
-  display: inline-block;
-  flex-shrink: 0;
-}
-
-.logo__tv {
-  color: var(--color-ink);
-}

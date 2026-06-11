@@ -115,11 +115,11 @@ async function devSignIn(username = 'seeduser', role?: 'user' | 'moderator' | 'a
     <!-- Logo + tagline -->
     <div class="flex flex-col items-center gap-2.5 text-center">
       <div class="flex items-center gap-2.5">
-        <span class="logo__mark"></span>
+        <span class="size-2 bg-ink" aria-hidden="true"></span>
         <span
           class="font-display text-[28px] font-bold uppercase tracking-[0.04em] text-text-primary"
         >
-          GANKED.TV
+          GANKED<span class="text-ink">.TV</span>
         </span>
       </div>
       <div class="font-mono text-[11px] uppercase tracking-widest text-text-muted">
@@ -128,12 +128,13 @@ async function devSignIn(username = 'seeduser', role?: 'user' | 'moderator' | 'a
     </div>
 
     <!-- Card -->
-    <div class="w-full max-w-100 rounded-lg border border-border bg-surface-raised px-8 py-9">
+    <div class="w-full max-w-100 border border-border bg-surface-base px-8 py-9">
       <div class="mb-6 text-center">
-        <h1 class="m-0 mb-2 font-heading text-[32px] font-bold uppercase text-text-primary">
-          Sign In
+        <p class="m-0 mb-2 font-mono text-[10px] uppercase tracking-[0.22em] text-ink">Sign in</p>
+        <h1 class="m-0 mb-2 font-heading text-[32px] font-bold uppercase leading-none text-text-primary">
+          Back to the Archive
         </h1>
-        <p class="m-0 font-body text-sm text-text-secondary">
+        <p class="m-0 font-body text-[13px] text-text-secondary">
           Sign in with your email or a connected account
         </p>
       </div>
@@ -142,7 +143,7 @@ async function devSignIn(username = 'seeduser', role?: 'user' | 'moderator' | 'a
       <div class="flex flex-col gap-3">
         <a
           :href="oauthStartUrl('discord', returnTo)"
-          class="flex items-center justify-center gap-2.5 rounded-md bg-discord px-5 py-3 font-heading text-[15px] font-bold uppercase tracking-[0.06em] text-white no-underline transition-colors duration-150 hover:bg-discord-hover"
+          class="flex items-center justify-center gap-2.5 bg-discord px-5 py-3 font-heading text-[15px] font-bold uppercase tracking-[0.06em] text-white no-underline transition-colors duration-150 hover:bg-discord-hover"
         >
           <IconDiscord :size="20" class="shrink-0" />
           Continue with Discord
@@ -150,7 +151,7 @@ async function devSignIn(username = 'seeduser', role?: 'user' | 'moderator' | 'a
 
         <a
           :href="oauthStartUrl('google', returnTo)"
-          class="flex items-center justify-center gap-2.5 rounded-md bg-google px-5 py-3 font-heading text-[15px] font-bold uppercase tracking-[0.06em] text-white no-underline transition-colors duration-150 hover:bg-google-hover"
+          class="flex items-center justify-center gap-2.5 bg-google px-5 py-3 font-heading text-[15px] font-bold uppercase tracking-[0.06em] text-white no-underline transition-colors duration-150 hover:bg-google-hover"
         >
           <IconGoogle :size="20" class="shrink-0" />
           Continue with Google
@@ -168,7 +169,7 @@ async function devSignIn(username = 'seeduser', role?: 'user' | 'moderator' | 'a
       <button
         v-if="!showEmailForm"
         type="button"
-        class="flex w-full items-center justify-center gap-2.5 rounded-md border border-border-strong bg-surface-overlay px-5 py-3 font-heading text-[15px] font-bold uppercase tracking-[0.06em] text-text-primary transition-[background-color,border-color] duration-150 hover:border-border-hover hover:bg-surface-raised"
+        class="flex w-full items-center justify-center gap-2.5 border border-border px-5 py-3 font-heading text-[15px] font-bold uppercase tracking-[0.06em] text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
         @click="revealEmailForm"
       >
         Continue with email
@@ -177,18 +178,18 @@ async function devSignIn(username = 'seeduser', role?: 'user' | 'moderator' | 'a
       <!-- Expanded state: actual email/password form -->
       <form v-else class="flex flex-col gap-3" @submit="submitLogin">
         <label class="flex flex-col gap-1.5">
-          <span class="font-mono text-[10px] uppercase tracking-widest text-text-muted">Email</span>
+          <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary">Email</span>
           <input
             ref="emailInputRef"
             v-model="email"
             type="email"
             autocomplete="email"
             required
-            class="rounded-md border border-border-strong bg-surface-overlay px-3 py-2 font-body text-sm text-text-primary outline-none focus:border-border-hover"
+            class="h-11 rounded-sm border border-border bg-surface-raised px-3.5 font-body text-sm text-text-primary outline-none transition-colors duration-150 focus:border-ink"
           />
         </label>
         <label class="flex flex-col gap-1.5">
-          <span class="font-mono text-[10px] uppercase tracking-widest text-text-muted">
+          <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary">
             Password
           </span>
           <input
@@ -196,17 +197,17 @@ async function devSignIn(username = 'seeduser', role?: 'user' | 'moderator' | 'a
             type="password"
             autocomplete="current-password"
             required
-            class="rounded-md border border-border-strong bg-surface-overlay px-3 py-2 font-body text-sm text-text-primary outline-none focus:border-border-hover"
+            class="h-11 rounded-sm border border-border bg-surface-raised px-3.5 font-body text-sm text-text-primary outline-none transition-colors duration-150 focus:border-ink"
           />
         </label>
         <button
           type="submit"
           :disabled="submitting"
-          class="flex items-center justify-center gap-2 rounded-md bg-brand px-5 py-3 font-heading text-[15px] font-bold uppercase tracking-[0.06em] text-white transition-colors duration-150 hover:bg-brand-light disabled:cursor-not-allowed disabled:opacity-50"
+          class="flex items-center justify-center gap-2 bg-ink px-5 py-3 font-heading text-[15px] font-bold uppercase tracking-[0.06em] text-signal-text transition-[filter] duration-150 hover:brightness-108 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {{ submitting ? 'Signing in…' : 'Sign in with email' }}
         </button>
-        <p v-if="formError" class="m-0 font-mono text-[11px] tracking-wide text-error" role="alert">
+        <p v-if="formError" class="m-0 font-mono text-[11px] tracking-wide text-signal" role="alert">
           {{ formError }}
         </p>
       </form>
@@ -217,7 +218,7 @@ async function devSignIn(username = 'seeduser', role?: 'user' | 'moderator' | 'a
         New to GankedTV?
         <RouterLink
           :to="{ name: 'register', query: returnTo ? { redirect: returnTo } : {} }"
-          class="font-heading uppercase tracking-[0.04em] text-text-primary no-underline hover:text-brand"
+          class="font-heading uppercase tracking-[0.04em] text-ink no-underline hover:underline"
           >Create an account</RouterLink
         >
       </p>
@@ -230,7 +231,7 @@ async function devSignIn(username = 'seeduser', role?: 'user' | 'moderator' | 'a
         <button
           type="button"
           :disabled="devLoading"
-          class="flex w-full items-center justify-center gap-2 rounded-md border border-border-strong bg-surface-overlay px-5 py-2.5 font-heading text-[13px] font-bold uppercase tracking-[0.06em] text-text-primary transition-[background-color,border-color] duration-150 hover:border-border-hover hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-50"
+          class="flex w-full items-center justify-center gap-2 border border-border px-5 py-2.5 font-heading text-[13px] font-bold uppercase tracking-[0.06em] text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
           @click="devSignIn()"
         >
           {{ devLoading ? 'Signing in…' : 'Sign in as seeduser' }}
@@ -238,12 +239,12 @@ async function devSignIn(username = 'seeduser', role?: 'user' | 'moderator' | 'a
         <button
           type="button"
           :disabled="devLoading"
-          class="mt-2 flex w-full items-center justify-center gap-2 rounded-md border border-[color:var(--color-neon)] bg-[color:var(--color-neon-dim)] px-5 py-2.5 font-heading text-[13px] font-bold uppercase tracking-[0.06em] text-[color:var(--color-neon)] transition-[background-color,border-color] duration-150 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+          class="mt-2 flex w-full items-center justify-center gap-2 border border-ink px-5 py-2.5 font-heading text-[13px] font-bold uppercase tracking-[0.06em] text-ink transition-[filter] duration-150 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
           @click="devSignIn('seedadmin', 'admin')"
         >
           {{ devLoading ? 'Signing in…' : 'Sign in as seedadmin' }}
         </button>
-        <p v-if="devError" class="m-0 mt-2 text-center font-mono text-[10px] text-error">
+        <p v-if="devError" class="m-0 mt-2 text-center font-mono text-[10px] text-signal">
           {{ devError }}
         </p>
       </div>

@@ -150,13 +150,11 @@ watch(slug, () => {
 </script>
 
 <template>
-  <main
-    class="mx-auto max-w-360 px-6 pt-8 pb-30 max-[899px]:px-3.5 max-[899px]:pt-4 max-[899px]:pb-20"
-  >
+  <main class="mx-auto max-w-360 px-8 pt-10 pb-30 max-tablet:px-4 max-tablet:pt-5 max-tablet:pb-20">
     <StatusPanel v-if="notFound" kind="empty" message="No tag with that slug.">
       <RouterLink
         to="/"
-        class="rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+        class="border border-border px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
       >
         Back to feed
       </RouterLink>
@@ -164,34 +162,29 @@ watch(slug, () => {
 
     <StatusPanel v-else-if="errored" kind="error" message="Couldn't load this tag.">
       <button
-        class="cursor-pointer rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+        class="cursor-pointer border border-border bg-transparent px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
         @click="retry"
       >
         Retry
       </button>
     </StatusPanel>
 
-    <StatusPanel v-else-if="initialLoading && !tag" kind="loading" message="Loading…" />
+    <StatusPanel v-else-if="initialLoading && !tag" kind="loading" message="Loading" />
 
     <template v-else-if="tag">
-      <section
-        class="relative mb-10 overflow-hidden rounded-lg border border-border bg-surface-raised"
-      >
-        <div class="relative px-8 py-8 max-[899px]:px-5 max-[899px]:py-7">
-          <PageHeader :title="`#${tag.slug}`" pulse>
-            <template #caption>
-              Tag · {{ tag.clipCount }} clip{{ tag.clipCount === 1 ? '' : 's' }}
-            </template>
-            <div class="mt-3 flex items-center gap-3">
-              <span class="font-mono text-[11px] uppercase tracking-[0.08em] text-text-muted">
-                {{ tag.name }}
-              </span>
-            </div>
-          </PageHeader>
-        </div>
-      </section>
+      <PageHeader :title="`#${tag.slug}`" class="mb-7">
+        <template #caption>
+          <span class="text-ink">Filed under</span>&nbsp;· {{ tag.clipCount }} clip{{
+            tag.clipCount === 1 ? '' : 's'
+          }}
+        </template>
+        <hr class="m-0 mt-5 h-px w-full border-0 bg-border" />
+      </PageHeader>
 
-      <div v-if="items.length" class="feed-grid">
+      <div
+        v-if="items.length"
+        class="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-x-5.5 gap-y-7"
+      >
         <ClipCard
           v-for="clip in items"
           :key="clip.id"
@@ -204,7 +197,7 @@ watch(slug, () => {
         <RouterLink
           v-if="auth.isAuthenticated"
           to="/upload"
-          class="rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+          class="border border-border px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
         >
           Upload a clip
         </RouterLink>
@@ -227,7 +220,7 @@ watch(slug, () => {
         <button
           :disabled="loading"
           @click="retryLoadMore"
-          class="cursor-pointer rounded-sm border border-border bg-surface-raised px-6 py-2.5 font-mono text-[11px] uppercase tracking-[0.08em] text-text-primary transition-colors duration-150 hover:border-brand-light disabled:opacity-50"
+          class="cursor-pointer border border-border bg-transparent px-6 py-2.5 font-mono text-[11px] uppercase tracking-[0.08em] text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink disabled:opacity-50"
         >
           Retry
         </button>

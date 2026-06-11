@@ -47,16 +47,14 @@ function onSeeAll() {
 </script>
 
 <template>
-  <div
-    class="overflow-hidden rounded-md border border-border-strong bg-surface-raised shadow-[0_18px_50px_-18px_rgba(0,0,0,0.6)]"
-  >
-    <div class="flex items-center justify-between border-b border-border px-4 py-2">
-      <span class="font-heading text-sm font-bold uppercase tracking-[0.06em] text-text-primary">
-        Notifications
+  <div class="overflow-hidden border border-border-strong bg-surface-base">
+    <div class="flex items-center justify-between border-b border-border px-4 py-2.5">
+      <span class="font-mono text-[10px] font-medium uppercase tracking-[0.22em] text-text-secondary">
+        The Wire
       </span>
       <button
         type="button"
-        class="cursor-pointer border-0 bg-transparent font-mono text-[11px] uppercase tracking-[0.04em] text-text-secondary transition-colors duration-150 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
+        class="cursor-pointer border-0 bg-transparent font-mono text-[11px] uppercase tracking-[0.04em] text-text-secondary transition-colors duration-150 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
         :disabled="store.unreadCount === 0"
         @click="onMarkAll"
       >
@@ -80,8 +78,7 @@ function onSeeAll() {
       <li
         v-for="n in store.items"
         :key="n.id"
-        class="cursor-pointer border-b border-border last:border-b-0 transition-colors duration-150 hover:bg-surface-overlay"
-        :class="n.readAt === null ? 'border-l-2 border-l-brand' : ''"
+        class="cursor-pointer border-b border-border px-3 last:border-b-0 transition-colors duration-150 hover:bg-surface-raised"
         @click="onRowClick(n)"
       >
         <NotificationRow :notification="n" />
@@ -90,7 +87,7 @@ function onSeeAll() {
 
     <button
       type="button"
-      class="block w-full cursor-pointer border-0 border-t border-border bg-transparent px-4 py-2 text-center font-mono text-[11px] uppercase tracking-[0.04em] text-text-secondary transition-colors duration-150 hover:bg-surface-overlay hover:text-text-primary"
+      class="block w-full cursor-pointer border-0 border-t border-border bg-transparent px-4 py-2 text-center font-mono text-[11px] uppercase tracking-[0.04em] text-text-secondary transition-colors duration-150 hover:bg-surface-raised hover:text-ink"
       @click="onSeeAll"
     >
       See all

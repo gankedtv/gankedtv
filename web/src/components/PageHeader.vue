@@ -1,32 +1,33 @@
 <script setup lang="ts">
-// The "live feed dot · caption / big H1 / optional follow-on" header pattern
-// shared by HomeView, GamesView, TrendingView, and UploadView. The H1 is the
-// only fully prop-driven slot — captions interpolate runtime values (clip
-// counts, etc.) so they ship as a named slot, and the default slot covers
-// arbitrary follow-on content (description paragraph, control groups).
+// Newsprint page-level header: mono kicker row → oversized condensed title →
+// optional follow-on content. Shared by the editorial views (Games, Trending,
+// Search, Tag, Notifications, Upload, Settings, Admin…). Captions interpolate
+// runtime values (clip counts, etc.) so they ship as a named slot; the default
+// slot covers arbitrary follow-on content (blurb, tabs, control groups).
+// `live` renders the pulsing signal dot — an earned moment, use sparingly.
 
 defineProps<{
   title: string
-  pulse?: boolean
+  live?: boolean
 }>()
 </script>
 
 <template>
-  <div>
+  <header>
     <div
-      class="mb-2 flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-text-muted"
+      class="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase leading-none tracking-[0.22em] text-text-secondary"
     >
       <span
-        v-if="pulse"
-        class="h-1.5 w-1.5 shrink-0 rounded-full bg-neon shadow-[0_0_8px_var(--color-neon)] animate-[pulse_2s_infinite]"
+        v-if="live"
+        class="size-1.75 shrink-0 rounded-full bg-signal animate-[pulse_2s_infinite]"
       />
       <slot name="caption" />
     </div>
     <h1
-      class="m-0 font-heading text-[clamp(32px,4vw,52px)] font-bold leading-none uppercase tracking-[0.02em] text-text-primary"
+      class="m-0 font-heading text-[clamp(36px,4.5vw,52px)] font-bold leading-none uppercase tracking-[0.01em] text-text-primary"
     >
       {{ title }}
     </h1>
     <slot />
-  </div>
+  </header>
 </template>

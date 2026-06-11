@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { search, type SearchResponse } from '@/api/search'
 import ClipCard from '@/components/ClipCard.vue'
 import GameCoverTile from '@/components/GameCoverTile.vue'
+import SectionHeader from '@/components/SectionHeader.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
 import PageHeader from '@/components/PageHeader.vue'
 
@@ -65,20 +66,24 @@ const hasQuery = () => typeof route.query.q === 'string' && route.query.q.trim()
 </script>
 
 <template>
-  <main class="mx-auto max-w-360 px-6 pt-8 pb-30">
-    <PageHeader title="Search" pulse>
+  <main class="mx-auto max-w-360 px-8 pt-10 pb-30 max-tablet:px-4 max-tablet:pt-5">
+    <PageHeader :title="hasQuery() ? `&quot;${lastQuery || String(route.query.q)}&quot;` : 'Search'">
       <template #caption>
         <template v-if="hasQuery()">
-          {{ results.clips.length }} clips · {{ results.games.length }} games for
-          <span class="text-text-primary">"{{ lastQuery || route.query.q }}"</span>
+          <span class="text-ink">Search</span>&nbsp;· {{ results.clips.length }} clips ·
+          {{ results.games.length }} games
         </template>
-        <template v-else>Type a query to search clips and games</template>
+        <template v-else><span class="text-ink">Search</span>&nbsp;· the archive</template>
       </template>
+      <p v-if="!hasQuery()" class="m-0 mt-2 max-w-[56ch] text-[13px] text-text-secondary">
+        Type a query in the search bar to look across clips and games.
+      </p>
+      <hr class="m-0 mt-5 h-px w-full border-0 bg-border" />
     </PageHeader>
 
     <StatusPanel v-if="errored" kind="error" message="Couldn't run the search.">
       <button
-        class="cursor-pointer rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+        class="cursor-pointer border border-border bg-transparent px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
         @click="load(String(route.query.q ?? ''))"
       >
         Retry
@@ -88,20 +93,16 @@ const hasQuery = () => typeof route.query.q === 'string' && route.query.q.trim()
     <StatusPanel
       v-else-if="loading && results.clips.length === 0 && results.games.length === 0"
       kind="loading"
-      message="Searching…"
+      message="Searching"
     />
 
     <template v-else-if="hasQuery()">
       <!-- Games — same portrait box-art tiles as the catalog (GameCoverTile). -->
-      <section class="mt-10">
-        <h2
-          class="section-title-bar m-0 mb-5 inline-flex items-center gap-3.5 font-heading text-2xl font-bold uppercase tracking-[0.02em] text-text-primary"
-        >
-          Games
-        </h2>
+      <section class="pt-8">
+        <SectionHeader roman="I" kicker="Games" />
         <div
           v-if="results.games.length"
-          class="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-4 max-[640px]:grid-cols-[repeat(auto-fill,minmax(8rem,1fr))] max-[640px]:gap-3"
+          class="grid grid-cols-5 gap-x-5.5 gap-y-7 pt-6 max-lg:grid-cols-3 max-tablet:grid-cols-2 max-tablet:gap-3"
         >
           <GameCoverTile v-for="g in results.games" :key="g.id" :game="g" />
         </div>
@@ -109,13 +110,12 @@ const hasQuery = () => typeof route.query.q === 'string' && route.query.q.trim()
       </section>
 
       <!-- Clips -->
-      <section class="mt-12">
-        <h2
-          class="section-title-bar m-0 mb-5 inline-flex items-center gap-3.5 font-heading text-2xl font-bold uppercase tracking-[0.02em] text-text-primary"
+      <section class="pt-10">
+        <SectionHeader roman="II" kicker="Clips" />
+        <div
+          v-if="results.clips.length"
+          class="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-x-5.5 gap-y-7 pt-6"
         >
-          Clips
-        </h2>
-        <div v-if="results.clips.length" class="feed-grid">
           <ClipCard
             v-for="clip in results.clips"
             :key="clip.id"

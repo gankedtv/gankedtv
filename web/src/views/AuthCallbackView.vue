@@ -45,16 +45,16 @@ onMounted(async () => {
 
 <template>
   <div class="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center gap-6">
-    <div class="flex flex-col items-center gap-3">
-      <span
-        class="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-neon"
-        aria-hidden="true"
-      />
-      <h1 class="font-heading text-2xl font-bold uppercase tracking-widest text-text-primary">
-        Authenticating
+    <div class="flex flex-col items-center gap-3 text-center">
+      <p class="m-0 font-mono text-[10px] uppercase tracking-[0.22em] text-ink">Authenticating</p>
+      <h1 class="m-0 font-heading text-3xl font-bold uppercase leading-none tracking-[0.02em] text-text-primary">
+        One Moment
       </h1>
-      <p class="font-mono text-sm text-text-secondary">
-        {{ status === 'loading' ? 'Verifying credentials…' : 'Something went wrong' }}
+      <span class="block h-1.5 w-5.5 overflow-hidden bg-surface-raised" aria-hidden="true">
+        <span class="block h-full w-full origin-left bg-ink animate-[tick_1.6s_ease-in-out_infinite]"></span>
+      </span>
+      <p class="m-0 font-mono text-[11px] uppercase tracking-widest text-text-muted">
+        {{ status === 'loading' ? 'Completing sign-in · do not close' : 'Something went wrong' }}
       </p>
     </div>
   </div>

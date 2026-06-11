@@ -8,6 +8,7 @@ import type { ClipStatus, GameSummary } from '@/api/clips'
 import GameSelector from '@/components/GameSelector.vue'
 import TagInput from '@/components/TagInput.vue'
 import PageHeader from '@/components/PageHeader.vue'
+import BroadcastFrame from '@/components/BroadcastFrame.vue'
 import IconUploadCloud from '@/components/icons/IconUploadCloud.vue'
 import IconFile from '@/components/icons/IconFile.vue'
 import IconFileText from '@/components/icons/IconFileText.vue'
@@ -633,34 +634,35 @@ const STEPS = [
 const SOURCES = ['OBS', 'ShadowPlay', 'Medal', 'Xbox', 'PS5', 'Switch']
 
 const inputClass =
-  'w-full rounded-md border border-border bg-surface-raised px-3.5 py-3 font-body text-sm text-text-primary outline-none'
-const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest text-text-muted'
+  'w-full rounded-sm border border-border bg-surface-raised px-3.5 py-3 font-body text-sm text-text-primary outline-none transition-colors duration-150 focus:border-ink'
+const labelClass =
+  'mb-1.5 block font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary'
 </script>
 
 <template>
   <main class="mx-auto max-w-225 px-6 pt-8 pb-30">
-    <PageHeader title="Upload a clip" class="mb-7">
+    <PageHeader title="Submit to the Archive" class="mb-7">
       <template #caption>
-        Any source welcome · OBS, ShadowPlay, Medal, Xbox, consoles — just drop the file
+        <span class="text-ink">Filing desk</span>&nbsp;· any source welcome — just drop the file
       </template>
+      <hr class="m-0 mt-5 h-px w-full border-0 bg-border" />
     </PageHeader>
 
     <!-- Stepper -->
-    <div class="mb-8 flex overflow-hidden rounded-md border border-border bg-surface-raised">
+    <div class="mb-8 flex border border-border">
       <div
         v-for="(s, i) in STEPS"
         :key="s.num"
         :class="[
-          'relative flex-1 px-5 py-4 border-b-2',
+          'relative flex-1 border-b-2 px-5 py-4',
           i < STEPS.length - 1 ? 'border-r border-r-border' : '',
-          step >= Number(s.num) ? 'bg-surface-overlay' : 'bg-transparent',
-          step === Number(s.num) ? 'border-b-brand-light' : 'border-b-transparent',
+          step === Number(s.num) ? 'border-b-ink' : 'border-b-transparent',
         ]"
       >
         <div
           :class="[
-            'mb-1 font-mono text-[10px] uppercase tracking-widest',
-            step >= Number(s.num) ? 'text-neon' : 'text-text-muted',
+            'mb-1 font-mono text-[10px] uppercase tracking-[0.18em]',
+            step >= Number(s.num) ? 'text-ink' : 'text-text-muted',
           ]"
         >
           Step {{ s.num }}
@@ -678,10 +680,10 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
         <button
           @click="mode = 'upload'"
           :class="[
-            'flex cursor-pointer items-center justify-center gap-2 rounded-md border px-4 py-3 font-heading text-sm font-bold uppercase tracking-wider transition-colors',
+            'flex cursor-pointer items-center justify-center gap-2 border px-4 py-3 font-heading text-sm font-bold uppercase tracking-wider transition-colors',
             mode === 'upload'
-              ? 'border-brand-light bg-brand-glow text-text-primary'
-              : 'border-border bg-surface-raised text-text-secondary',
+              ? 'border-ink text-ink'
+              : 'border-border text-text-secondary hover:border-border-strong',
           ]"
         >
           <IconUploadCloud :size="16" />
@@ -690,10 +692,10 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
         <button
           @click="mode = 'import'"
           :class="[
-            'flex cursor-pointer items-center justify-center gap-2 rounded-md border px-4 py-3 font-heading text-sm font-bold uppercase tracking-wider transition-colors',
+            'flex cursor-pointer items-center justify-center gap-2 border px-4 py-3 font-heading text-sm font-bold uppercase tracking-wider transition-colors',
             mode === 'import'
-              ? 'border-brand-light bg-brand-glow text-text-primary'
-              : 'border-border bg-surface-raised text-text-secondary',
+              ? 'border-ink text-ink'
+              : 'border-border text-text-secondary hover:border-border-strong',
           ]"
         >
           <IconLink :size="16" />
@@ -708,12 +710,12 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
           @dragleave.prevent="dragging = false"
           @drop.prevent="handleDrop"
           :class="[
-            'flex flex-col items-center gap-4 rounded-lg border-2 border-dashed px-6 py-16 text-center transition-[border-color] duration-200',
-            dragging ? 'border-brand-light bg-brand-glow' : 'border-border-strong bg-transparent',
+            'flex flex-col items-center gap-4 border bg-surface-raised px-6 py-16 text-center transition-colors duration-200',
+            dragging ? 'border-ink' : 'border-border',
           ]"
         >
           <div
-            class="flex h-16 w-16 items-center justify-center rounded-full border border-border-strong bg-surface-overlay text-brand-light"
+            class="flex h-16 w-16 items-center justify-center border border-border text-ink"
           >
             <IconUploadCloud :size="28" />
           </div>
@@ -728,7 +730,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
           </div>
 
           <label
-            class="inline-flex cursor-pointer items-center gap-2 rounded-md bg-brand px-5.5 py-2.5 font-heading text-sm font-bold uppercase tracking-wider text-white"
+            class="inline-flex cursor-pointer items-center gap-2 bg-ink px-5.5 py-2.5 font-heading text-sm font-bold uppercase tracking-wider text-signal-text transition-[filter] duration-150 hover:brightness-108"
           >
             <IconFile :size="16" />
             Choose file
@@ -739,7 +741,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
             <span
               v-for="src in SOURCES"
               :key="src"
-              class="rounded-sm border border-border bg-surface-overlay px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
+              class="border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
             >
               {{ src }}
             </span>
@@ -748,14 +750,14 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
 
         <p
           v-if="errorMsg"
-          class="mt-4 rounded-md border border-brand bg-surface-overlay px-4 py-2 font-mono text-[12px] text-brand-light"
+          class="mt-4 border border-signal px-4 py-2 font-mono text-[12px] text-signal"
         >
           {{ errorMsg }}
         </p>
 
         <div
           v-if="file"
-          class="mt-5 flex items-center gap-4 rounded-md border border-neon bg-neon-dim px-5 py-4 text-neon"
+          class="mt-5 flex items-center gap-4 border border-ink px-5 py-4 text-ink"
         >
           <IconFileText :size="20" class="shrink-0" />
           <div class="min-w-0 flex-1">
@@ -770,7 +772,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
           </div>
           <button
             @click="step = 2"
-            class="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md bg-brand-light px-5 py-2.5 font-heading text-sm font-bold whitespace-nowrap uppercase tracking-wider text-white"
+            class="inline-flex shrink-0 cursor-pointer items-center gap-1.5 bg-ink px-5 py-2.5 font-heading text-sm font-bold whitespace-nowrap uppercase tracking-wider text-signal-text transition-[filter] duration-150 hover:brightness-108"
           >
             Continue
             <IconArrowRight :size="14" :stroke-width="2.5" />
@@ -781,10 +783,10 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
       <!-- URL input (import mode) -->
       <div v-else>
         <div
-          class="flex flex-col gap-4 rounded-lg border-2 border-dashed border-border-strong bg-transparent px-6 py-12 text-center"
+          class="flex flex-col gap-4 border border-border bg-surface-raised px-6 py-12 text-center"
         >
           <div
-            class="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-border-strong bg-surface-overlay text-brand-light"
+            class="mx-auto flex h-16 w-16 items-center justify-center border border-border text-ink"
           >
             <IconLink :size="28" />
           </div>
@@ -808,7 +810,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
                 (h) => !h.startsWith('www.') && !h.startsWith('m.'),
               )"
               :key="host"
-              class="rounded-sm border border-border bg-surface-overlay px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
+              class="border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
             >
               {{ host }}
             </span>
@@ -817,7 +819,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
 
         <div
           v-if="importUrl && !isImportUrlValid"
-          class="mt-4 rounded-md border border-brand bg-surface-overlay px-4 py-2 font-mono text-[12px] text-brand-light"
+          class="mt-4 border border-signal px-4 py-2 font-mono text-[12px] text-signal"
         >
           Only Medal.tv and YouTube https links are supported right now.
         </div>
@@ -827,15 +829,15 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
              filling step 2. -->
         <div
           v-if="previewError"
-          class="mt-4 rounded-md border border-brand bg-surface-overlay px-4 py-2 font-mono text-[12px] text-brand-light"
+          class="mt-4 border border-signal px-4 py-2 font-mono text-[12px] text-signal"
         >
           {{ previewError }}
         </div>
         <div
           v-else-if="previewData && previewData.durationSecs != null"
-          class="mt-4 rounded-md border border-border bg-surface-overlay px-4 py-2 font-mono text-[12px] text-text-muted"
+          class="mt-4 border border-border px-4 py-2 font-mono text-[12px] text-text-muted"
         >
-          <span class="text-neon">{{ fmtSeconds(previewData.durationSecs) }}</span>
+          <span class="text-ink">{{ fmtSeconds(previewData.durationSecs) }}</span>
           <template v-if="previewData.title"> · {{ previewData.title }}</template>
         </div>
 
@@ -844,10 +846,10 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
             :disabled="!isImportUrlValid || previewLoading"
             @click="continueFromImportStep1"
             :class="[
-              'inline-flex items-center gap-1.5 rounded-md px-5 py-2.5 font-heading text-sm font-bold uppercase tracking-wider',
+              'inline-flex items-center gap-1.5 px-5 py-2.5 font-heading text-sm font-bold uppercase tracking-wider',
               isImportUrlValid && !previewLoading
-                ? 'cursor-pointer bg-brand-light text-white'
-                : 'cursor-not-allowed border border-border bg-surface-overlay text-text-muted',
+                ? 'cursor-pointer bg-ink text-signal-text transition-[filter] duration-150 hover:brightness-108'
+                : 'cursor-not-allowed border border-border bg-transparent text-text-muted',
             ]"
           >
             {{ previewLoading ? 'Checking…' : 'Continue' }}
@@ -864,7 +866,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
           <!-- Game picker -->
           <div>
             <label :class="labelClass"
-              >Game <span class="text-[9px] text-text-muted">(optional)</span></label
+              ><span class="text-ink">I</span> Game <span class="text-[9px] text-text-muted">(optional)</span></label
             >
             <GameSelector v-model="selectedGame" />
           </div>
@@ -872,7 +874,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
           <!-- Tags -->
           <div>
             <label :class="labelClass"
-              >Tags <span class="text-[9px] text-text-muted">(optional, max 5)</span></label
+              ><span class="text-ink">II</span> Tags <span class="text-[9px] text-text-muted">(optional, max 5)</span></label
             >
             <TagInput v-model="selectedTags" :input-class="inputClass" />
           </div>
@@ -880,7 +882,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
           <div>
             <div class="mb-1.5 flex items-baseline justify-between">
               <label :class="labelClass + ' mb-0'"
-                >Title
+                ><span class="text-ink">III</span> Title
                 <span v-if="mode === 'import'" class="text-[9px] text-text-muted"
                   >(optional — we'll fill it from the source)</span
                 >
@@ -902,7 +904,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
           <div>
             <div class="mb-1.5 flex items-baseline justify-between">
               <label :class="labelClass + ' mb-0'"
-                >Description <span class="text-[9px] text-text-muted">(optional)</span></label
+                ><span class="text-ink">IV</span> Description <span class="text-[9px] text-text-muted">(optional)</span></label
               >
               <span class="font-mono text-[10px] text-text-muted"> {{ desc.length }}/500 </span>
             </div>
@@ -916,17 +918,17 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
           </div>
 
           <div>
-            <label :class="labelClass">Visibility</label>
+            <label :class="labelClass"><span class="text-ink">V</span> Visibility</label>
             <div class="grid grid-cols-2 gap-2.5">
               <button
                 v-for="opt in ['public', 'unlisted'] as const"
                 :key="opt"
                 @click="visibility = opt"
                 :class="[
-                  'cursor-pointer rounded-md border px-4 py-3.5 text-left transition-all duration-150',
+                  'cursor-pointer border px-4 py-3.5 text-left transition-colors duration-150',
                   visibility === opt
-                    ? 'border-brand-light bg-brand-glow text-text-primary'
-                    : 'border-border bg-surface-raised text-text-secondary',
+                    ? 'border-ink text-text-primary'
+                    : 'border-border text-text-secondary hover:border-border-strong',
                 ]"
               >
                 <div class="mb-1 flex items-center gap-2">
@@ -946,7 +948,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
           <div class="flex gap-3 pt-2">
             <button
               @click="step = 1"
-              class="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-surface-overlay px-5 py-3 font-heading text-sm font-bold uppercase text-text-secondary"
+              class="inline-flex cursor-pointer items-center gap-1.5 border border-border bg-transparent px-5 py-3 font-heading text-sm font-bold uppercase text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink"
             >
               <IconArrowLeft :size="14" :stroke-width="2.5" />
               Back
@@ -955,10 +957,10 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
               :disabled="mode === 'upload' ? !title.trim() : !isImportUrlValid"
               @click="mode === 'upload' ? startUpload() : startImport()"
               :class="[
-                'inline-flex flex-1 items-center justify-center gap-2 rounded-md px-5 py-3 font-heading text-[15px] font-bold uppercase tracking-wider transition-all duration-150',
+                'inline-flex flex-1 items-center justify-center gap-2 px-5 py-3 font-heading text-[15px] font-bold uppercase tracking-wider transition-[filter] duration-150',
                 (mode === 'upload' ? title.trim() : isImportUrlValid)
-                  ? 'cursor-pointer border-0 bg-brand-light text-white'
-                  : 'cursor-not-allowed border border-border bg-surface-overlay text-text-muted',
+                  ? 'cursor-pointer border-0 bg-ink text-signal-text hover:brightness-108'
+                  : 'cursor-not-allowed border border-border bg-transparent text-text-muted',
               ]"
             >
               {{ mode === 'import' ? 'Start import' : 'Start upload' }}
@@ -969,7 +971,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
 
         <div>
           <label :class="labelClass + ' mb-3'">Preview</label>
-          <div class="overflow-hidden rounded-md border border-border bg-surface-raised">
+          <div class="overflow-hidden border border-border">
             <div class="relative aspect-video bg-surface-sunken">
               <img
                 v-if="posterUrl"
@@ -984,7 +986,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
                 {{ file?.name ?? 'No file' }}
               </div>
               <div
-                class="absolute top-2 right-2 rounded-sm bg-black/60 px-2 py-0.75 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
+                class="absolute top-2 right-2 bg-black/60 px-2 py-0.75 font-mono text-[10px] uppercase tracking-[0.08em] text-[#f4f1e8]"
               >
                 {{ visibility }}
               </div>
@@ -1005,43 +1007,48 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
       </div>
     </div>
 
-    <!-- Step 3: Upload progress -->
+    <!-- Step 3: processing — the preview adopts the Broadcast Frame while the
+         pipeline runs. -->
     <div v-else-if="step === 3">
       <div class="mx-auto max-w-140">
-        <div
-          class="mb-8 flex gap-0 overflow-hidden rounded-md border border-border bg-surface-raised"
+        <BroadcastFrame
+          class="mb-8"
+          channel="INGEST · CH 01"
+          :status="progressLabel.toUpperCase()"
+          :live="stage !== 'done' && stage !== 'error'"
+          :spec="mode === 'import' ? 'URL IMPORT' : 'DIRECT UPLOAD'"
         >
-          <div class="min-w-0 flex-1 p-4">
-            <div class="mb-2 font-heading text-base font-bold leading-[1.3] text-text-primary">
-              {{ title || (mode === 'import' ? 'Importing from URL…' : '') }}
+          <div class="border border-border bg-surface-sunken p-5">
+            <div class="flex items-end justify-between gap-4">
+              <div class="min-w-0">
+                <div class="mb-2 truncate font-heading text-base font-bold uppercase leading-[1.3] text-text-primary">
+                  {{ title || (mode === 'import' ? 'Importing from URL…' : '') }}
+                </div>
+                <div class="truncate font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
+                  {{ visibility }}
+                  <template v-if="mode === 'upload' && file"> · {{ formatSize(file.size) }}</template>
+                  <template v-else-if="mode === 'import'"> · {{ importUrl }}</template>
+                </div>
+              </div>
+              <span class="shrink-0 font-heading text-[56px] font-bold leading-none text-ink">
+                {{ Math.round(uploadPct) }}<span class="text-[28px]">%</span>
+              </span>
             </div>
-            <div class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
-              {{ visibility }}
-              <template v-if="mode === 'upload' && file"> · {{ formatSize(file.size) }}</template>
-              <template v-else-if="mode === 'import'"> · {{ importUrl }}</template>
+            <div class="mt-4 h-1.5 w-full overflow-hidden bg-surface-raised">
+              <div
+                class="h-full bg-ink transition-[width] duration-180 ease"
+                :style="{ width: uploadPct + '%' }"
+              ></div>
             </div>
           </div>
-        </div>
-
-        <div class="mb-2 flex items-baseline justify-between">
-          <span class="font-mono text-[11px] uppercase tracking-[0.08em] text-text-muted">
-            {{ progressLabel }}
-          </span>
-          <span class="font-mono text-[11px] text-neon"> {{ Math.round(uploadPct) }}% </span>
-        </div>
-        <div class="mb-7 h-1.5 w-full overflow-hidden rounded-full bg-surface-overlay">
-          <div
-            class="h-full rounded-full bg-[linear-gradient(90deg,var(--color-brand),var(--color-brand-light))] transition-[width] duration-180 ease"
-            :style="{ width: uploadPct + '%' }"
-          ></div>
-        </div>
+        </BroadcastFrame>
 
         <div class="mb-9 flex flex-col gap-3.5">
           <div v-for="item in checklistItems" :key="item.label" class="flex items-center gap-3">
             <div
               :class="[
-                'h-2 w-2 shrink-0 rounded-full transition-[background,box-shadow] duration-300',
-                item.done ? 'bg-neon shadow-[0_0_8px_var(--color-neon)]' : 'bg-border-strong',
+                'h-2 w-2 shrink-0 transition-colors duration-300',
+                item.done ? 'bg-ink' : 'bg-border-strong',
               ]"
             ></div>
             <span
@@ -1057,11 +1064,11 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
 
         <div
           v-if="stage === 'error'"
-          class="mb-6 rounded-md border border-brand bg-surface-overlay px-4 py-3 font-mono text-[12px] text-brand-light"
+          class="mb-6 border border-signal px-4 py-3 font-mono text-[12px] text-signal"
         >
           {{ errorMsg }}
           <button
-            class="mt-2 block cursor-pointer rounded-sm border border-border bg-surface-raised px-3 py-1.5 text-text-primary"
+            class="mt-2 block cursor-pointer border border-border bg-transparent px-3 py-1.5 text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
             @click="goBackToDetails"
           >
             Back to details
@@ -1072,14 +1079,14 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
           <button
             :disabled="!createdClipId"
             @click="createdClipId && router.push(`/clip/${createdClipId}`)"
-            class="flex w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-brand-light px-6 py-3.5 font-heading text-base font-bold uppercase tracking-wider text-white disabled:cursor-not-allowed disabled:opacity-50"
+            class="flex w-full cursor-pointer items-center justify-center gap-2 bg-ink px-6 py-3.5 font-heading text-base font-bold uppercase tracking-wider text-signal-text transition-[filter] duration-150 hover:brightness-108 disabled:cursor-not-allowed disabled:opacity-50"
           >
             View your clip
             <IconArrowRight :size="16" :stroke-width="2.5" />
           </button>
           <button
             @click="router.push('/')"
-            class="flex w-full cursor-pointer items-center justify-center rounded-md border border-border bg-transparent px-6 py-3 font-heading text-sm font-bold uppercase tracking-wider text-text-secondary"
+            class="flex w-full cursor-pointer items-center justify-center border border-border bg-transparent px-6 py-3 font-heading text-sm font-bold uppercase tracking-wider text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink"
           >
             Back to feed
           </button>

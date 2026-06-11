@@ -78,11 +78,11 @@ function errorDetail(err: ApiError): string | null {
   <div class="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center gap-8 px-6">
     <div class="flex flex-col items-center gap-2.5 text-center">
       <div class="flex items-center gap-2.5">
-        <span class="logo__mark"></span>
+        <span class="size-2 bg-ink" aria-hidden="true"></span>
         <span
           class="font-display text-[28px] font-bold uppercase tracking-[0.04em] text-text-primary"
         >
-          GANKED.TV
+          GANKED<span class="text-ink">.TV</span>
         </span>
       </div>
       <div class="font-mono text-[11px] uppercase tracking-widest text-text-muted">
@@ -90,29 +90,32 @@ function errorDetail(err: ApiError): string | null {
       </div>
     </div>
 
-    <div class="w-full max-w-100 rounded-lg border border-border bg-surface-raised px-8 py-9">
+    <div class="w-full max-w-100 border border-border bg-surface-base px-8 py-9">
       <div class="mb-6 text-center">
-        <h1 class="m-0 mb-2 font-heading text-[32px] font-bold uppercase text-text-primary">
-          Create account
+        <p class="m-0 mb-2 font-mono text-[10px] uppercase tracking-[0.22em] text-ink">
+          Join the archive
+        </p>
+        <h1 class="m-0 mb-2 font-heading text-[32px] font-bold uppercase leading-none text-text-primary">
+          Start Filing
         </h1>
-        <p class="m-0 font-body text-sm text-text-secondary">
+        <p class="m-0 font-body text-[13px] text-text-secondary">
           Pick a handle, set a password — no third-party account required.
         </p>
       </div>
 
       <form class="flex flex-col gap-3" @submit="submitRegister">
         <label class="flex flex-col gap-1.5">
-          <span class="font-mono text-[10px] uppercase tracking-widest text-text-muted">Email</span>
+          <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary">Email</span>
           <input
             v-model="email"
             type="email"
             autocomplete="email"
             required
-            class="rounded-md border border-border-strong bg-surface-overlay px-3 py-2 font-body text-sm text-text-primary outline-none focus:border-border-hover"
+            class="h-11 rounded-sm border border-border bg-surface-raised px-3.5 font-body text-sm text-text-primary outline-none transition-colors duration-150 focus:border-ink"
           />
         </label>
         <label class="flex flex-col gap-1.5">
-          <span class="font-mono text-[10px] uppercase tracking-widest text-text-muted">
+          <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary">
             Username
           </span>
           <input
@@ -122,11 +125,11 @@ function errorDetail(err: ApiError): string | null {
             required
             minlength="1"
             maxlength="30"
-            class="rounded-md border border-border-strong bg-surface-overlay px-3 py-2 font-body text-sm text-text-primary outline-none focus:border-border-hover"
+            class="h-11 rounded-sm border border-border bg-surface-raised px-3.5 font-body text-sm text-text-primary outline-none transition-colors duration-150 focus:border-ink"
           />
         </label>
         <label class="flex flex-col gap-1.5">
-          <span class="font-mono text-[10px] uppercase tracking-widest text-text-muted">
+          <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary">
             Password (min 12)
           </span>
           <input
@@ -136,24 +139,24 @@ function errorDetail(err: ApiError): string | null {
             required
             minlength="12"
             maxlength="128"
-            class="rounded-md border border-border-strong bg-surface-overlay px-3 py-2 font-body text-sm text-text-primary outline-none focus:border-border-hover"
+            class="h-11 rounded-sm border border-border bg-surface-raised px-3.5 font-body text-sm text-text-primary outline-none transition-colors duration-150 focus:border-ink"
           />
         </label>
         <button
           type="submit"
           :disabled="submitting"
-          class="flex items-center justify-center gap-2 rounded-md bg-brand px-5 py-3 font-heading text-[15px] font-bold uppercase tracking-[0.06em] text-white transition-colors duration-150 hover:bg-brand-light disabled:cursor-not-allowed disabled:opacity-50"
+          class="flex items-center justify-center gap-2 bg-ink px-5 py-3 font-heading text-[15px] font-bold uppercase tracking-[0.06em] text-signal-text transition-[filter] duration-150 hover:brightness-108 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {{ submitting ? 'Creating account…' : 'Create account' }}
         </button>
-        <p v-if="formError" class="m-0 font-mono text-[11px] tracking-wide text-error" role="alert">
+        <p v-if="formError" class="m-0 font-mono text-[11px] tracking-wide text-signal" role="alert">
           {{ formError }}
         </p>
         <p class="m-0 mt-1 text-center font-body text-xs text-text-secondary">
           Already have an account?
           <RouterLink
             :to="{ name: 'login', query: returnTo ? { redirect: returnTo } : {} }"
-            class="font-heading uppercase tracking-[0.04em] text-text-primary no-underline hover:text-brand"
+            class="font-heading uppercase tracking-[0.04em] text-ink no-underline hover:underline"
             >Sign in</RouterLink
           >
         </p>

@@ -85,14 +85,14 @@ onMounted(loadMore)
 </script>
 
 <template>
-  <main class="mx-auto max-w-3xl px-6 pt-8 pb-30 max-[899px]:px-3.5 max-[899px]:pt-4">
+  <main class="mx-auto max-w-3xl px-6 pt-10 pb-30 max-tablet:px-4 max-tablet:pt-5">
     <PageHeader :title="heading">
       <template #caption>
         <RouterLink
           :to="{ name: 'user', params: { username } }"
-          class="font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary no-underline hover:text-text-primary"
+          class="no-underline transition-colors duration-150 hover:text-ink"
         >
-          ← Back to @{{ username }}
+          ← Back to <span class="text-ink">@{{ username }}</span>
         </RouterLink>
       </template>
     </PageHeader>
@@ -117,12 +117,12 @@ onMounted(loadMore)
     <StatusPanel
       v-if="loading && items.length === 0 && !errored"
       kind="loading"
-      message="Loading…"
+      message="Loading"
     />
 
     <StatusPanel v-else-if="errored" kind="error" message="Couldn't load this list.">
       <button
-        class="cursor-pointer rounded-sm border border-border bg-surface-raised px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+        class="cursor-pointer border border-border bg-transparent px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
         @click="loadMore"
       >
         Retry
@@ -138,18 +138,20 @@ onMounted(loadMore)
     />
 
     <template v-else>
-      <ul class="mt-6 grid grid-cols-1 gap-2 p-0">
-        <li v-for="u in items" :key="u.id" class="list-none">
+      <!-- Hairline-separated user rows, no card chrome. -->
+      <ul class="m-0 mt-4 grid grid-cols-1 p-0">
+        <li v-for="u in items" :key="u.id" class="list-none border-b border-border">
           <RouterLink
             :to="{ name: 'user', params: { username: u.username } }"
-            class="flex items-center gap-3 rounded-sm border border-border bg-surface-raised px-4 py-3 no-underline transition-colors duration-150 hover:border-border-hover"
+            class="group flex items-center gap-3 px-1 py-3.5 no-underline transition-colors duration-150 hover:bg-surface-raised"
           >
             <UserAvatar :user="u" :size="36" />
             <div class="flex min-w-0 flex-col">
-              <span class="truncate font-heading text-base text-text-primary">{{
-                u.username
-              }}</span>
-              <span class="truncate font-mono text-[11px] tracking-[0.04em] text-neon">
+              <span
+                class="truncate font-heading text-base font-medium uppercase text-text-primary transition-colors duration-150 group-hover:text-ink"
+                >{{ u.username }}</span
+              >
+              <span class="truncate font-mono text-[11px] tracking-[0.04em] text-ink">
                 @{{ u.username }}
               </span>
             </div>

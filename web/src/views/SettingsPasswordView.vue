@@ -2,11 +2,13 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useThemeStore } from '@/stores/theme'
 import { setPassword } from '@/api/auth'
 import { ApiError } from '@/api/client'
 
 const router = useRouter()
 const auth = useAuthStore()
+const theme = useThemeStore()
 
 // /auth/me reports `hasPassword` so we can switch between "Set password" (OAuth-only,
 // first-time attach) and "Change password" (rotation) copy. While the user is still
@@ -71,69 +73,126 @@ function mapError(err: unknown): string {
   }
   return 'Update failed. Try again.'
 }
+
+function setMode(dark: boolean) {
+  if (theme.isDark !== dark) theme.toggle()
+}
+
+const inputClass =
+  'h-11 rounded-sm border border-border bg-surface-raised px-3.5 font-body text-sm text-text-primary outline-none transition-colors duration-150 focus:border-ink'
 </script>
 
 <template>
-  <div class="mx-auto flex w-full max-w-xl flex-col gap-6 px-6 py-10">
+  <div class="mx-auto flex w-full max-w-xl flex-col gap-9 px-6 pt-10 pb-30">
     <header>
-      <h1 class="m-0 mb-1 font-heading text-[28px] font-bold uppercase text-text-primary">
-        {{ isFirstTimeSet ? 'Set password' : 'Change password' }}
+      <p class="m-0 mb-2 font-mono text-[10px] uppercase tracking-[0.22em] text-text-secondary">
+        <span class="text-ink">Account</span> · Your settings
+      </p>
+      <h1
+        class="m-0 font-heading text-[clamp(32px,4vw,44px)] font-bold uppercase leading-none text-text-primary"
+      >
+        Settings
       </h1>
-      <p class="m-0 font-body text-sm text-text-secondary">
+      <hr class="m-0 mt-5 h-px w-full border-0 bg-border" />
+    </header>
+
+    <!-- Section I — password. No card chrome: hairline-separated sections. -->
+    <section>
+      <p class="m-0 mb-1 font-mono text-[10px] uppercase tracking-[0.22em] text-text-secondary">
+        <span class="text-ink">I</span> {{ isFirstTimeSet ? 'Set password' : 'Change password' }}
+      </p>
+      <p class="m-0 mb-4 font-body text-[13px] text-text-secondary">
         Adding a password lets you sign in with email + password in addition to your connected
         accounts.
       </p>
-    </header>
 
-    <form
-      class="flex flex-col gap-3 rounded-lg border border-border bg-surface-raised px-6 py-6"
-      @submit="submit"
-    >
-      <label class="flex flex-col gap-1.5">
-        <span class="font-mono text-[10px] uppercase tracking-widest text-text-muted">
-          Current password
-          <span v-if="isFirstTimeSet" class="normal-case tracking-normal text-text-muted">
-            (leave blank if you don't have one yet)
+      <form class="flex flex-col gap-3" @submit="submit">
+        <label class="flex flex-col gap-1.5">
+          <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary">
+            Current password
+            <span v-if="isFirstTimeSet" class="normal-case tracking-normal text-text-muted">
+              (leave blank if you don't have one yet)
+            </span>
           </span>
-        </span>
-        <input
-          v-model="currentPassword"
-          type="password"
-          autocomplete="current-password"
-          class="rounded-md border border-border-strong bg-surface-overlay px-3 py-2 font-body text-sm text-text-primary outline-none focus:border-border-hover"
-        />
-      </label>
-      <label class="flex flex-col gap-1.5">
-        <span class="font-mono text-[10px] uppercase tracking-widest text-text-muted">
-          New password (min 12)
-        </span>
-        <input
-          v-model="newPassword"
-          type="password"
-          autocomplete="new-password"
-          required
-          minlength="12"
-          maxlength="128"
-          class="rounded-md border border-border-strong bg-surface-overlay px-3 py-2 font-body text-sm text-text-primary outline-none focus:border-border-hover"
-        />
-      </label>
-      <button
-        type="submit"
-        :disabled="submitting"
-        class="flex items-center justify-center gap-2 rounded-md bg-brand px-5 py-3 font-heading text-[14px] font-bold uppercase tracking-[0.06em] text-white transition-colors duration-150 hover:bg-brand-light disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {{ submitting ? 'Saving…' : 'Save password' }}
-      </button>
-      <p v-if="formError" class="m-0 font-mono text-[11px] tracking-wide text-error" role="alert">
-        {{ formError }}
+          <input
+            v-model="currentPassword"
+            type="password"
+            autocomplete="current-password"
+            :class="inputClass"
+          />
+        </label>
+        <label class="flex flex-col gap-1.5">
+          <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary">
+            New password (min 12)
+          </span>
+          <input
+            v-model="newPassword"
+            type="password"
+            autocomplete="new-password"
+            required
+            minlength="12"
+            maxlength="128"
+            :class="inputClass"
+          />
+        </label>
+        <button
+          type="submit"
+          :disabled="submitting"
+          class="flex items-center justify-center gap-2 self-start bg-ink px-5 py-3 font-heading text-[14px] font-bold uppercase tracking-[0.06em] text-signal-text transition-[filter] duration-150 hover:brightness-108 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {{ submitting ? 'Saving…' : 'Save password' }}
+        </button>
+        <p v-if="formError" class="m-0 font-mono text-[11px] tracking-wide text-signal" role="alert">
+          {{ formError }}
+        </p>
+        <p
+          v-if="successMessage"
+          class="m-0 font-mono text-[11px] tracking-wide text-text-secondary"
+          role="status"
+        >
+          {{ successMessage }}
+        </p>
+      </form>
+    </section>
+
+    <hr class="m-0 h-px w-full border-0 bg-border" />
+
+    <!-- Section II — appearance. -->
+    <section>
+      <p class="m-0 mb-1 font-mono text-[10px] uppercase tracking-[0.22em] text-text-secondary">
+        <span class="text-ink">II</span> Appearance
       </p>
-      <p
-        v-if="successMessage"
-        class="m-0 font-mono text-[11px] tracking-wide text-text-secondary"
-        role="status"
-      >
-        {{ successMessage }}
+      <p class="m-0 mb-4 font-body text-[13px] text-text-secondary">
+        One palette, two pressings. Pick the mode that suits the room.
       </p>
-    </form>
+      <div class="flex gap-2" role="group" aria-label="Theme mode">
+        <button
+          type="button"
+          :class="[
+            'cursor-pointer border px-5 py-2.5 font-mono text-[11px] uppercase tracking-[0.12em] transition-colors duration-150',
+            theme.isDark
+              ? 'border-ink text-ink'
+              : 'border-border text-text-secondary hover:border-ink hover:text-ink',
+          ]"
+          :aria-pressed="theme.isDark"
+          @click="setMode(true)"
+        >
+          Dark
+        </button>
+        <button
+          type="button"
+          :class="[
+            'cursor-pointer border px-5 py-2.5 font-mono text-[11px] uppercase tracking-[0.12em] transition-colors duration-150',
+            !theme.isDark
+              ? 'border-ink text-ink'
+              : 'border-border text-text-secondary hover:border-ink hover:text-ink',
+          ]"
+          :aria-pressed="!theme.isDark"
+          @click="setMode(false)"
+        >
+          Light
+        </button>
+      </div>
+    </section>
   </div>
 </template>

@@ -34,7 +34,7 @@ const brackets = [
       <span v-if="status" class="flex items-center gap-1.5 text-text-primary">
         <span
           v-if="live"
-          class="size-[7px] rounded-full bg-signal animate-[pulse_2s_infinite]"
+          class="size-1.75 rounded-full bg-signal animate-[pulse_2s_infinite]"
           aria-hidden="true"
         />
         {{ status }}

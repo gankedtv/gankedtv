@@ -1,15 +1,19 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { clips, type ClipFeedItem } from '@/api/clips'
 import { games as gamesApi, type GameListItem } from '@/api/games'
 import { useLatestRequest } from '@/composables/useLatestRequest'
-import { formatNum } from '@/lib/format'
+import { formatNum, formatRelativeTime } from '@/lib/format'
+import { issueNumber } from '@/lib/issue'
+import ClipCard from '@/components/ClipCard.vue'
 import GameTag from '@/components/GameTag.vue'
 import DurationBadge from '@/components/DurationBadge.vue'
-import AuthorHandle from '@/components/AuthorHandle.vue'
+import SectionHeader from '@/components/SectionHeader.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
 import PageHeader from '@/components/PageHeader.vue'
-import IconChevronRight from '@/components/icons/IconChevronRight.vue'
+
+const router = useRouter()
 
 // Only 24h and 7d hit the server-side trending feed today. The other windows surface the
 // UX intent (and the issue's "drop fake arrows for v1" sentiment is to ship what the
@@ -37,13 +41,18 @@ const { data, loading, errored, run } = useLatestRequest<{
       clips.feed({ sort: 'trending', window: timeWindow.value, limit: 50 }),
       gamesApi.list(8),
     ])
-    return { topClips: feed.items.slice(0, 10), hotGames: games }
+    return { topClips: feed.items.slice(0, 50), hotGames: games }
   },
   { label: 'trending' },
 )
 
 const topClips = computed(() => data.value?.topClips ?? [])
 const hotGames = computed(() => data.value?.hotGames ?? [])
+
+// Band I — feature + four runner-ups; Band II — everything after.
+const feature = computed(() => topClips.value[0] ?? null)
+const runnerUps = computed(() => topClips.value.slice(1, 5))
+const longTail = computed(() => topClips.value.slice(5, 25))
 
 onMounted(run)
 watch(timeWindow, run)
@@ -53,27 +62,30 @@ function selectWindow(key: string, enabled: boolean) {
   timeWindow.value = key as TrendingWindow
 }
 
-const timeBtnBase =
-  'px-3.5 py-1.5 rounded-sm font-mono text-[11px] uppercase tracking-[0.06em] border-none'
-const timeBtnActive = `${timeBtnBase} bg-brand text-white cursor-pointer transition-[background] duration-150`
-const timeBtnInactiveEnabled = `${timeBtnBase} bg-transparent text-text-secondary cursor-pointer transition-[color] duration-150`
-const timeBtnInactiveDisabled = `${timeBtnBase} bg-transparent text-text-secondary opacity-50 cursor-not-allowed`
+function openClip(id: string) {
+  router.push({ name: 'clip', params: { id } })
+}
 
-const rankBase = 'font-heading font-bold text-[28px] leading-none'
-const rankTop = `${rankBase} text-brand-light`
-const rankRest = `${rankBase} text-text-muted`
+// Underline-tab recipe, inline because UnderlineTabs has no disabled state.
+const tabBase =
+  '-mb-px cursor-pointer whitespace-nowrap border-b-2 bg-transparent pb-3 font-mono text-[11px] uppercase tracking-[0.15em] transition-colors duration-150'
+const tabActive = `${tabBase} border-ink text-text-primary`
+const tabEnabled = `${tabBase} border-transparent text-text-secondary hover:text-ink`
+const tabDisabled = `${tabBase.replace('cursor-pointer', 'cursor-not-allowed')} border-transparent text-text-muted opacity-60`
 </script>
 
 <template>
-  <main class="mx-auto max-w-360 px-6 pt-8 pb-30">
+  <main class="mx-auto max-w-360 px-8 pt-10 pb-30 max-tablet:px-4 max-tablet:pt-5">
     <PageHeader title="Trending">
-      <template #caption>Ranked by recent engagement (likes × 3 + views, decayed by age)</template>
+      <template #caption>
+        <span class="text-ink">The Chart</span>&nbsp;· likes × 3 + views, decayed by age
+      </template>
 
       <p id="time-window-hint" class="sr-only">
         24-hour and 7-day windows are available; the other ranges are coming soon.
       </p>
       <div
-        class="mt-5 inline-flex gap-0.5 p-1 bg-surface-raised border border-border rounded-sm"
+        class="mt-6 flex gap-7 border-b border-border"
         role="group"
         aria-label="Trending time window"
       >
@@ -81,13 +93,7 @@ const rankRest = `${rankBase} text-text-muted`
           v-for="tw in TIME_WINDOWS"
           :key="tw.key"
           type="button"
-          :class="
-            timeWindow === tw.key
-              ? timeBtnActive
-              : tw.enabled
-                ? timeBtnInactiveEnabled
-                : timeBtnInactiveDisabled
-          "
+          :class="timeWindow === tw.key ? tabActive : tw.enabled ? tabEnabled : tabDisabled"
           :aria-disabled="!tw.enabled"
           :aria-pressed="tw.key === timeWindow"
           aria-describedby="time-window-hint"
@@ -100,14 +106,14 @@ const rankRest = `${rankBase} text-text-muted`
 
     <StatusPanel v-if="errored" kind="error" message="Couldn't load trending.">
       <button
-        class="cursor-pointer rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+        class="cursor-pointer border border-border bg-transparent px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
         @click="run"
       >
         Retry
       </button>
     </StatusPanel>
 
-    <StatusPanel v-else-if="loading && topClips.length === 0" kind="loading" message="Loading…" />
+    <StatusPanel v-else-if="loading && topClips.length === 0" kind="loading" message="Loading" />
 
     <StatusPanel
       v-else-if="!loading && topClips.length === 0"
@@ -115,88 +121,126 @@ const rankRest = `${rankBase} text-text-muted`
       message="No clips trending yet — check back soon."
     />
 
-    <!-- Two-column layout -->
-    <div
-      v-else
-      class="grid grid-cols-[minmax(0,1fr)_340px] gap-7 items-start max-[960px]:grid-cols-1"
-    >
-      <!-- LEFT: Top 10 leaderboard -->
-      <div class="bg-surface-raised border border-border rounded-md overflow-hidden mt-7">
-        <div class="px-4 py-3.5 border-b border-border">
-          <span class="font-heading font-bold text-sm uppercase text-text-secondary tracking-wider"
-            >Top 10 right now</span
+    <template v-else-if="feature">
+      <!-- ====== Band I — Top Mover ====== -->
+      <section class="pt-8">
+        <SectionHeader
+          roman="I"
+          kicker="Top Mover"
+          blurb="What climbed the chart overnight."
+        />
+        <div class="grid grid-cols-[1.6fr_1fr] items-start gap-x-9 gap-y-8 pt-6 max-lg:grid-cols-1">
+          <!-- Feature -->
+          <article
+            class="group flex min-w-0 cursor-pointer flex-col gap-4"
+            @click="openClip(feature.id)"
           >
-        </div>
-
-        <RouterLink
-          v-for="(clip, i) in topClips"
-          :key="clip.id"
-          :to="{ name: 'clip', params: { id: clip.id } }"
-          :aria-label="`#${i + 1}: ${clip.title}`"
-          class="grid grid-cols-[40px_120px_1fr_auto_auto] gap-4 items-center px-4 py-3 transition-[background] duration-150 border-b border-border last:border-b-0 outline-none hover:bg-surface-overlay focus-visible:bg-surface-overlay focus-visible:ring-2 focus-visible:ring-brand-light"
-        >
-          <span :class="i < 3 ? rankTop : rankRest">#{{ i + 1 }}</span>
-
-          <div class="relative rounded-[4px] overflow-hidden aspect-video bg-surface-sunken">
-            <img :src="clip.thumbnailUrl" alt="" class="w-full h-full object-cover block" />
-            <DurationBadge :seconds="clip.durationSecs" class="absolute bottom-1 right-1" />
-          </div>
-
-          <div class="min-w-0 flex flex-col gap-1">
-            <span
-              class="font-body text-[13px] font-medium text-text-primary leading-[1.35] line-clamp-2"
-              >{{ clip.title }}</span
-            >
-            <div class="flex items-center gap-1.5 font-mono text-[10px]">
-              <GameTag v-if="clip.game" :tag="clip.game.tag" tone="subtle" />
-              <AuthorHandle :username="clip.author.username" class="text-neon" />
+            <div class="flex items-end gap-5">
+              <span
+                class="font-heading text-[clamp(48px,6vw,72px)] font-bold leading-[0.92] tracking-[-0.01em] text-ink"
+                aria-hidden="true"
+              >
+                1
+              </span>
+              <h2
+                class="m-0 pb-1 font-heading text-[clamp(24px,3vw,38px)] font-bold uppercase leading-[1.02] text-text-primary transition-colors duration-150 group-hover:text-ink"
+              >
+                {{ feature.title }}
+              </h2>
             </div>
-          </div>
-
-          <div
-            class="flex flex-col gap-1 text-right font-mono text-[11px] text-text-secondary whitespace-nowrap"
-          >
-            <span>♥ {{ formatNum(clip.likeCount) }}</span>
-            <span class="text-text-muted">{{ formatNum(clip.viewCount) }} plays</span>
-          </div>
-
-          <div class="text-text-muted">
-            <IconChevronRight :size="16" />
-          </div>
-        </RouterLink>
-      </div>
-
-      <!-- RIGHT sidebar -->
-      <div class="flex flex-col gap-4 mt-7">
-        <div class="bg-surface-raised border border-border rounded-md overflow-hidden">
-          <div class="px-4 py-3.5 border-b border-border">
-            <span
-              class="section-title-bar flex items-center gap-2.5 font-heading font-bold text-sm uppercase text-text-secondary tracking-wider"
-              >Hot Games</span
+            <div
+              class="relative aspect-video overflow-hidden border border-border bg-surface-sunken transition-colors duration-150 group-hover:border-ink"
             >
-          </div>
+              <img :src="feature.thumbnailUrl" alt="" class="h-full w-full object-cover" />
+              <span
+                class="absolute left-2.5 top-2 font-heading text-2xl font-bold leading-none text-ink opacity-85"
+                aria-hidden="true"
+              >
+                No. {{ issueNumber(feature.id) }}
+              </span>
+              <div v-if="feature.game" class="absolute bottom-2 left-2">
+                <GameTag :tag="feature.game.tag" />
+              </div>
+              <DurationBadge :seconds="feature.durationSecs" class="absolute bottom-2 right-2" />
+            </div>
+            <p class="m-0 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
+              <span class="text-ink">@{{ feature.author.username }}</span>
+              · ♥ {{ formatNum(feature.likeCount) }} · {{ formatNum(feature.viewCount) }} views ·
+              {{ formatRelativeTime(feature.createdAt) }}
+            </p>
+          </article>
 
+          <!-- Runner-ups -->
+          <ol class="m-0 flex list-none flex-col p-0">
+            <li
+              v-for="(clip, i) in runnerUps"
+              :key="clip.id"
+              class="group flex cursor-pointer items-center gap-4 border-t border-border py-3.5 first:border-t-0 first:pt-0"
+              @click="openClip(clip.id)"
+            >
+              <span
+                class="min-w-8 font-heading text-[28px] font-bold leading-none text-text-muted transition-colors duration-150 group-hover:text-ink"
+              >
+                {{ i + 2 }}
+              </span>
+              <span
+                class="relative aspect-video w-28 shrink-0 overflow-hidden border border-border bg-surface-sunken transition-colors duration-150 group-hover:border-ink"
+              >
+                <img :src="clip.thumbnailUrl" alt="" class="h-full w-full object-cover" />
+              </span>
+              <span class="min-w-0 flex-1">
+                <span
+                  class="block truncate font-heading text-base font-medium uppercase leading-[1.1] text-text-primary transition-colors duration-150 group-hover:text-ink"
+                >
+                  {{ clip.title }}
+                </span>
+                <span
+                  class="mt-1 block font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
+                >
+                  @{{ clip.author.username }} · ♥ {{ formatNum(clip.likeCount) }}
+                </span>
+              </span>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- ====== Band II — The Long Tail ====== -->
+      <section v-if="longTail.length" class="pt-10">
+        <SectionHeader roman="II" kicker="The Long Tail" />
+        <div class="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-x-5.5 gap-y-7 pt-6">
+          <ClipCard
+            v-for="clip in longTail"
+            :key="clip.id"
+            :clip="clip"
+            @click="openClip(clip.id)"
+          />
+        </div>
+      </section>
+
+      <!-- ====== Band III — Hot Games ====== -->
+      <section v-if="hotGames.length" class="pt-10">
+        <SectionHeader roman="III" kicker="Hot Games" :more-to="{ name: 'games' }" />
+        <div class="flex flex-wrap gap-x-8 gap-y-3 pt-6">
           <RouterLink
             v-for="g in hotGames"
             :key="g.id"
-            :to="{ name: 'games', query: { game: g.slug } }"
-            :aria-label="`Filter feed by ${g.name}`"
-            class="flex items-center gap-3 px-4 py-2.5 border-b border-border last:border-b-0 transition-[background] duration-150 outline-none hover:bg-surface-overlay focus-visible:bg-surface-overlay focus-visible:ring-2 focus-visible:ring-brand-light"
+            :to="{ name: 'game-detail', params: { slug: g.slug } }"
+            :aria-label="`Browse ${g.name} clips`"
+            class="group flex items-center gap-3 outline-none"
           >
             <GameTag :tag="g.tag" variant="square" />
-            <div class="min-w-0 flex-1 flex flex-col gap-px">
+            <span class="flex min-w-0 flex-col gap-px">
               <span
-                class="font-body text-[13px] font-medium text-text-primary whitespace-nowrap overflow-hidden text-ellipsis"
+                class="truncate font-heading text-[15px] font-medium uppercase text-text-primary transition-colors duration-150 group-hover:text-ink"
               >
                 {{ g.name }}
               </span>
-              <span class="font-mono text-[10px] text-text-muted">
-                {{ g.slug }}
-              </span>
-            </div>
+              <span class="font-mono text-[10px] text-text-muted">{{ g.slug }}</span>
+            </span>
           </RouterLink>
         </div>
-      </div>
-    </div>
+      </section>
+    </template>
   </main>
 </template>

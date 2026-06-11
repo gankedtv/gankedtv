@@ -75,7 +75,7 @@ onUnmounted(() => {
 })
 
 const inputClass =
-  'w-full rounded-md border border-border bg-surface-raised px-3.5 py-3 font-body text-sm text-text-primary outline-none'
+  'w-full rounded-sm border border-border bg-surface-raised px-3.5 py-3 font-body text-sm text-text-primary outline-none transition-colors duration-150 focus:border-ink'
 </script>
 
 <template>
@@ -83,7 +83,7 @@ const inputClass =
     <!-- Selected pill -->
     <div
       v-if="modelValue"
-      class="mb-2 inline-flex items-center gap-2 rounded-md border border-brand-light bg-brand-glow px-3 py-1.5"
+      class="mb-2 inline-flex items-center gap-2 border border-ink px-3 py-1.5"
     >
       <span class="font-mono text-[10px] uppercase tracking-[0.06em] text-text-primary">
         {{ modelValue.tag }}
@@ -93,7 +93,7 @@ const inputClass =
         type="button"
         @click="clearGame"
         aria-label="Clear selected game"
-        class="cursor-pointer font-mono text-[11px] leading-none text-text-muted transition-colors duration-150 hover:text-text-primary"
+        class="cursor-pointer font-mono text-[11px] leading-none text-text-muted transition-colors duration-150 hover:text-ink"
       >
         ×
       </button>
@@ -118,7 +118,7 @@ const inputClass =
         role="listbox"
         aria-live="polite"
         aria-atomic="true"
-        class="absolute left-0 right-0 top-full z-10 mt-1 max-h-60 overflow-auto rounded-md border border-border-strong bg-surface-raised"
+        class="absolute left-0 right-0 top-full z-10 mt-1 max-h-60 overflow-auto border border-border-strong bg-surface-base"
       >
         <GameSearchResult
           v-for="g in gameResults"

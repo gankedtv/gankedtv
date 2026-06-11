@@ -190,7 +190,7 @@ onUnmounted(() => {
 const resolvedInputClass = computed(
   () =>
     props.inputClass ??
-    'w-full rounded-md border border-border bg-surface-raised px-3.5 py-3 font-body text-sm text-text-primary outline-none',
+    'w-full rounded-sm border border-border bg-surface-raised px-3.5 py-3 font-body text-sm text-text-primary outline-none transition-colors duration-150 focus:border-ink',
 )
 </script>
 
@@ -200,13 +200,13 @@ const resolvedInputClass = computed(
       <span
         v-for="(slug, i) in props.modelValue"
         :key="slug"
-        class="inline-flex items-center gap-1.5 rounded-[3px] border border-border-strong bg-surface-base px-2 py-1 font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-text-primary"
+        class="inline-flex items-center gap-1.5 border border-ink px-2 py-1 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-ink"
       >
         #{{ slug }}
         <button
           type="button"
           :aria-label="`Remove tag ${slug}`"
-          class="cursor-pointer leading-none text-text-muted transition-colors duration-150 hover:text-text-primary"
+          class="cursor-pointer leading-none text-ink/70 transition-colors duration-150 hover:text-ink"
           @click="
             () => {
               removeAt(i)
@@ -247,7 +247,7 @@ const resolvedInputClass = computed(
           v-if="showDropdown && results.length"
           :id="listboxId"
           role="listbox"
-          class="absolute left-0 right-0 top-full z-10 mt-1 max-h-60 overflow-auto rounded-md border border-border-strong bg-surface-raised"
+          class="absolute left-0 right-0 top-full z-10 mt-1 max-h-60 overflow-auto border border-border-strong bg-surface-base"
         >
           <li
             v-for="(r, i) in results"
@@ -255,8 +255,8 @@ const resolvedInputClass = computed(
             :key="r.id"
             role="option"
             :aria-selected="i === highlightedIndex"
-            class="flex cursor-pointer items-center justify-between gap-3 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.06em] text-text-primary transition-colors duration-150 hover:bg-surface-overlay"
-            :class="i === highlightedIndex ? 'bg-surface-overlay' : ''"
+            class="flex cursor-pointer items-center justify-between gap-3 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.06em] text-text-primary transition-colors duration-150 hover:bg-surface-raised"
+            :class="i === highlightedIndex ? 'bg-surface-raised' : ''"
             @mousedown.prevent="commit(r.slug)"
           >
             <span>#{{ r.name }}</span>
