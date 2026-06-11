@@ -142,7 +142,11 @@ const inputClass =
         >
           {{ submitting ? 'Saving…' : 'Save password' }}
         </button>
-        <p v-if="formError" class="m-0 font-mono text-[11px] tracking-wide text-signal" role="alert">
+        <p
+          v-if="formError"
+          class="m-0 font-mono text-[11px] tracking-wide text-signal"
+          role="alert"
+        >
           {{ formError }}
         </p>
         <p

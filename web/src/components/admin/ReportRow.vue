@@ -75,12 +75,8 @@ const userIsBanned = computed(
         class="flex-1 font-body text-sm text-text-primary"
       >
         <p class="line-clamp-2 break-words">{{ targetTitle }}</p>
-        <p v-if="clipIsHidden" class="mt-1 font-mono text-[10px] text-signal">
-          Clip is hidden
-        </p>
-        <p v-if="userIsBanned" class="mt-1 font-mono text-[10px] text-signal">
-          User is banned
-        </p>
+        <p v-if="clipIsHidden" class="mt-1 font-mono text-[10px] text-signal">Clip is hidden</p>
+        <p v-if="userIsBanned" class="mt-1 font-mono text-[10px] text-signal">User is banned</p>
       </component>
     </div>
 

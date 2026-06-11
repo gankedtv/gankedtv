@@ -124,11 +124,7 @@ const tabDisabled = `${tabBase.replace('cursor-pointer', 'cursor-not-allowed')} 
     <template v-else-if="feature">
       <!-- ====== Band I — Top Mover ====== -->
       <section class="pt-8">
-        <SectionHeader
-          roman="I"
-          kicker="Top Mover"
-          blurb="What climbed the chart overnight."
-        />
+        <SectionHeader roman="I" kicker="Top Mover" blurb="What climbed the chart overnight." />
         <div class="grid grid-cols-[1.6fr_1fr] items-start gap-x-9 gap-y-8 pt-6 max-lg:grid-cols-1">
           <!-- Feature -->
           <article

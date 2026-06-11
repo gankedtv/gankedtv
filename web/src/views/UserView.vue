@@ -102,8 +102,8 @@ const initials = computed(() => {
 // Hoisted so the template doesn't re-parse the URL on every render.
 const avatarImageUrl = computed(() => safeImageUrl(profile.value?.avatarUrl))
 
-// User-uploaded banner replaces the username-hashed gradient when present; otherwise the
-// gradient remains as the fallback so a brand-new account still has a non-empty banner.
+// User-uploaded banner replaces the username-hashed fill when present; otherwise the
+// flat fill remains as the fallback so a brand-new account still has a non-empty banner.
 const bannerImageUrl = computed(() => safeImageUrl(profile.value?.bannerUrl))
 
 // Inline style binding for the profile header — DESIGN.md mandates that user-picked colors

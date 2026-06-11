@@ -302,7 +302,9 @@ onBeforeUnmount(() => {
       class="pointer-events-none absolute inset-0 flex items-center justify-center"
     >
       <span class="block h-1.5 w-5.5 overflow-hidden bg-white/15">
-        <span class="block h-full w-full origin-left bg-ink animate-[tick_1.6s_ease-in-out_infinite]"></span>
+        <span
+          class="block h-full w-full origin-left bg-ink animate-[tick_1.6s_ease-in-out_infinite]"
+        ></span>
       </span>
     </div>
 
@@ -360,7 +362,10 @@ onBeforeUnmount(() => {
     <div
       class="pointer-events-none absolute inset-x-0 top-0 flex flex-col gap-1 bg-black/60 px-4 py-3 text-white"
     >
-      <p v-if="clip.game" class="m-0 font-mono text-[10px] uppercase tracking-[0.12em] text-white/70">
+      <p
+        v-if="clip.game"
+        class="m-0 font-mono text-[10px] uppercase tracking-[0.12em] text-white/70"
+      >
         {{ clip.game.tag }}
       </p>
       <h2 class="m-0 line-clamp-2 font-heading text-base font-bold uppercase tracking-[0.01em]">
@@ -389,7 +394,9 @@ onBeforeUnmount(() => {
       >
         <span
           class="inline-flex h-11 w-11 items-center justify-center border"
-          :class="liked ? 'border-ink bg-ink text-signal-text' : 'border-white/25 bg-black/45 text-white'"
+          :class="
+            liked ? 'border-ink bg-ink text-signal-text' : 'border-white/25 bg-black/45 text-white'
+          "
         >
           <IconHeart :size="20" />
         </span>
@@ -453,10 +460,7 @@ onBeforeUnmount(() => {
               aria-label="Comments"
               @click.stop
             >
-              <div
-                class="mx-auto mt-2 h-1 w-10 shrink-0 bg-border-strong"
-                aria-hidden="true"
-              ></div>
+              <div class="mx-auto mt-2 h-1 w-10 shrink-0 bg-border-strong" aria-hidden="true"></div>
               <div class="flex shrink-0 items-center justify-between gap-3 px-4 py-3">
                 <h2
                   class="m-0 font-heading text-base font-bold uppercase tracking-[0.04em] text-text-primary"

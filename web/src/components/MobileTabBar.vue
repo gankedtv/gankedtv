@@ -14,18 +14,14 @@ import IconUser from '@/components/icons/IconUser.vue'
 const route = useRoute()
 const auth = useAuthStore()
 
-const profileTo = computed(() =>
-  auth.isAuthenticated ? `/user/${auth.user!.username}` : '/login',
-)
+const profileTo = computed(() => (auth.isAuthenticated ? `/user/${auth.user!.username}` : '/login'))
 const uploadTo = computed(() =>
   auth.isAuthenticated ? '/upload' : { path: '/login', query: { redirect: '/upload' } },
 )
 
 const isProfileActive = computed(
   () =>
-    route.name === 'user' &&
-    auth.isAuthenticated &&
-    route.params.username === auth.user!.username,
+    route.name === 'user' && auth.isAuthenticated && route.params.username === auth.user!.username,
 )
 
 function tabClass(active: boolean): string {

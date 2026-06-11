@@ -143,8 +143,18 @@ const telemetryCells = computed<TelemetryCell[]>(() => {
   if (!c) return []
   return [
     { key: 'views', label: 'Views', value: formatNum(c.viewCount) },
-    { key: 'likes', label: 'Likes', value: formatNum(likeCount.value), ink: liked.value, action: true },
-    { key: 'duration', label: 'Runtime', value: c.durationSecs !== null ? formatDuration(c.durationSecs) : '—' },
+    {
+      key: 'likes',
+      label: 'Likes',
+      value: formatNum(likeCount.value),
+      ink: liked.value,
+      action: true,
+    },
+    {
+      key: 'duration',
+      label: 'Runtime',
+      value: c.durationSecs !== null ? formatDuration(c.durationSecs) : '—',
+    },
     { key: 'filed', label: 'Filed', value: formatRelativeTime(c.createdAt) },
   ]
 })

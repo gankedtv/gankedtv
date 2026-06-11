@@ -131,7 +131,9 @@ async function devSignIn(username = 'seeduser', role?: 'user' | 'moderator' | 'a
     <div class="w-full max-w-100 border border-border bg-surface-base px-8 py-9">
       <div class="mb-6 text-center">
         <p class="m-0 mb-2 font-mono text-[10px] uppercase tracking-[0.22em] text-ink">Sign in</p>
-        <h1 class="m-0 mb-2 font-heading text-[32px] font-bold uppercase leading-none text-text-primary">
+        <h1
+          class="m-0 mb-2 font-heading text-[32px] font-bold uppercase leading-none text-text-primary"
+        >
           Back to the Archive
         </h1>
         <p class="m-0 font-body text-[13px] text-text-secondary">
@@ -178,7 +180,9 @@ async function devSignIn(username = 'seeduser', role?: 'user' | 'moderator' | 'a
       <!-- Expanded state: actual email/password form -->
       <form v-else class="flex flex-col gap-3" @submit="submitLogin">
         <label class="flex flex-col gap-1.5">
-          <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary">Email</span>
+          <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary"
+            >Email</span
+          >
           <input
             ref="emailInputRef"
             v-model="email"
@@ -207,7 +211,11 @@ async function devSignIn(username = 'seeduser', role?: 'user' | 'moderator' | 'a
         >
           {{ submitting ? 'Signing in…' : 'Sign in with email' }}
         </button>
-        <p v-if="formError" class="m-0 font-mono text-[11px] tracking-wide text-signal" role="alert">
+        <p
+          v-if="formError"
+          class="m-0 font-mono text-[11px] tracking-wide text-signal"
+          role="alert"
+        >
           {{ formError }}
         </p>
       </form>

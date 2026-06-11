@@ -21,8 +21,11 @@ withDefaults(
 <template>
   <div class="mb-3.5 flex items-end justify-between gap-6">
     <div class="min-w-0">
-      <p class="font-mono text-[10px] font-medium uppercase leading-none tracking-[0.22em] text-text-secondary">
-        <span v-if="roman" class="mr-2 text-ink">{{ roman }}</span>{{ kicker }}
+      <p
+        class="font-mono text-[10px] font-medium uppercase leading-none tracking-[0.22em] text-text-secondary"
+      >
+        <span v-if="roman" class="mr-2 text-ink">{{ roman }}</span
+        >{{ kicker }}
       </p>
       <h2
         v-if="title"

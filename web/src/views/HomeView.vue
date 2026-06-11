@@ -235,10 +235,7 @@ onMounted(() => {
     <template v-else-if="hero">
       <!-- ====== Band I — Hero + Latest Drops ====== -->
       <section>
-        <SectionHeader
-          roman="I"
-          :kicker="heroIsFeatured ? 'Clip of the Day' : 'Featured Clip'"
-        />
+        <SectionHeader roman="I" :kicker="heroIsFeatured ? 'Clip of the Day' : 'Featured Clip'" />
         <div class="grid grid-cols-[2fr_1fr] gap-x-9 gap-y-8 pt-6 max-lg:grid-cols-1">
           <!-- Hero -->
           <article class="group flex min-w-0 cursor-pointer flex-col" @click="openClip(hero.id)">
@@ -352,7 +349,9 @@ onMounted(() => {
           blurb="Where the bracket lives this week."
           :more-to="{ name: 'games' }"
         />
-        <div class="grid grid-cols-5 gap-x-5.5 gap-y-7 pt-6 max-lg:grid-cols-3 max-tablet:grid-cols-2">
+        <div
+          class="grid grid-cols-5 gap-x-5.5 gap-y-7 pt-6 max-lg:grid-cols-3 max-tablet:grid-cols-2"
+        >
           <GameCoverTile v-for="g in bandGames" :key="g.id" :game="g" />
         </div>
       </section>
@@ -395,9 +394,7 @@ onMounted(() => {
               >
                 {{ trendingFeature.title }}
               </h3>
-              <p
-                class="m-0 mt-2 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
-              >
+              <p class="m-0 mt-2 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
                 <span class="text-ink">@{{ trendingFeature.author.username }}</span>
                 · {{ formatNum(trendingFeature.viewCount) }} views ·
                 {{ formatRelativeTime(trendingFeature.createdAt) }}
@@ -442,19 +439,9 @@ onMounted(() => {
 
       <!-- ====== Band IV — The Feed ====== -->
       <section class="pt-10">
-        <SectionHeader
-          roman="IV"
-          kicker="The Feed"
-          title="Everything Else"
-          blurb="Freshest first."
-        >
+        <SectionHeader roman="IV" kicker="The Feed" title="Everything Else" blurb="Freshest first.">
           <template #right>
-            <UnderlineTabs
-              class="border-b-0"
-              :tabs="TABS"
-              :active="source"
-              @select="selectTab"
-            />
+            <UnderlineTabs class="border-b-0" :tabs="TABS" :active="source" @select="selectTab" />
           </template>
         </SectionHeader>
         <div
@@ -464,10 +451,7 @@ onMounted(() => {
         >
           <ClipCard v-for="clip in feed" :key="clip.id" :clip="clip" @click="openClip(clip.id)" />
         </div>
-        <p
-          v-else
-          class="m-0 pt-6 font-mono text-[11px] uppercase tracking-widest text-text-muted"
-        >
+        <p v-else class="m-0 pt-6 font-mono text-[11px] uppercase tracking-widest text-text-muted">
           The whole issue is above the fold today.
         </p>
 

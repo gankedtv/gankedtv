@@ -23,7 +23,9 @@ defineProps<{
     aria-live="polite"
   >
     <span class="block h-1.5 w-5.5 overflow-hidden bg-surface-raised">
-      <span class="block h-full w-full origin-left bg-ink animate-[tick_1.6s_ease-in-out_infinite]"></span>
+      <span
+        class="block h-full w-full origin-left bg-ink animate-[tick_1.6s_ease-in-out_infinite]"
+      ></span>
     </span>
     <span class="font-mono text-sm uppercase tracking-widest text-text-muted">{{ message }}</span>
   </div>
@@ -38,7 +40,9 @@ defineProps<{
     >
       {{ kind === 'error' ? 'Transmission error' : 'Nothing filed' }}
     </span>
-    <span class="font-mono text-sm uppercase tracking-widest text-text-secondary">{{ message }}</span>
+    <span class="font-mono text-sm uppercase tracking-widest text-text-secondary">{{
+      message
+    }}</span>
     <slot />
   </div>
 </template>

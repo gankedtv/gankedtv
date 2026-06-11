@@ -95,7 +95,9 @@ function errorDetail(err: ApiError): string | null {
         <p class="m-0 mb-2 font-mono text-[10px] uppercase tracking-[0.22em] text-ink">
           Join the archive
         </p>
-        <h1 class="m-0 mb-2 font-heading text-[32px] font-bold uppercase leading-none text-text-primary">
+        <h1
+          class="m-0 mb-2 font-heading text-[32px] font-bold uppercase leading-none text-text-primary"
+        >
           Start Filing
         </h1>
         <p class="m-0 font-body text-[13px] text-text-secondary">
@@ -105,7 +107,9 @@ function errorDetail(err: ApiError): string | null {
 
       <form class="flex flex-col gap-3" @submit="submitRegister">
         <label class="flex flex-col gap-1.5">
-          <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary">Email</span>
+          <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary"
+            >Email</span
+          >
           <input
             v-model="email"
             type="email"
@@ -149,7 +153,11 @@ function errorDetail(err: ApiError): string | null {
         >
           {{ submitting ? 'Creating account…' : 'Create account' }}
         </button>
-        <p v-if="formError" class="m-0 font-mono text-[11px] tracking-wide text-signal" role="alert">
+        <p
+          v-if="formError"
+          class="m-0 font-mono text-[11px] tracking-wide text-signal"
+          role="alert"
+        >
           {{ formError }}
         </p>
         <p class="m-0 mt-1 text-center font-body text-xs text-text-secondary">

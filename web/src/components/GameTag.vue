@@ -31,7 +31,9 @@ defineProps<{
     v-else
     class="inline-flex items-center font-mono font-bold uppercase leading-none"
     :class="[
-      size === 'md' ? 'px-2 py-1.25 text-[10px] tracking-[0.15em]' : 'px-1.5 py-1 text-[10px] tracking-[0.12em]',
+      size === 'md'
+        ? 'px-2 py-1.25 text-[10px] tracking-[0.15em]'
+        : 'px-1.5 py-1 text-[10px] tracking-[0.12em]',
       tone === 'subtle'
         ? 'border border-border text-text-secondary'
         : tone === 'muted'

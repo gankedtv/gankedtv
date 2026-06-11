@@ -28,20 +28,6 @@
   --color-signal: #6c9bcf;
   --color-signal-text: #161410;
 
-  /* ---- Bridge aliases — DELETE IN CLEANUP PHASE. They keep
-     not-yet-migrated views on-palette while pages migrate to
-     ink/signal tokens one phase at a time. ---- */
-  --color-brand: #ed3a47;
-  --color-brand-light: #ed3a47;
-  --color-brand-glow: transparent;
-  --color-neon: #ed3a47;
-  --color-neon-dim: rgba(237, 58, 71, 0.15);
-  --color-surface-overlay: #221e16;
-  --color-border-hover: #3c3a30;
-  --color-success: #c5bca7;
-  --color-error: #6c9bcf;
-  --color-warning: #c5bca7;
-
   /* Vendor brand colors (theme-agnostic — locked to provider identity) */
   --color-discord: #5865f2;
   --color-discord-hover: #4752c4;
@@ -50,12 +36,9 @@
   --color-google: #131314;
   --color-google-hover: #1f2024;
 
-  /* Radius — sharp system. md (2px) is for inputs only.
-     lg/xl neutralized to 0 until consumers are migrated, then deleted. */
+  /* Radius — sharp system. md (2px) is for inputs only. */
   --radius-sm: 0px;
   --radius-md: 2px;
-  --radius-lg: 0px;
-  --radius-xl: 0px;
 
   /* Custom breakpoint — 720px is the mobile/tablet boundary.
      Use `tablet:` and `max-tablet:` modifiers. */
@@ -79,16 +62,6 @@ html.light {
   --color-ink: #c41825;
   --color-signal: #3a6fb5;
   --color-signal-text: #f4f1e8;
-  /* Bridge aliases follow ink in light mode too */
-  --color-brand: #c41825;
-  --color-brand-light: #c41825;
-  --color-neon: #c41825;
-  --color-neon-dim: rgba(196, 24, 37, 0.12);
-  --color-surface-overlay: #ece8da;
-  --color-border-hover: #1a1810;
-  --color-success: #5a5444;
-  --color-error: #3a6fb5;
-  --color-warning: #5a5444;
   --noise-opacity: 0.018;
 }
 
@@ -253,4 +226,3 @@ nav {
 .plyr__tooltip {
   font-family: var(--font-mono);
 }
-

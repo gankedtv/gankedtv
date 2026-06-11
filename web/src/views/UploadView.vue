@@ -714,9 +714,7 @@ const labelClass =
             dragging ? 'border-ink' : 'border-border',
           ]"
         >
-          <div
-            class="flex h-16 w-16 items-center justify-center border border-border text-ink"
-          >
+          <div class="flex h-16 w-16 items-center justify-center border border-border text-ink">
             <IconUploadCloud :size="28" />
           </div>
 
@@ -755,10 +753,7 @@ const labelClass =
           {{ errorMsg }}
         </p>
 
-        <div
-          v-if="file"
-          class="mt-5 flex items-center gap-4 border border-ink px-5 py-4 text-ink"
-        >
+        <div v-if="file" class="mt-5 flex items-center gap-4 border border-ink px-5 py-4 text-ink">
           <IconFileText :size="20" class="shrink-0" />
           <div class="min-w-0 flex-1">
             <div
@@ -866,7 +861,8 @@ const labelClass =
           <!-- Game picker -->
           <div>
             <label :class="labelClass"
-              ><span class="text-ink">I</span> Game <span class="text-[9px] text-text-muted">(optional)</span></label
+              ><span class="text-ink">I</span> Game
+              <span class="text-[9px] text-text-muted">(optional)</span></label
             >
             <GameSelector v-model="selectedGame" />
           </div>
@@ -874,7 +870,8 @@ const labelClass =
           <!-- Tags -->
           <div>
             <label :class="labelClass"
-              ><span class="text-ink">II</span> Tags <span class="text-[9px] text-text-muted">(optional, max 5)</span></label
+              ><span class="text-ink">II</span> Tags
+              <span class="text-[9px] text-text-muted">(optional, max 5)</span></label
             >
             <TagInput v-model="selectedTags" :input-class="inputClass" />
           </div>
@@ -904,7 +901,8 @@ const labelClass =
           <div>
             <div class="mb-1.5 flex items-baseline justify-between">
               <label :class="labelClass + ' mb-0'"
-                ><span class="text-ink">IV</span> Description <span class="text-[9px] text-text-muted">(optional)</span></label
+                ><span class="text-ink">IV</span> Description
+                <span class="text-[9px] text-text-muted">(optional)</span></label
               >
               <span class="font-mono text-[10px] text-text-muted"> {{ desc.length }}/500 </span>
             </div>
@@ -1021,12 +1019,18 @@ const labelClass =
           <div class="border border-border bg-surface-sunken p-5">
             <div class="flex items-end justify-between gap-4">
               <div class="min-w-0">
-                <div class="mb-2 truncate font-heading text-base font-bold uppercase leading-[1.3] text-text-primary">
+                <div
+                  class="mb-2 truncate font-heading text-base font-bold uppercase leading-[1.3] text-text-primary"
+                >
                   {{ title || (mode === 'import' ? 'Importing from URL…' : '') }}
                 </div>
-                <div class="truncate font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
+                <div
+                  class="truncate font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
+                >
                   {{ visibility }}
-                  <template v-if="mode === 'upload' && file"> · {{ formatSize(file.size) }}</template>
+                  <template v-if="mode === 'upload' && file">
+                    · {{ formatSize(file.size) }}</template
+                  >
                   <template v-else-if="mode === 'import'"> · {{ importUrl }}</template>
                 </div>
               </div>

@@ -16,7 +16,7 @@ const props = withDefaults(
   { size: 32 },
 )
 
-// Stable hash → hue, so the same username always renders the same gradient.
+// Stable hash → hue, so the same username always renders the same fill.
 // Tiny djb2 derivative; collisions are fine here, we only want visual variety.
 function hashHue(input: string): number {
   let h = 5381
@@ -43,7 +43,7 @@ const bgStyle = computed(() => {
   return { background: `hsl(${hue}, 35%, 38%)` }
 })
 
-// If the avatar image fails to load, fall back to the initials gradient instead
+// If the avatar image fails to load, fall back to the initials fill instead
 // of letting the browser show a broken-image icon. Reset whenever the URL changes
 // so a new (possibly working) URL gets a retry.
 const imageBroken = ref(false)

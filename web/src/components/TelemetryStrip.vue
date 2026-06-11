@@ -21,7 +21,9 @@ defineEmits<{
 </script>
 
 <template>
-  <div class="grid border border-border tablet:auto-cols-fr tablet:grid-flow-col max-tablet:grid-cols-2">
+  <div
+    class="grid border border-border tablet:auto-cols-fr tablet:grid-flow-col max-tablet:grid-cols-2"
+  >
     <component
       v-for="cell in cells"
       :key="cell.key"

@@ -43,12 +43,7 @@ function selectWindow(key: LeaderboardWindow) {
       >
         The Standings
       </h1>
-      <UnderlineTabs
-        class="mt-6"
-        :tabs="WINDOWS"
-        :active="activeWindow"
-        @select="selectWindow"
-      />
+      <UnderlineTabs class="mt-6" :tabs="WINDOWS" :active="activeWindow" @select="selectWindow" />
     </header>
 
     <StatusPanel v-if="errored" kind="error" message="Couldn't load leaderboards.">

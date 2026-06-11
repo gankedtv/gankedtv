@@ -206,7 +206,9 @@ watch(slug, () => {
 
     <template v-else-if="game">
       <!-- Editorial header: 3:4 cover tile + kicker + oversized name + meta. -->
-      <section class="mb-10 flex items-end gap-7 border-b border-border pb-7 max-tablet:flex-col max-tablet:items-start max-tablet:gap-4">
+      <section
+        class="mb-10 flex items-end gap-7 border-b border-border pb-7 max-tablet:flex-col max-tablet:items-start max-tablet:gap-4"
+      >
         <!-- Crisp portrait cover (real box-art aspect, no crop). alt="" — decorative: the game
              name is the visible <h1> right beside it, so a bound alt would re-announce it.
              Covers are <img> not background-image so a hostile coverUrl can't break out of a

@@ -49,7 +49,9 @@ function onSeeAll() {
 <template>
   <div class="overflow-hidden border border-border-strong bg-surface-base">
     <div class="flex items-center justify-between border-b border-border px-4 py-2.5">
-      <span class="font-mono text-[10px] font-medium uppercase tracking-[0.22em] text-text-secondary">
+      <span
+        class="font-mono text-[10px] font-medium uppercase tracking-[0.22em] text-text-secondary"
+      >
         The Wire
       </span>
       <button

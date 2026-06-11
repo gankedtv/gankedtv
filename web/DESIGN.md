@@ -1,190 +1,185 @@
-# GankedTV Frontend Design System
+# GankedTV Design System — Newsprint ("Broadcast Almanac")
 
-## Concept
+**Status:** v2, shipped. Replaces the "Underground Arena" multi-theme system.
+**Spec:** [docs/superpowers/specs/2026-06-08-newsprint-design-system-design.md](../docs/superpowers/specs/2026-06-08-newsprint-design-system-design.md)
 
-An editorial gaming zine meets esports broadcast UI — raw, intentional, high-contrast. Dark-first. The same components and layout ship under three interchangeable palettes; only tokens change.
-
----
-
-## Ambient atmosphere
-
-The body renders two persistent full-viewport layers (z-index 1 and 2, pointer-events none):
-- **Grid gradient** (`body::before`): radial glow in brand color at the top of the viewport via `--grid-bg`.
-- **Noise + scanlines** (`body::after`): SVG fractal noise texture at `--noise-opacity` (0.035 dark / 0.02 light), mixed via `overlay`.
-
-These are defined in `base.css` and require no opt-in per component.
+Read this before writing any frontend code (Vue components, Tailwind classes).
 
 ---
 
-## Typography
+## 1 — Concept
 
-| Role | Font | Weights | Usage |
-|------|------|---------|-------|
-| Logo / display | `Rajdhani` | 500, 600, 700 | Nav logo, hero callouts |
-| Headings | `Barlow Condensed` | 500, 700 | Page titles, section headers, stat values |
-| UI text | `DM Sans` | 400, 500 | Labels, buttons, body copy |
-| Metadata | `DM Mono` | 400, 500 | Usernames, timestamps, stats, IDs, tags |
+An editorial sports yearbook that knows how to render video. Every page reads like a
+printed issue — kicker labels, hairline rules, oversized condensed numerals, Roman-numbered
+sections — while watch surfaces (clip detail, reels, transcode previews) wear a broadcast
+HUD on top: corner brackets, telemetry strips, mono-everywhere.
 
-Google Fonts loaded in `index.html`. CSS vars: `--font-display`, `--font-heading`, `--font-body`, `--font-mono`.
+The site is an *archive* of gaming's loudest seconds. Every clip is filed under an issue
+number. Every page belongs to a volume.
 
-**Rules:**
-- Page titles: `font-heading` (Barlow Condensed), `font-weight: 700`, `text-transform: uppercase`, `font-size: clamp(32px, 4vw, 52px)`
-- Section titles: `font-heading` 24px bold uppercase, with a 6×22px brand bar before (via `::before` or inline `<span>`)
-- Logo: `font-display` (Rajdhani), uppercase, 700 — "GANKED" primary, ".TV" brand-light
-- Metadata / timestamps / IDs / tags: always `font-mono`
+## 2 — The anti-AI rules (load-bearing)
 
----
+Dropping any of these lets the system drift back into template territory:
 
-## Themes
+1. **Every clip has an issue number** (`No. 042`) — top-left of every thumbnail, repeated as
+   an oversized numeral in hero positions. Derived client-side via [`src/lib/issue.ts`](src/lib/issue.ts).
+2. **Roman numerals on section kickers** (`II By Game`). The page is an *issue*, not a *feed*.
+3. **Hairline rules instead of cards-with-shadows.** Borders define regions. No `box-shadow`,
+   no glow, no `backdrop-blur` glassmorphism.
+4. **Oversized condensed numerals** (Barlow Condensed 700, 28–96px+) for issue numbers, hero
+   stats, list ranks, telemetry values.
+5. **Telemetry strips** for stats — mono 9px kicker over a condensed 26px value
+   ([`TelemetryStrip.vue`](src/components/TelemetryStrip.vue)).
+6. **Corner brackets only on watch surfaces** ([`BroadcastFrame.vue`](src/components/BroadcastFrame.vue)) —
+   the clip player, reels viewer, upload transcode preview. They earn meaning by not being everywhere.
+7. **No `translateY` / scale hover, ever.** Hover = border color swap to ink + title color
+   shift to ink. Cards stay put.
+8. **Tabs as text rules, not pills.** Underline-only, mono 11px caps, 2px ink underline on
+   active ([`UnderlineTabs.vue`](src/components/UnderlineTabs.vue)).
+9. **No rounded corners ≥ 8px.** `--radius-sm: 0`, `--radius-md: 2px` (inputs only).
+   `rounded-full` is allowed only on the pulsing live dot.
+10. **Footer as colophon** ([`AppFooter.vue`](src/components/AppFooter.vue)) — publication
+    signoff, not sitemap dump.
 
-Three palettes share the same CSS-variable contract. The active palette is selected by `data-theme` on `<html>`, written by `useThemeStore().setName(name)`. Components don't change — they read `var(--color-…)` (directly or via Tailwind utilities) and repaint when tokens swap.
+## 3 — Tokens
 
-| Theme | Vibe | Brand | Accent | Corners | Background |
-|-------|------|-------|--------|---------|------------|
-| `underground` | Editorial dark | `#6d28d9` purple | `#00e5a0` neon green | Chamfered (10px cut) | Radial purple glow |
-| `tactical` | HUD / broadcast | `#ff7a00` orange | `#ffffff` white | Square | Repeating line grid |
-| `arcade` | CRT / chunky neon | `#ff3d8b` pink | `#ffe600` yellow | Square | Pink/yellow gradient + scanlines |
+One palette, dark (default) + light via `.light` on `<html>`. Defined in the
+`@theme` block of [`src/assets/base.css`](src/assets/base.css) — the source of truth for
+token → Tailwind-utility mapping (`bg-ink`, `text-signal`, `border-border`, …).
 
-**Default for new visitors:** `arcade`. Persisted under `localStorage['theme:name']`. Stamped on `<html>` before mount in `main.ts` to avoid FOUC.
+| Token | Dark | Light | Used for |
+| --- | --- | --- | --- |
+| `--color-surface-base` | `#161410` | `#f4f1e8` | page background |
+| `--color-surface-raised` | `#221e16` | `#ece8da` | inputs, hover backgrounds (rare) |
+| `--color-surface-sunken` | `#0c0a08` | `#d8d3c4` | video player background, deep recess |
+| `--color-text-primary` | `#f4f1e8` | `#1a1810` | body text, headings |
+| `--color-text-secondary` | `#c5bca7` | `#5a5444` | bylines, captions, kicker labels |
+| `--color-text-muted` | `#8a8474` | `#6b6553` | timestamps, placeholders, disabled |
+| `--color-border` | `#2c2820` | `#1a1810` | default borders, hairline rules |
+| `--color-border-strong` | `#3c3a30` | `#1a1810` | emphasized borders, popover panels |
+| `--color-ink` | `#ed3a47` | `#c41825` | **brand.** Issue numbers, @usernames, links, hover borders, active underlines |
+| `--color-signal` | `#6c9bcf` | `#3a6fb5` | **alert / live.** LIVE dot, errors, NEW badges — earned moments only |
+| `--color-signal-text` | `#161410` | `#f4f1e8` | text on solid ink/signal fills |
 
-Tactical also swaps `--font-heading` to `Rajdhani` (everything else stays); Underground and Arcade use `Barlow Condensed`.
+Usage rules:
 
-## Color Tokens
+- **Ink is the brand color** — use freely, but visible-not-loud at small sizes.
+- **Signal is for earned moments only**: LIVE indicators, error copy, NEW badges. Never body
+  text, never a hover state, never a button background.
+- **Two badge styles, one color**: solid ink (`bg-ink text-signal-text`) for primary badges
+  (game tag on thumbs, LIVE); outline ink (`border-ink text-ink`) for secondary (NEW, PINNED).
+- **No gradients on UI surfaces.** The sole sanctioned gradient is the flat striped
+  `.placeholder-art` render-failure fallback in base.css. Legibility bands over video/art use
+  solid `bg-black/55`–`/60`.
+- **Accessibility:** light-mode signal `#3a6fb5` under cream `#f4f1e8` text on solid fills is
+  ~5.3:1 — above WCAG AA. Documented pair; don't substitute.
+- Vendor colors (`--color-discord`, `--color-google`) are identity-locked and unchanged.
 
-All tokens are in [base.css](src/assets/base.css). The `@theme {}` block defines Tailwind utilities (`bg-brand`, `text-neon`, `border-border`, …) and acts as the static fallback. Each `[data-theme="…"]` block overrides the same set of variables at runtime, so utilities resolve to whatever the active theme dictates.
+Text over video/art (duration badges, reels overlays) uses the literal `#f4f1e8` rather than
+`text-text-primary` on purpose — it must stay light in both modes.
 
-### Underground (token reference)
+## 4 — Typography
 
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--color-surface-base` | `#080810` | Page background |
-| `--color-surface-raised` | `#10101c` | Cards, panels |
-| `--color-surface-overlay` | `#18182a` | Dropdowns, hover states |
-| `--color-surface-sunken` | `#05050c` | Video player bg, deep recesses |
-| `--color-text-primary` | `#f0eeff` | Main text |
-| `--color-text-secondary` | `#8888aa` | Subtitles, secondary labels |
-| `--color-text-muted` | `#44445a` | Placeholders, timestamps, disabled |
-| `--color-border` | `#1e1e30` | Default borders |
-| `--color-border-hover` | `#2e2e48` | Hovered borders |
-| `--color-border-strong` | `#3a3a58` | Emphasized borders, game tags |
-| `--color-brand` | `#6d28d9` | Primary buttons, active states |
-| `--color-brand-light` | `#7c3aed` | Hover on brand, active nav underline |
-| `--color-brand-glow` | `rgba(124,58,237,0.35)` | Card hover shadows |
-| `--color-neon` | `#00e5a0` | Live dots, @usernames, success |
-| `--color-neon-dim` | `rgba(0,229,160,0.18)` | Neon-tinted icon backgrounds |
-| `--color-error` | `#ff4466` | Errors, live badges |
-| `--color-warning` | `#ffaa00` | Warnings |
+| Role | Font | Used for |
+| --- | --- | --- |
+| `font-display` | Rajdhani 600/700 | "GANKED.TV" wordmark only |
+| `font-heading` | Barlow Condensed 500/700 | page/section/clip titles, issue numbers, numerals, telemetry values |
+| `font-body` | DM Sans 400/500 | body copy, button labels, blurbs |
+| `font-mono` | DM Mono 400/500 | kickers, timestamps, @usernames, IDs, badges, nav links |
 
-Tactical and Arcade override the same tokens with their own values — see `base.css` for the full set.
+Scale highlights: hero numeral `clamp(56px,8vw,96px)`; page title `clamp(36px,4.5vw,52px)`;
+section title `clamp(28px,3vw,38px)`; card title 16px/500 uppercase; kicker 10px/0.22em
+caps; mono meta 11px/0.12em caps. Line-height ~1.05 on condensed display, 1.55 body, 1 on
+mono caps strips. Don't use font-weight as the primary hierarchy lever — use size + position + case.
 
-### Light mode (`.light` on `<html>`)
+## 5 — Layout rhythm
 
-Toggled by `useThemeStore().toggle()`. Overrides surface, text, and border tokens scoped per theme (`html.light[data-theme="underground"]`, etc). Brand stays; `--color-neon` flips to a high-contrast color in Tactical and Arcade for legibility on light backgrounds.
+- Page shell: sticky 64px nav with bottom hairline; content `max-w-360` (1440px), padding
+  `px-8 pt-10 pb-30` desktop / `px-4 pt-5 pb-20` mobile (`max-tablet:`).
+- Every content band opens with [`SectionHeader.vue`](src/components/SectionHeader.vue)
+  (roman + kicker → title → blurb → hairline) and `pt-10` between bands. Air is the editorial feel.
+- Grid gaps: `gap-x-5.5 gap-y-7` (22/28px). Workhorse feed grid:
+  `grid-cols-[repeat(auto-fill,minmax(280px,1fr))]`.
+- Band library: Hero+List (`2fr/1fr`), Game Tiles (5-up 3:4), Feature+List (`1.6fr/1fr`),
+  4-up Grid, Telemetry Strip, Broadcast Frame.
+- Mobile chrome: [`MobileTabBar.vue`](src/components/MobileTabBar.vue) (fixed bottom, `lg:hidden`,
+  Feed/Games/Upload/Reels/You). Trending + Leaderboards stay reachable via the footer and search.
 
-### Theme CSS-only vars (not Tailwind utilities)
+## 6 — Atom inventory
 
-| Var | Underground | Tactical | Arcade | Usage |
-|-----|-------------|----------|--------|-------|
-| `--corner-cut` | `10px` | `0px` | `0px` | `.chamfer` polygon corners (no-op in Tactical/Arcade) |
-| `--grid-bg` | radial purple | line grid | pink/yellow gradient | body::before ambient layer |
-| `--noise-opacity` | `0.035` | `0.02` | `0.03` | body::after noise layer |
-| `--scanline-opacity` | `0` | `0` | `0.08` | body::after scanlines |
-| `--feed-gap` | `16px` | `16px` | `16px` | `.feed-grid` gap (theme-agnostic) |
+| Component | Role |
+| --- | --- |
+| [`SectionHeader.vue`](src/components/SectionHeader.vue) | universal band header (roman, kicker, title, blurb, more→ / `#right` slot) |
+| [`TelemetryStrip.vue`](src/components/TelemetryStrip.vue) | bordered stat cells; `action` cells are tappable, `ink` highlights a value |
+| [`BroadcastFrame.vue`](src/components/BroadcastFrame.vue) | watch-surface HUD: inset ink border, 4 corner brackets, mono topbar, live dot |
+| [`AppFooter.vue`](src/components/AppFooter.vue) | colophon footer + `volIssMeta()` signoff row |
+| [`MobileTabBar.vue`](src/components/MobileTabBar.vue) | 5-tab phone nav, solid-ink upload square |
+| [`PageHeader.vue`](src/components/PageHeader.vue) | page-level kicker + condensed clamp title (`live` dot is an earned moment) |
+| [`ClipCard.vue`](src/components/ClipCard.vue) | chrome-less card: bordered thumb + issue No. + solid-ink game tag + mono meta |
+| [`UnderlineTabs.vue`](src/components/UnderlineTabs.vue) | text-rule tabs, 2px ink active underline |
+| [`StatusPanel.vue`](src/components/StatusPanel.vue) | loading ticker / hairline-banded empty & error states |
+| [`src/lib/issue.ts`](src/lib/issue.ts) | `issueNumber()`, `formatIssueNo()`, `volIssMeta()` |
 
----
+## 7 — Recipes
 
-## Spacing & Radius
+**Buttons** (three, no others):
 
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--radius-sm` | `0.375rem` | Tags, badges, small chips |
-| `--radius-md` | `0.625rem` | Inputs, buttons, cards |
-| `--radius-lg` | `1rem` | Hero cards, large panels |
-| `--radius-xl` | `1.5rem` | Modals |
+- Primary: `bg-ink text-signal-text … hover:brightness-108` (transition `[filter]`).
+- Secondary: `border border-border bg-transparent … hover:border-ink hover:text-ink`.
+- Link: `text-ink hover:underline`.
+- No icon-only round buttons — square (`size-8.5 border border-border`) is the icon-button shape.
 
-Page max-width: `1440px`. Content padding: `32px 24px 120px` (desktop), `16px 14px 80px` (mobile).
+**Inputs:** `h-11 rounded-sm border border-border bg-surface-raised … focus:border-ink`.
+Labels are mono 10px `tracking-[0.18em]` caps in `text-text-secondary`.
 
----
+**Dialogs:** solid `bg-surface-sunken/90` scrim (no blur), panel `border border-border-strong
+bg-surface-base` (no shadow, sharp), mono kicker over a condensed uppercase title, hairline
+header/footer rules, secondary cancel + primary ink confirm. Destructive confirms stay solid
+ink — the body copy carries the warning.
 
-## Navigation
+**Popovers/listboxes** (kebab, notifications, search, pickers): `border border-border-strong
+bg-surface-base`, mono kicker group labels, rows `hover:bg-surface-raised`, hairlines between
+groups, danger items `text-ink`.
 
-`AppNav` is `position: sticky; top: 0; z-index: 50; height: 64px`. Content sits directly below with no padding-top offset.
+**Loading:** the ticker — `h-1.5 w-5.5 bg-surface-raised` shell with an inner
+`origin-left bg-ink animate-[tick_1.6s_ease-in-out_infinite]` bar. No spinners.
 
-Elements: logo mark (polygon clip-path + neon dot) → logo text → nav links (Feed, Games, Trending) → search bar (≥1281px) → icon buttons → upload button → avatar.
+## 8 — Motion
 
-Active nav link: `color: var(--color-text-primary)` + 2px brand-light underline.
+- Page transitions: 150ms opacity fade (App.vue).
+- Hover: 150ms on `color` / `border-color` only — never `transform`.
+- Live dot: 2s opacity pulse (`animate-[pulse_2s_infinite]`), signal color.
+- Toasts: 300ms `slideUp` in / `slideDown` out.
+- Sheets/dialogs may slide/fade on enter/leave — the transform ban is on hover states.
 
----
+## 9 — Theme mode
 
-## Components
+[`src/stores/theme.ts`](src/stores/theme.ts): `mode: 'dark' | 'light'`, persisted under
+`localStorage['theme']`, applied as `.light` on `<html>`. The v1 multi-theme system
+(`theme:name`, `data-theme`, ThemePicker) is gone; the store silently removes the legacy key
+and scrubs the attribute. Toggle lives in the nav (`ThemeModeToggle`) and Settings → Appearance.
 
-### UserAvatar (`web/src/components/UserAvatar.vue`)
-Colored initial block. Background is a linear gradient derived from the user's avatar color. Always circular. Shows 2-letter uppercase initials in `font-mono` bold.
+## 10 — Banned list + sweep
 
-Props: `user: string` (key in USERS), `size?: number` (px, default 32).
+No `box-shadow` / `shadow-*` (the Plyr override that *removes* its menu shadow is the one
+exception), no `backdrop-blur`, no hover transforms, no `rounded-(md+)` except `rounded-sm`
+on inputs and `rounded-full` on live dots, no gradients outside `.placeholder-art`, no
+brand/neon/data-theme remnants. Verify with:
 
-### ClipCard (`web/src/components/ClipCard.vue`)
-Grid tile: 16:9 thumbnail + game tag (top-left) + duration (bottom-right) + body with title (line-clamp 2) + avatar + @username (neon) + stats (likes / views).
-
-Hover: `translateY(-2px)` + brand glow `box-shadow` + border-brand.
-
-Emits: `click`.
-
-### Feed grid (`.feed-grid` global class)
-`grid-template-columns: repeat(auto-fill, minmax(280px, 1fr))`, 4-col at ≥1200px. Gap driven by `--feed-gap`.
-
----
-
-## Motion Principles
-
-- **Page transitions:** 150ms opacity fade (`<Transition name="fade" mode="out-in">` in App.vue)
-- **Hover states:** 150–200ms on color, border, transform
-- **Card hover:** `translateY(-2px)` + brand glow shadow
-- **Pulsing dot:** `@keyframes pulse` 2s — opacity 1 → 0.3 → 1 — used on live indicators and eyebrow dots
-- **Toast (killfeed):** `slideUp` 300ms in, `slideDown` 300ms out after 2.2s
-
-CSS-only. No animation libraries.
-
----
-
-## Logo mark
-
-```html
-<span class="logo__mark"></span>
+```bash
+cd web/src
+grep -rnE "shadow-\[|shadow-(sm|md|lg|xl)" . --include="*.vue"
+grep -rn  "backdrop-blur" . --include="*.vue"
+grep -rnE "hover:(-)?translate|hover:scale" . --include="*.vue"
+grep -rnE "rounded-(md|lg|xl|2xl|3xl|full)" . --include="*.vue"   # full → live dots only
+grep -rnE "\b(bg|text|border|fill)-(brand|neon)\b|data-theme|chamfer|corner-cut" . --include="*.vue" --include="*.css"
+grep -rn  "gradient" . --include="*.vue" --include="*.css"        # placeholder-art only
 ```
-Global CSS in `base.css`: polygon clip-path with neon corner dot via `::before` and recessed inner shape via `::after`. Do not reproduce inline.
 
----
+## 11 — Component conventions (unchanged)
 
-## Chamfer utility
-
-```html
-<div class="chamfer">…</div>
-```
-Clips two opposite corners via `clip-path: polygon(var(--corner-cut) 0, …)`. `--corner-cut` is `10px` by default.
-
----
-
-## Tailwind usage rules
-
-**Tailwind v4 utility classes for everything** — color, spacing, typography, layout, hover/focus states, media queries. No `style="..."` inline attributes on elements. No `<style scoped>` blocks for cases Tailwind can already express.
-
-If a specific color (e.g. a vendor brand color like Discord blue) doesn't exist in Tailwind's defaults, **add it to the `@theme {}` block** in [base.css](src/assets/base.css) so a utility class is generated, then use the utility (`bg-discord`, `hover:bg-discord-hover`). Don't drop hex values into the template.
-
-Legitimate exceptions, narrow:
-- **Dynamic runtime values** (e.g. an avatar gradient computed from a per-user color) — use inline `:style="..."` Vue bindings; utilities can't express runtime values.
-- **Pseudo-elements that Tailwind's `before:` / `after:` modifiers can't express** (e.g. complex multi-property `clip-path` shapes) — `<style scoped>` is acceptable for the pseudo-element only.
-
----
-
-## Anti-patterns
-
-- No light backgrounds as default — dark-first always
-- No gradients on primary surfaces (use flat + border depth)
-- No Inter, Roboto, or system-ui as display fonts
-- No scoped CSS for layout, color, or typography — Tailwind utilities
-- No inline `style="..."` for static values — Tailwind utilities or a token-backed utility
-- No `pt-16` or `pt-[64px]` padding on page content — nav is sticky, not fixed
-- No hardcoded brand/surface/text hex values in components — always go through the token (`var(--color-…)` or the matching Tailwind utility), or theme switching breaks for that element
-- No unscoped `<style>` blocks in views — class names collide globally
-- No string-literal event handlers in templates (`onmouseover="..."`) — use Vue handlers (`@mouseenter`) or a CSS `:hover` rule
+- Tailwind utility classes in templates; tokens via the `@theme` block. Scoped CSS only when
+  utilities genuinely can't express it.
+- Dynamic runtime values (user accent colors, hashed avatar fills) go through inline `:style`.
+- Icons are stroke-based SVG components inheriting `currentColor`.
+- Images from user input render as `<img>`, never CSS `background-image`.

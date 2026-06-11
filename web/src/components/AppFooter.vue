@@ -39,7 +39,9 @@ const siteLinks = [
       <div class="max-tablet:col-span-2">
         <RouterLink to="/" class="mb-3.5 flex items-center gap-2.5">
           <span class="size-2 bg-ink" aria-hidden="true" />
-          <span class="font-display text-[17px] font-bold uppercase tracking-[0.04em] text-text-primary">
+          <span
+            class="font-display text-[17px] font-bold uppercase tracking-[0.04em] text-text-primary"
+          >
             GANKED<span class="text-ink">.TV</span>
           </span>
         </RouterLink>
@@ -49,7 +51,9 @@ const siteLinks = [
       </div>
 
       <nav aria-label="Site">
-        <h4 class="mb-3.5 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">The Site</h4>
+        <h4 class="mb-3.5 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+          The Site
+        </h4>
         <RouterLink
           v-for="link in siteLinks"
           :key="link.to"
@@ -61,7 +65,9 @@ const siteLinks = [
       </nav>
 
       <nav aria-label="Account">
-        <h4 class="mb-3.5 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Account</h4>
+        <h4 class="mb-3.5 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+          Account
+        </h4>
         <RouterLink
           v-for="link in accountLinks"
           :key="link.to"
@@ -73,7 +79,9 @@ const siteLinks = [
       </nav>
 
       <nav aria-label="Off-site">
-        <h4 class="mb-3.5 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">Off-site</h4>
+        <h4 class="mb-3.5 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted">
+          Off-site
+        </h4>
         <a
           href="https://github.com/gankedtv"
           rel="noopener"

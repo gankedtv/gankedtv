@@ -269,13 +269,11 @@ function closeMobileSearch() {
 
 <template>
   <header class="sticky top-0 z-50 h-16 border-b border-border bg-surface-base">
-    <div class="mx-auto flex h-full max-w-360 min-w-0 items-center gap-6 px-6 *:shrink-0 max-tablet:px-4">
+    <div
+      class="mx-auto flex h-full max-w-360 min-w-0 items-center gap-6 px-6 *:shrink-0 max-tablet:px-4"
+    >
       <!-- Logo — wordmark collapses to the mark alone on the smallest screens. -->
-      <RouterLink
-        to="/"
-        aria-label="GankedTV home"
-        class="flex items-center gap-2.5 no-underline"
-      >
+      <RouterLink to="/" aria-label="GankedTV home" class="flex items-center gap-2.5 no-underline">
         <span class="size-2 bg-ink" aria-hidden="true"></span>
         <span
           class="font-display text-[17px] font-bold uppercase tracking-[0.04em] text-text-primary max-[420px]:hidden"
@@ -356,9 +354,13 @@ function closeMobileSearch() {
               class="flex items-center gap-3 px-3.5 py-3"
             >
               <span class="block h-1.5 w-5.5 overflow-hidden bg-surface-raised">
-                <span class="block h-full w-full origin-left bg-ink animate-[tick_1.6s_ease-in-out_infinite]"></span>
+                <span
+                  class="block h-full w-full origin-left bg-ink animate-[tick_1.6s_ease-in-out_infinite]"
+                ></span>
               </span>
-              <span class="font-mono text-[11px] uppercase tracking-widest text-text-muted">Searching</span>
+              <span class="font-mono text-[11px] uppercase tracking-widest text-text-muted"
+                >Searching</span
+              >
             </div>
             <template v-else>
               <div v-if="results.games.length > 0">
