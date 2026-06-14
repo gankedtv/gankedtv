@@ -178,7 +178,7 @@ async function onFixGameSubmit(gameId: number | null) {
     >
       No {{ status }} reports.
     </div>
-    <ul v-else class="m-0 flex list-none flex-col border-t border-border p-0">
+    <ul v-else class="m-0 flex list-none flex-col gap-3 p-0">
       <li v-for="item in items" :key="item.id">
         <ReportRow
           :item="item"

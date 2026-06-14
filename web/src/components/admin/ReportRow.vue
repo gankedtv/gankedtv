@@ -45,7 +45,7 @@ const userIsBanned = computed(
 
 <template>
   <article
-    class="border-b border-border px-1 py-4 transition-colors duration-150 hover:bg-surface-raised"
+    class="border border-border p-4 transition-colors duration-150 hover:border-border-strong"
   >
     <header class="mb-3 flex items-baseline justify-between gap-2">
       <div class="flex items-center gap-3">
