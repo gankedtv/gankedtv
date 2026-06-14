@@ -4,7 +4,6 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import { search, type SearchResponse } from '@/api/search'
-import { volIssMeta } from '@/lib/issue'
 import ThemeModeToggle from './ThemeModeToggle.vue'
 import UserAvatar from './UserAvatar.vue'
 import GameSearchResult from './GameSearchResult.vue'
@@ -416,13 +415,6 @@ function closeMobileSearch() {
           </div>
         </Teleport>
       </div>
-
-      <!-- Vol/Iss meta strip — the page is an issue, not a feed. -->
-      <span
-        class="font-mono text-[10px] uppercase tracking-[0.15em] whitespace-nowrap text-text-muted max-[1100px]:hidden"
-      >
-        {{ volIssMeta() }}
-      </span>
 
       <!-- Actions -->
       <div class="ml-auto flex items-center gap-2">

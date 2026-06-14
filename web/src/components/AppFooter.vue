@@ -104,8 +104,8 @@ const siteLinks = [
     <div
       class="mx-auto flex max-w-[1440px] flex-wrap justify-between gap-4 border-t border-border px-8 py-4 font-mono text-[10px] uppercase tracking-[0.15em] text-text-muted max-tablet:px-4"
     >
-      <span>{{ volIssMeta() }} · ARCHIVE STATUS · NOMINAL</span>
-      <span>© 2026 GANKED.TV · COMPILED IN 0.04S</span>
+      <span>{{ volIssMeta() }}</span>
+      <span>© 2026 GANKED.TV</span>
     </div>
   </footer>
 </template>

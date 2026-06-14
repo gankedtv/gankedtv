@@ -130,13 +130,17 @@ body::after {
   z-index: 2;
 }
 
-/* Content above ambient layers */
-main,
-header,
-footer,
-nav {
-  position: relative;
-  z-index: 3;
+/* Content above ambient layers. Layered so Tailwind utilities (e.g. the nav's
+   `sticky`/`z-50`) can still override position/z-index — unlayered rules beat
+   every layered utility regardless of specificity, which silently breaks them. */
+@layer base {
+  main,
+  header,
+  footer,
+  nav {
+    position: relative;
+    z-index: 3;
+  }
 }
 
 /* Page eyebrow / live pulse dot */
