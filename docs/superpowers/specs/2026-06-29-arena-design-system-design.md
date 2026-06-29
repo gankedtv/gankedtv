@@ -242,7 +242,311 @@ grep -rnE "font-display|font-mono|Rajdhani|DM Mono|DM Sans" . --include="*.vue" 
 
 ---
 
-## 11 — Claude prompt usage
+## 11 — Page inventory and user flow
+
+Every route in `src/router/index.ts` is covered here. Each entry describes what the page contains and any Arena-specific design notes.
+
+---
+
+### Home (`/`)
+
+The platform's front door. Primary discovery surface.
+
+**Layout (top → bottom):**
+
+1. Feed controls — tabs (For You / Following) + game filter pills (All / CS2 / Valorant / Apex / …)
+2. Hero band — featured "Clip of the Day" (left, ~2/3) + ranked sidebar list 01–05 (right, 300px)
+3. Game catalogue — section header "Top Games" + 5-up `GameCoverTile` grid
+4. Trending band — section header "Trending" + featured trending clip (left) + ranked list 02–05 (right)
+5. Clip grid — section header "Recent Clips" + 4-col `ClipCard` grid
+6. Load more button
+
+**Notes:**
+
+- Hero clip shows game tag, title (Barlow Condensed 800 uppercase, 22–28px), author in mint, views + likes.
+- Hero falls back to `items[0]` when the featured fetch fails — never blank.
+- Ranked sidebar numbers: #1 in mint, #2–5 in muted. Barlow Condensed 900, 22px.
+- Game filter pills are always visible — no extra click to filter. Active pill: mint bg/border/text.
+
+---
+
+### Clip Detail (`/clip/:id`, `/c/:code`)
+
+The primary watch surface.
+
+**Layout:**
+
+1. Full-width video player (Plyr) inside a plain dark container — no BroadcastFrame corner brackets in the new system
+2. Below player: game tag + title (Barlow Condensed 800 uppercase, 22px) + author handle (mint)
+3. Action row: Like (heart, count), Share, Copy link, kebab menu (Edit / Delete / Report — visibility gated)
+4. Stats strip: views · duration · upload date
+5. Description (if present) — Inter 400 13px, text-secondary
+6. Tags — `TagChip` row (mint border, mint text)
+7. Comments section
+8. Related clips — section header "More Clips" + 4-col `ClipCard` grid
+
+**Notes:**
+
+- Processing state: clip not yet ready shows a status panel ("Still processing…"), not a broken player.
+- JIT transcode pending: distinct message ("Preparing for your device — try again in a moment").
+- Like button: filled mint heart when liked, outline when not. Count inline.
+- Share/copy toasts slide up from bottom, 250ms.
+
+---
+
+### Games Catalogue (`/games`)
+
+The game browser — where users pick a game to explore.
+
+**Layout:**
+
+1. Page header — "Games" (Barlow Condensed 900 large) + subtitle with game count
+2. 5-col `GameCoverTile` grid (all games with clips, sorted by clip count)
+3. Below: section header "Latest Clips" + 4-col clip grid pulling from the cross-game feed
+
+**Notes:**
+
+- Clip count on each tile is derived from the loaded feed page (approximate). Exact count lives on the game detail page.
+- Empty state if no games yet: status panel with copy.
+
+---
+
+### Game Detail (`/game/:slug`)
+
+A game's dedicated page. Feels like a mini community hub for that title.
+
+**Layout:**
+
+1. Game hero — cover art (3:4, large, left ~200px) + game name (Barlow Condensed 900 large) + clip count + "Top game this week" label when applicable
+2. Clip feed — tabs (Latest / Top Rated) + 4-col `ClipCard` grid for this game, infinite scroll
+3. Game leaderboard — section header "Top Clippers" + ranked user list (avatar + username in mint + clip count + like count)
+
+**Notes:**
+
+- Cover art is always an `<img>` — never CSS background. `object-cover aspect-[3/4]`.
+- 404 game → not-found state with back link, not a full page crash.
+
+---
+
+### Trending (`/trending`)
+
+The ranking surface. Shows what's climbing right now.
+
+**Layout:**
+
+1. Page header — "Trending" + time window tabs (24h / This Week; 1h / Month / All Time are rendered but disabled until the API supports them)
+2. Feature band — #1 clip hero (left, ~60%) + runner-ups #2–#4 vertical list (right)
+3. Section header "Hot Games" + horizontal scrollable game tile strip (8 games)
+4. Section header "Full Chart" + ranked list (clip title + rank movement indicator + views)
+
+**Notes:**
+
+- Time window tabs: disabled states use `opacity-40 cursor-not-allowed`, not hidden — shows users what's coming.
+- Rank movement (↑38 spots): small mint text, not an arrow icon. Mint for up, muted for flat.
+
+---
+
+### Leaderboards (`/leaderboards`)
+
+Who has the most likes in a given window.
+
+**Layout:**
+
+1. Page header — "Leaderboards" + time window tabs (This Week / This Month / All Time)
+2. Two-column bands side by side: "Top Clippers" (ranked user list) + "Top Games" (ranked game list)
+3. Each row: rank numeral (Barlow Condensed, muted, 22px; #1 mint) + avatar/cover + name + stat
+
+**Notes:**
+
+- Tabs switch both bands simultaneously — one API call covers both.
+- Top Clippers: avatar (32px circle) + username in mint + like count.
+- Top Games: cover tile (32px, 3:4) + game name + clip count.
+
+---
+
+### Search (`/search?q=`)
+
+The discovery escape hatch. Clips + games in one response.
+
+**Layout:**
+
+1. Large search input at top of page (not just the nav bar) — auto-focused, `h-12 rounded-lg border border-border-strong`, mint focus ring
+2. Results: "Clips" section (4-col `ClipCard` grid) + "Games" section (5-col `GameCoverTile` grid)
+3. Empty state (no query): prompt copy — "Search for clips, games, or players"
+4. Empty results: "No results for 'x'" with a suggestion to try a different term
+5. Error state: status panel with retry
+
+**Notes:**
+
+- Results are fetched on `?q=` param change (not on keystroke) — nav bar handles the keystroke → push.
+- Show section header only if that section has results (don't show "Games" header with 0 tiles).
+
+---
+
+### Reels (`/feed/reels`, `/feed/reels/:id`)
+
+Full-screen vertical video. The short-form surface.
+
+**Layout:**
+
+- Full viewport, one clip at a time, no page chrome visible (nav hidden while in reels)
+- Video fills height, letter-boxed if wider
+- Bottom overlay (gradient `rgba(0,0,0,0.85)`): game tag (mint), title (Inter 600 14px), author in mint
+- Right-side action column: like (heart + count), share, mute toggle
+- Swipe up / arrow down to advance; swipe down / arrow up to go back
+- Back button (top-left) returns to previous route
+
+**Notes:**
+
+- Starts muted — unmute button visible. Autoplays on entry.
+- Preloads the next clip's detail while current is playing.
+- BroadcastFrame is NOT used here — the full-screen frame itself is the container.
+
+---
+
+### Upload (`/upload`) — auth required
+
+3-step wizard for submitting a clip.
+
+**Layout — Step 1 (Ingest):**
+
+- Toggle: "Upload file" / "Import URL" (tab-style toggle, not pills)
+- File mode: drag-and-drop zone (dashed border, mint on drag-over) + file picker button
+- Import mode: URL input (mint focus), allowed hosts listed below in muted text
+- Forward button: "Next →" (primary CTA, disabled until valid)
+
+**Layout — Step 2 (Metadata):**
+
+- Title input (required)
+- Game selector — searchable dropdown, shows cover art thumbnails in list
+- Tags input — chip-style, mint chips, enter/comma to add
+- Visibility toggle: Public / Unlisted
+- Description textarea (optional)
+- Back + "Upload" / "Import" CTA
+
+**Layout — Step 3 (Processing):**
+
+- Progress indicator: tick bar animation (mint), status copy ("Uploading…" → "Processing…" → "Ready!")
+- On ready: clip thumbnail preview + "View clip" primary CTA + "Upload another" secondary
+
+**Notes:**
+
+- No BroadcastFrame on the upload page — that was a Newsprint pattern.
+- Processing poll: updates status copy every 2.5s, max ~30s.
+
+---
+
+### User Profile (`/user/:username`)
+
+A player's public page and the social anchor of the platform.
+
+**Layout:**
+
+1. Profile hero — avatar (80px circle, mint border) + display name (Barlow Condensed 800 24px) + @username (mint) + bio (Inter 400 13px, text-secondary)
+2. Stats strip — Clips / Likes / Followers / Following (each: value in Barlow Condensed 700, label in Inter 10px muted caps)
+3. Action row (when viewing another user): Follow / Unfollow primary CTA + Share icon button + kebab (Report)
+4. Tabs — Clips / (future: Liked)
+5. 4-col `ClipCard` grid, infinite scroll
+
+**Notes:**
+
+- Own profile: Edit Profile button instead of Follow.
+- Follow button: solid mint when not following, outline secondary when following (hover: "Unfollow" copy).
+- Stats strip is inline, values separated by `·` — no bordered cell treatment.
+
+---
+
+### Follow List (`/user/:username/followers`, `/user/:username/following`)
+
+Who follows whom.
+
+**Layout:**
+
+1. Back link to profile
+2. Page header — "Followers" or "Following" + username in mint
+3. User list — rows: avatar (36px) + display name + @username (mint) + follow button (if not self)
+
+---
+
+### Notifications (`/notifications`) — auth required
+
+Activity feed. Likes, follows, comments.
+
+**Layout:**
+
+1. Page header — "Notifications" + "Mark all read" button (secondary, right-aligned)
+2. Notification rows — avatar + copy ("@user liked your clip 'X'") + relative timestamp (muted) + unread dot (mint, `rounded-full`)
+3. Load more button at bottom
+
+**Notes:**
+
+- Unread rows: `bg-surface-high` background vs `bg-surface-raised` for read.
+- Clicking a row marks it read and navigates (follow → user profile, like/comment → clip).
+
+---
+
+### Tag (`/tag/:slug`)
+
+Clips filtered by a specific tag.
+
+**Layout:**
+
+1. Page header — "#tagname" (mint) + clip count
+2. 4-col `ClipCard` grid, infinite scroll
+
+---
+
+### Settings (`/settings/password`) — auth required
+
+Password change. Single-purpose page.
+
+**Layout:**
+
+1. Page header — "Settings"
+2. Form: current password + new password + confirm — standard input style
+3. Save button (primary CTA)
+
+---
+
+### Login (`/login`) / Register (`/register`)
+
+Auth surfaces. Minimal — these are not the destination.
+
+**Layout:**
+
+1. Centered card (`max-w-sm`, `bg-surface-raised border border-border rounded-xl p-8`)
+2. Logo wordmark at top
+3. Form: email + password (+ username on register)
+4. Primary CTA: "Sign in" / "Create account"
+5. Google OAuth button (secondary, Google brand colors preserved)
+6. Switch link: "Don't have an account? Register" / "Already have one? Sign in"
+
+**Notes:**
+
+- No hero image, no background texture — just the card on `bg-surface-base`.
+- Error messages: inline below the relevant field, Inter 12px, mint-colored (not red — mint is the only accent).
+
+---
+
+### Admin (`/admin`) — moderator role required
+
+Moderation queue. Internal tool feel, not polished for public consumption — but still follows the Arena token system.
+
+**Layout:**
+
+1. Page header — "Admin"
+2. Tabs — Reports / Users (or whatever sections exist)
+3. Report rows — clip thumbnail (small) + report reason + reporter + timestamp + action buttons (Dismiss / Remove)
+
+---
+
+### Not Found (`/:pathMatch(.*)`)
+
+Centered, `min-h-screen flex items-center justify-center`. Large muted "404" in Barlow Condensed 900, subtitle copy, "Go home" primary CTA.
+
+---
+
+## 12 — Claude prompt usage
 
 This document is the source of truth for all frontend implementation decisions. Before writing any Vue component, Tailwind class, or CSS rule:
 
