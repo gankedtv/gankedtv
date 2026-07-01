@@ -1,6 +1,8 @@
 using Amazon.S3;
 using GankedTV.Api.Auth;
+using GankedTV.Api.Auth.ApiKeys;
 using GankedTV.Api.Auth.Cookies;
+using GankedTV.Api.Auth.Devices;
 using GankedTV.Api.Auth.Jwt;
 using GankedTV.Api.Auth.Passwords;
 using GankedTV.Api.Auth.Providers;
@@ -25,6 +27,7 @@ using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Services.Tags;
 using GankedTV.Api.Tools;
 using GankedTV.Api.Validation;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -455,6 +458,8 @@ builder.Services.AddSingleton<ITrustedOriginValidator, TrustedOriginValidator>()
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
 builder.Services.AddSingleton<IPasswordHasher, Argon2idPasswordHasher>();
 builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
+builder.Services.AddScoped<ApiKeyService>();
+builder.Services.AddScoped<DeviceAuthorizationService>();
 builder.Services.AddScoped<UserUpsertService>();
 builder.Services.AddScoped<CredentialAuthService>();
 
@@ -471,6 +476,7 @@ builder.Services.AddGankedCaching(redisOptions);
 
 builder.Services.AddRateLimiter(opts => opts
     .AddCredentialsPolicy()
+    .AddDevicePolicy()
     .AddClipsWritePolicy()
     .AddClipsViewPolicy());
 
@@ -483,9 +489,21 @@ builder.Services.AddSingleton<IOAuthProvider, DiscordOAuthProvider>();
 builder.Services.AddSingleton<IOAuthProvider, GoogleOAuthProvider>();
 builder.Services.AddSingleton<OAuthProviderRegistry>();
 
+// "smart" is the default scheme: a policy scheme that forwards each request to the right
+// concrete handler. API-key requests (X-Api-Key, or `Authorization: Bearer gtv_…`) go to the
+// ApiKey handler; everything else (browser JWTs) to the bearer handler. A JWT never carries the
+// gtv_ prefix, so the two Bearer credential types can't be confused. Handlers stay
+// single-responsibility, and RequireAuthorization() (default policy → default scheme) accepts
+// whichever one authenticates.
+const string smartScheme = "smart";
 builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer();
+    .AddAuthentication(smartScheme)
+    .AddPolicyScheme(smartScheme, smartScheme, opts =>
+    {
+        opts.ForwardDefaultSelector = ctx => ApiKeyDefaults.SelectScheme(ctx.Request);
+    })
+    .AddJwtBearer()
+    .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(ApiKeyDefaults.Scheme, null);
 
 // Reuse the same TokenValidationParameters instance JwtService uses so the two sides
 // can't drift (NameClaimType, ClockSkew, issuer/audience, signing key).
@@ -503,7 +521,11 @@ builder.Services
         bearer.MapInboundClaims = false;
     });
 
-builder.Services.AddAuthorization(opts => opts.AddRolePolicies());
+builder.Services.AddAuthorization(opts =>
+{
+    opts.AddRolePolicies();
+    opts.AddInteractivePolicy();
+});
 
 const string corsPolicy = "WebOrigin";
 // Allowed origins = CORS_ORIGINS (comma-separated) ∪ WebOrigin. WebOrigin is always included
@@ -644,6 +666,8 @@ app.UseRateLimiter();
 
 app.MapAuthEndpoints();
 app.MapMeEndpoints();
+app.MapApiKeyEndpoints();
+app.MapDeviceAuthEndpoints();
 app.MapProfileMediaEndpoints();
 app.MapClipsUploadEndpoints();
 app.MapClipsImportEndpoints();

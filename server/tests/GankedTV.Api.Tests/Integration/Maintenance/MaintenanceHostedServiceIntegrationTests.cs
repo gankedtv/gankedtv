@@ -304,4 +304,41 @@ public class MaintenanceHostedServiceIntegrationTests
         var hashes = await verify.RefreshTokens.AsNoTracking().Select(t => t.TokenHash).ToListAsync();
         hashes.Should().BeEquivalentTo("hash-recent-expired", "hash-live");
     }
+
+    [Fact]
+    public async Task SweepExpiredDeviceAuthorizationsAsync_DeletesOnlyExpiredRows()
+    {
+        await _fx.ResetAsync();
+        var now = DateTimeOffset.UtcNow;
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.DeviceAuthorizations.AddRange(
+                new DeviceAuthorization
+                {
+                    DeviceCodeHash = "dh-expired",
+                    UserCode = "EXPIRED1",
+                    Status = DeviceAuthorizationStatuses.Pending,
+                    ExpiresAt = now.AddMinutes(-1),
+                    IntervalSeconds = 5,
+                },
+                new DeviceAuthorization
+                {
+                    DeviceCodeHash = "dh-live",
+                    UserCode = "LIVELIVE",
+                    Status = DeviceAuthorizationStatuses.Pending,
+                    ExpiresAt = now.AddMinutes(9),
+                    IntervalSeconds = 5,
+                });
+            await db.SaveChangesAsync();
+        }
+
+        await using var harness = Build(new MaintenanceOptions(), now);
+
+        await harness.Service.SweepExpiredDeviceAuthorizationsAsync(harness.Scope, CancellationToken.None);
+
+        await using var verify = _fx.CreateContext();
+        var codes = await verify.DeviceAuthorizations.AsNoTracking().Select(d => d.UserCode).ToListAsync();
+        codes.Should().BeEquivalentTo("LIVELIVE");
+    }
 }

@@ -3,6 +3,7 @@ using System;
 using GankedTV.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using NpgsqlTypes;
@@ -12,9 +13,11 @@ using NpgsqlTypes;
 namespace GankedTV.Api.Data.Migrations
 {
     [DbContext(typeof(GankedTvDbContext))]
-    partial class GankedTvDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260701082003_AddApiKeys")]
+    partial class AddApiKeys
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -398,87 +401,6 @@ namespace GankedTV.Api.Data.Migrations
                         .HasDatabaseName("idx_comments_parent_id");
 
                     b.ToTable("comments", (string)null);
-                });
-
-            modelBuilder.Entity("GankedTV.Api.Data.Entities.DeviceAuthorization", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id")
-                        .HasDefaultValueSql("gen_random_uuid()");
-
-                    b.Property<DateTimeOffset?>("ApprovedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("approved_at");
-
-                    b.Property<string>("ClientName")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("client_name");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("now()");
-
-                    b.Property<string>("DeviceCodeHash")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("device_code_hash");
-
-                    b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("expires_at");
-
-                    b.Property<int>("IntervalSeconds")
-                        .HasColumnType("integer")
-                        .HasColumnName("interval_seconds");
-
-                    b.Property<DateTimeOffset?>("LastPolledAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("last_polled_at");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasDefaultValue("pending")
-                        .HasColumnName("status");
-
-                    b.Property<string>("UserCode")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("user_code");
-
-                    b.Property<Guid?>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.HasKey("Id")
-                        .HasName("pk_device_authorizations");
-
-                    b.HasIndex("DeviceCodeHash")
-                        .IsUnique()
-                        .HasDatabaseName("idx_device_authorizations_device_code_hash");
-
-                    b.HasIndex("ExpiresAt")
-                        .HasDatabaseName("idx_device_authorizations_expires_at");
-
-                    b.HasIndex("UserCode")
-                        .IsUnique()
-                        .HasDatabaseName("idx_device_authorizations_user_code");
-
-                    b.HasIndex("UserId")
-                        .HasDatabaseName("idx_device_authorizations_user_id");
-
-                    b.ToTable("device_authorizations", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_device_authorizations_status", "status IN ('pending','approved','denied')");
-                        });
                 });
 
             modelBuilder.Entity("GankedTV.Api.Data.Entities.Follow", b =>
@@ -1166,17 +1088,6 @@ namespace GankedTV.Api.Data.Migrations
                     b.Navigation("Clip");
 
                     b.Navigation("Parent");
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("GankedTV.Api.Data.Entities.DeviceAuthorization", b =>
-                {
-                    b.HasOne("GankedTV.Api.Data.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_device_authorizations_users_user_id");
 
                     b.Navigation("User");
                 });

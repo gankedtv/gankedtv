@@ -41,6 +41,20 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/settings/api-keys',
+      name: 'settings-api-keys',
+      component: () => import('@/views/SettingsApiKeysView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/device',
+      name: 'device-authorize',
+      component: () => import('@/views/DeviceAuthorizeView.vue'),
+      // Approving binds the device to the signed-in user, so a login is required; an
+      // unauthenticated hit round-trips through /login and returns here with ?code intact.
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/games',
       name: 'games',
       component: () => import('@/views/GamesView.vue'),
