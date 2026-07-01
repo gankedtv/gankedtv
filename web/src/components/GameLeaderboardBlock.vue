@@ -38,8 +38,8 @@ const windowLabel = {
        page surface. The parent owns the surrounding section spacing. -->
   <section v-if="loading || errored || entries.length > 0" class="mb-10">
     <SectionHeader
-      roman="II"
-      :kicker="`Leaderboard · ${windowLabel[window]}`"
+      :kicker="windowLabel[window]"
+      title="Top Clips"
       :more-to="{ name: 'leaderboards' }"
       more-label="All leaderboards →"
     />

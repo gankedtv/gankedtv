@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { setPassword } from '@/api/auth'
 import { ApiError } from '@/api/client'
+import PageHeader from '@/components/PageHeader.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -79,38 +80,32 @@ function setMode(dark: boolean) {
 }
 
 const inputClass =
-  'h-11 rounded-sm border border-border bg-surface-raised px-3.5 font-body text-sm text-text-primary outline-none transition-colors duration-150 focus:border-ink'
+  'rounded-md border border-border bg-surface-high px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted transition-colors duration-150 focus:border-accent focus:outline-none'
 </script>
 
 <template>
-  <div class="mx-auto flex w-full max-w-xl flex-col gap-9 px-6 pt-10 pb-30">
-    <header>
-      <p class="m-0 mb-2 font-mono text-[10px] uppercase tracking-[0.22em] text-text-secondary">
-        <span class="text-ink">Account</span> · Your settings
-      </p>
-      <h1
-        class="m-0 font-heading text-[clamp(32px,4vw,44px)] font-bold uppercase leading-none text-text-primary"
-      >
-        Settings
-      </h1>
-      <hr class="m-0 mt-5 h-px w-full border-0 bg-border" />
-    </header>
+  <div class="mx-auto w-full max-w-xl px-7 pt-7 pb-16 max-tablet:px-4">
+    <PageHeader title="Settings">
+      <template #caption>
+        <span class="text-accent">Account</span> · Your settings
+      </template>
+    </PageHeader>
 
-    <!-- Section I — password. No card chrome: hairline-separated sections. -->
-    <section>
-      <p class="m-0 mb-1 font-mono text-[10px] uppercase tracking-[0.22em] text-text-secondary">
-        <span class="text-ink">I</span> {{ isFirstTimeSet ? 'Set password' : 'Change password' }}
+    <!-- Password section. No card chrome: border-separated sections. -->
+    <section class="mt-7">
+      <p class="m-0 mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-accent">
+        {{ isFirstTimeSet ? 'Set password' : 'Change password' }}
       </p>
-      <p class="m-0 mb-4 font-body text-[13px] text-text-secondary">
+      <p class="m-0 mb-4 text-[13px] text-text-secondary">
         Adding a password lets you sign in with email + password in addition to your connected
         accounts.
       </p>
 
       <form class="flex flex-col gap-3" @submit="submit">
         <label class="flex flex-col gap-1.5">
-          <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary">
+          <span class="text-[10px] font-bold uppercase tracking-widest text-text-secondary">
             Current password
-            <span v-if="isFirstTimeSet" class="normal-case tracking-normal text-text-muted">
+            <span v-if="isFirstTimeSet" class="font-normal normal-case tracking-normal text-text-muted">
               (leave blank if you don't have one yet)
             </span>
           </span>
@@ -122,7 +117,7 @@ const inputClass =
           />
         </label>
         <label class="flex flex-col gap-1.5">
-          <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary">
+          <span class="text-[10px] font-bold uppercase tracking-widest text-text-secondary">
             New password (min 12)
           </span>
           <input
@@ -138,45 +133,33 @@ const inputClass =
         <button
           type="submit"
           :disabled="submitting"
-          class="flex items-center justify-center gap-2 self-start bg-ink px-5 py-3 font-heading text-[14px] font-bold uppercase tracking-[0.06em] text-signal-text transition-[filter] duration-150 hover:brightness-108 disabled:cursor-not-allowed disabled:opacity-50"
+          class="flex items-center justify-center gap-2 self-start rounded-lg bg-accent px-5 py-2.5 text-sm font-bold text-[#080f0d] transition-[filter] duration-150 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {{ submitting ? 'Saving…' : 'Save password' }}
         </button>
-        <p
-          v-if="formError"
-          class="m-0 font-mono text-[11px] tracking-wide text-signal"
-          role="alert"
-        >
+        <p v-if="formError" class="m-0 text-xs font-medium text-accent" role="alert">
           {{ formError }}
         </p>
-        <p
-          v-if="successMessage"
-          class="m-0 font-mono text-[11px] tracking-wide text-text-secondary"
-          role="status"
-        >
+        <p v-if="successMessage" class="m-0 text-xs font-medium text-text-secondary" role="status">
           {{ successMessage }}
         </p>
       </form>
     </section>
 
-    <hr class="m-0 h-px w-full border-0 bg-border" />
-
-    <!-- Section II — appearance. -->
-    <section>
-      <p class="m-0 mb-1 font-mono text-[10px] uppercase tracking-[0.22em] text-text-secondary">
-        <span class="text-ink">II</span> Appearance
+    <!-- Appearance section. -->
+    <section class="mt-8 border-t border-border pt-7">
+      <p class="m-0 mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-accent">
+        Appearance
       </p>
-      <p class="m-0 mb-4 font-body text-[13px] text-text-secondary">
-        One palette, two pressings. Pick the mode that suits the room.
-      </p>
+      <p class="m-0 mb-4 text-[13px] text-text-secondary">Pick the mode that suits the room.</p>
       <div class="flex gap-2" role="group" aria-label="Theme mode">
         <button
           type="button"
           :class="[
-            'cursor-pointer border px-5 py-2.5 font-mono text-[11px] uppercase tracking-[0.12em] transition-colors duration-150',
+            'cursor-pointer rounded-lg border px-5 py-2 text-xs font-semibold transition-colors duration-150',
             theme.isDark
-              ? 'border-ink text-ink'
-              : 'border-border text-text-secondary hover:border-ink hover:text-ink',
+              ? 'border-accent-border bg-accent-bg text-accent'
+              : 'border-border text-text-secondary hover:border-accent hover:text-accent',
           ]"
           :aria-pressed="theme.isDark"
           @click="setMode(true)"
@@ -186,10 +169,10 @@ const inputClass =
         <button
           type="button"
           :class="[
-            'cursor-pointer border px-5 py-2.5 font-mono text-[11px] uppercase tracking-[0.12em] transition-colors duration-150',
+            'cursor-pointer rounded-lg border px-5 py-2 text-xs font-semibold transition-colors duration-150',
             !theme.isDark
-              ? 'border-ink text-ink'
-              : 'border-border text-text-secondary hover:border-ink hover:text-ink',
+              ? 'border-accent-border bg-accent-bg text-accent'
+              : 'border-border text-text-secondary hover:border-accent hover:text-accent',
           ]"
           :aria-pressed="!theme.isDark"
           @click="setMode(false)"

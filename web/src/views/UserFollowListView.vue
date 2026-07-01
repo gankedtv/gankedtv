@@ -33,10 +33,7 @@ const paginationErrored = ref(false)
 // error branches.
 let latestLoadKey = ''
 
-const heading = computed(() => {
-  const name = username.value || ''
-  return kind.value === 'followers' ? `${name}'s followers` : `${name} is following`
-})
+const heading = computed(() => (kind.value === 'followers' ? 'Followers' : 'Following'))
 
 async function loadMore() {
   if (!username.value) return
@@ -85,15 +82,17 @@ onMounted(loadMore)
 </script>
 
 <template>
-  <main class="mx-auto max-w-3xl px-6 pt-10 pb-30 max-tablet:px-4 max-tablet:pt-5">
+  <main class="mx-auto w-full max-w-3xl px-7 pt-7 pb-16 max-tablet:px-4">
+    <RouterLink
+      :to="{ name: 'user', params: { username } }"
+      class="mb-4 inline-block text-[11px] font-semibold text-accent no-underline hover:underline"
+    >
+      ← Back to @{{ username }}
+    </RouterLink>
+
     <PageHeader :title="heading">
       <template #caption>
-        <RouterLink
-          :to="{ name: 'user', params: { username } }"
-          class="no-underline transition-colors duration-150 hover:text-ink"
-        >
-          ← Back to <span class="text-ink">@{{ username }}</span>
-        </RouterLink>
+        <span class="text-accent">@{{ username }}</span>
       </template>
     </PageHeader>
 
@@ -122,7 +121,7 @@ onMounted(loadMore)
 
     <StatusPanel v-else-if="errored" kind="error" message="Couldn't load this list.">
       <button
-        class="cursor-pointer border border-border bg-transparent px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
+        class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
         @click="loadMore"
       >
         Retry
@@ -138,22 +137,20 @@ onMounted(loadMore)
     />
 
     <template v-else>
-      <!-- Hairline-separated user rows, no card chrome. -->
+      <!-- Border-separated user rows, no card chrome. -->
       <ul class="m-0 mt-4 grid grid-cols-1 p-0">
         <li v-for="u in items" :key="u.id" class="list-none border-b border-border">
           <RouterLink
             :to="{ name: 'user', params: { username: u.username } }"
-            class="group flex items-center gap-3 px-1 py-3.5 no-underline transition-colors duration-150 hover:bg-surface-raised"
+            class="group flex items-center gap-3 px-1 py-3 no-underline transition-colors duration-150 hover:bg-surface-raised"
           >
             <UserAvatar :user="u" :size="36" />
             <div class="flex min-w-0 flex-col">
               <span
-                class="truncate font-heading text-base font-medium uppercase text-text-primary transition-colors duration-150 group-hover:text-ink"
+                class="truncate text-sm font-semibold text-text-primary transition-colors duration-150 group-hover:text-accent"
                 >{{ u.username }}</span
               >
-              <span class="truncate font-mono text-[11px] tracking-[0.04em] text-ink">
-                @{{ u.username }}
-              </span>
+              <span class="truncate text-[11px] text-accent">@{{ u.username }}</span>
             </div>
           </RouterLink>
         </li>

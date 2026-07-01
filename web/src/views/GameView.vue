@@ -180,12 +180,12 @@ watch(slug, () => {
 </script>
 
 <template>
-  <main class="mx-auto max-w-360 px-8 pt-10 pb-30 max-tablet:px-4 max-tablet:pt-5 max-tablet:pb-20">
+  <main class="mx-auto max-w-300 px-7 pt-7 pb-16 max-tablet:px-4">
     <!-- Not-found state -->
     <StatusPanel v-if="notFound" kind="empty" message="No game with that slug.">
       <RouterLink
         to="/games"
-        class="border border-border px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
+        class="rounded-lg border border-border-strong px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
       >
         Back to games
       </RouterLink>
@@ -194,7 +194,7 @@ watch(slug, () => {
     <!-- Initial error -->
     <StatusPanel v-else-if="errored" kind="error" message="Couldn't load this game.">
       <button
-        class="cursor-pointer border border-border bg-transparent px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
+        class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
         @click="retry"
       >
         Retry
@@ -205,9 +205,9 @@ watch(slug, () => {
     <StatusPanel v-else-if="initialLoading && !game" kind="loading" message="Loading" />
 
     <template v-else-if="game">
-      <!-- Editorial header: 3:4 cover tile + kicker + oversized name + meta. -->
+      <!-- Game hero: 3:4 cover art + clip-count caption + oversized name. -->
       <section
-        class="mb-10 flex items-end gap-7 border-b border-border pb-7 max-tablet:flex-col max-tablet:items-start max-tablet:gap-4"
+        class="mb-8 flex items-end gap-7 border-b border-border pb-7 max-tablet:flex-col max-tablet:items-start max-tablet:gap-4"
       >
         <!-- Crisp portrait cover (real box-art aspect, no crop). alt="" — decorative: the game
              name is the visible <h1> right beside it, so a bound alt would re-announce it.
@@ -217,37 +217,28 @@ watch(slug, () => {
           v-if="game.coverUrl"
           :src="game.coverUrl"
           alt=""
-          class="aspect-3/4 w-30 shrink-0 border border-border object-cover max-tablet:w-24"
+          class="aspect-3/4 w-50 shrink-0 rounded-lg border border-border object-cover max-tablet:w-32"
         />
         <div class="min-w-0">
-          <p class="m-0 font-mono text-[10px] uppercase tracking-[0.22em] text-text-secondary">
-            <span class="text-ink">The Catalogue</span> · {{ game.clipCount }} clip{{
-              game.clipCount === 1 ? '' : 's'
-            }}
-            filed
+          <p class="m-0 text-[10px] font-bold uppercase tracking-[0.14em] text-text-secondary">
+            {{ game.clipCount }} clip{{ game.clipCount === 1 ? '' : 's' }}
           </p>
           <h1
-            class="m-0 mt-2 font-heading text-[clamp(36px,4.5vw,52px)] font-bold uppercase leading-none tracking-[0.01em] text-text-primary"
+            class="m-0 mt-2 font-condensed text-[clamp(30px,3.6vw,42px)] font-black uppercase leading-none tracking-[0.02em] text-text-primary"
           >
             {{ game.name }}
           </h1>
           <div class="mt-3 flex items-center gap-3">
             <GameTag :tag="game.tag" size="md" />
-            <span class="font-mono text-[11px] uppercase tracking-[0.08em] text-text-muted">
-              /{{ game.slug }}
-            </span>
+            <span class="text-[11px] text-text-muted">/{{ game.slug }}</span>
           </div>
         </div>
       </section>
 
-      <!-- Top this week — block self-hides when the game has no likes in the window
-           so empty games don't carry a phantom leaderboard header. -->
-      <GameLeaderboardBlock :slug="game.slug" window="week" :limit="5" />
-
       <!-- Clip grid -->
       <section v-if="items.length">
-        <SectionHeader roman="III" kicker="Latest" />
-        <div class="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-x-5.5 gap-y-7 pt-6">
+        <SectionHeader kicker="New" title="Latest Clips" />
+        <div class="grid grid-cols-4 gap-3.5 max-lg:grid-cols-2 max-tablet:grid-cols-1">
           <ClipCard
             v-for="clip in items"
             :key="clip.id"
@@ -263,7 +254,7 @@ watch(slug, () => {
         <RouterLink
           v-if="auth.isAuthenticated"
           to="/upload"
-          class="border border-border px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
+          class="rounded-lg border border-border-strong px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
         >
           Upload a clip
         </RouterLink>
@@ -276,7 +267,7 @@ watch(slug, () => {
         v-if="loading && !reachedEnd"
         role="status"
         aria-live="polite"
-        class="-mt-6 flex items-center justify-center py-3 font-mono text-[11px] uppercase tracking-widest text-text-muted"
+        class="-mt-6 flex items-center justify-center py-3 text-[11px] text-text-muted"
       >
         Loading more…
       </div>
@@ -285,17 +276,26 @@ watch(slug, () => {
            observer is detached when paginationErrored flips, so the only way
            back to loading is this button — retryLoadMore re-attaches on success. -->
       <div v-if="paginationErrored" class="mt-2 flex flex-col items-center gap-2">
-        <span class="font-mono text-[11px] uppercase tracking-widest text-text-muted">
-          Couldn't load more — try again.
-        </span>
+        <span class="text-[11px] text-text-muted">Couldn't load more — try again.</span>
         <button
           :disabled="loading"
           @click="retryLoadMore"
-          class="cursor-pointer border border-border bg-transparent px-6 py-2.5 font-mono text-[11px] uppercase tracking-[0.08em] text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink disabled:opacity-50"
+          class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-6 py-2.5 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent disabled:opacity-50"
         >
           Retry
         </button>
       </div>
+
+      <!-- Top clippers band — block self-hides when the game has no likes in the
+           window so empty games don't carry a phantom leaderboard header. Class
+           falls through to the block's root <section>, so the band rule only
+           renders when the band does. -->
+      <GameLeaderboardBlock
+        :slug="game.slug"
+        window="week"
+        :limit="5"
+        class="mt-8 border-t border-border pt-7"
+      />
     </template>
   </main>
 </template>

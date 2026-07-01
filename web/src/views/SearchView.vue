@@ -19,6 +19,15 @@ const errored = ref(false)
 // "0 results for newWord" while the previous response is still on screen.
 const lastQuery = ref('')
 
+// Page-level search input. Submitting pushes the query into the URL — the
+// `?q=` watcher below owns the actual fetch, same as searches from the nav bar.
+const queryInput = ref('')
+
+function submitSearch() {
+  const q = queryInput.value.trim()
+  router.push({ name: 'search', query: q ? { q } : {} })
+}
+
 // Per-call token: route.query.q can change faster than the fetch resolves (e.g. user
 // edits the URL twice in quick succession or types in the navbar while SearchView is
 // open). Capturing the seq at the start of load() and re-checking before each state
@@ -57,6 +66,7 @@ watch(
   () => route.query.q,
   (q) => {
     const value = typeof q === 'string' ? q : ''
+    queryInput.value = value
     void load(value)
   },
   { immediate: true },
@@ -66,26 +76,30 @@ const hasQuery = () => typeof route.query.q === 'string' && route.query.q.trim()
 </script>
 
 <template>
-  <main class="mx-auto max-w-360 px-8 pt-10 pb-30 max-tablet:px-4 max-tablet:pt-5">
+  <main class="mx-auto max-w-300 px-7 pt-7 pb-16 max-tablet:px-4">
     <PageHeader
       :title="hasQuery() ? `&quot;${lastQuery || String(route.query.q)}&quot;` : 'Search'"
     >
       <template #caption>
         <template v-if="hasQuery()">
-          <span class="text-ink">Search</span>&nbsp;· {{ results.clips.length }} clips ·
-          {{ results.games.length }} games
+          {{ results.clips.length }} clips · {{ results.games.length }} games
         </template>
-        <template v-else><span class="text-ink">Search</span>&nbsp;· the archive</template>
+        <template v-else>Clips, games, and players</template>
       </template>
-      <p v-if="!hasQuery()" class="m-0 mt-2 max-w-[56ch] text-[13px] text-text-secondary">
-        Type a query in the search bar to look across clips and games.
-      </p>
-      <hr class="m-0 mt-5 h-px w-full border-0 bg-border" />
+      <form class="mt-5" role="search" @submit.prevent="submitSearch">
+        <input
+          v-model="queryInput"
+          type="search"
+          placeholder="Search for clips, games, or players"
+          aria-label="Search"
+          class="h-12 w-full rounded-lg border border-border-strong bg-surface-high px-4 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+        />
+      </form>
     </PageHeader>
 
     <StatusPanel v-if="errored" kind="error" message="Couldn't run the search.">
       <button
-        class="cursor-pointer border border-border bg-transparent px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
+        class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
         @click="load(String(route.query.q ?? ''))"
       >
         Retry
@@ -99,25 +113,17 @@ const hasQuery = () => typeof route.query.q === 'string' && route.query.q.trim()
     />
 
     <template v-else-if="hasQuery()">
-      <!-- Games — same portrait box-art tiles as the catalog (GameCoverTile). -->
-      <section class="pt-8">
-        <SectionHeader roman="I" kicker="Games" />
-        <div
-          v-if="results.games.length"
-          class="grid grid-cols-5 gap-x-5.5 gap-y-7 pt-6 max-lg:grid-cols-3 max-tablet:grid-cols-2 max-tablet:gap-3"
-        >
-          <GameCoverTile v-for="g in results.games" :key="g.id" :game="g" />
-        </div>
-        <StatusPanel v-else kind="empty" message="No games match." />
-      </section>
+      <!-- No results across either section — one combined empty state. -->
+      <StatusPanel
+        v-if="results.clips.length === 0 && results.games.length === 0"
+        kind="empty"
+        :message="`No results for “${lastQuery}” — try a different term.`"
+      />
 
-      <!-- Clips -->
-      <section class="pt-10">
-        <SectionHeader roman="II" kicker="Clips" />
-        <div
-          v-if="results.clips.length"
-          class="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-x-5.5 gap-y-7 pt-6"
-        >
+      <!-- Clips — section headers render only when the section has results. -->
+      <section v-if="results.clips.length" class="mt-8">
+        <SectionHeader kicker="Results" title="Clips" />
+        <div class="grid grid-cols-4 gap-3.5 max-lg:grid-cols-2 max-tablet:grid-cols-1">
           <ClipCard
             v-for="clip in results.clips"
             :key="clip.id"
@@ -125,7 +131,18 @@ const hasQuery = () => typeof route.query.q === 'string' && route.query.q.trim()
             @click="router.push({ name: 'clip', params: { id: clip.id } })"
           />
         </div>
-        <StatusPanel v-else kind="empty" message="No clips match." />
+      </section>
+
+      <!-- Games — same portrait box-art tiles as the catalog (GameCoverTile). -->
+      <section
+        v-if="results.games.length"
+        class="mt-8"
+        :class="results.clips.length ? 'border-t border-border pt-7' : ''"
+      >
+        <SectionHeader kicker="Results" title="Games" />
+        <div class="grid grid-cols-5 gap-3 max-lg:grid-cols-3 max-tablet:grid-cols-2">
+          <GameCoverTile v-for="g in results.games" :key="g.id" :game="g" />
+        </div>
       </section>
     </template>
   </main>

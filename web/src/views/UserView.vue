@@ -9,6 +9,7 @@ import { safeImageUrl } from '@/lib/url'
 import { formatNum } from '@/lib/format'
 import ClipCard from '@/components/ClipCard.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
+import UserAvatar from '@/components/UserAvatar.vue'
 import TelemetryStrip, { type TelemetryCell } from '@/components/TelemetryStrip.vue'
 import UnderlineTabs from '@/components/UnderlineTabs.vue'
 import IconShare from '@/components/icons/IconShare.vue'
@@ -76,8 +77,8 @@ watch(
   { immediate: true },
 )
 
-// Derive a stable avatar color from the username so the banner/avatar render
-// even though the API doesn't return one yet (Phase 2 will store user-picked colors).
+// Derive a stable banner color from the username so the banner renders even
+// though the API doesn't return one yet (Phase 2 will store user-picked colors).
 // Flat, low-chroma fill — gradients are banned outside thumbnail fallbacks.
 const avatarColor = computed(() => {
   const name = profile.value?.username ?? ''
@@ -85,22 +86,6 @@ const avatarColor = computed(() => {
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0
   return `hsl(${Math.abs(hash) % 360}, 35%, 38%)`
 })
-
-const initials = computed(() => {
-  const name = profile.value?.username ?? ''
-  // Unicode-aware: keep letters/digits across scripts (Cyrillic, CJK, Hangul,
-  // emoji-as-letter, etc.) and split on grapheme clusters so accented letters
-  // and multi-codepoint glyphs count as one. The old `[^a-zA-Z]` strip would
-  // hand a Korean or Cyrillic username an unhelpful `??` fallback.
-  const letters = Array.from(name.normalize('NFC'))
-    .filter((c) => /\p{L}|\p{N}/u.test(c))
-    .slice(0, 2)
-    .join('')
-  return letters.toUpperCase() || '??'
-})
-
-// Hoisted so the template doesn't re-parse the URL on every render.
-const avatarImageUrl = computed(() => safeImageUrl(profile.value?.avatarUrl))
 
 // User-uploaded banner replaces the username-hashed fill when present; otherwise the
 // flat fill remains as the fallback so a brand-new account still has a non-empty banner.
@@ -286,7 +271,7 @@ const TABS: { key: Tab; label: string }[] = [
     <main v-else-if="errored">
       <StatusPanel kind="error" message="Couldn't load this profile.">
         <button
-          class="cursor-pointer border border-border bg-transparent px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
+          class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
           @click="username && loadProfile(username)"
         >
           Retry
@@ -297,7 +282,7 @@ const TABS: { key: Tab; label: string }[] = [
     <main v-else-if="profile" class="relative" :style="accentStyle">
       <!-- ===================== BANNER ===================== -->
       <!-- User-uploaded banner when present; otherwise a flat username-hashed
-           fill. Hairline bottom rule instead of a fade — borders define regions. -->
+           fill. Bottom border separates it from the content below. -->
       <div
         v-if="bannerImageUrl || !profile.accentColor"
         data-testid="banner"
@@ -319,54 +304,38 @@ const TABS: { key: Tab; label: string }[] = [
       ></div>
 
       <!-- ===================== INNER CONTENT ===================== -->
-      <div class="mx-auto max-w-7xl px-6 pb-30 max-tablet:px-4">
+      <div class="mx-auto max-w-300 px-7 pb-16 max-tablet:px-4">
         <!-- Breadcrumb -->
         <div class="pt-5">
           <button
-            class="flex cursor-pointer items-center gap-1.5 border-none bg-transparent p-0 font-mono text-[11px] uppercase tracking-[0.08em] text-text-muted transition-colors duration-150 hover:text-ink"
+            class="flex cursor-pointer items-center gap-1.5 border-none bg-transparent p-0 text-[11px] font-semibold text-text-muted transition-colors duration-150 hover:text-accent"
             @click="router.push({ name: 'home' })"
           >
             ← Feed / @{{ profile.username }}
           </button>
         </div>
 
-        <!-- ---- Editorial header ---- -->
-        <div class="mt-5 flex flex-wrap items-start gap-7">
-          <!-- Large square avatar -->
-          <div
-            class="flex size-22 shrink-0 select-none items-center justify-center overflow-hidden border border-border font-heading text-4xl font-bold tracking-[-0.02em] text-white"
-            :style="avatarImageUrl ? undefined : { background: avatarColor }"
-          >
-            <img
-              v-if="avatarImageUrl"
-              :src="avatarImageUrl"
-              :alt="profile.username"
-              class="h-full w-full object-cover"
-            />
-            <span v-else>{{ initials }}</span>
-          </div>
+        <!-- ---- Profile hero ---- -->
+        <div class="mt-5 flex flex-wrap items-start gap-5">
+          <UserAvatar :user="profile" :size="80" class="border-2 border-accent" />
 
           <!-- User info -->
           <div class="min-w-55 flex-1">
-            <div
-              class="mb-1.5 font-mono text-[10px] uppercase tracking-[0.22em] text-text-secondary"
-            >
-              <span class="text-ink">Creator</span> · Filed since {{ joinedDate }}
+            <div class="mb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-text-secondary">
+              <span class="text-accent">Creator</span> · Joined {{ joinedDate }}
             </div>
 
             <h1
-              class="m-0 font-heading text-[clamp(36px,4.5vw,52px)] font-bold leading-none uppercase tracking-[0.01em] text-text-primary"
+              class="m-0 font-condensed text-2xl font-extrabold leading-none uppercase tracking-[0.01em] text-text-primary"
             >
               {{ profile.username }}
             </h1>
 
-            <div class="mt-1.5 font-mono text-sm tracking-[0.04em] text-ink">
-              @{{ profile.username }}
-            </div>
+            <div class="mt-1.5 text-sm font-semibold text-accent">@{{ profile.username }}</div>
 
             <p
               v-if="profile.bio"
-              class="m-0 mt-2.5 max-w-130 text-sm leading-[1.55] text-text-secondary"
+              class="m-0 mt-2.5 max-w-130 text-[13px] leading-[1.55] text-text-secondary"
             >
               {{ profile.bio }}
             </p>
@@ -380,7 +349,7 @@ const TABS: { key: Tab; label: string }[] = [
                 :href="entry.href"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="inline-flex items-center border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink"
+                class="inline-flex items-center rounded-full border border-border px-3 py-1 text-[11px] font-semibold text-text-secondary transition-colors duration-150 hover:border-accent-border hover:text-accent"
               >
                 {{ entry.label }}
               </a>
@@ -392,10 +361,10 @@ const TABS: { key: Tab; label: string }[] = [
             <button
               v-if="canShowFollowButton"
               :class="[
-                'flex h-9 cursor-pointer items-center px-4 font-mono text-[11px] uppercase tracking-[0.08em] transition-colors duration-150 disabled:opacity-60',
+                'flex h-9 cursor-pointer items-center rounded-lg px-4 text-xs transition-colors duration-150 disabled:opacity-60',
                 profile.followedByMe
-                  ? 'border border-border bg-transparent text-text-primary hover:border-ink hover:text-ink'
-                  : 'bg-ink text-signal-text transition-[filter] hover:brightness-108',
+                  ? 'border border-border-strong bg-transparent font-semibold text-text-secondary hover:border-accent hover:text-accent'
+                  : 'bg-accent font-bold text-[#080f0d] transition-[filter] hover:brightness-105',
               ]"
               :disabled="followBusy"
               :aria-pressed="profile.followedByMe === true"
@@ -404,7 +373,7 @@ const TABS: { key: Tab; label: string }[] = [
               {{ profile.followedByMe ? 'Following' : 'Follow' }}
             </button>
             <button
-              class="flex h-9 w-9 cursor-pointer items-center justify-center border border-border bg-transparent text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink"
+              class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border border-border bg-transparent text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
               aria-label="Share profile"
               @click="copyShareUrl"
             >
@@ -412,7 +381,7 @@ const TABS: { key: Tab; label: string }[] = [
             </button>
             <button
               v-if="canShowFollowButton"
-              class="flex h-9 cursor-pointer items-center border border-border bg-transparent px-3 font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink"
+              class="flex h-9 cursor-pointer items-center rounded-lg border border-border-strong bg-transparent px-3 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
               aria-label="Report user"
               @click="reportOpen = true"
             >
@@ -427,21 +396,17 @@ const TABS: { key: Tab; label: string }[] = [
               icon-orientation="horizontal"
               trigger-variant="outlined"
             />
-            <span
-              v-if="copyMessage"
-              aria-live="polite"
-              class="font-mono text-[11px] uppercase tracking-widest text-ink"
-            >
+            <span v-if="copyMessage" aria-live="polite" class="text-[11px] font-semibold text-accent">
               {{ copyMessage }}
             </span>
           </div>
         </div>
 
-        <!-- ---- Telemetry strip ---- -->
+        <!-- ---- Stats strip ---- -->
         <TelemetryStrip class="mt-7" :cells="telemetryCells" @cell-click="onTelemetryClick" />
 
         <!-- ---- Tabs ---- -->
-        <div class="mt-9">
+        <div class="mt-8">
           <UnderlineTabs :tabs="TABS" :active="tab" @select="(k) => (tab = k)" />
 
           <!-- Tab content -->
@@ -449,12 +414,12 @@ const TABS: { key: Tab; label: string }[] = [
             <!-- Clips tab -->
             <div v-if="tab === 'clips'">
               <div v-if="profile.clips.length === 0" class="flex items-center justify-center py-20">
-                <p class="font-mono text-[13px] tracking-[0.06em] text-text-muted">No clips yet.</p>
+                <p class="text-[13px] text-text-muted">No clips yet.</p>
               </div>
               <div
                 v-else
                 data-testid="clips-grid"
-                class="grid grid-cols-3 gap-x-5.5 gap-y-7 max-lg:grid-cols-2 max-tablet:grid-cols-1"
+                class="grid grid-cols-4 gap-3.5 max-lg:grid-cols-2 max-tablet:grid-cols-1"
               >
                 <ClipCard
                   v-for="clip in profile.clips"
@@ -468,9 +433,7 @@ const TABS: { key: Tab; label: string }[] = [
 
             <!-- Liked tab — placeholder until /me/liked exists (Phase 3) -->
             <div v-else-if="tab === 'liked'" class="flex items-center justify-center py-20">
-              <p class="font-mono text-[13px] tracking-[0.06em] text-text-muted">
-                Liked clips are private.
-              </p>
+              <p class="text-[13px] text-text-muted">Liked clips are private.</p>
             </div>
           </div>
         </div>

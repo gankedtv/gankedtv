@@ -14,16 +14,19 @@ import {
   type ReportStatus,
 } from '@/api/admin'
 import { ApiError } from '@/api/client'
+import PageHeader from '@/components/PageHeader.vue'
+import StatusPanel from '@/components/StatusPanel.vue'
+import UnderlineTabs from '@/components/UnderlineTabs.vue'
 import ReportRow from '@/components/admin/ReportRow.vue'
 import FixGameDialog from '@/components/admin/FixGameDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
 
-const TABS: { value: ReportStatus; label: string }[] = [
-  { value: 'open', label: 'Open' },
-  { value: 'resolved', label: 'Resolved' },
-  { value: 'dismissed', label: 'Dismissed' },
+const TABS: { key: ReportStatus; label: string }[] = [
+  { key: 'open', label: 'Open' },
+  { key: 'resolved', label: 'Resolved' },
+  { key: 'dismissed', label: 'Dismissed' },
 ]
 
 const status = ref<ReportStatus>('open')
@@ -134,50 +137,31 @@ async function onFixGameSubmit(gameId: number | null) {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl px-4 pt-10 pb-30">
-    <header class="mb-7">
-      <p class="m-0 mb-2 font-mono text-[10px] uppercase tracking-[0.22em] text-text-secondary">
-        <span class="text-ink">Moderation</span> · The report queue
-      </p>
-      <h1
-        class="m-0 font-heading text-[clamp(32px,4vw,44px)] font-bold uppercase leading-none text-text-primary"
-      >
-        Admin Console
-      </h1>
-    </header>
+  <div class="mx-auto max-w-5xl px-7 pt-7 pb-16 max-tablet:px-4">
+    <PageHeader title="Admin">
+      <template #caption>
+        <span class="text-accent">Moderation</span> · Report queue
+      </template>
+    </PageHeader>
 
     <!-- Tabs -->
-    <div class="mb-6 flex gap-7 border-b border-border">
-      <button
-        v-for="t in TABS"
-        :key="t.value"
-        type="button"
-        :class="[
-          '-mb-px cursor-pointer border-b-2 bg-transparent pb-3 font-mono text-[11px] uppercase tracking-[0.15em] transition-colors duration-150',
-          t.value === status
-            ? 'border-ink text-text-primary'
-            : 'border-transparent text-text-secondary hover:text-ink',
-        ]"
-        @click="setStatus(t.value)"
-      >
-        {{ t.label }}
-      </button>
-    </div>
+    <UnderlineTabs class="mt-5 mb-6" :tabs="TABS" :active="status" @select="setStatus" />
 
-    <p v-if="actionError" class="mb-4 font-mono text-sm text-signal">
+    <p
+      v-if="actionError"
+      class="mb-4 rounded-lg border border-accent-border bg-accent-bg px-4 py-3 text-xs font-medium text-accent"
+    >
       {{ actionError }}
     </p>
-    <p v-if="error" class="font-mono text-sm text-signal">{{ error }}</p>
-
-    <div v-if="loading" class="font-mono text-sm uppercase tracking-widest text-text-muted">
-      Loading
-    </div>
-    <div
-      v-else-if="items.length === 0"
-      class="border-y border-border p-8 text-center font-mono text-sm uppercase tracking-widest text-text-muted"
+    <p
+      v-if="error"
+      class="rounded-lg border border-accent-border bg-accent-bg px-4 py-3 text-xs font-medium text-accent"
     >
-      No {{ status }} reports.
-    </div>
+      {{ error }}
+    </p>
+
+    <StatusPanel v-if="loading" kind="loading" message="Loading" />
+    <StatusPanel v-else-if="items.length === 0" kind="empty" :message="`No ${status} reports.`" />
     <ul v-else class="m-0 flex list-none flex-col gap-3 p-0">
       <li v-for="item in items" :key="item.id">
         <ReportRow
@@ -199,16 +183,16 @@ async function onFixGameSubmit(gameId: number | null) {
       <button
         type="button"
         :disabled="page <= 1"
-        class="cursor-pointer border border-border bg-transparent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink disabled:pointer-events-none disabled:opacity-40"
+        class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent disabled:pointer-events-none disabled:opacity-40"
         @click="page--"
       >
         Prev
       </button>
-      <span class="font-mono text-xs text-text-muted">{{ page }} / {{ pageCount }}</span>
+      <span class="text-xs text-text-muted">{{ page }} / {{ pageCount }}</span>
       <button
         type="button"
         :disabled="page >= pageCount"
-        class="cursor-pointer border border-border bg-transparent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink disabled:pointer-events-none disabled:opacity-40"
+        class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent disabled:pointer-events-none disabled:opacity-40"
         @click="page++"
       >
         Next

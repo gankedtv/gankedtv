@@ -150,11 +150,11 @@ watch(slug, () => {
 </script>
 
 <template>
-  <main class="mx-auto max-w-360 px-8 pt-10 pb-30 max-tablet:px-4 max-tablet:pt-5 max-tablet:pb-20">
+  <main class="mx-auto max-w-300 px-7 pt-7 pb-16 max-tablet:px-4">
     <StatusPanel v-if="notFound" kind="empty" message="No tag with that slug.">
       <RouterLink
         to="/"
-        class="border border-border px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
+        class="rounded-lg border border-border-strong px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
       >
         Back to feed
       </RouterLink>
@@ -162,7 +162,7 @@ watch(slug, () => {
 
     <StatusPanel v-else-if="errored" kind="error" message="Couldn't load this tag.">
       <button
-        class="cursor-pointer border border-border bg-transparent px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
+        class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
         @click="retry"
       >
         Retry
@@ -172,19 +172,14 @@ watch(slug, () => {
     <StatusPanel v-else-if="initialLoading && !tag" kind="loading" message="Loading" />
 
     <template v-else-if="tag">
-      <PageHeader :title="`#${tag.slug}`" class="mb-7">
+      <!-- The mint #tagname title is per spec — the tag itself is the accent. -->
+      <PageHeader :title="`#${tag.slug}`" class="mb-7 [&_h1]:text-accent">
         <template #caption>
-          <span class="text-ink">Filed under</span>&nbsp;· {{ tag.clipCount }} clip{{
-            tag.clipCount === 1 ? '' : 's'
-          }}
+          {{ tag.clipCount }} clip{{ tag.clipCount === 1 ? '' : 's' }}
         </template>
-        <hr class="m-0 mt-5 h-px w-full border-0 bg-border" />
       </PageHeader>
 
-      <div
-        v-if="items.length"
-        class="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-x-5.5 gap-y-7"
-      >
+      <div v-if="items.length" class="grid grid-cols-4 gap-3.5 max-lg:grid-cols-2 max-tablet:grid-cols-1">
         <ClipCard
           v-for="clip in items"
           :key="clip.id"
@@ -197,7 +192,7 @@ watch(slug, () => {
         <RouterLink
           v-if="auth.isAuthenticated"
           to="/upload"
-          class="border border-border px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
+          class="rounded-lg border border-border-strong px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
         >
           Upload a clip
         </RouterLink>
@@ -208,19 +203,17 @@ watch(slug, () => {
         v-if="loading && !reachedEnd"
         role="status"
         aria-live="polite"
-        class="-mt-6 flex items-center justify-center py-3 font-mono text-[11px] uppercase tracking-widest text-text-muted"
+        class="-mt-6 flex items-center justify-center py-3 text-[11px] text-text-muted"
       >
         Loading more…
       </div>
 
       <div v-if="paginationErrored" class="mt-2 flex flex-col items-center gap-2">
-        <span class="font-mono text-[11px] uppercase tracking-widest text-text-muted">
-          Couldn't load more — try again.
-        </span>
+        <span class="text-[11px] text-text-muted">Couldn't load more — try again.</span>
         <button
           :disabled="loading"
           @click="retryLoadMore"
-          class="cursor-pointer border border-border bg-transparent px-6 py-2.5 font-mono text-[11px] uppercase tracking-[0.08em] text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink disabled:opacity-50"
+          class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-6 py-2.5 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent disabled:opacity-50"
         >
           Retry
         </button>

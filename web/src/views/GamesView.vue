@@ -50,21 +50,16 @@ onMounted(load)
 </script>
 
 <template>
-  <main class="mx-auto max-w-360 px-8 pt-10 pb-30 max-tablet:px-4 max-tablet:pt-5">
-    <PageHeader title="The Catalogue">
+  <main class="mx-auto max-w-300 px-7 pt-7 pb-16 max-tablet:px-4">
+    <PageHeader title="Games">
       <template #caption>
-        <span class="text-ink">Vol 1</span>&nbsp;· {{ allGames.length }} games ·
-        {{ allClips.length }} clips loaded
+        {{ allGames.length }} games · {{ allClips.length }} clips loaded
       </template>
-      <p class="m-0 mt-2 max-w-[56ch] text-[13px] leading-normal text-text-secondary">
-        Every clip is filed under its game. Pick one to see all its clips.
-      </p>
-      <hr class="m-0 mt-5 h-px w-full border-0 bg-border" />
     </PageHeader>
 
     <StatusPanel v-if="errored" kind="error" message="Couldn't load games.">
       <button
-        class="cursor-pointer border border-border bg-transparent px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
+        class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
         @click="load"
       >
         Retry
@@ -72,26 +67,24 @@ onMounted(load)
     </StatusPanel>
 
     <template v-else>
-      <!-- Box-art wall — portrait (3:4) game covers, each links to /game/:slug.
+      <!-- Box-art grid — portrait (3:4) game covers, each links to /game/:slug.
            Tile rendering lives in GameCoverTile so SearchView's games section
            stays visually identical. -->
-      <div
-        class="mt-7 grid grid-cols-5 gap-x-5.5 gap-y-7 max-lg:grid-cols-3 max-tablet:grid-cols-2 max-tablet:gap-3"
-      >
+      <div class="mt-7 grid grid-cols-5 gap-3 max-lg:grid-cols-3 max-tablet:grid-cols-2">
         <GameCoverTile v-for="g in allGames" :key="g.id" :game="g">
           <template #footer-extra>
             <!-- Per-game clip counts are derived from the loaded feed page (rough
                  indicator); the authoritative count is on the game-detail page. -->
-            <span class="font-mono text-[10px] tracking-[0.08em] text-[#f4f1e8]/80">
+            <span class="text-[10px] text-text-muted">
               {{ clipCountByGame.get(g.slug) ?? 0 }} clips
             </span>
           </template>
         </GameCoverTile>
       </div>
 
-      <!-- Featured clips teaser -->
-      <section class="pt-12">
-        <SectionHeader roman="II" kicker="Featured" title="Across All Games" />
+      <!-- Latest clips across all games -->
+      <section class="mt-8 border-t border-border pt-7">
+        <SectionHeader kicker="New" title="Latest Clips" />
 
         <StatusPanel
           v-if="loading && featuredClips.length === 0"
@@ -100,7 +93,7 @@ onMounted(load)
         />
         <div
           v-else-if="featuredClips.length"
-          class="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-x-5.5 gap-y-7 pt-6"
+          class="grid grid-cols-4 gap-3.5 max-lg:grid-cols-2 max-tablet:grid-cols-1"
         >
           <ClipCard
             v-for="clip in featuredClips"
@@ -109,12 +102,7 @@ onMounted(load)
             @click="router.push({ name: 'clip', params: { id: clip.id } })"
           />
         </div>
-        <div
-          v-else
-          class="border-y border-border p-8 text-center font-mono text-sm uppercase tracking-widest text-text-muted"
-        >
-          No clips yet.
-        </div>
+        <p v-else class="m-0 text-[11px] text-text-muted">No clips yet.</p>
       </section>
     </template>
   </main>

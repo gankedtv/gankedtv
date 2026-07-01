@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { register } from '@/api/auth'
 import { ApiError } from '@/api/client'
+import LogoMark from '@/components/LogoMark.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -75,39 +76,36 @@ function errorDetail(err: ApiError): string | null {
 </script>
 
 <template>
-  <div class="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center gap-8 px-6">
-    <div class="flex flex-col items-center gap-2.5 text-center">
-      <div class="flex items-center gap-2.5">
-        <span class="size-2 bg-ink" aria-hidden="true"></span>
-        <span
-          class="font-display text-[28px] font-bold uppercase tracking-[0.04em] text-text-primary"
-        >
-          GANKED<span class="text-ink">.TV</span>
-        </span>
+  <div class="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center px-6">
+    <!-- Card — just the card on the page surface, no hero or texture. -->
+    <div class="mx-auto w-full max-w-sm rounded-lg border border-border bg-surface-raised p-8">
+      <!-- Logo + tagline -->
+      <div class="mb-6 flex flex-col items-center gap-2.5 text-center">
+        <div class="flex items-center gap-2.5">
+          <LogoMark :size="28" />
+          <span
+            class="font-condensed text-[26px] font-black uppercase leading-none tracking-[0.04em] text-text-primary"
+          >
+            GANKED<span class="text-accent">.TV</span>
+          </span>
+        </div>
+        <div class="text-[11px] text-text-muted">No algorithm. Just clips.</div>
       </div>
-      <div class="font-mono text-[11px] uppercase tracking-widest text-text-muted">
-        No algorithm. Just clips.
-      </div>
-    </div>
 
-    <div class="w-full max-w-100 border border-border bg-surface-base px-8 py-9">
       <div class="mb-6 text-center">
-        <p class="m-0 mb-2 font-mono text-[10px] uppercase tracking-[0.22em] text-ink">
-          Join the archive
-        </p>
         <h1
-          class="m-0 mb-2 font-heading text-[32px] font-bold uppercase leading-none text-text-primary"
+          class="m-0 mb-2 font-condensed text-2xl font-black uppercase leading-none text-text-primary"
         >
-          Start Filing
+          Create account
         </h1>
-        <p class="m-0 font-body text-[13px] text-text-secondary">
+        <p class="m-0 text-[13px] text-text-secondary">
           Pick a handle, set a password — no third-party account required.
         </p>
       </div>
 
       <form class="flex flex-col gap-3" @submit="submitRegister">
         <label class="flex flex-col gap-1.5">
-          <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary"
+          <span class="text-[10px] font-bold uppercase tracking-widest text-text-secondary"
             >Email</span
           >
           <input
@@ -115,11 +113,11 @@ function errorDetail(err: ApiError): string | null {
             type="email"
             autocomplete="email"
             required
-            class="h-11 rounded-sm border border-border bg-surface-raised px-3.5 font-body text-sm text-text-primary outline-none transition-colors duration-150 focus:border-ink"
+            class="rounded-md border border-border bg-surface-high px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted transition-colors duration-150 focus:border-accent focus:outline-none"
           />
         </label>
         <label class="flex flex-col gap-1.5">
-          <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary">
+          <span class="text-[10px] font-bold uppercase tracking-widest text-text-secondary">
             Username
           </span>
           <input
@@ -129,11 +127,11 @@ function errorDetail(err: ApiError): string | null {
             required
             minlength="1"
             maxlength="30"
-            class="h-11 rounded-sm border border-border bg-surface-raised px-3.5 font-body text-sm text-text-primary outline-none transition-colors duration-150 focus:border-ink"
+            class="rounded-md border border-border bg-surface-high px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted transition-colors duration-150 focus:border-accent focus:outline-none"
           />
         </label>
         <label class="flex flex-col gap-1.5">
-          <span class="font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary">
+          <span class="text-[10px] font-bold uppercase tracking-widest text-text-secondary">
             Password (min 12)
           </span>
           <input
@@ -143,28 +141,24 @@ function errorDetail(err: ApiError): string | null {
             required
             minlength="12"
             maxlength="128"
-            class="h-11 rounded-sm border border-border bg-surface-raised px-3.5 font-body text-sm text-text-primary outline-none transition-colors duration-150 focus:border-ink"
+            class="rounded-md border border-border bg-surface-high px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted transition-colors duration-150 focus:border-accent focus:outline-none"
           />
         </label>
         <button
           type="submit"
           :disabled="submitting"
-          class="flex items-center justify-center gap-2 bg-ink px-5 py-3 font-heading text-[15px] font-bold uppercase tracking-[0.06em] text-signal-text transition-[filter] duration-150 hover:brightness-108 disabled:cursor-not-allowed disabled:opacity-50"
+          class="flex items-center justify-center gap-2 rounded-lg bg-accent px-5 py-3 text-sm font-bold text-[#080f0d] transition-[filter] duration-150 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {{ submitting ? 'Creating account…' : 'Create account' }}
         </button>
-        <p
-          v-if="formError"
-          class="m-0 font-mono text-[11px] tracking-wide text-signal"
-          role="alert"
-        >
+        <p v-if="formError" class="m-0 text-xs font-medium text-accent" role="alert">
           {{ formError }}
         </p>
-        <p class="m-0 mt-1 text-center font-body text-xs text-text-secondary">
+        <p class="m-0 mt-1 text-center text-xs text-text-secondary">
           Already have an account?
           <RouterLink
             :to="{ name: 'login', query: returnTo ? { redirect: returnTo } : {} }"
-            class="font-heading uppercase tracking-[0.04em] text-ink no-underline hover:underline"
+            class="font-semibold text-accent no-underline hover:underline"
             >Sign in</RouterLink
           >
         </p>
