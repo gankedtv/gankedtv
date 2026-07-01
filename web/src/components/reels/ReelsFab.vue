@@ -9,7 +9,7 @@ import IconReels from '@/components/icons/IconReels.vue'
     :to="{ name: 'reels' }"
     aria-label="Open reels feed"
     title="Reels"
-    class="fixed right-6 bottom-6 z-50 hidden size-12 items-center justify-center bg-ink text-signal-text no-underline transition-[filter] duration-150 hover:brightness-108 lg:inline-flex"
+    class="fixed right-6 bottom-6 z-50 hidden size-12 items-center justify-center rounded-full bg-accent text-[#080f0d] no-underline transition-[filter] duration-150 hover:brightness-105 lg:inline-flex"
   >
     <IconReels :size="22" :stroke-width="2.2" />
   </RouterLink>

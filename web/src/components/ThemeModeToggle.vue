@@ -9,7 +9,7 @@ const theme = useThemeStore()
 <template>
   <button
     type="button"
-    class="inline-flex size-8.5 cursor-pointer items-center justify-center border border-border bg-transparent text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink"
+    class="inline-flex size-8.5 cursor-pointer items-center justify-center rounded-lg border border-border bg-transparent text-text-secondary transition-colors duration-150 hover:border-border-strong hover:text-text-primary"
     :title="theme.isDark ? 'Switch to light' : 'Switch to dark'"
     :aria-label="theme.isDark ? 'Switch to light mode' : 'Switch to dark mode'"
     :aria-pressed="theme.isDark"

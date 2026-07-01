@@ -47,16 +47,22 @@ function onSeeAll() {
 </script>
 
 <template>
-  <div class="overflow-hidden border border-border-strong bg-surface-base">
-    <div class="flex items-center justify-between border-b border-border px-4 py-2.5">
+  <div class="overflow-hidden rounded-lg border border-border-strong bg-surface-base">
+    <div class="flex items-center gap-2 border-b border-border px-4 py-2.5">
       <span
-        class="font-mono text-[10px] font-medium uppercase tracking-[0.22em] text-text-secondary"
+        class="font-condensed text-[13px] font-extrabold uppercase tracking-wide text-text-primary"
       >
-        The Wire
+        Notifications
+      </span>
+      <span
+        v-if="store.unreadCount > 0"
+        class="rounded-full border border-accent-border bg-accent-bg px-1.5 py-0.5 text-[9px] font-bold text-accent"
+      >
+        {{ store.unreadCount }} new
       </span>
       <button
         type="button"
-        class="cursor-pointer border-0 bg-transparent font-mono text-[11px] uppercase tracking-[0.04em] text-text-secondary transition-colors duration-150 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+        class="ml-auto cursor-pointer border-0 bg-transparent text-[11px] font-medium text-text-muted transition-colors duration-150 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
         :disabled="store.unreadCount === 0"
         @click="onMarkAll"
       >
@@ -66,13 +72,13 @@ function onSeeAll() {
 
     <div
       v-if="store.loading && store.items.length === 0"
-      class="px-4 py-6 text-center font-mono text-[11px] uppercase tracking-widest text-text-muted"
+      class="px-4 py-6 text-center text-[11px] text-text-muted"
     >
       Loading…
     </div>
     <div
       v-else-if="store.items.length === 0"
-      class="px-4 py-6 text-center font-mono text-[11px] uppercase tracking-widest text-text-muted"
+      class="px-4 py-6 text-center text-[11px] text-text-muted"
     >
       No notifications yet
     </div>
@@ -80,7 +86,8 @@ function onSeeAll() {
       <li
         v-for="n in store.items"
         :key="n.id"
-        class="cursor-pointer border-b border-border px-3 last:border-b-0 transition-colors duration-150 hover:bg-surface-raised"
+        class="cursor-pointer border-b border-border px-3 transition-colors duration-150 last:border-b-0"
+        :class="n.readAt === null ? 'bg-surface-high hover:bg-surface-high/70' : 'hover:bg-surface-high'"
         @click="onRowClick(n)"
       >
         <NotificationRow :notification="n" />
@@ -89,10 +96,10 @@ function onSeeAll() {
 
     <button
       type="button"
-      class="block w-full cursor-pointer border-0 border-t border-border bg-transparent px-4 py-2 text-center font-mono text-[11px] uppercase tracking-[0.04em] text-text-secondary transition-colors duration-150 hover:bg-surface-raised hover:text-ink"
+      class="block w-full cursor-pointer border-0 border-t border-border bg-transparent px-4 py-2 text-center text-[11px] font-semibold text-accent transition-colors duration-150 hover:bg-accent-bg"
       @click="onSeeAll"
     >
-      See all
+      See all notifications →
     </button>
   </div>
 </template>

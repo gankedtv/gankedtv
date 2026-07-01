@@ -10,7 +10,7 @@ import IconUser from '@/components/icons/IconUser.vue'
 
 // Phone-first bottom tab bar — the five primary destinations. Replaces the
 // hamburger drawer below lg; Trending/Leaderboards stay reachable via the
-// footer colophon and search. Upload is the prominent solid-ink square.
+// footer and search. Upload is the prominent solid-mint button.
 const route = useRoute()
 const auth = useAuthStore()
 
@@ -26,17 +26,15 @@ const isProfileActive = computed(
 
 function tabClass(active: boolean): string {
   return [
-    'relative flex flex-col items-center justify-center gap-1 font-mono text-[8px] uppercase tracking-[0.12em] transition-colors duration-150',
-    active
-      ? `text-ink before:absolute before:top-0 before:h-0.5 before:w-5.5 before:bg-ink before:content-['']`
-      : 'text-text-muted',
+    'relative flex flex-col items-center justify-center gap-1 text-[9px] font-semibold transition-colors duration-150',
+    active ? 'text-accent' : 'text-text-muted',
   ].join(' ')
 }
 </script>
 
 <template>
   <nav
-    class="fixed inset-x-0 bottom-0 z-40 grid h-15.5 grid-cols-5 border-t border-border bg-surface-base pb-[env(safe-area-inset-bottom)] lg:hidden"
+    class="fixed inset-x-0 bottom-0 z-40 grid h-15.5 grid-cols-5 border-t border-border bg-surface-raised/95 pb-[env(safe-area-inset-bottom)] lg:hidden"
     aria-label="Primary"
   >
     <RouterLink to="/" :class="tabClass(route.name === 'home')">
@@ -51,7 +49,7 @@ function tabClass(active: boolean): string {
       <span>Games</span>
     </RouterLink>
     <RouterLink :to="uploadTo" class="flex items-center justify-center" aria-label="Upload">
-      <span class="flex size-8.5 items-center justify-center bg-ink text-signal-text">
+      <span class="flex size-9 items-center justify-center rounded-lg bg-accent text-[#080f0d]">
         <IconPlus :size="17" />
       </span>
     </RouterLink>

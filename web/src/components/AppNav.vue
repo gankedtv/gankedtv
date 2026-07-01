@@ -6,6 +6,7 @@ import { useNotificationsStore } from '@/stores/notifications'
 import { search, type SearchResponse } from '@/api/search'
 import ThemeModeToggle from './ThemeModeToggle.vue'
 import UserAvatar from './UserAvatar.vue'
+import LogoMark from './LogoMark.vue'
 import GameSearchResult from './GameSearchResult.vue'
 import NotificationsDropdown from './notifications/NotificationsDropdown.vue'
 import IconSearch from './icons/IconSearch.vue'
@@ -32,9 +33,8 @@ watch(
 )
 onBeforeUnmount(() => notificationsStore.stopPolling())
 
-// 2px ink underline that overlaps the nav's bottom rule — the printed
-// active-tab gesture (padding-bottom 6px / margin-bottom -8px per spec).
-const navLinkActive = 'text-text-primary border-ink'
+// Active nav link = faint mint pill highlight (Arena nav gesture).
+const navLinkActive = 'text-accent bg-accent-bg'
 
 // --- Search box state ---------------------------------------------------------
 //
@@ -264,49 +264,71 @@ function closeMobileSearch() {
   isMobileSearchOpen.value = false
   nextTick(() => mobileSearchTriggerRef.value?.focus())
 }
+
+// --- ⌘K / Ctrl+K shortcut -------------------------------------------------------
+// Focuses the inline search when it's rendered (≥1281px); otherwise opens the
+// mobile overlay. Document-level because the shortcut must work from anywhere.
+const searchInputRef = useTemplateRef<HTMLInputElement>('searchInputRef')
+
+function onGlobalKeydown(e: KeyboardEvent) {
+  if (e.key.toLowerCase() !== 'k' || !(e.metaKey || e.ctrlKey)) return
+  e.preventDefault()
+  const inline = searchInputRef.value
+  if (inline && inline.offsetParent !== null) {
+    inline.focus()
+    inline.select()
+  } else {
+    openMobileSearch()
+  }
+}
+
+onMounted(() => document.addEventListener('keydown', onGlobalKeydown))
+onBeforeUnmount(() => document.removeEventListener('keydown', onGlobalKeydown))
 </script>
 
 <template>
-  <header class="sticky top-0 z-50 h-16 border-b border-border bg-surface-base">
+  <header
+    class="sticky top-0 z-50 h-14 border-b border-border bg-surface-raised/90 backdrop-blur-md"
+  >
     <div
-      class="mx-auto flex h-full max-w-360 min-w-0 items-center gap-6 px-6 *:shrink-0 max-tablet:px-4"
+      class="mx-auto flex h-full max-w-300 min-w-0 items-center gap-4 px-5 *:shrink-0 max-tablet:px-4"
     >
       <!-- Logo — wordmark collapses to the mark alone on the smallest screens. -->
-      <RouterLink to="/" aria-label="GankedTV home" class="flex items-center gap-2.5 no-underline">
-        <span class="size-2 bg-ink" aria-hidden="true"></span>
+      <RouterLink to="/" aria-label="GankedTV home" class="flex items-center gap-2 no-underline">
+        <LogoMark :size="23" glow />
         <span
-          class="font-display text-[17px] font-bold uppercase tracking-[0.04em] text-text-primary max-[420px]:hidden"
+          class="font-condensed text-lg font-black uppercase tracking-[0.04em] text-text-primary max-[420px]:hidden"
         >
-          GANKED<span class="text-ink">.TV</span>
+          GANKED<span class="text-accent">.TV</span>
         </span>
       </RouterLink>
 
       <!-- Desktop nav links — the bottom tab bar takes over below 1024px. -->
-      <nav class="flex flex-1 items-center gap-6 max-lg:hidden" aria-label="Main navigation">
+      <nav class="flex flex-1 items-center gap-1 max-lg:hidden" aria-label="Main navigation">
         <RouterLink
           to="/"
-          class="-mb-2 border-b-2 border-transparent pb-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary no-underline transition-colors duration-150 hover:text-ink"
+          class="rounded-[7px] px-2.5 py-1.5 text-xs font-semibold text-text-secondary no-underline transition-colors duration-150 hover:text-accent"
           :exact-active-class="navLinkActive"
         >
-          Feed
+          Home
         </RouterLink>
         <RouterLink
           to="/games"
-          class="-mb-2 border-b-2 border-transparent pb-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary no-underline transition-colors duration-150 hover:text-ink"
+          class="rounded-[7px] px-2.5 py-1.5 text-xs font-semibold text-text-secondary no-underline transition-colors duration-150 hover:text-accent"
           :active-class="navLinkActive"
         >
           Games
         </RouterLink>
         <RouterLink
           to="/trending"
-          class="-mb-2 border-b-2 border-transparent pb-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary no-underline transition-colors duration-150 hover:text-ink"
+          class="rounded-[7px] px-2.5 py-1.5 text-xs font-semibold text-text-secondary no-underline transition-colors duration-150 hover:text-accent"
           :active-class="navLinkActive"
         >
           Trending
         </RouterLink>
         <RouterLink
           to="/leaderboards"
-          class="-mb-2 border-b-2 border-transparent pb-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary no-underline transition-colors duration-150 hover:text-ink"
+          class="rounded-[7px] px-2.5 py-1.5 text-xs font-semibold text-text-secondary no-underline transition-colors duration-150 hover:text-accent"
           :active-class="navLinkActive"
         >
           Leaderboards
@@ -317,24 +339,36 @@ function closeMobileSearch() {
       <div class="hidden min-w-0 shrink min-[1281px]:block">
         <div
           ref="inputWrapperRef"
-          class="flex h-8.5 w-60 max-w-60 items-center gap-2 overflow-hidden border bg-surface-raised px-3 font-mono text-[11px] whitespace-nowrap transition-colors duration-150"
-          :class="isFocused ? 'border-ink text-text-primary' : 'border-border text-text-muted'"
+          class="flex h-9 w-75 max-w-75 items-center gap-2 overflow-hidden rounded-lg border bg-surface-raised px-3 text-xs whitespace-nowrap transition-colors duration-150"
+          :class="
+            isFocused
+              ? 'border-accent text-text-primary'
+              : 'border-border text-text-muted hover:border-border-strong'
+          "
         >
           <IconSearch :size="14" :stroke-width="2.2" class="shrink-0" />
           <input
+            ref="searchInputRef"
             v-model="query"
             type="search"
             role="combobox"
             aria-controls="nav-search-results"
             aria-autocomplete="list"
             :aria-expanded="isFocused && query.trim().length > 0"
-            placeholder="search clips, games"
-            class="min-w-0 flex-1 border-0 bg-transparent font-mono text-[11px] text-text-primary placeholder:text-text-muted focus:outline-none"
+            placeholder="Search clips, games, players…"
+            class="min-w-0 flex-1 border-0 bg-transparent text-xs text-text-primary placeholder:text-text-muted focus:outline-none"
             @focus="isFocused = true"
             @blur="onBlur"
             @keydown.enter.prevent="onSubmit"
             @keydown.escape="($event.target as HTMLInputElement).blur()"
           />
+          <kbd
+            v-if="!isFocused"
+            class="rounded-sm border border-border px-1.5 py-0.5 text-[10px] font-semibold text-text-muted"
+            aria-hidden="true"
+          >
+            ⌘K
+          </kbd>
         </div>
 
         <!-- Dropdown — teleported to body so the header's stacking context can't
@@ -345,26 +379,24 @@ function closeMobileSearch() {
             v-if="showPopover"
             id="nav-search-results"
             :style="popoverStyle"
-            class="fixed z-60 overflow-hidden border border-border-strong bg-surface-base"
+            class="fixed z-60 overflow-hidden rounded-lg border border-border-strong bg-surface-base"
             @mousedown.prevent
           >
             <div
               v-if="loading && results.clips.length === 0 && results.games.length === 0"
               class="flex items-center gap-3 px-3.5 py-3"
             >
-              <span class="block h-1.5 w-5.5 overflow-hidden bg-surface-raised">
+              <span class="block h-1.5 w-5.5 overflow-hidden rounded-full bg-surface-high">
                 <span
-                  class="block h-full w-full origin-left bg-ink animate-[tick_1.6s_ease-in-out_infinite]"
+                  class="block h-full w-full origin-left bg-accent animate-[tick_1.6s_ease-in-out_infinite]"
                 ></span>
               </span>
-              <span class="font-mono text-[11px] uppercase tracking-widest text-text-muted"
-                >Searching</span
-              >
+              <span class="text-[11px] text-text-muted">Searching…</span>
             </div>
             <template v-else>
               <div v-if="results.games.length > 0">
                 <div
-                  class="px-3.5 pt-2.5 pb-1 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted"
+                  class="px-3.5 pt-2.5 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-text-muted"
                 >
                   Games
                 </div>
@@ -380,7 +412,7 @@ function closeMobileSearch() {
               </div>
               <div v-if="results.clips.length > 0">
                 <div
-                  class="px-3.5 pt-2.5 pb-1 font-mono text-[10px] uppercase tracking-[0.18em] text-text-muted"
+                  class="px-3.5 pt-2.5 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-text-muted"
                   :class="{ 'border-t border-border': results.games.length > 0 }"
                 >
                   Clips
@@ -391,15 +423,15 @@ function closeMobileSearch() {
                     :key="c.id"
                     role="option"
                     :aria-selected="false"
-                    class="flex cursor-pointer items-center gap-3 px-3.5 py-2 transition-colors duration-150 hover:bg-surface-raised"
+                    class="flex cursor-pointer items-center gap-3 px-3.5 py-2 transition-colors duration-150 hover:bg-surface-high"
                     @mousedown.prevent="onResultClick({ name: 'clip', params: { id: c.id } })"
                   >
                     <img
                       :src="c.thumbnailUrl"
                       alt=""
-                      class="h-9 w-16 shrink-0 border border-border object-cover"
+                      class="h-9 w-16 shrink-0 rounded-sm border border-border bg-black object-cover"
                     />
-                    <span class="min-w-0 flex-1 truncate font-body text-sm text-text-primary">
+                    <span class="min-w-0 flex-1 truncate text-sm text-text-primary">
                       {{ c.title }}
                     </span>
                   </li>
@@ -407,7 +439,7 @@ function closeMobileSearch() {
               </div>
               <div
                 v-if="!loading && results.clips.length === 0 && results.games.length === 0"
-                class="px-3.5 py-3 font-mono text-[11px] uppercase tracking-widest text-text-muted"
+                class="px-3.5 py-3 text-[11px] text-text-muted"
               >
                 No matches
               </div>
@@ -422,7 +454,7 @@ function closeMobileSearch() {
         <button
           ref="mobileSearchTriggerRef"
           type="button"
-          class="inline-flex size-8.5 cursor-pointer items-center justify-center border border-border bg-transparent text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink min-[1281px]:hidden"
+          class="inline-flex size-8.5 cursor-pointer items-center justify-center rounded-lg border border-border bg-transparent text-text-secondary transition-colors duration-150 hover:border-border-strong hover:text-text-primary min-[1281px]:hidden"
           aria-label="Search"
           @click="openMobileSearch"
         >
@@ -436,8 +468,8 @@ function closeMobileSearch() {
           v-if="auth.isAuthenticated"
           ref="bellRef"
           type="button"
-          class="relative inline-flex size-8.5 cursor-pointer items-center justify-center border bg-transparent text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink"
-          :class="isBellOpen ? 'border-ink text-ink' : 'border-border'"
+          class="relative inline-flex size-8.5 cursor-pointer items-center justify-center rounded-lg border bg-transparent text-text-secondary transition-colors duration-150 hover:border-border-strong hover:text-text-primary"
+          :class="isBellOpen ? 'border-accent-border text-accent' : 'border-border'"
           :aria-label="`Notifications${unreadBadge ? ` (${unreadBadge} unread)` : ''}`"
           :aria-expanded="isBellOpen"
           @click="toggleBell"
@@ -445,7 +477,7 @@ function closeMobileSearch() {
           <IconBell :size="16" />
           <span
             v-if="unreadBadge"
-            class="absolute -top-1 -right-1 inline-flex h-4 min-w-4 items-center justify-center bg-ink px-1 font-mono text-[10px] leading-none font-semibold text-signal-text"
+            class="absolute -top-1.5 -right-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full border-2 border-surface-raised bg-accent px-1 text-[9px] leading-none font-extrabold text-[#080f0d]"
           >
             {{ unreadBadge }}
           </span>
@@ -455,7 +487,7 @@ function closeMobileSearch() {
         <RouterLink
           v-if="auth.isModerator"
           to="/admin"
-          class="inline-flex h-8.5 cursor-pointer items-center border border-border bg-transparent px-3 font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary no-underline transition-colors duration-150 hover:border-ink hover:text-ink max-lg:hidden"
+          class="inline-flex h-8.5 cursor-pointer items-center rounded-lg border border-border bg-transparent px-3 text-xs font-semibold text-text-secondary no-underline transition-colors duration-150 hover:border-accent hover:text-accent max-lg:hidden"
         >
           Admin
         </RouterLink>
@@ -464,7 +496,7 @@ function closeMobileSearch() {
         <RouterLink
           v-if="auth.isAuthenticated"
           to="/upload"
-          class="inline-flex h-8.5 cursor-pointer items-center bg-ink px-4 text-[13px] font-medium uppercase tracking-[0.02em] text-signal-text no-underline transition-[filter] duration-150 hover:brightness-108 max-lg:hidden"
+          class="inline-flex h-8.5 cursor-pointer items-center rounded-lg bg-accent px-3.5 text-xs font-bold text-[#080f0d] no-underline transition-[filter] duration-150 hover:brightness-105 max-lg:hidden"
         >
           <span class="inline-flex items-center gap-1.5">
             <IconPlus :size="12" :stroke-width="2.5" />
@@ -476,7 +508,7 @@ function closeMobileSearch() {
         <RouterLink
           v-else
           to="/login"
-          class="inline-flex h-8.5 cursor-pointer items-center bg-ink px-4 text-[13px] font-medium uppercase tracking-[0.02em] text-signal-text no-underline transition-[filter] duration-150 hover:brightness-108 max-lg:hidden"
+          class="inline-flex h-8.5 cursor-pointer items-center rounded-lg bg-accent px-3.5 text-xs font-bold text-[#080f0d] no-underline transition-[filter] duration-150 hover:brightness-105 max-lg:hidden"
         >
           Sign In
         </RouterLink>
@@ -487,7 +519,7 @@ function closeMobileSearch() {
           :to="`/user/${auth.user.username}`"
           class="inline-flex max-lg:hidden"
         >
-          <UserAvatar :user="auth.user" :size="34" />
+          <UserAvatar :user="auth.user" :size="30" class="border border-accent" />
         </RouterLink>
       </div>
     </div>
@@ -503,15 +535,15 @@ function closeMobileSearch() {
         v-model="query"
         type="search"
         aria-label="Search clips and games"
-        placeholder="search clips, games"
-        class="min-w-0 flex-1 border-0 bg-transparent font-mono text-sm text-text-primary placeholder:text-text-muted focus:outline-none"
+        placeholder="Search clips, games, players…"
+        class="min-w-0 flex-1 border-0 bg-transparent text-sm text-text-primary placeholder:text-text-muted focus:outline-none"
         @keydown.enter.prevent="onSubmit"
         @keydown.escape="closeMobileSearch"
       />
       <button
         type="button"
         aria-label="Close search"
-        class="shrink-0 cursor-pointer px-2 font-mono text-xl leading-none text-text-muted transition-colors duration-150 hover:text-text-primary"
+        class="shrink-0 cursor-pointer px-2 text-xl leading-none text-text-muted transition-colors duration-150 hover:text-text-primary"
         @click="closeMobileSearch"
       >
         ×
