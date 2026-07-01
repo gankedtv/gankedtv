@@ -38,8 +38,12 @@ public sealed class ApiKeyService
         Guid userId, string? name, DateTimeOffset? expiresAt, CancellationToken ct = default)
     {
         var now = _clock.GetUtcNow();
+        // "Active" = usable right now: neither revoked nor expired. An already-expired key can't
+        // authenticate, so it shouldn't count against the quota.
         var active = await _db.ApiKeys
-            .CountAsync(k => k.UserId == userId && k.RevokedAt == null, ct);
+            .CountAsync(k => k.UserId == userId
+                && k.RevokedAt == null
+                && (k.ExpiresAt == null || k.ExpiresAt > now), ct);
         if (active >= MaxActiveKeysPerUser)
         {
             return ApiKeyCreateResult.Fail(ApiKeyCreateError.TooManyKeys);

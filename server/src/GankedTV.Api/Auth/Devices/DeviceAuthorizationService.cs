@@ -98,19 +98,34 @@ public sealed class DeviceAuthorizationService
             return DevicePollResult.Of(DevicePollStatus.Pending);
         }
 
-        // Approved: mint the key for the approving user.
-        var mint = await _apiKeys.CreateAsync(row.UserId!.Value, row.ClientName ?? "rewynd", null, ct);
+        // Approved: mint the key and consume the row. Two concurrent polls of the same device
+        // could otherwise both mint (a duplicate key) and one would 500 on the losing delete.
+        // Lock the approved row FOR UPDATE inside a transaction so only one poll claims it; a
+        // loser re-reads no matching approved row and reports Expired (the winner returned the key).
+        await using var tx = await _db.Database.BeginTransactionAsync(ct);
+        var claimed = await _db.DeviceAuthorizations
+            .FromSql($"SELECT * FROM device_authorizations WHERE id = {row.Id} AND status = 'approved' FOR UPDATE")
+            .AsNoTracking()
+            .FirstOrDefaultAsync(ct);
+        if (claimed is null)
+        {
+            await tx.RollbackAsync(ct);
+            return DevicePollResult.Of(DevicePollStatus.Expired);
+        }
+
+        var mint = await _apiKeys.CreateAsync(claimed.UserId!.Value, claimed.ClientName ?? "rewynd", null, ct);
         if (!mint.IsSuccess)
         {
             // Don't consume the row on a failed mint (e.g. the user is at the key cap): keep it
             // approved so the client's next poll reports too_many_keys accurately, and so the
             // flow self-recovers once the user revokes a key. The sweep clears it on expiry.
+            await tx.RollbackAsync(ct);
             return DevicePollResult.Of(DevicePollStatus.TooManyKeys);
         }
 
-        // Consume the row so the device code is single-use.
-        _db.DeviceAuthorizations.Remove(row);
-        await _db.SaveChangesAsync(ct);
+        // Consume the row so the device code is single-use, atomically with the key insert.
+        await _db.DeviceAuthorizations.Where(d => d.Id == row.Id).ExecuteDeleteAsync(ct);
+        await tx.CommitAsync(ct);
         return DevicePollResult.Success(mint.RawKey!);
     }
 
@@ -137,28 +152,33 @@ public sealed class DeviceAuthorizationService
     {
         var normalized = NormalizeUserCode(userCode);
         var now = _clock.GetUtcNow();
-        var row = await _db.DeviceAuthorizations
-            .SingleOrDefaultAsync(d => d.UserCode == normalized, ct);
 
-        if (row is null || row.ExpiresAt <= now)
+        // Atomic conditional transition: only one concurrent approve/deny can move a live pending
+        // row to a final state (the UPDATE ... WHERE status='pending' is a single locked write),
+        // so racing decisions can't both "win" the way a read-then-write would.
+        var query = _db.DeviceAuthorizations
+            .Where(d => d.UserCode == normalized
+                && d.Status == DeviceAuthorizationStatuses.Pending
+                && d.ExpiresAt > now);
+        var affected = decision == DeviceAuthorizationStatuses.Approved
+            ? await query.ExecuteUpdateAsync(s => s
+                .SetProperty(d => d.Status, DeviceAuthorizationStatuses.Approved)
+                .SetProperty(d => d.UserId, (Guid?)userId)
+                .SetProperty(d => d.ApprovedAt, (DateTimeOffset?)now), ct)
+            : await query.ExecuteUpdateAsync(s => s
+                .SetProperty(d => d.Status, DeviceAuthorizationStatuses.Denied), ct);
+
+        if (affected > 0)
         {
-            return DeviceDecisionOutcome.NotFound;
-        }
-        // Only a still-pending request can be decided; a second decision (or a poll that already
-        // consumed it) is a conflict, not a silent no-op.
-        if (row.Status != DeviceAuthorizationStatuses.Pending)
-        {
-            return DeviceDecisionOutcome.AlreadyDecided;
+            return DeviceDecisionOutcome.Ok;
         }
 
-        row.Status = decision;
-        if (decision == DeviceAuthorizationStatuses.Approved)
-        {
-            row.UserId = userId;
-            row.ApprovedAt = now;
-        }
-        await _db.SaveChangesAsync(ct);
-        return DeviceDecisionOutcome.Ok;
+        // No pending row matched. Distinguish a live-but-already-decided row (conflict) from an
+        // unknown/expired one (not found).
+        var liveRowExists = await _db.DeviceAuthorizations
+            .AsNoTracking()
+            .AnyAsync(d => d.UserCode == normalized && d.ExpiresAt > now, ct);
+        return liveRowExists ? DeviceDecisionOutcome.AlreadyDecided : DeviceDecisionOutcome.NotFound;
     }
 
     // Display form is grouped with a dash ("WDJB-MJHT"); we store the raw 8 chars and normalize

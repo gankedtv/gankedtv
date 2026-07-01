@@ -22,8 +22,9 @@ public static class UserClaims
         {
             claims.Add(new Claim(JwtRegisteredClaimNames.Email, user.Email));
         }
-        // Emitted unconditionally (defaults to "user") so authorization policies can always
-        // assert on its presence without distinguishing default-vs-elevated paths.
+        // User.Role is non-null and defaults to "user", so in practice this is always emitted and
+        // authorization policies can assert on its presence. The guard only skips a blank role,
+        // which would be malformed data — never a valid claim to emit.
         if (!string.IsNullOrWhiteSpace(user.Role))
         {
             claims.Add(new Claim(JwtClaims.Role, user.Role));

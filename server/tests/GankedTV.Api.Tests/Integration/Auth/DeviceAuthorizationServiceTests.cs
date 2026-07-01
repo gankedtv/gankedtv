@@ -200,6 +200,37 @@ public class DeviceAuthorizationServiceTests
     }
 
     [Fact]
+    public async Task PollAsync_AfterSuccessfulExchange_IsSingleUse()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync();
+        var clock = new FakeClock(DateTimeOffset.UtcNow);
+
+        DeviceStartResult start;
+        await using (var db = _fx.CreateContext())
+        {
+            start = await NewService(db, clock).StartAsync("rewynd");
+        }
+        await using (var db = _fx.CreateContext())
+        {
+            await NewService(db, clock).ApproveAsync(userId, start.UserCode);
+        }
+        await using (var db = _fx.CreateContext())
+        {
+            (await NewService(db, clock).PollAsync(start.DeviceCode)).Status.Should().Be(DevicePollStatus.Approved);
+        }
+
+        // The device code is consumed on first successful exchange; a replay yields expired, and
+        // only one key was ever minted.
+        await using (var db = _fx.CreateContext())
+        {
+            (await NewService(db, clock).PollAsync(start.DeviceCode)).Status.Should().Be(DevicePollStatus.Expired);
+        }
+        await using var verify = _fx.CreateContext();
+        (await verify.ApiKeys.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
     public async Task PollAsync_Denied_ReturnsDenied()
     {
         await _fx.ResetAsync();
