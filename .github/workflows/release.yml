@@ -96,7 +96,7 @@ jobs:
           tags: |
             type=sha,prefix=,format=long
             type=raw,value=latest
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: server # server/-scoped: Dockerfile.api COPYs GankedTV.slnx + src/ relative to server/
           file: server/Dockerfile.api
@@ -130,7 +130,7 @@ jobs:
           tags: |
             type=sha,prefix=,format=long
             type=raw,value=latest
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: . # repo root: web build needs web/ + shared/ (see web/Dockerfile + .dockerignore)
           file: web/Dockerfile
@@ -166,7 +166,7 @@ jobs:
           tags: |
             type=sha,prefix=,format=long
             type=raw,value=latest
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: . # repo root: discord/Dockerfile COPYs shared/
           file: discord/Dockerfile
@@ -204,7 +204,7 @@ jobs:
           tags: |
             type=sha,prefix=,format=long
             type=raw,value=latest
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: server # unused (the Dockerfile only layers ffmpeg onto the base), mirrors the api job
           file: server/Dockerfile.dedicated-encoder
