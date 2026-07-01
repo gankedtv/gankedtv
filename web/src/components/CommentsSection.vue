@@ -49,7 +49,7 @@ function requestReport(id: string) {
 }
 
 const inputClass =
-  'w-full rounded-sm border border-border bg-surface-raised px-3.5 py-2.5 font-body text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-ink transition-colors duration-150'
+  'w-full rounded-md border border-border bg-surface-high px-3 py-2.5 text-sm text-text-primary outline-none placeholder:text-text-muted transition-colors duration-150 focus:border-accent'
 
 // Monotonic token guarding against stale list/loadMore responses when props.clipId
 // flips mid-request. Captured pre-await; any response whose token no longer matches
@@ -282,7 +282,7 @@ function markDeleted(id: string) {
           <button
             type="submit"
             :disabled="posting || newBody.trim().length === 0"
-            class="cursor-pointer bg-ink px-4 py-2 font-body text-sm font-medium text-signal-text transition-[filter] duration-150 hover:brightness-108 disabled:cursor-not-allowed disabled:opacity-50"
+            class="cursor-pointer rounded-md bg-accent px-3.5 py-2 text-[11px] font-bold text-[#080f0d] transition-[filter] duration-150 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {{ posting ? 'Posting…' : 'Comment' }}
           </button>
@@ -291,23 +291,23 @@ function markDeleted(id: string) {
       <button
         v-else
         type="button"
-        class="cursor-pointer border border-border bg-transparent px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.12em] text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink"
+        class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-4 py-2.5 text-xs font-medium text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
         @click="goLogin"
       >
         Log in to comment
       </button>
     </div>
 
-    <p v-if="actionError" class="mb-3 font-mono text-[12px] text-signal">
+    <p v-if="actionError" class="mb-3 text-xs font-semibold text-accent">
       {{ actionError }}
     </p>
 
     <!-- List -->
-    <div v-if="loading" class="font-mono text-[12px] text-text-muted">Loading comments…</div>
-    <div v-else-if="errored" class="font-mono text-[12px] text-signal">
+    <div v-if="loading" class="text-xs text-text-muted">Loading comments…</div>
+    <div v-else-if="errored" class="text-xs font-semibold text-accent">
       Could not load comments.
     </div>
-    <div v-else-if="threads.length === 0" class="font-mono text-[12px] text-text-muted">
+    <div v-else-if="threads.length === 0" class="text-xs text-text-muted">
       No comments yet. Be the first.
     </div>
 
@@ -340,7 +340,7 @@ function markDeleted(id: string) {
           <div class="mt-2 flex justify-end gap-2">
             <button
               type="button"
-              class="cursor-pointer border border-border bg-transparent px-3 py-1.5 font-body text-xs font-medium text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink"
+              class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
               @click="replyingTo = null"
             >
               Cancel
@@ -348,7 +348,7 @@ function markDeleted(id: string) {
             <button
               type="submit"
               :disabled="replyPosting || replyBody.trim().length === 0"
-              class="cursor-pointer bg-ink px-3 py-1.5 font-body text-xs font-medium text-signal-text transition-[filter] duration-150 hover:brightness-108 disabled:cursor-not-allowed disabled:opacity-50"
+              class="cursor-pointer rounded-md bg-accent px-3 py-1.5 text-[11px] font-bold text-[#080f0d] transition-[filter] duration-150 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {{ replyPosting ? 'Replying…' : 'Reply' }}
             </button>
@@ -371,7 +371,7 @@ function markDeleted(id: string) {
         <button
           v-if="thread.replyCount > thread.replies.length"
           type="button"
-          class="mt-2 ml-11 cursor-pointer font-mono text-[11px] uppercase tracking-wider text-ink transition-opacity duration-150 hover:underline"
+          class="mt-2 ml-11 cursor-pointer text-[11px] font-semibold text-accent transition-colors duration-150 hover:underline"
           @click="showMoreReplies(thread)"
         >
           Show {{ thread.replyCount - thread.replies.length }} more
@@ -384,7 +384,7 @@ function markDeleted(id: string) {
       v-if="nextCursor"
       type="button"
       :disabled="loadingMore"
-      class="mt-5 cursor-pointer border border-border bg-transparent px-4 py-2 font-mono text-[11px] uppercase tracking-[0.08em] text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink disabled:opacity-50"
+      class="mt-5 cursor-pointer rounded-lg border border-border-strong bg-transparent px-4 py-2 text-xs font-medium text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent disabled:opacity-50"
       @click="loadMore"
     >
       {{ loadingMore ? 'Loading…' : 'Load more comments' }}

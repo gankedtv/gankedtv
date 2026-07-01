@@ -17,14 +17,11 @@ const text = computed(() => (props.seconds === null ? null : formatDuration(prop
 </script>
 
 <template>
+  <!-- Literal colors — text over video must stay light in both modes. -->
   <span
     v-if="text"
-    class="bg-black/55 font-mono leading-none text-[#f4f1e8]"
-    :class="
-      size === 'md'
-        ? 'px-2.5 py-1.25 text-[11px] tracking-[0.06em]'
-        : 'px-1.5 py-1 text-[10px] tracking-wider'
-    "
+    class="rounded-sm bg-black/75 font-semibold leading-none text-[#f4f1e8]"
+    :class="size === 'md' ? 'px-2 py-1 text-[11px]' : 'px-1.5 py-1 text-[10px]'"
   >
     {{ text }}
   </span>

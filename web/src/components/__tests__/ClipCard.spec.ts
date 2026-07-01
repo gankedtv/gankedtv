@@ -74,7 +74,7 @@ describe('ClipCard', () => {
     expect(wrapper.text()).toContain('0:42')
   })
 
-  it('renders the @username in neon', () => {
+  it('renders the @username handle', () => {
     const wrapper = mount(ClipCard, {
       props: { clip: makeClip() },
       global: { plugins: [makeRouter()] },
@@ -126,43 +126,13 @@ describe('ClipCard', () => {
     expect(wrapper.emitted('click')).toBeFalsy()
   })
 
-  it('renders tag chips for the first 3 tags as /tag/:slug links', () => {
+  it('does not render tag chips on the card — tags live on detail surfaces', () => {
     const tags = [
       { id: 1, slug: 'clutch', name: 'clutch', clipCount: 0 },
       { id: 2, slug: 'ace', name: 'ace', clipCount: 0 },
-      { id: 3, slug: 'fail', name: 'fail', clipCount: 0 },
     ]
     const wrapper = mount(ClipCard, {
       props: { clip: makeClip({ tags }) },
-      global: { plugins: [makeRouter()] },
-    })
-    const hrefs = wrapper.findAll('a').map((a) => a.attributes('href'))
-    expect(hrefs).toContain('/tag/clutch')
-    expect(hrefs).toContain('/tag/ace')
-    expect(hrefs).toContain('/tag/fail')
-  })
-
-  it('renders +N overflow indicator when there are more than 3 tags', () => {
-    const tags = [
-      { id: 1, slug: 'a', name: 'a', clipCount: 0 },
-      { id: 2, slug: 'b', name: 'b', clipCount: 0 },
-      { id: 3, slug: 'c', name: 'c', clipCount: 0 },
-      { id: 4, slug: 'd', name: 'd', clipCount: 0 },
-      { id: 5, slug: 'e', name: 'e', clipCount: 0 },
-    ]
-    const wrapper = mount(ClipCard, {
-      props: { clip: makeClip({ tags }) },
-      global: { plugins: [makeRouter()] },
-    })
-    expect(wrapper.text()).toContain('+2')
-    // The +N chip is a non-link span — only 4 anchors total (game + 3 tags).
-    const tagLinks = wrapper.findAll('a').filter((a) => a.attributes('href')?.startsWith('/tag/'))
-    expect(tagLinks.length).toBe(3)
-  })
-
-  it('omits the tag row when the clip has no tags', () => {
-    const wrapper = mount(ClipCard, {
-      props: { clip: makeClip({ tags: [] }) },
       global: { plugins: [makeRouter()] },
     })
     const tagLinks = wrapper.findAll('a').filter((a) => a.attributes('href')?.startsWith('/tag/'))

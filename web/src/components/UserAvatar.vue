@@ -62,7 +62,7 @@ function onImageError() {
 
 <template>
   <span
-    class="inline-flex shrink-0 items-center justify-center overflow-hidden font-mono font-semibold tracking-tighter text-white"
+    class="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold tracking-tighter text-white"
     :style="{
       width: `${size}px`,
       height: `${size}px`,

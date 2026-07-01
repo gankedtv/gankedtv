@@ -190,7 +190,7 @@ onUnmounted(() => {
 const resolvedInputClass = computed(
   () =>
     props.inputClass ??
-    'w-full rounded-sm border border-border bg-surface-raised px-3.5 py-3 font-body text-sm text-text-primary outline-none transition-colors duration-150 focus:border-ink',
+    'w-full rounded-md border border-border bg-surface-high px-3.5 py-3 text-sm text-text-primary outline-none placeholder:text-text-muted transition-colors duration-150 focus:border-accent',
 )
 </script>
 
@@ -200,13 +200,13 @@ const resolvedInputClass = computed(
       <span
         v-for="(slug, i) in props.modelValue"
         :key="slug"
-        class="inline-flex items-center gap-1.5 border border-ink px-2 py-1 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-ink"
+        class="inline-flex items-center gap-1.5 rounded-full border border-accent-border bg-accent-bg px-2.5 py-0.5 text-[11px] font-semibold text-accent"
       >
         #{{ slug }}
         <button
           type="button"
           :aria-label="`Remove tag ${slug}`"
-          class="cursor-pointer leading-none text-ink/70 transition-colors duration-150 hover:text-ink"
+          class="cursor-pointer leading-none text-accent/70 transition-colors duration-150 hover:text-text-primary"
           @click="
             () => {
               removeAt(i)
@@ -247,7 +247,7 @@ const resolvedInputClass = computed(
           v-if="showDropdown && results.length"
           :id="listboxId"
           role="listbox"
-          class="absolute left-0 right-0 top-full z-10 mt-1 max-h-60 overflow-auto border border-border-strong bg-surface-base"
+          class="absolute left-0 right-0 top-full z-10 mt-1 max-h-60 overflow-auto rounded-lg border border-border-strong bg-surface-base"
         >
           <li
             v-for="(r, i) in results"
@@ -255,8 +255,8 @@ const resolvedInputClass = computed(
             :key="r.id"
             role="option"
             :aria-selected="i === highlightedIndex"
-            class="flex cursor-pointer items-center justify-between gap-3 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.06em] text-text-primary transition-colors duration-150 hover:bg-surface-raised"
-            :class="i === highlightedIndex ? 'bg-surface-raised' : ''"
+            class="flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-xs text-text-primary transition-colors duration-150"
+            :class="i === highlightedIndex ? 'bg-accent-bg text-accent' : 'hover:bg-surface-high'"
             @mousedown.prevent="commit(r.slug)"
           >
             <span>#{{ r.name }}</span>
@@ -267,7 +267,7 @@ const resolvedInputClass = computed(
     </div>
     <p
       v-if="props.modelValue.length > 0 || draft.length > 0"
-      class="mt-1.5 font-mono text-[10px] uppercase tracking-widest text-text-muted"
+      class="mt-1.5 text-[11px] text-text-muted"
     >
       {{ props.modelValue.length }} / {{ max }} — comma, space or enter to add
     </p>

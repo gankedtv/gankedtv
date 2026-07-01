@@ -1,8 +1,7 @@
 <script setup lang="ts">
 // Clickable game chip — used in the upload picker today, will fit any future
-// "filter by game" affordance (sidebar, search facets, etc.). Visually it's a
-// `<button>` with the same uppercase-mono treatment as `GameTag`, but with
-// hover and pressed states because it's interactive.
+// "filter by game" affordance (sidebar, search facets, etc.). Neutral pill that
+// shifts to the mint accent on hover because it's interactive.
 
 defineProps<{
   tag: string
@@ -13,7 +12,7 @@ defineEmits<{ click: [] }>()
 <template>
   <button
     type="button"
-    class="cursor-pointer border border-border bg-transparent px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted transition-colors duration-150 hover:border-ink hover:text-ink"
+    class="cursor-pointer rounded-full border border-border bg-transparent px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-text-muted transition-colors duration-150 hover:border-accent-border hover:text-accent"
     @click="$emit('click')"
   >
     {{ tag }}

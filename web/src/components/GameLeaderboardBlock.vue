@@ -34,7 +34,7 @@ const windowLabel = {
 </script>
 
 <template>
-  <!-- Band, not card: section header + hairline-separated rows directly on the
+  <!-- Band, not card: section header + border-separated rows directly on the
        page surface. The parent owns the surrounding section spacing. -->
   <section v-if="loading || errored || entries.length > 0" class="mb-10">
     <SectionHeader
@@ -44,16 +44,13 @@ const windowLabel = {
       more-label="All leaderboards →"
     />
 
-    <div
-      v-if="loading && entries.length === 0"
-      class="px-4 py-6 text-center font-mono text-[11px] tracking-widest text-text-muted uppercase"
-    >
+    <div v-if="loading && entries.length === 0" class="px-4 py-6 text-center text-xs text-text-muted">
       Loading
     </div>
 
     <div
       v-else-if="errored && entries.length === 0"
-      class="px-4 py-6 text-center font-mono text-[11px] tracking-widest text-text-muted uppercase"
+      class="px-4 py-6 text-center text-xs text-text-muted"
     >
       Couldn't load leaderboard.
     </div>

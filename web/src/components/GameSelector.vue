@@ -75,7 +75,7 @@ onUnmounted(() => {
 })
 
 const inputClass =
-  'w-full rounded-sm border border-border bg-surface-raised px-3.5 py-3 font-body text-sm text-text-primary outline-none transition-colors duration-150 focus:border-ink'
+  'w-full rounded-md border border-border bg-surface-high px-3.5 py-3 text-sm text-text-primary outline-none placeholder:text-text-muted transition-colors duration-150 focus:border-accent'
 </script>
 
 <template>
@@ -83,17 +83,17 @@ const inputClass =
     <!-- Selected pill -->
     <div
       v-if="modelValue"
-      class="mb-2 inline-flex items-center gap-2 border border-ink px-3 py-1.5"
+      class="mb-2 inline-flex items-center gap-2 rounded-full border border-accent-border bg-accent-bg px-3 py-1.5"
     >
-      <span class="font-mono text-[10px] uppercase tracking-[0.06em] text-text-primary">
+      <span class="text-[10px] font-bold uppercase tracking-[0.06em] text-accent">
         {{ modelValue.tag }}
       </span>
-      <span class="font-body text-xs text-text-secondary">{{ modelValue.name }}</span>
+      <span class="text-[11px] font-semibold text-accent">{{ modelValue.name }}</span>
       <button
         type="button"
         @click="clearGame"
         aria-label="Clear selected game"
-        class="cursor-pointer font-mono text-[11px] leading-none text-text-muted transition-colors duration-150 hover:text-ink"
+        class="cursor-pointer text-[11px] leading-none text-accent/70 transition-colors duration-150 hover:text-text-primary"
       >
         ×
       </button>
@@ -118,7 +118,7 @@ const inputClass =
         role="listbox"
         aria-live="polite"
         aria-atomic="true"
-        class="absolute left-0 right-0 top-full z-10 mt-1 max-h-60 overflow-auto border border-border-strong bg-surface-base"
+        class="absolute left-0 right-0 top-full z-10 mt-1 max-h-60 overflow-auto rounded-lg border border-border-strong bg-surface-base"
       >
         <GameSearchResult
           v-for="g in gameResults"

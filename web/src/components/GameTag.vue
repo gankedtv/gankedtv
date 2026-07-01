@@ -2,14 +2,12 @@
 // Renders the game's short tag (e.g. VALORANT, RL).
 //
 // `variant`:
-//   - 'pill' (default) — horizontal chip used inline (cards, leaderboard).
-//     Pair with `size='sm'|'md'` for density vs. presence.
+//   - 'pill' (default) — mint tag chip used on thumbnails and inline rows.
 //   - 'square'          — 40×40 boxed tile, used in list rows where the tag stands
 //     in for cover art (e.g. Trending's Hot Games sidebar).
 //
-// Newsprint badge grammar: the default tone is the solid-ink primary badge
-// (game tag on thumbnails); 'subtle'/'muted' tones render the hairline outline
-// secondary style so the two styles differentiate without a third color.
+// Arena badge grammar: one mint accent. 'subtle'/'muted' tones render hairline
+// outlines in neutral text colors so rows can de-emphasize without a second hue.
 
 defineProps<{
   tag: string
@@ -22,23 +20,21 @@ defineProps<{
 <template>
   <span
     v-if="variant === 'square'"
-    class="inline-flex h-10 w-10 shrink-0 items-center justify-center border border-border-strong bg-surface-base font-mono text-[10px] font-bold uppercase tracking-[0.06em]"
+    class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border-strong bg-surface-base text-[10px] font-bold uppercase tracking-[0.06em]"
     :class="tone === 'muted' ? 'text-text-muted' : 'text-text-secondary'"
   >
     {{ tag }}
   </span>
   <span
     v-else
-    class="inline-flex items-center font-mono font-bold uppercase leading-none"
+    class="inline-flex items-center rounded-sm border font-bold uppercase leading-none"
     :class="[
-      size === 'md'
-        ? 'px-2 py-1.25 text-[10px] tracking-[0.15em]'
-        : 'px-1.5 py-1 text-[10px] tracking-[0.12em]',
+      size === 'md' ? 'px-2 py-1 text-[10px] tracking-[0.07em]' : 'px-1.5 py-1 text-[9px] tracking-[0.07em]',
       tone === 'subtle'
-        ? 'border border-border text-text-secondary'
+        ? 'border-border bg-transparent text-text-secondary'
         : tone === 'muted'
-          ? 'border border-border text-text-muted'
-          : 'bg-ink text-signal-text',
+          ? 'border-border bg-transparent text-text-muted'
+          : 'border-accent-border bg-accent-bg text-accent',
     ]"
   >
     {{ tag }}

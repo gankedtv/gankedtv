@@ -49,26 +49,25 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
         aria-modal="true"
         :aria-labelledby="titleId"
       >
-        <!-- Backdrop — solid high-opacity scrim; separation comes from the
-             scrim + a 1px rule, never blur or shadow. -->
-        <div class="absolute inset-0 bg-surface-sunken/90" @click="!busy && emit('cancel')" />
+        <!-- Backdrop — plain scrim; separation comes from borders, never blur or shadow. -->
+        <div class="absolute inset-0 bg-black/70" @click="!busy && emit('cancel')" />
 
         <!-- Dialog card -->
         <div
-          class="relative z-10 w-full max-w-lg border border-border-strong bg-surface-base"
+          class="relative z-10 w-full max-w-lg rounded-lg border border-border-strong bg-surface-raised"
           @click.stop
         >
           <!-- Header -->
           <div class="flex items-start justify-between border-b border-border px-5 py-4">
             <div>
               <p
-                class="m-0 font-mono text-[10px] uppercase leading-none tracking-[0.22em] text-text-secondary"
+                class="m-0 text-[10px] font-bold uppercase leading-none tracking-[0.14em] text-text-secondary"
               >
                 Confirm
               </p>
               <h2
                 :id="titleId"
-                class="m-0 mt-2 font-heading text-xl font-bold uppercase leading-none tracking-[0.02em] text-text-primary"
+                class="m-0 mt-2 font-condensed text-lg font-extrabold uppercase leading-none tracking-wide text-text-primary"
               >
                 {{ title }}
               </h2>
@@ -78,26 +77,26 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
               :disabled="busy"
               @click="emit('cancel')"
               aria-label="Close"
-              class="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center border border-border font-mono text-base leading-none text-text-muted transition-colors duration-150 hover:border-ink hover:text-ink disabled:pointer-events-none disabled:opacity-40"
+              class="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-border text-base leading-none text-text-muted transition-colors duration-150 hover:border-accent hover:text-accent disabled:pointer-events-none disabled:opacity-40"
             >
               ×
             </button>
           </div>
 
           <!-- Body -->
-          <div class="px-5 py-4 font-body text-sm leading-relaxed text-text-secondary">
+          <div class="px-5 py-4 text-sm leading-relaxed text-text-secondary">
             {{ body }}
           </div>
 
-          <!-- Footer — confirm stays solid ink even for danger: the body copy
-               carries the warning, signal is never a button color. -->
+          <!-- Footer — confirm stays solid mint even for danger: the copy carries
+               the warning, never a second color. -->
           <div class="flex justify-end gap-2.5 border-t border-border px-5 py-4">
             <button
               ref="cancelBtn"
               type="button"
               :disabled="busy"
               @click="emit('cancel')"
-              class="cursor-pointer border border-border bg-transparent px-5 py-2.5 font-body text-sm font-medium text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink disabled:pointer-events-none disabled:opacity-40"
+              class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-4 py-1.5 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent disabled:pointer-events-none disabled:opacity-40"
             >
               {{ cancelLabel ?? 'Cancel' }}
             </button>
@@ -106,10 +105,10 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
               :disabled="busy"
               @click="emit('confirm')"
               :class="[
-                'px-5 py-2.5 font-body text-sm font-medium transition-[filter] duration-150',
+                'rounded-lg px-4 py-1.5 text-xs font-bold transition-[filter] duration-150',
                 busy
                   ? 'cursor-not-allowed border border-border bg-transparent text-text-muted'
-                  : 'cursor-pointer bg-ink text-signal-text hover:brightness-108',
+                  : 'cursor-pointer bg-accent text-[#080f0d] hover:brightness-105',
               ]"
             >
               {{ busy ? `${confirmLabel}…` : confirmLabel }}
