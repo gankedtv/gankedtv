@@ -223,6 +223,7 @@ onBeforeUnmount(() => {
 // outside-click, and Esc; this view only declares the items.
 const ownProfileMenuItems = computed<KebabMenuItem[]>(() => [
   { label: 'Edit profile', onClick: () => (editOpen.value = true) },
+  { label: 'Connected apps', onClick: () => router.push({ name: 'settings-api-keys' }) },
   { label: 'Sign out', variant: 'danger', onClick: () => auth.logout() },
 ])
 

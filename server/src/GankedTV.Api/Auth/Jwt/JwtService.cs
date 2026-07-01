@@ -52,22 +52,10 @@ public sealed class JwtService : IJwtService
     public string Issue(User user)
     {
         var now = DateTime.UtcNow;
-        var claims = new List<Claim>
-        {
-            new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
-            new("name", user.Username),
-            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-        };
-        if (!string.IsNullOrWhiteSpace(user.Email))
-        {
-            claims.Add(new Claim(JwtRegisteredClaimNames.Email, user.Email));
-        }
-        // Emit the role claim unconditionally — defaults to "user" so authorization policies
-        // can always assert on its presence without distinguishing default-vs-elevated paths.
-        if (!string.IsNullOrWhiteSpace(user.Role))
-        {
-            claims.Add(new Claim(JwtClaims.Role, user.Role));
-        }
+        // Shared identity claims + a per-token jti (unique to this issued JWT, so it lives
+        // here rather than in the shared builder the API-key handler also uses).
+        var claims = UserClaims.Build(user);
+        claims.Add(new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()));
 
         var token = new JwtSecurityToken(
             issuer: _options.Issuer,

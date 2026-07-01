@@ -91,6 +91,20 @@ public sealed class MaintenanceHostedService : BackgroundService
         {
             _logger.LogError(ex, "Refresh token sweep failed");
         }
+
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            await SweepExpiredDeviceAuthorizationsAsync(scope, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Device authorization sweep failed");
+        }
     }
 
     internal async Task SweepOrphanedClipsAsync(IServiceScope scope, CancellationToken ct)
@@ -165,5 +179,26 @@ public sealed class MaintenanceHostedService : BackgroundService
         _logger.LogInformation(
             "Swept {Count} refresh token rows expired more than {Retention} ago.",
             deleted, retention);
+    }
+
+    // Device-authorization rows are short-lived (10 min) and single-use; once past expiry they're
+    // dead weight (a consumed/approved row is deleted on token exchange). Delete on expiry — no
+    // retention window needed, unlike refresh tokens which are kept for audit.
+    internal async Task SweepExpiredDeviceAuthorizationsAsync(IServiceScope scope, CancellationToken ct)
+    {
+        var db = scope.ServiceProvider.GetRequiredService<GankedTvDbContext>();
+        var now = _clock.GetUtcNow();
+
+        var deleted = await db.DeviceAuthorizations
+            .Where(d => d.ExpiresAt < now)
+            .ExecuteDeleteAsync(ct);
+
+        if (deleted == 0)
+        {
+            _logger.LogDebug("No expired device authorization rows found.");
+            return;
+        }
+
+        _logger.LogInformation("Swept {Count} expired device authorization rows.", deleted);
     }
 }

@@ -14,6 +14,8 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
     public DbSet<Follow> Follows => Set<Follow>();
     public DbSet<Comment> Comments => Set<Comment>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
+    public DbSet<DeviceAuthorization> DeviceAuthorizations => Set<DeviceAuthorization>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<ClipTag> ClipTags => Set<ClipTag>();
     public DbSet<Notification> Notifications => Set<Notification>();
@@ -452,6 +454,59 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             e.HasIndex(t => t.UserId).HasDatabaseName("idx_refresh_tokens_user_id");
             e.HasIndex(t => t.TokenHash).IsUnique().HasDatabaseName("idx_refresh_tokens_token_hash");
             e.HasIndex(t => t.FamilyId).HasDatabaseName("idx_refresh_tokens_family_id");
+        });
+
+        modelBuilder.Entity<ApiKey>(e =>
+        {
+            e.HasKey(k => k.Id);
+            e.Property(k => k.Id).HasDefaultValueSql("gen_random_uuid()");
+            e.Property(k => k.Name).HasMaxLength(100);
+            // SHA-256 hex is always 64 chars; bound the column so a future Hash change can't
+            // silently write longer values.
+            e.Property(k => k.KeyHash).IsRequired().HasMaxLength(64);
+            e.Property(k => k.KeyPrefix).IsRequired().HasMaxLength(20);
+            e.Property(k => k.CreatedAt).HasDefaultValueSql("now()");
+
+            e.HasOne(k => k.User)
+                .WithMany()
+                .HasForeignKey(k => k.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasIndex(k => k.UserId).HasDatabaseName("idx_api_keys_user_id");
+            // Unique so authentication is a single indexed point-lookup on the hash.
+            e.HasIndex(k => k.KeyHash).IsUnique().HasDatabaseName("idx_api_keys_key_hash");
+        });
+
+        modelBuilder.Entity<DeviceAuthorization>(e =>
+        {
+            e.HasKey(d => d.Id);
+            e.Property(d => d.Id).HasDefaultValueSql("gen_random_uuid()");
+            // SHA-256 hex is always 64 chars (see ApiKey.KeyHash).
+            e.Property(d => d.DeviceCodeHash).IsRequired().HasMaxLength(64);
+            e.Property(d => d.UserCode).IsRequired().HasMaxLength(20);
+            e.Property(d => d.ClientName).HasMaxLength(100);
+            e.Property(d => d.Status).HasMaxLength(20).HasDefaultValue(DeviceAuthorizationStatuses.Pending);
+            e.Property(d => d.CreatedAt).HasDefaultValueSql("now()");
+
+            // Nullable FK — the row exists before anyone approves it, so it has no owner yet.
+            // SetNull (not Cascade) so deleting a user doesn't orphan-delete an unrelated
+            // pending row; the sweep clears it on expiry regardless.
+            e.HasOne(d => d.User)
+                .WithMany()
+                .HasForeignKey(d => d.UserId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            e.ToTable(t => t.HasCheckConstraint(
+                "ck_device_authorizations_status",
+                "status IN ('pending','approved','denied')"));
+
+            // Unique point-lookups: the client polls by device_code hash, the user approves by
+            // user_code. ExpiresAt index drives the maintenance sweep. UserId index is named
+            // explicitly so EF's FK index matches the idx_* convention instead of ix_*.
+            e.HasIndex(d => d.DeviceCodeHash).IsUnique().HasDatabaseName("idx_device_authorizations_device_code_hash");
+            e.HasIndex(d => d.UserCode).IsUnique().HasDatabaseName("idx_device_authorizations_user_code");
+            e.HasIndex(d => d.ExpiresAt).HasDatabaseName("idx_device_authorizations_expires_at");
+            e.HasIndex(d => d.UserId).HasDatabaseName("idx_device_authorizations_user_id");
         });
     }
 }

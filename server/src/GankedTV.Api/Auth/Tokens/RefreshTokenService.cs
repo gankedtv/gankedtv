@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -10,8 +8,6 @@ namespace GankedTV.Api.Auth.Tokens;
 
 public sealed class RefreshTokenService : IRefreshTokenService
 {
-    private const int TokenBytes = 32;
-
     // Treat "token revoked within the last N seconds" as a concurrent legit rotation rather than
     // a replay. Without this, two browser tabs racing to refresh would trip family revocation:
     // the winner revokes the row, the loser's lookup sees RevokedAt set, and the loser would
@@ -129,18 +125,9 @@ public sealed class RefreshTokenService : IRefreshTokenService
             .ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedAt, now), ct);
     }
 
-    public static string Hash(string raw)
-    {
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(raw));
-        return Convert.ToHexString(bytes).ToLowerInvariant();
-    }
+    public static string Hash(string raw) => OpaqueToken.Hash(raw);
 
-    private static string GenerateRaw()
-    {
-        Span<byte> bytes = stackalloc byte[TokenBytes];
-        RandomNumberGenerator.Fill(bytes);
-        return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-    }
+    private static string GenerateRaw() => OpaqueToken.Generate();
 
     // The CAS update above failed. Three possible reasons: token unknown, token expired,
     // or token already revoked. Only the third is a strong theft signal — a previously-valid
