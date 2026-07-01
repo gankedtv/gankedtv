@@ -273,7 +273,11 @@ onMounted(() => {
             class="group relative aspect-video min-w-0 cursor-pointer overflow-hidden rounded-lg border border-border bg-black transition-colors duration-150 hover:border-border-strong"
             @click="openClip(hero.id)"
           >
-            <img :src="hero.thumbnailUrl" alt="" class="absolute inset-0 h-full w-full object-cover" />
+            <img
+              :src="hero.thumbnailUrl"
+              alt=""
+              class="absolute inset-0 h-full w-full object-cover"
+            />
             <!-- The one sanctioned gradient: thumbnail legibility overlay. -->
             <div
               class="absolute inset-x-0 bottom-0 h-[64%] bg-[linear-gradient(transparent,rgba(0,0,0,0.88))]"

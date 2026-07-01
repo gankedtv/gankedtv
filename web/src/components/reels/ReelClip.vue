@@ -272,9 +272,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <article
-    class="relative flex h-full w-full items-center justify-center overflow-hidden bg-black"
-  >
+  <article class="relative flex h-full w-full items-center justify-center overflow-hidden bg-black">
     <!-- Thumbnail layer — visible until video element mounts. -->
     <img
       v-if="!detail"

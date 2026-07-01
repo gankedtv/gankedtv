@@ -174,12 +174,13 @@ watch(slug, () => {
     <template v-else-if="tag">
       <!-- The mint #tagname title is per spec — the tag itself is the accent. -->
       <PageHeader :title="`#${tag.slug}`" class="mb-7 [&_h1]:text-accent">
-        <template #caption>
-          {{ tag.clipCount }} clip{{ tag.clipCount === 1 ? '' : 's' }}
-        </template>
+        <template #caption> {{ tag.clipCount }} clip{{ tag.clipCount === 1 ? '' : 's' }} </template>
       </PageHeader>
 
-      <div v-if="items.length" class="grid grid-cols-4 gap-3.5 max-lg:grid-cols-2 max-tablet:grid-cols-1">
+      <div
+        v-if="items.length"
+        class="grid grid-cols-4 gap-3.5 max-lg:grid-cols-2 max-tablet:grid-cols-1"
+      >
         <ClipCard
           v-for="clip in items"
           :key="clip.id"

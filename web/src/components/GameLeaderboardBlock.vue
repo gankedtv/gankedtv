@@ -44,7 +44,10 @@ const windowLabel = {
       more-label="All leaderboards →"
     />
 
-    <div v-if="loading && entries.length === 0" class="px-4 py-6 text-center text-xs text-text-muted">
+    <div
+      v-if="loading && entries.length === 0"
+      class="px-4 py-6 text-center text-xs text-text-muted"
+    >
       Loading
     </div>
 

@@ -37,10 +37,7 @@ const commentSnippet = computed(() => {
         <span class="text-text-secondary"> {{ actionLabel }}</span>
         <span v-if="clipTitle" class="text-text-secondary"> &ldquo;{{ clipTitle }}&rdquo;</span>
       </p>
-      <p
-        v-if="commentSnippet"
-        class="m-0 mt-0.5 truncate text-xs text-text-secondary italic"
-      >
+      <p v-if="commentSnippet" class="m-0 mt-0.5 truncate text-xs text-text-secondary italic">
         {{ commentSnippet }}
       </p>
     </div>

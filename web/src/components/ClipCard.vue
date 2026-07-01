@@ -63,9 +63,7 @@ function onLinkKeydown(e: KeyboardEvent) {
 
     <div class="flex flex-col gap-2 px-3 pb-3 pt-2.5">
       <!-- Title -->
-      <h3
-        class="m-0 line-clamp-2 min-h-8 text-xs font-semibold leading-[1.3] text-text-primary"
-      >
+      <h3 class="m-0 line-clamp-2 min-h-8 text-xs font-semibold leading-[1.3] text-text-primary">
         {{ clip.title }}
       </h3>
 

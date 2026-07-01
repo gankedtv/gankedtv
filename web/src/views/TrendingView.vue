@@ -146,9 +146,7 @@ function openClip(id: string) {
               class="group flex cursor-pointer items-center gap-3 border-t border-border py-3 first:border-t-0 first:pt-0"
               @click="openClip(clip.id)"
             >
-              <span
-                class="min-w-8 font-condensed text-xl font-black leading-none text-text-muted"
-              >
+              <span class="min-w-8 font-condensed text-xl font-black leading-none text-text-muted">
                 {{ String(i + 2).padStart(2, '0') }}
               </span>
               <span

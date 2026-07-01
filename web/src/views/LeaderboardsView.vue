@@ -64,7 +64,10 @@ function selectWindow(key: LeaderboardWindow) {
       <section>
         <SectionHeader kicker="Ranked" title="Top Clips" />
 
-        <div v-if="data.topClips.length === 0" class="px-4 py-6 text-center text-xs text-text-muted">
+        <div
+          v-if="data.topClips.length === 0"
+          class="px-4 py-6 text-center text-xs text-text-muted"
+        >
           No likes recorded in this window.
         </div>
 
@@ -75,7 +78,10 @@ function selectWindow(key: LeaderboardWindow) {
       <section>
         <SectionHeader kicker="Ranked" title="Top Games" />
 
-        <div v-if="data.topGames.length === 0" class="px-4 py-6 text-center text-xs text-text-muted">
+        <div
+          v-if="data.topGames.length === 0"
+          class="px-4 py-6 text-center text-xs text-text-muted"
+        >
           No game activity yet.
         </div>
 

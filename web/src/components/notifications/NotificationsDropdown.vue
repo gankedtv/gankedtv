@@ -87,7 +87,9 @@ function onSeeAll() {
         v-for="n in store.items"
         :key="n.id"
         class="cursor-pointer border-b border-border px-3 transition-colors duration-150 last:border-b-0"
-        :class="n.readAt === null ? 'bg-surface-high hover:bg-surface-high/70' : 'hover:bg-surface-high'"
+        :class="
+          n.readAt === null ? 'bg-surface-high hover:bg-surface-high/70' : 'hover:bg-surface-high'
+        "
         @click="onRowClick(n)"
       >
         <NotificationRow :notification="n" />

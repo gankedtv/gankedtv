@@ -321,7 +321,9 @@ const TABS: { key: Tab; label: string }[] = [
 
           <!-- User info -->
           <div class="min-w-55 flex-1">
-            <div class="mb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-text-secondary">
+            <div
+              class="mb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-text-secondary"
+            >
               <span class="text-accent">Creator</span> · Joined {{ joinedDate }}
             </div>
 
@@ -396,7 +398,11 @@ const TABS: { key: Tab; label: string }[] = [
               icon-orientation="horizontal"
               trigger-variant="outlined"
             />
-            <span v-if="copyMessage" aria-live="polite" class="text-[11px] font-semibold text-accent">
+            <span
+              v-if="copyMessage"
+              aria-live="polite"
+              class="text-[11px] font-semibold text-accent"
+            >
               {{ copyMessage }}
             </span>
           </div>

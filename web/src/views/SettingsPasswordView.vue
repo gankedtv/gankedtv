@@ -86,9 +86,7 @@ const inputClass =
 <template>
   <div class="mx-auto w-full max-w-xl px-7 pt-7 pb-16 max-tablet:px-4">
     <PageHeader title="Settings">
-      <template #caption>
-        <span class="text-accent">Account</span> · Your settings
-      </template>
+      <template #caption> <span class="text-accent">Account</span> · Your settings </template>
     </PageHeader>
 
     <!-- Password section. No card chrome: border-separated sections. -->
@@ -105,7 +103,10 @@ const inputClass =
         <label class="flex flex-col gap-1.5">
           <span class="text-[10px] font-bold uppercase tracking-widest text-text-secondary">
             Current password
-            <span v-if="isFirstTimeSet" class="font-normal normal-case tracking-normal text-text-muted">
+            <span
+              v-if="isFirstTimeSet"
+              class="font-normal normal-case tracking-normal text-text-muted"
+            >
               (leave blank if you don't have one yet)
             </span>
           </span>

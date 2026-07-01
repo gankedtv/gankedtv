@@ -41,7 +41,9 @@ defineEmits<{
         >
           {{ cell.value }}
         </span>
-        <span class="text-[10px] font-medium uppercase leading-none tracking-widest text-text-muted">
+        <span
+          class="text-[10px] font-medium uppercase leading-none tracking-widest text-text-muted"
+        >
           <slot :name="`icon-${cell.key}`" />{{ cell.label }}
         </span>
       </component>

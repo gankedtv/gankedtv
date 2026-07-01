@@ -139,9 +139,7 @@ async function onFixGameSubmit(gameId: number | null) {
 <template>
   <div class="mx-auto max-w-5xl px-7 pt-7 pb-16 max-tablet:px-4">
     <PageHeader title="Admin">
-      <template #caption>
-        <span class="text-accent">Moderation</span> · Report queue
-      </template>
+      <template #caption> <span class="text-accent">Moderation</span> · Report queue </template>
     </PageHeader>
 
     <!-- Tabs -->

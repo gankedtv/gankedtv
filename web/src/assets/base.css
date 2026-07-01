@@ -37,18 +37,6 @@
   /* Custom breakpoint — 720px is the mobile/tablet boundary.
      Use `tablet:` and `max-tablet:` modifiers. */
   --breakpoint-tablet: 720px;
-
-  /* TEMP Newsprint compat aliases — every phase of the Arena migration stays
-     buildable while call sites move to the tokens above. Deleted in the final
-     cleanup phase once `grep -rE "ink|signal|sunken|font-(heading|display|mono)"`
-     over src comes back empty. */
-  --color-ink: var(--color-accent);
-  --color-signal: var(--color-accent);
-  --color-signal-text: #080f0d;
-  --color-surface-sunken: var(--color-surface-base);
-  --font-heading: 'Barlow Condensed', sans-serif;
-  --font-display: 'Barlow Condensed', sans-serif;
-  --font-mono: 'Inter', sans-serif;
 }
 
 /* Light mode — toggled via .light class on <html>. Not an inversion:

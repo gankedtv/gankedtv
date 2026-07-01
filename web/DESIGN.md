@@ -1,185 +1,161 @@
-# GankedTV Design System — Newsprint ("Broadcast Almanac")
+# GankedTV Design System — Arena
 
-**Status:** v2, shipped. Replaces the "Underground Arena" multi-theme system.
-**Spec:** [docs/superpowers/specs/2026-06-08-newsprint-design-system-design.md](../docs/superpowers/specs/2026-06-08-newsprint-design-system-design.md)
-
-Read this before writing any frontend code (Vue components, Tailwind classes).
+**Status:** Shipped. This file is the source of truth for all frontend work.
+**Spec:** [docs/superpowers/specs/2026-06-29-arena-design-system-design.md](../docs/superpowers/specs/2026-06-29-arena-design-system-design.md)
+**Replaces:** Newsprint ("Broadcast Almanac") v2.
 
 ---
 
 ## 1 — Concept
 
-An editorial sports yearbook that knows how to render video. Every page reads like a
-printed issue — kicker labels, hairline rules, oversized condensed numerals, Roman-numbered
-sections — while watch surfaces (clip detail, reels, transcode previews) wear a broadcast
-HUD on top: corner brackets, telemetry strips, mono-everywhere.
+A premium gaming clip platform. The UI is confident but invisible — one accent color, clean surfaces, no decorative metaphors. Content (clips, game covers) does the talking.
 
-The site is an *archive* of gaming's loudest seconds. Every clip is filed under an issue
-number. Every page belongs to a volume.
+Two modes with genuinely different personalities:
 
-## 2 — The anti-AI rules (load-bearing)
+- **Dark (primary):** Late-night LAN. Near-black, Neon Mint accent, high contrast.
+- **Light (secondary):** Game day. Warm cream page, white cards, deeper mint for contrast. Not an inversion — a different mood.
 
-Dropping any of these lets the system drift back into template territory:
+Reference: Medal.tv as the floor. Beat it in aesthetics, navigation clarity, discovery, and search.
 
-1. **Every clip has an issue number** (`No. 042`) — top-left of every thumbnail, repeated as
-   an oversized numeral in hero positions. Derived client-side via [`src/lib/issue.ts`](src/lib/issue.ts).
-2. **Roman numerals on section kickers** (`II By Game`). The page is an *issue*, not a *feed*.
-3. **Hairline rules instead of cards-with-shadows.** Borders define regions. No `box-shadow`,
-   no glow, no `backdrop-blur` glassmorphism.
-4. **Oversized condensed numerals** (Barlow Condensed 700, 28–96px+) for issue numbers, hero
-   stats, list ranks, telemetry values.
-5. **Telemetry strips** for stats — mono 9px kicker over a condensed 26px value
-   ([`TelemetryStrip.vue`](src/components/TelemetryStrip.vue)).
-6. **Corner brackets only on watch surfaces** ([`BroadcastFrame.vue`](src/components/BroadcastFrame.vue)) —
-   the clip player, reels viewer, upload transcode preview. They earn meaning by not being everywhere.
-7. **No `translateY` / scale hover, ever.** Hover = border color swap to ink + title color
-   shift to ink. Cards stay put.
-8. **Tabs as text rules, not pills.** Underline-only, mono 11px caps, 2px ink underline on
-   active ([`UnderlineTabs.vue`](src/components/UnderlineTabs.vue)).
-9. **No rounded corners ≥ 8px.** `--radius-sm: 0`, `--radius-md: 2px` (inputs only).
-   `rounded-full` is allowed only on the pulsing live dot.
-10. **Footer as colophon** ([`AppFooter.vue`](src/components/AppFooter.vue)) — publication
-    signoff, not sitemap dump.
+---
+
+## 2 — The rules (load-bearing)
+
+Dropping any of these lets the system drift back toward generic:
+
+1. **One accent, everywhere.** Mint owns every interactive state: active nav links, CTA buttons, game tags, author handles, section labels, active tab underlines, filter pill borders. No second accent — errors, danger, and "new" states are also mint; copy and weight carry the meaning.
+2. **Borders, not shadows.** Depth is surface color difference (`surface-base` → `surface-raised` → `surface-high`). No `box-shadow`, no `shadow-*` utilities — ever.
+3. **No hover transforms.** Hover = border color shift + text color shift. Cards stay put. Sole exception: game cover tiles get `-translate-y-0.5` — earned because the catalogue is browsable, not a feed.
+4. **Plain section names.** "Top Games", "Trending", "Recent Clips". No editorial kicker copy, no roman numerals, no issue framing.
+5. **No issue numbers anywhere.** Ranking is plain numerals (`01`, `02`, …) in condensed type — not a publishing metaphor.
+6. **8px card radius.** Cards/nav/popovers/buttons are `rounded-lg` (8px). Inputs `rounded-md` (6px). Tiny badges `rounded-sm` (4px). Avatars/pills/dots `rounded-full`. Nothing sharp, nothing above `rounded-lg`.
+7. **No UI gradients.** The sanctioned exceptions: the legibility overlay on video thumbnails/reels (`bg-[linear-gradient(transparent,rgba(0,0,0,0.85–0.88))]`) and the logo mark's internal SVG gradients + glow (`LogoMark.vue` — brand art, not UI).
+8. **Backdrop blur on the nav only.** `backdrop-blur-md` lives in `AppNav.vue` and nowhere else.
+9. **Tabs as underlines, not pills.** Feed/window tabs use a 2px mint bottom border on active (`UnderlineTabs.vue`). Filter pills (game filters, tag chips) are the only pill shapes.
+10. **Mint deepens in light mode.** Light accent is `#00b87d` (WCAG AA on cream) — the token handles it; never hardcode `#00e5a0` on light surfaces.
+
+---
 
 ## 3 — Tokens
 
-One palette, dark (default) + light via `.light` on `<html>`. Defined in the
-`@theme` block of [`src/assets/base.css`](src/assets/base.css) — the source of truth for
-token → Tailwind-utility mapping (`bg-ink`, `text-signal`, `border-border`, …).
+One palette, dark (default) + light via `.light` on `<html>` (persisted by `useThemeStore`, `localStorage['theme']`). Defined in the `@theme` block of [src/assets/base.css](src/assets/base.css).
 
-| Token | Dark | Light | Used for |
-| --- | --- | --- | --- |
-| `--color-surface-base` | `#161410` | `#f4f1e8` | page background |
-| `--color-surface-raised` | `#221e16` | `#ece8da` | inputs, hover backgrounds (rare) |
-| `--color-surface-sunken` | `#0c0a08` | `#d8d3c4` | video player background, deep recess |
-| `--color-text-primary` | `#f4f1e8` | `#1a1810` | body text, headings |
-| `--color-text-secondary` | `#c5bca7` | `#5a5444` | bylines, captions, kicker labels |
-| `--color-text-muted` | `#8a8474` | `#6b6553` | timestamps, placeholders, disabled |
-| `--color-border` | `#2c2820` | `#1a1810` | default borders, hairline rules |
-| `--color-border-strong` | `#3c3a30` | `#1a1810` | emphasized borders, popover panels |
-| `--color-ink` | `#ed3a47` | `#c41825` | **brand.** Issue numbers, @usernames, links, hover borders, active underlines |
-| `--color-signal` | `#6c9bcf` | `#3a6fb5` | **alert / live.** LIVE dot, errors, NEW badges — earned moments only |
-| `--color-signal-text` | `#161410` | `#f4f1e8` | text on solid ink/signal fills |
+| Token | Dark | Light | Role |
+|---|---|---|---|
+| `--color-surface-base` | `#0b0b0f` | `#f7f5f0` | Page background |
+| `--color-surface-raised` | `#111116` | `#ffffff` | Cards, nav |
+| `--color-surface-high` | `#18181f` | `#f0ece3` | Inputs, hover rows, unread rows |
+| `--color-text-primary` | `#f0f0f4` | `#1a1a22` | Headings, body, card titles |
+| `--color-text-secondary` | `rgba(255,255,255,0.50)` | `#888070` | Bylines, meta |
+| `--color-text-muted` | `rgba(255,255,255,0.28)` | `#b0a898` | Timestamps, placeholders, rank numerals |
+| `--color-border` | `rgba(255,255,255,0.07)` | `#e8e4dc` | Default borders, dividers |
+| `--color-border-strong` | `rgba(255,255,255,0.12)` | `#d0ccc0` | Focused inputs, popovers, card hover |
+| `--color-accent` | `#00e5a0` | `#00b87d` | Mint — all interactive states |
+| `--color-accent-bg` | `rgba(0,229,160,0.08)` | `#e8faf4` | Tag fills, active pill background |
+| `--color-accent-border` | `rgba(0,229,160,0.25)` | `#b3ead7` | Tag borders, focus accents |
 
 Usage rules:
 
-- **Ink is the brand color** — use freely, but visible-not-loud at small sizes.
-- **Signal is for earned moments only**: LIVE indicators, error copy, NEW badges. Never body
-  text, never a hover state, never a button background.
-- **Two badge styles, one color**: solid ink (`bg-ink text-signal-text`) for primary badges
-  (game tag on thumbs, LIVE); outline ink (`border-ink text-ink`) for secondary (NEW, PINNED).
-- **No gradients on UI surfaces.** The sole sanctioned gradient is the flat striped
-  `.placeholder-art` render-failure fallback in base.css. Legibility bands over video/art use
-  solid `bg-black/55`–`/60`.
-- **Accessibility:** light-mode signal `#3a6fb5` under cream `#f4f1e8` text on solid fills is
-  ~5.3:1 — above WCAG AA. Documented pair; don't substitute.
-- Vendor colors (`--color-discord`, `--color-google`) are identity-locked and unchanged.
+- **Text over video** (duration badges, overlay titles, reels controls) uses literals: `#f4f1e8`, `text-[#f4f1e8]/80`, `bg-black/55–75`, `border-white/20–30` — never tokens; it must stay light in both modes. Same for text on mint CTAs: `text-[#080f0d]`.
+- **Video letterbox/player backgrounds** are `bg-black` (literal); dialog scrims are `bg-black/70`.
+- **Vendor colors** (`--color-discord`, `--color-google` + hovers) are identity-locked.
 
-Text over video/art (duration badges, reels overlays) uses the literal `#f4f1e8` rather than
-`text-text-primary` on purpose — it must stay light in both modes.
+---
 
 ## 4 — Typography
 
-| Role | Font | Used for |
-| --- | --- | --- |
-| `font-display` | Rajdhani 600/700 | "GANKED.TV" wordmark only |
-| `font-heading` | Barlow Condensed 500/700 | page/section/clip titles, issue numbers, numerals, telemetry values |
-| `font-body` | DM Sans 400/500 | body copy, button labels, blurbs |
-| `font-mono` | DM Mono 400/500 | kickers, timestamps, @usernames, IDs, badges, nav links |
+Two fonts (Google Fonts, loaded in `index.html`). No others.
 
-Scale highlights: hero numeral `clamp(56px,8vw,96px)`; page title `clamp(36px,4.5vw,52px)`;
-section title `clamp(28px,3vw,38px)`; card title 16px/500 uppercase; kicker 10px/0.22em
-caps; mono meta 11px/0.12em caps. Line-height ~1.05 on condensed display, 1.55 body, 1 on
-mono caps strips. Don't use font-weight as the primary hierarchy lever — use size + position + case.
+| Role | Font | Weights | Used for |
+|---|---|---|---|
+| `font-condensed` | Barlow Condensed | 700 / 800 / 900 | Wordmark, page/section titles, hero titles, rank numerals, stat values |
+| default (Inter) | Inter | 400–700 | Everything else — no font class needed |
+
+Scale highlights: wordmark 18px/900 caps; page title `clamp(30px,3.6vw,42px)` 900 caps; section title 20px/800 caps; hero overlay title `clamp(22px,2.6vw,34px)` 900 caps; card title 12px Inter 600 sentence case (2-line clamp); kicker 10px Inter 700 caps `tracking-[0.14em]`; meta 10–11px Inter 400–500 sentence case; rank numeral 22px condensed 900 (#1 mint, rest muted); button label 12px Inter 600–700 sentence case.
+
+---
 
 ## 5 — Layout rhythm
 
-- Page shell: sticky 64px nav with bottom hairline; content `max-w-360` (1440px), padding
-  `px-8 pt-10 pb-30` desktop / `px-4 pt-5 pb-20` mobile (`max-tablet:`).
-- Every content band opens with [`SectionHeader.vue`](src/components/SectionHeader.vue)
-  (roman + kicker → title → blurb → hairline) and `pt-10` between bands. Air is the editorial feel.
-- Grid gaps: `gap-x-5.5 gap-y-7` (22/28px). Workhorse feed grid:
-  `grid-cols-[repeat(auto-fill,minmax(280px,1fr))]`.
-- Band library: Hero+List (`2fr/1fr`), Game Tiles (5-up 3:4), Feature+List (`1.6fr/1fr`),
-  4-up Grid, Telemetry Strip, Broadcast Frame.
-- Mobile chrome: [`MobileTabBar.vue`](src/components/MobileTabBar.vue) (fixed bottom, `lg:hidden`,
-  Feed/Games/Upload/Reels/You). Trending + Leaderboards stay reachable via the footer and search.
+- **Nav** ([AppNav.vue](src/components/AppNav.vue)): 56px sticky (`h-14`), `bg-surface-raised/90 backdrop-blur-md`, hairline bottom border. Logo + links (active = mint pill highlight `bg-accent-bg`), centered search (max 300px, `⌘K` chip, global ⌘K/Ctrl+K focuses it), mint Upload CTA, bell + mint badge, 30px avatar with mint border.
+- **Page shell:** `mx-auto max-w-300 px-7 pt-7 pb-16 max-tablet:px-4`.
+- **Band separation:** `mt-8 border-t border-border pt-7` on each section after the first.
+- **Section header** ([SectionHeader.vue](src/components/SectionHeader.vue)): `{ kicker, title, moreTo?, moreLabel? }` → mint kicker + condensed title on one baseline + `ml-auto` "See all →".
+- **Home band order:** feed controls (tabs + game pills) → hero band `grid-cols-[1fr_300px] gap-5` (overlay hero + ranked 01–05 sidebar) → Top Games `grid-cols-5 gap-3` → Trending `grid-cols-[1fr_280px]` → Recent Clips `grid-cols-4 gap-3.5` → Load more.
+- **Grid gaps:** `gap-3` game tiles, `gap-3.5` clip cards.
+- **Mobile:** `MobileTabBar` fixed bottom (Feed / Games / Upload / Reels / You), active item mint, center mint upload button. Nav collapses; feeds go 2-col → 1-col (`max-lg` / `max-tablet`).
 
-## 6 — Atom inventory
+---
 
-| Component | Role |
-| --- | --- |
-| [`SectionHeader.vue`](src/components/SectionHeader.vue) | universal band header (roman, kicker, title, blurb, more→ / `#right` slot) |
-| [`TelemetryStrip.vue`](src/components/TelemetryStrip.vue) | bordered stat cells; `action` cells are tappable, `ink` highlights a value |
-| [`BroadcastFrame.vue`](src/components/BroadcastFrame.vue) | watch-surface HUD: inset ink border, 4 corner brackets, mono topbar, live dot |
-| [`AppFooter.vue`](src/components/AppFooter.vue) | colophon footer + `volIssMeta()` signoff row |
-| [`MobileTabBar.vue`](src/components/MobileTabBar.vue) | 5-tab phone nav, solid-ink upload square |
-| [`PageHeader.vue`](src/components/PageHeader.vue) | page-level kicker + condensed clamp title (`live` dot is an earned moment) |
-| [`ClipCard.vue`](src/components/ClipCard.vue) | chrome-less card: bordered thumb + issue No. + solid-ink game tag + mono meta |
-| [`UnderlineTabs.vue`](src/components/UnderlineTabs.vue) | text-rule tabs, 2px ink active underline |
-| [`StatusPanel.vue`](src/components/StatusPanel.vue) | loading ticker / hairline-banded empty & error states |
-| [`src/lib/issue.ts`](src/lib/issue.ts) | `issueNumber()`, `formatIssueNo()`, `volIssMeta()` |
+## 6 — Component recipes
 
-## 7 — Recipes
+- **Clip card** ([ClipCard.vue](src/components/ClipCard.vue)): `rounded-lg border border-border bg-surface-raised overflow-hidden hover:border-border-strong`. Thumb `aspect-video bg-black` with GameTag top-left + DurationBadge bottom-right. Below: Inter 600 12px title (2-line clamp) + meta (`@author` mint · time · views/likes right). No tag chips on cards — tags live on detail surfaces.
+- **Hero (Home):** full-bleed 16:9 with legibility gradient, mint kicker ("Clip of the Day"), condensed 900 overlay title in `#f4f1e8`, meta row, centered play button (`rounded-full bg-black/55 border-white/30`).
+- **Ranked lists:** `grid-cols-[36px_56px_1fr]` (rank / 16:9 thumb / title+meta), rank `font-condensed text-[22px] font-black`, #1 `text-accent`, rest `text-text-muted`, zero-padded.
+- **Game tile** ([GameCoverTile.vue](src/components/GameCoverTile.vue)): `aspect-3/4 rounded-lg border border-border`, optional rank numeral on cover, name below (Inter 700 11px) + `#footer-extra` for clip counts. `group-hover:-translate-y-0.5 group-hover:border-accent-border` — the sole transform.
+- **Tabs** ([UnderlineTabs.vue](src/components/UnderlineTabs.vue)): `px-4 py-2.5 text-xs font-semibold border-b-2`; active `border-accent text-text-primary`; `disabled: true` renders `opacity-40 cursor-not-allowed` (never hidden — shows what's coming).
+- **Filter pills:** `rounded-full border px-3 py-1 text-[11px] font-semibold`; active `bg-accent-bg border-accent-border text-accent`; idle `border-border text-text-muted hover:border-accent-border hover:text-accent`.
+- **Buttons:** primary `rounded-lg bg-accent px-4 py-1.5 text-xs font-bold text-[#080f0d] hover:brightness-105`; secondary `rounded-lg border border-border-strong text-text-secondary hover:border-accent hover:text-accent`; ghost `text-accent hover:underline`; icon `size-8.5 rounded-lg border border-border hover:border-border-strong`.
+- **Inputs:** `rounded-md border border-border bg-surface-high px-3 text-sm focus:border-accent focus:outline-none`; labels Inter 10px 700 caps `tracking-widest text-text-secondary`. Errors: mint text / `border-accent-border bg-accent-bg` boxes.
+- **Dialogs:** scrim `bg-black/70`; panel `rounded-lg border border-border-strong bg-surface-raised`. Popovers/menus: `rounded-lg border border-border-strong bg-surface-base`.
+- **Toasts:** `rounded-lg border border-border-strong bg-surface-raised`, `slideUp`/`slideDown` keyframes (250ms).
+- **Status states** ([StatusPanel.vue](src/components/StatusPanel.vue)): loading = mint tick bar; empty/error = raised card with kicker + copy.
+- **Logo** ([LogoMark.vue](src/components/LogoMark.vue)): mint HUD-frame SVG mark; wordmark `GANKED.TV` condensed 900 caps, `.TV` mint. Nav usage: `:size="23" glow`.
 
-**Buttons** (three, no others):
+---
 
-- Primary: `bg-ink text-signal-text … hover:brightness-108` (transition `[filter]`).
-- Secondary: `border border-border bg-transparent … hover:border-ink hover:text-ink`.
-- Link: `text-ink hover:underline`.
-- No icon-only round buttons — square (`size-8.5 border border-border`) is the icon-button shape.
-
-**Inputs:** `h-11 rounded-sm border border-border bg-surface-raised … focus:border-ink`.
-Labels are mono 10px `tracking-[0.18em]` caps in `text-text-secondary`.
-
-**Dialogs:** solid `bg-surface-sunken/90` scrim (no blur), panel `border border-border-strong
-bg-surface-base` (no shadow, sharp), mono kicker over a condensed uppercase title, hairline
-header/footer rules, secondary cancel + primary ink confirm. Destructive confirms stay solid
-ink — the body copy carries the warning.
-
-**Popovers/listboxes** (kebab, notifications, search, pickers): `border border-border-strong
-bg-surface-base`, mono kicker group labels, rows `hover:bg-surface-raised`, hairlines between
-groups, danger items `text-ink`.
-
-**Loading:** the ticker — `h-1.5 w-5.5 bg-surface-raised` shell with an inner
-`origin-left bg-ink animate-[tick_1.6s_ease-in-out_infinite]` bar. No spinners.
-
-## 8 — Motion
+## 7 — Motion
 
 - Page transitions: 150ms opacity fade (App.vue).
-- Hover: 150ms on `color` / `border-color` only — never `transform`.
-- Live dot: 2s opacity pulse (`animate-[pulse_2s_infinite]`), signal color.
-- Toasts: 300ms `slideUp` in / `slideDown` out.
-- Sheets/dialogs may slide/fade on enter/leave — the transform ban is on hover states.
+- Border/text hovers: 150ms `transition-colors`.
+- Game tile lift: 150ms `transition-[border-color,transform]`.
+- Mint CTAs: `hover:brightness-105` on `transition-[filter]`.
+- Toasts: 250ms `slideUp` in, `slideDown` out. Loading bars: `tick` keyframe.
+- No `transition-transform` on clip cards — they stay put.
 
-## 9 — Theme mode
+---
 
-[`src/stores/theme.ts`](src/stores/theme.ts): `mode: 'dark' | 'light'`, persisted under
-`localStorage['theme']`, applied as `.light` on `<html>`. The v1 multi-theme system
-(`theme:name`, `data-theme`, ThemePicker) is gone; the store silently removes the legacy key
-and scrubs the attribute. Toggle lives in the nav (`ThemeModeToggle`) and Settings → Appearance.
+## 8 — Data honesty (missing-API policy)
 
-## 10 — Banned list + sweep
+What the API doesn't serve is **not rendered** — no mock numbers:
 
-No `box-shadow` / `shadow-*` (the Plyr override that *removes* its menu shadow is the one
-exception), no `backdrop-blur`, no hover transforms, no `rounded-(md+)` except `rounded-sm`
-on inputs and `rounded-full` on live dots, no gradients outside `.placeholder-art`, no
-brand/neon/data-theme remnants. Verify with:
+- No "players online" count (nav) and no "follows online" panel (hero) until a presence endpoint exists.
+- Home "Top Rated" tab renders disabled until a likes-weighted feed sort exists.
+- "For You" maps to the latest feed until personalization exists.
+- Home game filter pills deep-link to `/game/:slug` until the feed API grows a `gameId` param.
+- No rank-movement copy ("up 38 spots") — the API has no rank history.
+
+Backend follow-ups are tracked as GitHub issues (online presence, top-rated sort, for-you feed, feed game filter).
+
+---
+
+## 9 — Banned list + sweep
+
+Run before any PR:
 
 ```bash
 cd web/src
-grep -rnE "shadow-\[|shadow-(sm|md|lg|xl)" . --include="*.vue"
-grep -rn  "backdrop-blur" . --include="*.vue"
-grep -rnE "hover:(-)?translate|hover:scale" . --include="*.vue"
-grep -rnE "rounded-(md|lg|xl|2xl|3xl|full)" . --include="*.vue"   # full → live dots only
-grep -rnE "\b(bg|text|border|fill)-(brand|neon)\b|data-theme|chamfer|corner-cut" . --include="*.vue" --include="*.css"
-grep -rn  "gradient" . --include="*.vue" --include="*.css"        # placeholder-art only
+grep -rnE "shadow-\[|shadow-(sm|md|lg|xl|2xl)" . --include="*.vue"          # zero
+grep -rn  "backdrop-blur" . --include="*.vue"                               # AppNav only
+grep -rnE "hover:(-)?translate|hover:scale|group-hover:(-)?translate" . --include="*.vue"  # GameCoverTile only
+grep -rnE "rounded-(xl|2xl|3xl)" . --include="*.vue"                        # zero
+grep -rn  "gradient" . --include="*.vue" --include="*.css"                  # legibility overlays + LogoMark only
+grep -rniE "No\.\s*\{|issue.number|vol.*iss" . --include="*.vue" --include="*.ts"  # zero
+grep -rnE "font-display|font-mono|font-heading|Rajdhani|DM Mono|DM Sans" . --include="*.vue" --include="*.css"  # zero
+grep -rnE "text-ink|bg-ink|border-ink|-signal|surface-sunken" . --include="*.vue" --include="*.ts"  # zero
 ```
 
-## 11 — Component conventions (unchanged)
+Sanctioned exceptions (the only allowed hits): nav backdrop-blur, game-tile lift, thumbnail/reels legibility gradients, LogoMark SVG gradients + glow, and the Plyr menu `box-shadow: none` override in base.css (it *removes* a vendor shadow).
 
-- Tailwind utility classes in templates; tokens via the `@theme` block. Scoped CSS only when
-  utilities genuinely can't express it.
-- Dynamic runtime values (user accent colors, hashed avatar fills) go through inline `:style`.
-- Icons are stroke-based SVG components inheriting `currentColor`.
-- Images from user input render as `<img>`, never CSS `background-image`.
+---
+
+## 10 — Component conventions
+
+- Tailwind utility classes in templates; tokens via `@theme`. Scoped CSS only when utilities can't express it (custom keyframes live in base.css).
+- Dynamic values (user accent, avatar fills) via inline `:style`.
+- Icons: stroke-based SVG components inheriting `currentColor` ([src/components/icons/](src/components/icons/)).
+- Images from user input: `<img>`, never CSS `background-image`.
+- Game cover art: `<img>` with `object-cover aspect-3/4`. Clip thumbnails: `<img>` with `object-cover aspect-video`.
+- Theme mechanism: `.light` class on `<html>` via `useThemeStore` — do not introduce `data-theme`.
+
+Before writing any component: check the token table (§3), reuse the recipes (§6), run the sweep (§9). If something isn't covered: least visual noise, most content, mint only for interactive states.

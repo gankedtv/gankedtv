@@ -40,7 +40,10 @@ const isFirst = computed(() => props.entry.rank === 1)
       >
       <div class="flex items-center gap-1.5 text-[10px]">
         <GameTag v-if="entry.clip.game" :tag="entry.clip.game.tag" tone="subtle" />
-        <AuthorHandle :username="entry.clip.author.username" class="text-xs font-semibold text-accent" />
+        <AuthorHandle
+          :username="entry.clip.author.username"
+          class="text-xs font-semibold text-accent"
+        />
       </div>
     </div>
 

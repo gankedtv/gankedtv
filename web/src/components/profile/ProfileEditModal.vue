@@ -304,7 +304,8 @@ async function save() {
 
 const inputClass =
   'w-full rounded-md border border-border bg-surface-high px-3.5 py-3 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent transition-colors duration-150'
-const labelClass = 'mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-text-secondary'
+const labelClass =
+  'mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-text-secondary'
 const sectionClass = 'flex flex-col gap-2.5'
 
 const currentAvatarUrl = computed(() => avatarPreview.value ?? safeImageUrl(auth.user?.avatarUrl))

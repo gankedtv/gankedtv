@@ -331,9 +331,7 @@ function onLikedChanged(payload: { id: string; liked: boolean; count: number }) 
 </script>
 
 <template>
-  <div
-    class="fixed inset-x-0 top-14 bottom-15.5 z-10 flex justify-center bg-black lg:bottom-0"
-  >
+  <div class="fixed inset-x-0 top-14 bottom-15.5 z-10 flex justify-center bg-black lg:bottom-0">
     <!-- Initial load -->
     <StatusPanel
       v-if="loading && items.length === 0 && !errored"

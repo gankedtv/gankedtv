@@ -107,7 +107,8 @@ async function save() {
 
 const inputClass =
   'w-full rounded-md border border-border bg-surface-high px-3.5 py-3 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent transition-colors duration-150'
-const labelClass = 'mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-text-secondary'
+const labelClass =
+  'mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-text-secondary'
 </script>
 
 <template>
@@ -161,9 +162,7 @@ const labelClass = 'mb-1.5 block text-[10px] font-bold uppercase tracking-widest
             <div>
               <div class="mb-1.5 flex items-baseline justify-between">
                 <label :class="labelClass + ' mb-0'">Title</label>
-                <span class="text-[10px] text-text-muted">
-                  {{ localTitle.length }}/100
-                </span>
+                <span class="text-[10px] text-text-muted"> {{ localTitle.length }}/100 </span>
               </div>
               <input
                 v-model="localTitle"
@@ -180,9 +179,7 @@ const labelClass = 'mb-1.5 block text-[10px] font-bold uppercase tracking-widest
                   Description
                   <span class="text-[9px] text-text-muted">(optional)</span>
                 </label>
-                <span class="text-[10px] text-text-muted">
-                  {{ localDesc.length }}/500
-                </span>
+                <span class="text-[10px] text-text-muted"> {{ localDesc.length }}/500 </span>
               </div>
               <textarea
                 v-model="localDesc"
