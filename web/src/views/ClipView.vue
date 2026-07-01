@@ -8,13 +8,12 @@ import { ApiError } from '@/api/client'
 import { clips, type ClipDetail, type ClipFeedItem } from '@/api/clips'
 import { games } from '@/api/games'
 import { formatNum, formatDuration, formatRelativeTime } from '@/lib/format'
-import { issueNumber } from '@/lib/issue'
 import { useAuthStore } from '@/stores/auth'
 import { safeImageUrl } from '@/lib/url'
 import TagChip from '@/components/TagChip.vue'
 import AuthorHandle from '@/components/AuthorHandle.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
-import BroadcastFrame from '@/components/BroadcastFrame.vue'
+import GameTag from '@/components/GameTag.vue'
 import TelemetryStrip, { type TelemetryCell } from '@/components/TelemetryStrip.vue'
 import SectionHeader from '@/components/SectionHeader.vue'
 import ClipCard from '@/components/ClipCard.vue'
@@ -128,16 +127,6 @@ watch(
   },
 )
 
-// Broadcast topbar right cell — best-effort spec line from stored metadata.
-const playerSpec = computed(() => {
-  const c = clip.value
-  if (!c) return undefined
-  const parts: string[] = []
-  if (c.height) parts.push(`${c.height}p`)
-  parts.push((c.videoCodec ?? 'h264').toUpperCase())
-  return parts.join(' · ')
-})
-
 const telemetryCells = computed<TelemetryCell[]>(() => {
   const c = clip.value
   if (!c) return []
@@ -155,7 +144,7 @@ const telemetryCells = computed<TelemetryCell[]>(() => {
       label: 'Runtime',
       value: c.durationSecs !== null ? formatDuration(c.durationSecs) : '—',
     },
-    { key: 'filed', label: 'Filed', value: formatRelativeTime(c.createdAt) },
+    { key: 'filed', label: 'Posted', value: formatRelativeTime(c.createdAt) },
   ]
 })
 
@@ -532,7 +521,7 @@ async function onConfirmDelete() {
 </script>
 
 <template>
-  <div class="mx-auto max-w-350 px-8 pt-10 pb-30 max-tablet:px-4">
+  <main class="mx-auto max-w-300 px-7 pt-7 pb-16 max-tablet:px-4">
     <!-- Loading -->
     <StatusPanel v-if="loading" kind="loading" message="Loading" />
 
@@ -546,7 +535,7 @@ async function onConfirmDelete() {
     <!-- Error -->
     <StatusPanel v-else-if="errored" kind="error" :message="errorMessage">
       <button
-        class="cursor-pointer border border-border bg-transparent px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
+        class="cursor-pointer rounded-lg border border-border bg-transparent px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
         @click="(clipId || shareCode) && loadClip()"
       >
         Retry
@@ -554,85 +543,33 @@ async function onConfirmDelete() {
     </StatusPanel>
 
     <div v-else-if="clip">
-      <!-- Breadcrumb -->
-      <div
-        class="mb-5 flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.08em] text-text-muted"
-      >
-        <router-link to="/" class="transition-colors hover:text-ink">Feed</router-link>
-        <span>/</span>
-        <span>No. {{ issueNumber(clip.id) }}</span>
+      <!-- Player -->
+      <div class="overflow-hidden rounded-lg border border-border bg-black">
+        <video ref="videoEl" controls playsinline class="block aspect-video w-full"></video>
       </div>
 
-      <!-- Broadcast frame — the watch surface wears the HUD. -->
-      <BroadcastFrame
-        :channel="`FEED · NO. ${issueNumber(clip.id)}`"
-        status="LIVE FROM ARCHIVE"
-        live
-        :spec="playerSpec"
-      >
-        <div class="border border-border bg-surface-sunken">
-          <video ref="videoEl" controls playsinline class="block aspect-video w-full"></video>
-        </div>
-      </BroadcastFrame>
-
-      <!-- Telemetry strip — like lives on the stat itself. -->
-      <TelemetryStrip class="mt-6" :cells="telemetryCells" @cell-click="onTelemetryClick" />
-
       <!-- Meta block -->
-      <div class="mt-7">
-        <div class="flex items-start gap-5">
-          <span
-            class="font-heading text-[56px] font-bold leading-[0.92] tracking-[-0.01em] text-ink max-tablet:text-[40px]"
-            aria-hidden="true"
+      <div class="mt-5">
+        <div v-if="clip.game" class="flex flex-wrap items-center gap-2">
+          <GameTag :tag="clip.game.tag" size="md" />
+          <RouterLink
+            :to="{ name: 'game-detail', params: { slug: clip.game.slug } }"
+            class="text-[11px] font-semibold text-text-secondary transition-colors duration-150 hover:text-accent"
           >
-            {{ issueNumber(clip.id) }}
-          </span>
-          <div class="min-w-0">
-            <h1
-              class="m-0 font-heading text-[34px] font-bold leading-[1.05] uppercase tracking-[0.01em] text-text-primary max-tablet:text-[26px]"
-            >
-              {{ clip.title }}
-            </h1>
-            <div
-              class="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] uppercase tracking-[0.1em] text-text-muted"
-            >
-              <AuthorHandle :username="clip.author.username" as="link" class="text-ink" />
-              <span>· filed {{ formatRelativeTime(clip.createdAt) }}</span>
-              <template v-if="clip.game">
-                <span>·</span>
-                <RouterLink
-                  :to="{ name: 'game-detail', params: { slug: clip.game.slug } }"
-                  class="transition-colors hover:text-ink"
-                >
-                  {{ clip.game.name }}
-                </RouterLink>
-              </template>
-            </div>
-          </div>
+            {{ clip.game.name }}
+          </RouterLink>
         </div>
-
-        <div v-if="clip.tags.length" class="mt-4 flex flex-wrap gap-2">
-          <TagChip v-for="t in clip.tags" :key="t.id" :slug="t.slug" :name="t.name" size="md" />
-        </div>
-
-        <!-- Source attribution for imported clips. Clicking opens the original
-             in a new tab so reviewers can confirm credit / spot reuploads at a glance. -->
-        <a
-          v-if="clip.importSourceUrl && importSourceHost"
-          :href="clip.importSourceUrl"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="mt-3 inline-flex items-center gap-1.5 border border-border px-3 py-1 font-mono text-[11px] uppercase tracking-[0.06em] text-text-muted transition-colors hover:border-ink hover:text-ink"
+        <h1
+          class="m-0 mt-2 font-condensed text-[22px] font-extrabold uppercase leading-tight text-text-primary"
         >
-          <IconLink :size="12" />
-          <span>Imported from {{ importSourceHost }}</span>
-        </a>
+          {{ clip.title }}
+        </h1>
 
-        <div class="mt-5 flex flex-wrap items-center gap-3">
-          <!-- Author info -->
+        <!-- Author + action row -->
+        <div class="mt-3 flex flex-wrap items-center gap-3">
           <div class="flex items-center gap-2.5">
             <span
-              class="inline-flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden font-mono text-xs font-semibold text-white"
+              class="inline-flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-semibold text-white"
               :style="{ background: authorColor }"
             >
               <img
@@ -647,9 +584,9 @@ async function onConfirmDelete() {
               <AuthorHandle
                 :username="clip.author.username"
                 as="link"
-                class="text-[13px] text-ink"
+                class="text-[13px] font-semibold text-accent"
               />
-              <div class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
+              <div class="text-[11px] text-text-muted">
                 Uploaded {{ formatRelativeTime(clip.createdAt) }} ago
               </div>
             </div>
@@ -657,39 +594,36 @@ async function onConfirmDelete() {
 
           <div class="flex-1" />
 
-          <!-- Action buttons — bordered, counts on them -->
           <div class="flex items-center gap-2">
             <button
-              class="flex cursor-pointer items-center gap-2 border bg-transparent px-4 py-2.5 transition-colors duration-150 disabled:opacity-60"
+              class="flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors duration-150 disabled:opacity-60"
               :class="
                 liked
-                  ? 'border-ink text-ink'
-                  : 'border-border text-text-primary hover:border-ink hover:text-ink'
+                  ? 'border-accent-border bg-accent-bg text-accent'
+                  : 'border-border text-text-secondary hover:border-border-strong hover:text-accent'
               "
               :disabled="likeBusy"
               @click="toggleLike"
             >
-              <IconHeart :size="15" />
-              <span class="font-heading text-[15px] font-bold leading-none">{{
-                formatNum(likeCount)
-              }}</span>
-              <span class="font-mono text-[10px] uppercase tracking-[0.12em]">Like</span>
+              <IconHeart :size="14" />
+              <span>{{ formatNum(likeCount) }}</span>
+              <span>Like</span>
             </button>
 
             <button
-              class="flex cursor-pointer items-center gap-2 border border-border bg-transparent px-4 py-2.5 text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
+              class="flex cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-transparent px-3 py-1.5 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-border-strong hover:text-text-primary"
               @click="handleShare"
             >
-              <IconShare :size="15" />
-              <span class="font-mono text-[10px] uppercase tracking-[0.12em]">Share</span>
+              <IconShare :size="14" />
+              <span>Share</span>
             </button>
 
             <button
               v-if="auth.isAuthenticated && !isOwner"
-              class="flex cursor-pointer items-center gap-1.5 border border-border bg-transparent px-4 py-2.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
+              class="cursor-pointer rounded-lg border border-border bg-transparent px-3 py-1.5 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-border-strong hover:text-text-primary"
               @click="reportOpen = true"
             >
-              <span>Report</span>
+              Report
             </button>
 
             <KebabMenu
@@ -700,20 +634,43 @@ async function onConfirmDelete() {
             />
           </div>
         </div>
+
+        <!-- Stats — like also lives on the stat itself -->
+        <TelemetryStrip class="mt-4" :cells="telemetryCells" @cell-click="onTelemetryClick" />
+
+        <!-- Description -->
+        <p
+          v-if="clip.description"
+          class="m-0 mt-4 max-w-[64ch] text-[13px] leading-relaxed text-text-secondary"
+        >
+          {{ clip.description }}
+        </p>
+
+        <div v-if="clip.tags.length" class="mt-4 flex flex-wrap gap-2">
+          <TagChip v-for="t in clip.tags" :key="t.id" :slug="t.slug" :name="t.name" size="md" />
+        </div>
+
+        <!-- Source attribution for imported clips. Clicking opens the original
+             in a new tab so reviewers can confirm credit / spot reuploads at a glance. -->
+        <a
+          v-if="clip.importSourceUrl && importSourceHost"
+          :href="clip.importSourceUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-[11px] font-semibold text-text-muted transition-colors duration-150 hover:border-accent hover:text-accent"
+        >
+          <IconLink :size="12" />
+          <span>Imported from {{ importSourceHost }}</span>
+        </a>
       </div>
 
-      <!-- Description -->
-      <div v-if="clip.description" class="mt-7 max-w-[64ch] border-t border-border pt-4">
-        <div class="mb-2 font-mono text-[10px] uppercase tracking-[0.22em] text-text-secondary">
-          Description
-        </div>
-        <p class="m-0 text-sm leading-[1.6] text-text-secondary">{{ clip.description }}</p>
-      </div>
+      <!-- Comments — component root carries its own top margin -->
+      <CommentsSection :clip-id="clip.id" class="border-t border-border pt-7" />
 
       <!-- Recommended — same game, current clip excluded -->
-      <section v-if="recommended.length && clip.game" class="mt-10">
-        <SectionHeader roman="II" kicker="Recommended" :title="`More ${clip.game.name}`" />
-        <div class="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-x-5.5 gap-y-7 pt-6">
+      <section v-if="recommended.length && clip.game" class="mt-8 border-t border-border pt-7">
+        <SectionHeader kicker="Recommended" title="More Clips" />
+        <div class="grid grid-cols-4 gap-3.5 max-lg:grid-cols-2 max-tablet:grid-cols-1">
           <ClipCard
             v-for="rec in recommended"
             :key="rec.id"
@@ -722,9 +679,6 @@ async function onConfirmDelete() {
           />
         </div>
       </section>
-
-      <!-- Comments -->
-      <CommentsSection :clip-id="clip.id" />
     </div>
 
     <ClipEditDialog
@@ -765,10 +719,10 @@ async function onConfirmDelete() {
     >
       <div
         v-if="showToast"
-        class="fixed bottom-6 left-1/2 z-9999 flex -translate-x-1/2 items-center gap-2 border border-ink bg-surface-raised px-4 py-3 font-mono text-[13px] tracking-[0.04em] whitespace-nowrap text-text-primary"
+        class="fixed bottom-6 left-1/2 z-9999 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-border-strong bg-surface-raised px-4 py-3 text-[13px] whitespace-nowrap text-text-primary"
       >
         {{ toastText }}
       </div>
     </Transition>
-  </div>
+  </main>
 </template>

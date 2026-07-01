@@ -4,7 +4,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '@/api/client'
 import { clips, type ClipDetail, type ClipFeedItem } from '@/api/clips'
 import StatusPanel from '@/components/StatusPanel.vue'
-import BroadcastFrame from '@/components/BroadcastFrame.vue'
 import ReelClip from '@/components/reels/ReelClip.vue'
 
 const route = useRoute()
@@ -333,7 +332,7 @@ function onLikedChanged(payload: { id: string; liked: boolean; count: number }) 
 
 <template>
   <div
-    class="fixed inset-x-0 top-16 bottom-15.5 z-10 flex justify-center bg-surface-sunken lg:bottom-0"
+    class="fixed inset-x-0 top-14 bottom-15.5 z-10 flex justify-center bg-black lg:bottom-0"
   >
     <!-- Initial load -->
     <StatusPanel
@@ -346,7 +345,7 @@ function onLikedChanged(payload: { id: string; liked: boolean; count: number }) 
     <StatusPanel v-else-if="errored" kind="error" message="Couldn't load reels.">
       <button
         type="button"
-        class="cursor-pointer border border-border bg-transparent px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
+        class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
         @click="loadFirstPage"
       >
         Retry
@@ -361,57 +360,50 @@ function onLikedChanged(payload: { id: string; liked: boolean; count: number }) 
     >
       <RouterLink
         to="/upload"
-        class="border border-border px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
+        class="rounded-lg border border-border-strong px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
       >
         Upload a clip
       </RouterLink>
     </StatusPanel>
 
-    <!-- Feed — the vertical watch surface wears the broadcast frame. -->
-    <BroadcastFrame
+    <!-- Feed — vertical snap column; the full-screen viewport itself is the container. -->
+    <div
       v-else
-      class="flex h-full w-full max-w-[min(448px,calc(100vh*9/16+28px))] flex-col"
-      :channel="`REEL ${activeIndex + 1} / ${items.length}`"
-      status="VERTICAL FEED"
-      spec="SWIPE ↑ NEXT"
+      ref="scrollEl"
+      class="h-full w-full max-w-[min(448px,calc(100vh*9/16))] snap-y snap-mandatory overflow-y-scroll overscroll-contain scroll-smooth scrollbar-none [&::-webkit-scrollbar]:hidden"
+      aria-label="Reels feed"
     >
       <div
-        ref="scrollEl"
-        class="min-h-0 w-full flex-1 snap-y snap-mandatory overflow-y-scroll overscroll-contain scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        aria-label="Reels feed"
+        v-for="clip in items"
+        :key="clip.id"
+        :ref="(el) => registerClip(clip.id, el as HTMLElement | null)"
+        class="h-full w-full snap-start snap-always"
       >
-        <div
-          v-for="clip in items"
-          :key="clip.id"
-          :ref="(el) => registerClip(clip.id, el as HTMLElement | null)"
-          class="h-full w-full snap-start snap-always"
-        >
-          <ReelClip
-            :clip="clip"
-            :detail="details.get(clip.id) ?? null"
-            :detail-errored="detailErrors.has(clip.id)"
-            :is-active="items[activeIndex]?.id === clip.id"
-            :global-muted="globalMuted"
-            @toggle-mute="onToggleMute"
-            @retry-detail="retryDetail"
-            @liked-changed="onLikedChanged"
-          />
-        </div>
-
-        <!-- Pagination retry pill, snap-aligned at the bottom. -->
-        <div
-          v-if="paginationErrored"
-          class="flex h-full w-full snap-start snap-always items-center justify-center"
-        >
-          <button
-            type="button"
-            class="cursor-pointer border border-border bg-transparent px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
-            @click="loadMore"
-          >
-            Couldn't load more — retry
-          </button>
-        </div>
+        <ReelClip
+          :clip="clip"
+          :detail="details.get(clip.id) ?? null"
+          :detail-errored="detailErrors.has(clip.id)"
+          :is-active="items[activeIndex]?.id === clip.id"
+          :global-muted="globalMuted"
+          @toggle-mute="onToggleMute"
+          @retry-detail="retryDetail"
+          @liked-changed="onLikedChanged"
+        />
       </div>
-    </BroadcastFrame>
+
+      <!-- Pagination retry pill, snap-aligned at the bottom. -->
+      <div
+        v-if="paginationErrored"
+        class="flex h-full w-full snap-start snap-always items-center justify-center"
+      >
+        <button
+          type="button"
+          class="cursor-pointer rounded-lg border border-white/20 bg-black/60 px-4 py-2 text-xs font-semibold text-[#f4f1e8] transition-colors duration-150 hover:border-accent hover:text-accent"
+          @click="loadMore"
+        >
+          Couldn't load more — retry
+        </button>
+      </div>
+    </div>
   </div>
 </template>

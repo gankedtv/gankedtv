@@ -8,7 +8,6 @@ import type { ClipStatus, GameSummary } from '@/api/clips'
 import GameSelector from '@/components/GameSelector.vue'
 import TagInput from '@/components/TagInput.vue'
 import PageHeader from '@/components/PageHeader.vue'
-import BroadcastFrame from '@/components/BroadcastFrame.vue'
 import IconUploadCloud from '@/components/icons/IconUploadCloud.vue'
 import IconFile from '@/components/icons/IconFile.vue'
 import IconFileText from '@/components/icons/IconFileText.vue'
@@ -29,7 +28,7 @@ const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 
 // 'upload' = the existing 3-step presigned-PUT flow (file picker → metadata → PUT + complete).
 // 'import' = paste a Medal.tv / YouTube URL; the server fetches it and runs the same
-// thumbnail → compress → ready pipeline that an upload would. UI shares the wizard frame.
+// thumbnail → compress → ready pipeline that an upload would. UI shares the wizard.
 type IngestMode = 'upload' | 'import'
 const mode = ref<IngestMode>('upload')
 
@@ -634,466 +633,471 @@ const STEPS = [
 const SOURCES = ['OBS', 'ShadowPlay', 'Medal', 'Xbox', 'PS5', 'Switch']
 
 const inputClass =
-  'w-full rounded-sm border border-border bg-surface-raised px-3.5 py-3 font-body text-sm text-text-primary outline-none transition-colors duration-150 focus:border-ink'
+  'w-full rounded-md border border-border bg-surface-high px-3 py-2.5 text-sm text-text-primary outline-none transition-colors duration-150 placeholder:text-text-muted focus:border-accent'
 const labelClass =
-  'mb-1.5 block font-mono text-[10px] uppercase tracking-[0.18em] text-text-secondary'
+  'mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-text-secondary'
+
+// Display-only summary of the allow-list — folds the www./m. variants into their
+// canonical hosts for the hint under the URL input.
+const IMPORT_HOSTS_HINT = IMPORT_ALLOWED_HOSTS.filter(
+  (h) => !h.startsWith('www.') && !h.startsWith('m.'),
+).join(', ')
 </script>
 
 <template>
-  <main class="mx-auto max-w-225 px-6 pt-8 pb-30">
-    <PageHeader title="Submit to the Archive" class="mb-7">
-      <template #caption>
-        <span class="text-ink">Filing desk</span>&nbsp;· any source welcome — just drop the file
-      </template>
-      <hr class="m-0 mt-5 h-px w-full border-0 bg-border" />
-    </PageHeader>
+  <main class="mx-auto max-w-300 px-7 pt-7 pb-16 max-tablet:px-4">
+    <div class="mx-auto max-w-3xl">
+      <PageHeader title="Upload a clip" class="mb-7">
+        <template #caption>Share — drop a file or paste a URL</template>
+      </PageHeader>
 
-    <!-- Stepper -->
-    <div class="mb-8 flex border border-border">
-      <div
-        v-for="(s, i) in STEPS"
-        :key="s.num"
-        :class="[
-          'relative flex-1 border-b-2 px-5 py-4',
-          i < STEPS.length - 1 ? 'border-r border-r-border' : '',
-          step === Number(s.num) ? 'border-b-ink' : 'border-b-transparent',
-        ]"
-      >
-        <div
-          :class="[
-            'mb-1 font-mono text-[10px] uppercase tracking-[0.18em]',
-            step >= Number(s.num) ? 'text-ink' : 'text-text-muted',
-          ]"
-        >
-          Step {{ s.num }}
-        </div>
-        <div class="font-heading text-base font-bold uppercase text-text-primary">
-          {{ s.label }}
-        </div>
-      </div>
-    </div>
-
-    <!-- Step 1: File picker OR URL import -->
-    <div v-if="step === 1">
-      <!-- Mode toggle: upload existing file vs. import from a supported URL host. -->
-      <div class="mb-5 grid grid-cols-2 gap-2.5">
-        <button
-          @click="mode = 'upload'"
-          :class="[
-            'flex cursor-pointer items-center justify-center gap-2 border px-4 py-3 font-heading text-sm font-bold uppercase tracking-wider transition-colors',
-            mode === 'upload'
-              ? 'border-ink text-ink'
-              : 'border-border text-text-secondary hover:border-border-strong',
-          ]"
-        >
-          <IconUploadCloud :size="16" />
-          Upload file
-        </button>
-        <button
-          @click="mode = 'import'"
-          :class="[
-            'flex cursor-pointer items-center justify-center gap-2 border px-4 py-3 font-heading text-sm font-bold uppercase tracking-wider transition-colors',
-            mode === 'import'
-              ? 'border-ink text-ink'
-              : 'border-border text-text-secondary hover:border-border-strong',
-          ]"
-        >
-          <IconLink :size="16" />
-          Import from URL
-        </button>
-      </div>
-
-      <!-- File picker (upload mode) -->
-      <div v-if="mode === 'upload'">
-        <div
-          @dragover.prevent="dragging = true"
-          @dragleave.prevent="dragging = false"
-          @drop.prevent="handleDrop"
-          :class="[
-            'flex flex-col items-center gap-4 border bg-surface-raised px-6 py-16 text-center transition-colors duration-200',
-            dragging ? 'border-ink' : 'border-border',
-          ]"
-        >
-          <div class="flex h-16 w-16 items-center justify-center border border-border text-ink">
-            <IconUploadCloud :size="28" />
-          </div>
-
-          <div>
-            <div class="mb-1.5 font-heading text-[22px] font-bold uppercase text-text-primary">
-              Drop your clip here
-            </div>
-            <div class="font-body text-sm text-text-secondary">
-              MP4 or video — up to {{ MAX_UPLOAD_MB }} MB
-            </div>
-          </div>
-
-          <label
-            class="inline-flex cursor-pointer items-center gap-2 bg-ink px-5.5 py-2.5 font-heading text-sm font-bold uppercase tracking-wider text-signal-text transition-[filter] duration-150 hover:brightness-108"
-          >
-            <IconFile :size="16" />
-            Choose file
-            <input type="file" accept="video/*" class="sr-only" @change="handleFileSelect" />
-          </label>
-
-          <div class="mt-2 flex flex-wrap justify-center gap-2">
-            <span
-              v-for="src in SOURCES"
-              :key="src"
-              class="border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
-            >
-              {{ src }}
-            </span>
-          </div>
-        </div>
-
-        <p
-          v-if="errorMsg"
-          class="mt-4 border border-signal px-4 py-2 font-mono text-[12px] text-signal"
-        >
-          {{ errorMsg }}
-        </p>
-
-        <div v-if="file" class="mt-5 flex items-center gap-4 border border-ink px-5 py-4 text-ink">
-          <IconFileText :size="20" class="shrink-0" />
-          <div class="min-w-0 flex-1">
+      <!-- Step indicator -->
+      <div class="mb-8 flex items-center gap-3">
+        <template v-for="(s, i) in STEPS" :key="s.num">
+          <div class="flex items-center gap-2">
             <div
-              class="overflow-hidden font-body text-sm whitespace-nowrap text-ellipsis text-text-primary"
-            >
-              {{ file.name }}
-            </div>
-            <div class="mt-0.5 font-mono text-[11px] text-text-muted">
-              {{ formatSize(file.size) }}
-            </div>
-          </div>
-          <button
-            @click="step = 2"
-            class="inline-flex shrink-0 cursor-pointer items-center gap-1.5 bg-ink px-5 py-2.5 font-heading text-sm font-bold whitespace-nowrap uppercase tracking-wider text-signal-text transition-[filter] duration-150 hover:brightness-108"
-          >
-            Continue
-            <IconArrowRight :size="14" :stroke-width="2.5" />
-          </button>
-        </div>
-      </div>
-
-      <!-- URL input (import mode) -->
-      <div v-else>
-        <div
-          class="flex flex-col gap-4 border border-border bg-surface-raised px-6 py-12 text-center"
-        >
-          <div
-            class="mx-auto flex h-16 w-16 items-center justify-center border border-border text-ink"
-          >
-            <IconLink :size="28" />
-          </div>
-          <div>
-            <div class="mb-1.5 font-heading text-[22px] font-bold uppercase text-text-primary">
-              Paste a clip URL
-            </div>
-            <div class="font-body text-sm text-text-secondary">
-              Medal.tv or YouTube — we fetch + process it for you
-            </div>
-          </div>
-          <input
-            v-model="importUrl"
-            type="url"
-            placeholder="https://medal.tv/clips/... or https://www.youtube.com/watch?v=..."
-            :class="inputClass + ' mx-auto max-w-[28rem]'"
-          />
-          <div class="mt-1 flex flex-wrap justify-center gap-2">
-            <span
-              v-for="host in IMPORT_ALLOWED_HOSTS.filter(
-                (h) => !h.startsWith('www.') && !h.startsWith('m.'),
-              )"
-              :key="host"
-              class="border border-border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
-            >
-              {{ host }}
-            </span>
-          </div>
-        </div>
-
-        <div
-          v-if="importUrl && !isImportUrlValid"
-          class="mt-4 border border-signal px-4 py-2 font-mono text-[12px] text-signal"
-        >
-          Only Medal.tv and YouTube https links are supported right now.
-        </div>
-
-        <!-- Preview probe surfacing — either the friendly duration-too-long / unavailable
-             error, or a one-line readout so the user can confirm the right clip before
-             filling step 2. -->
-        <div
-          v-if="previewError"
-          class="mt-4 border border-signal px-4 py-2 font-mono text-[12px] text-signal"
-        >
-          {{ previewError }}
-        </div>
-        <div
-          v-else-if="previewData && previewData.durationSecs != null"
-          class="mt-4 border border-border px-4 py-2 font-mono text-[12px] text-text-muted"
-        >
-          <span class="text-ink">{{ fmtSeconds(previewData.durationSecs) }}</span>
-          <template v-if="previewData.title"> · {{ previewData.title }}</template>
-        </div>
-
-        <div class="mt-5 flex justify-end">
-          <button
-            :disabled="!isImportUrlValid || previewLoading"
-            @click="continueFromImportStep1"
-            :class="[
-              'inline-flex items-center gap-1.5 px-5 py-2.5 font-heading text-sm font-bold uppercase tracking-wider',
-              isImportUrlValid && !previewLoading
-                ? 'cursor-pointer bg-ink text-signal-text transition-[filter] duration-150 hover:brightness-108'
-                : 'cursor-not-allowed border border-border bg-transparent text-text-muted',
-            ]"
-          >
-            {{ previewLoading ? 'Checking…' : 'Continue' }}
-            <IconArrowRight v-if="!previewLoading" :size="14" :stroke-width="2.5" />
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Step 2: Metadata -->
-    <div v-else-if="step === 2">
-      <div class="grid gap-8 grid-cols-1 min-[761px]:grid-cols-[1fr_320px]">
-        <div class="flex flex-col gap-6">
-          <!-- Game picker -->
-          <div>
-            <label :class="labelClass"
-              ><span class="text-ink">I</span> Game
-              <span class="text-[9px] text-text-muted">(optional)</span></label
-            >
-            <GameSelector v-model="selectedGame" />
-          </div>
-
-          <!-- Tags -->
-          <div>
-            <label :class="labelClass"
-              ><span class="text-ink">II</span> Tags
-              <span class="text-[9px] text-text-muted">(optional, max 5)</span></label
-            >
-            <TagInput v-model="selectedTags" :input-class="inputClass" />
-          </div>
-
-          <div>
-            <div class="mb-1.5 flex items-baseline justify-between">
-              <label :class="labelClass + ' mb-0'"
-                ><span class="text-ink">III</span> Title
-                <span v-if="mode === 'import'" class="text-[9px] text-text-muted"
-                  >(optional — we'll fill it from the source)</span
-                >
-              </label>
-              <span class="font-mono text-[10px] text-text-muted"> {{ title.length }}/100 </span>
-            </div>
-            <input
-              v-model="title"
-              maxlength="100"
-              :placeholder="
-                mode === 'import'
-                  ? 'Override the source title (optional)'
-                  : 'What happened in this clip?'
-              "
-              :class="inputClass"
-            />
-          </div>
-
-          <div>
-            <div class="mb-1.5 flex items-baseline justify-between">
-              <label :class="labelClass + ' mb-0'"
-                ><span class="text-ink">IV</span> Description
-                <span class="text-[9px] text-text-muted">(optional)</span></label
-              >
-              <span class="font-mono text-[10px] text-text-muted"> {{ desc.length }}/500 </span>
-            </div>
-            <textarea
-              v-model="desc"
-              maxlength="500"
-              rows="4"
-              placeholder="Add context, callouts, settings — anything worth knowing"
-              :class="inputClass + ' resize-y min-h-24'"
-            ></textarea>
-          </div>
-
-          <div>
-            <label :class="labelClass"><span class="text-ink">V</span> Visibility</label>
-            <div class="grid grid-cols-2 gap-2.5">
-              <button
-                v-for="opt in ['public', 'unlisted'] as const"
-                :key="opt"
-                @click="visibility = opt"
-                :class="[
-                  'cursor-pointer border px-4 py-3.5 text-left transition-colors duration-150',
-                  visibility === opt
-                    ? 'border-ink text-text-primary'
-                    : 'border-border text-text-secondary hover:border-border-strong',
-                ]"
-              >
-                <div class="mb-1 flex items-center gap-2">
-                  <IconGlobe v-if="opt === 'public'" :size="16" />
-                  <IconLink v-else :size="16" />
-                  <span class="font-heading text-sm font-bold uppercase">
-                    {{ opt === 'public' ? 'Public' : 'Unlisted' }}
-                  </span>
-                </div>
-                <div class="font-body text-xs text-text-muted">
-                  {{ opt === 'public' ? 'Visible on feed + search' : 'Only accessible via link' }}
-                </div>
-              </button>
-            </div>
-          </div>
-
-          <div class="flex gap-3 pt-2">
-            <button
-              @click="step = 1"
-              class="inline-flex cursor-pointer items-center gap-1.5 border border-border bg-transparent px-5 py-3 font-heading text-sm font-bold uppercase text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink"
-            >
-              <IconArrowLeft :size="14" :stroke-width="2.5" />
-              Back
-            </button>
-            <button
-              :disabled="mode === 'upload' ? !title.trim() : !isImportUrlValid"
-              @click="mode === 'upload' ? startUpload() : startImport()"
               :class="[
-                'inline-flex flex-1 items-center justify-center gap-2 px-5 py-3 font-heading text-[15px] font-bold uppercase tracking-wider transition-[filter] duration-150',
-                (mode === 'upload' ? title.trim() : isImportUrlValid)
-                  ? 'cursor-pointer border-0 bg-ink text-signal-text hover:brightness-108'
-                  : 'cursor-not-allowed border border-border bg-transparent text-text-muted',
+                'flex size-5.5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold',
+                step >= Number(s.num)
+                  ? 'bg-accent text-[#080f0d]'
+                  : 'border border-border-strong text-text-muted',
               ]"
             >
-              {{ mode === 'import' ? 'Start import' : 'Start upload' }}
+              {{ s.num }}
+            </div>
+            <span
+              :class="[
+                'text-xs font-bold',
+                step >= Number(s.num) ? 'text-accent' : 'text-text-muted',
+              ]"
+            >
+              {{ s.label }}
+            </span>
+          </div>
+          <div v-if="i < STEPS.length - 1" class="h-px w-8 bg-border-strong"></div>
+        </template>
+      </div>
+
+      <!-- Step 1: File picker OR URL import -->
+      <div v-if="step === 1">
+        <!-- Mode toggle: upload existing file vs. import from a supported URL host. -->
+        <div class="mb-6 flex border-b border-border">
+          <button
+            @click="mode = 'upload'"
+            :class="[
+              '-mb-px flex cursor-pointer items-center gap-2 border-b-2 px-4 py-2.5 text-xs font-semibold transition-colors duration-150',
+              mode === 'upload'
+                ? 'border-accent text-text-primary'
+                : 'border-transparent text-text-muted hover:text-text-secondary',
+            ]"
+          >
+            <IconUploadCloud :size="16" />
+            Upload file
+          </button>
+          <button
+            @click="mode = 'import'"
+            :class="[
+              '-mb-px flex cursor-pointer items-center gap-2 border-b-2 px-4 py-2.5 text-xs font-semibold transition-colors duration-150',
+              mode === 'import'
+                ? 'border-accent text-text-primary'
+                : 'border-transparent text-text-muted hover:text-text-secondary',
+            ]"
+          >
+            <IconLink :size="16" />
+            Import from URL
+          </button>
+        </div>
+
+        <!-- File picker (upload mode) -->
+        <div v-if="mode === 'upload'">
+          <div
+            @dragover.prevent="dragging = true"
+            @dragleave.prevent="dragging = false"
+            @drop.prevent="handleDrop"
+            :class="[
+              'flex flex-col items-center gap-4 rounded-lg border border-dashed px-6 py-16 text-center transition-colors duration-200',
+              dragging ? 'border-accent bg-accent-bg' : 'border-border-strong bg-surface-raised',
+            ]"
+          >
+            <div
+              class="flex size-16 items-center justify-center rounded-full bg-surface-high text-accent"
+            >
+              <IconUploadCloud :size="28" />
+            </div>
+
+            <div>
+              <div
+                class="mb-1.5 font-condensed text-xl font-extrabold uppercase tracking-wide text-text-primary"
+              >
+                Drop your clip here
+              </div>
+              <div class="text-sm text-text-secondary">
+                MP4 or video — up to {{ MAX_UPLOAD_MB }} MB
+              </div>
+            </div>
+
+            <label
+              class="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-accent px-4 py-2 text-xs font-bold text-[#080f0d] transition-[filter] duration-150 hover:brightness-105"
+            >
+              <IconFile :size="16" />
+              Choose file
+              <input type="file" accept="video/*" class="sr-only" @change="handleFileSelect" />
+            </label>
+
+            <div class="mt-2 flex flex-wrap justify-center gap-2">
+              <span
+                v-for="src in SOURCES"
+                :key="src"
+                class="rounded-full border border-border px-2.5 py-1 text-[11px] text-text-muted"
+              >
+                {{ src }}
+              </span>
+            </div>
+          </div>
+
+          <p
+            v-if="errorMsg"
+            class="mt-4 rounded-lg border border-accent-border bg-accent-bg px-4 py-2.5 text-xs text-accent"
+          >
+            {{ errorMsg }}
+          </p>
+
+          <div
+            v-if="file"
+            class="mt-5 flex items-center gap-4 rounded-lg border border-accent bg-accent-bg px-5 py-4"
+          >
+            <IconFileText :size="20" class="shrink-0 text-accent" />
+            <div class="min-w-0 flex-1">
+              <div
+                class="overflow-hidden text-sm whitespace-nowrap text-ellipsis text-text-primary"
+              >
+                {{ file.name }}
+              </div>
+              <div class="mt-0.5 text-[11px] text-text-muted">
+                {{ formatSize(file.size) }}
+              </div>
+            </div>
+            <button
+              @click="step = 2"
+              class="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-xs font-bold whitespace-nowrap text-[#080f0d] transition-[filter] duration-150 hover:brightness-105"
+            >
+              Continue
               <IconArrowRight :size="14" :stroke-width="2.5" />
             </button>
           </div>
         </div>
 
-        <div>
-          <label :class="labelClass + ' mb-3'">Preview</label>
-          <div class="overflow-hidden border border-border">
-            <div class="relative aspect-video bg-surface-sunken">
-              <img
-                v-if="posterUrl"
-                :src="posterUrl"
-                alt="Clip preview"
-                class="absolute inset-0 h-full w-full object-cover"
-              />
+        <!-- URL input (import mode) -->
+        <div v-else>
+          <div
+            class="flex flex-col gap-4 rounded-lg border border-border bg-surface-raised px-6 py-12 text-center"
+          >
+            <div
+              class="mx-auto flex size-16 items-center justify-center rounded-full bg-surface-high text-accent"
+            >
+              <IconLink :size="28" />
+            </div>
+            <div>
               <div
-                v-else
-                class="absolute inset-0 flex items-center justify-center font-mono text-[10px] uppercase tracking-widest text-text-muted"
+                class="mb-1.5 font-condensed text-xl font-extrabold uppercase tracking-wide text-text-primary"
               >
-                {{ file?.name ?? 'No file' }}
+                Paste a clip URL
               </div>
-              <div
-                class="absolute top-2 right-2 bg-black/60 px-2 py-0.75 font-mono text-[10px] uppercase tracking-[0.08em] text-[#f4f1e8]"
+              <div class="text-sm text-text-secondary">
+                Medal.tv or YouTube — we fetch + process it for you
+              </div>
+            </div>
+            <input
+              v-model="importUrl"
+              type="url"
+              placeholder="https://medal.tv/clips/... or https://www.youtube.com/watch?v=..."
+              :class="inputClass + ' mx-auto max-w-md'"
+            />
+            <p class="m-0 text-[11px] text-text-muted">Supports {{ IMPORT_HOSTS_HINT }} links</p>
+          </div>
+
+          <div
+            v-if="importUrl && !isImportUrlValid"
+            class="mt-4 rounded-lg border border-accent-border bg-accent-bg px-4 py-2.5 text-xs text-accent"
+          >
+            Only Medal.tv and YouTube https links are supported right now.
+          </div>
+
+          <!-- Preview probe surfacing — either the friendly duration-too-long / unavailable
+               error, or a one-line readout so the user can confirm the right clip before
+               filling step 2. -->
+          <div
+            v-if="previewError"
+            class="mt-4 rounded-lg border border-accent-border bg-accent-bg px-4 py-2.5 text-xs text-accent"
+          >
+            {{ previewError }}
+          </div>
+          <div
+            v-else-if="previewData && previewData.durationSecs != null"
+            class="mt-4 rounded-lg border border-border bg-surface-raised px-4 py-2.5 text-xs text-text-secondary"
+          >
+            <span class="font-semibold text-accent">
+              {{ fmtSeconds(previewData.durationSecs) }}
+            </span>
+            <template v-if="previewData.title"> · {{ previewData.title }}</template>
+          </div>
+
+          <div class="mt-5 flex justify-end">
+            <button
+              :disabled="!isImportUrlValid || previewLoading"
+              @click="continueFromImportStep1"
+              class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-xs font-bold text-[#080f0d] transition-[filter] duration-150 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {{ previewLoading ? 'Checking…' : 'Continue' }}
+              <IconArrowRight v-if="!previewLoading" :size="14" :stroke-width="2.5" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2: Metadata -->
+      <div v-else-if="step === 2">
+        <div class="grid gap-8 grid-cols-1 min-[761px]:grid-cols-[1fr_320px]">
+          <div class="flex flex-col gap-6">
+            <!-- Game picker -->
+            <div>
+              <label :class="labelClass"
+                >Game <span class="text-[9px] text-text-muted">(optional)</span></label
               >
-                {{ visibility }}
+              <GameSelector v-model="selectedGame" />
+            </div>
+
+            <!-- Tags -->
+            <div>
+              <label :class="labelClass"
+                >Tags <span class="text-[9px] text-text-muted">(optional, max 5)</span></label
+              >
+              <TagInput v-model="selectedTags" :input-class="inputClass" />
+            </div>
+
+            <div>
+              <div class="mb-1.5 flex items-baseline justify-between">
+                <label :class="labelClass + ' mb-0'"
+                  >Title
+                  <span v-if="mode === 'import'" class="text-[9px] text-text-muted"
+                    >(optional — we'll fill it from the source)</span
+                  >
+                </label>
+                <span class="text-[10px] text-text-muted"> {{ title.length }}/100 </span>
+              </div>
+              <input
+                v-model="title"
+                maxlength="100"
+                :placeholder="
+                  mode === 'import'
+                    ? 'Override the source title (optional)'
+                    : 'What happened in this clip?'
+                "
+                :class="inputClass"
+              />
+            </div>
+
+            <div>
+              <div class="mb-1.5 flex items-baseline justify-between">
+                <label :class="labelClass + ' mb-0'"
+                  >Description <span class="text-[9px] text-text-muted">(optional)</span></label
+                >
+                <span class="text-[10px] text-text-muted"> {{ desc.length }}/500 </span>
+              </div>
+              <textarea
+                v-model="desc"
+                maxlength="500"
+                rows="4"
+                placeholder="Add context, callouts, settings — anything worth knowing"
+                :class="inputClass + ' resize-y min-h-24'"
+              ></textarea>
+            </div>
+
+            <div>
+              <label :class="labelClass">Visibility</label>
+              <div class="grid grid-cols-2 gap-2.5">
+                <button
+                  v-for="opt in ['public', 'unlisted'] as const"
+                  :key="opt"
+                  @click="visibility = opt"
+                  :class="[
+                    'cursor-pointer rounded-lg border p-3 text-left transition-colors duration-150',
+                    visibility === opt
+                      ? 'border-accent bg-accent-bg'
+                      : 'border-border hover:border-border-strong',
+                  ]"
+                >
+                  <div class="mb-1 flex items-center gap-2 text-text-primary">
+                    <IconGlobe v-if="opt === 'public'" :size="16" />
+                    <IconLink v-else :size="16" />
+                    <span class="text-xs font-bold">
+                      {{ opt === 'public' ? 'Public' : 'Unlisted' }}
+                    </span>
+                  </div>
+                  <div class="text-xs text-text-muted">
+                    {{ opt === 'public' ? 'Visible on feed + search' : 'Only accessible via link' }}
+                  </div>
+                </button>
               </div>
             </div>
 
-            <div class="p-3.5">
-              <div
-                :class="[
-                  'mb-2.5 font-heading text-[15px] font-bold leading-[1.3]',
-                  title.trim() ? 'not-italic text-text-primary' : 'italic text-text-muted',
-                ]"
+            <div class="flex gap-3 pt-2">
+              <button
+                @click="step = 1"
+                class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border-strong px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
               >
-                {{ title.trim() || 'Your clip title will appear here' }}
+                <IconArrowLeft :size="14" :stroke-width="2.5" />
+                Back
+              </button>
+              <button
+                :disabled="mode === 'upload' ? !title.trim() : !isImportUrlValid"
+                @click="mode === 'upload' ? startUpload() : startImport()"
+                class="inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-xs font-bold text-[#080f0d] transition-[filter] duration-150 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {{ mode === 'import' ? 'Start import' : 'Start upload' }}
+                <IconArrowRight :size="14" :stroke-width="2.5" />
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <div class="mb-3 text-[10px] font-bold uppercase tracking-widest text-text-secondary">
+              Preview
+            </div>
+            <div class="overflow-hidden rounded-lg border border-border bg-surface-raised">
+              <div class="relative aspect-video bg-black">
+                <img
+                  v-if="posterUrl"
+                  :src="posterUrl"
+                  alt="Clip preview"
+                  class="absolute inset-0 h-full w-full object-cover"
+                />
+                <div
+                  v-else
+                  class="absolute inset-0 flex items-center justify-center text-[11px] text-text-muted"
+                >
+                  {{ file?.name ?? 'No file' }}
+                </div>
+                <div
+                  class="absolute top-2 right-2 rounded-md bg-black/70 px-2 py-0.75 text-[10px] font-bold uppercase tracking-widest text-white"
+                >
+                  {{ visibility }}
+                </div>
+              </div>
+
+              <div class="p-3.5">
+                <div
+                  :class="[
+                    'mb-2.5 font-condensed text-base font-bold leading-[1.3]',
+                    title.trim() ? 'not-italic text-text-primary' : 'italic text-text-muted',
+                  ]"
+                >
+                  {{ title.trim() || 'Your clip title will appear here' }}
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Step 3: processing — the preview adopts the Broadcast Frame while the
-         pipeline runs. -->
-    <div v-else-if="step === 3">
-      <div class="mx-auto max-w-140">
-        <BroadcastFrame
-          class="mb-8"
-          channel="INGEST · CH 01"
-          :status="progressLabel.toUpperCase()"
-          :live="stage !== 'done' && stage !== 'error'"
-          :spec="mode === 'import' ? 'URL IMPORT' : 'DIRECT UPLOAD'"
-        >
-          <div class="border border-border bg-surface-sunken p-5">
-            <div class="flex items-end justify-between gap-4">
-              <div class="min-w-0">
-                <div
-                  class="mb-2 truncate font-heading text-base font-bold uppercase leading-[1.3] text-text-primary"
-                >
-                  {{ title || (mode === 'import' ? 'Importing from URL…' : '') }}
-                </div>
-                <div
-                  class="truncate font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
-                >
-                  {{ visibility }}
-                  <template v-if="mode === 'upload' && file">
-                    · {{ formatSize(file.size) }}</template
-                  >
-                  <template v-else-if="mode === 'import'"> · {{ importUrl }}</template>
-                </div>
-              </div>
-              <span class="shrink-0 font-heading text-[56px] font-bold leading-none text-ink">
-                {{ Math.round(uploadPct) }}<span class="text-[28px]">%</span>
-              </span>
-            </div>
-            <div class="mt-4 h-1.5 w-full overflow-hidden bg-surface-raised">
-              <div
-                class="h-full bg-ink transition-[width] duration-180 ease"
-                :style="{ width: uploadPct + '%' }"
-              ></div>
-            </div>
-          </div>
-        </BroadcastFrame>
-
-        <div class="mb-9 flex flex-col gap-3.5">
-          <div v-for="item in checklistItems" :key="item.label" class="flex items-center gap-3">
-            <div
-              :class="[
-                'h-2 w-2 shrink-0 transition-colors duration-300',
-                item.done ? 'bg-ink' : 'bg-border-strong',
-              ]"
-            ></div>
+      <!-- Step 3: processing — plain preview panel with status copy while the pipeline runs. -->
+      <div v-else-if="step === 3">
+        <div class="mx-auto max-w-140">
+          <div class="mb-2.5 flex items-center justify-between">
+            <span class="text-[10px] font-bold uppercase tracking-widest text-text-secondary">
+              {{ mode === 'import' ? 'URL import' : 'Direct upload' }}
+            </span>
             <span
-              :class="[
-                'font-mono text-xs uppercase tracking-[0.08em] transition-colors duration-300',
-                item.done ? 'text-text-primary' : 'text-text-muted',
-              ]"
+              class="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-accent"
             >
-              {{ item.label }}
+              <span
+                v-if="stage !== 'done' && stage !== 'error'"
+                class="size-1.5 shrink-0 rounded-full bg-accent animate-[pulse_2s_infinite]"
+              ></span>
+              {{ progressLabel }}
             </span>
           </div>
-        </div>
 
-        <div
-          v-if="stage === 'error'"
-          class="mb-6 border border-signal px-4 py-3 font-mono text-[12px] text-signal"
-        >
-          {{ errorMsg }}
-          <button
-            class="mt-2 block cursor-pointer border border-border bg-transparent px-3 py-1.5 text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
-            @click="goBackToDetails"
-          >
-            Back to details
-          </button>
-        </div>
+          <div class="mb-8 overflow-hidden rounded-lg border border-border bg-black">
+            <div class="p-5">
+              <div class="flex items-end justify-between gap-4">
+                <div class="min-w-0">
+                  <div
+                    class="mb-2 truncate font-condensed text-base font-bold uppercase leading-[1.3] text-text-primary"
+                  >
+                    {{ title || (mode === 'import' ? 'Importing from URL…' : '') }}
+                  </div>
+                  <div class="truncate text-[11px] text-text-muted">
+                    <span class="capitalize">{{ visibility }}</span>
+                    <template v-if="mode === 'upload' && file">
+                      · {{ formatSize(file.size) }}</template
+                    >
+                    <template v-else-if="mode === 'import'"> · {{ importUrl }}</template>
+                  </div>
+                </div>
+                <span
+                  class="shrink-0 font-condensed text-[56px] font-black leading-none text-accent"
+                >
+                  {{ Math.round(uploadPct) }}<span class="text-[28px]">%</span>
+                </span>
+              </div>
+              <div class="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-surface-high">
+                <div
+                  class="h-full rounded-full bg-accent transition-[width] duration-180 ease"
+                  :style="{ width: uploadPct + '%' }"
+                ></div>
+              </div>
+            </div>
+          </div>
 
-        <div v-if="stage === 'done'" class="flex flex-col gap-2.5">
-          <button
-            :disabled="!createdClipId"
-            @click="createdClipId && router.push(`/clip/${createdClipId}`)"
-            class="flex w-full cursor-pointer items-center justify-center gap-2 bg-ink px-6 py-3.5 font-heading text-base font-bold uppercase tracking-wider text-signal-text transition-[filter] duration-150 hover:brightness-108 disabled:cursor-not-allowed disabled:opacity-50"
+          <div class="mb-9 flex flex-col gap-3.5">
+            <div v-for="item in checklistItems" :key="item.label" class="flex items-center gap-3">
+              <div
+                :class="[
+                  'size-2 shrink-0 rounded-full transition-colors duration-300',
+                  item.done ? 'bg-accent' : 'bg-border-strong',
+                ]"
+              ></div>
+              <span
+                :class="[
+                  'text-xs transition-colors duration-300',
+                  item.done ? 'text-text-primary' : 'text-text-muted',
+                ]"
+              >
+                {{ item.label }}
+              </span>
+            </div>
+          </div>
+
+          <div
+            v-if="stage === 'error'"
+            class="mb-6 rounded-lg border border-accent-border bg-accent-bg px-4 py-3 text-xs text-accent"
           >
-            View your clip
-            <IconArrowRight :size="16" :stroke-width="2.5" />
-          </button>
-          <button
-            @click="router.push('/')"
-            class="flex w-full cursor-pointer items-center justify-center border border-border bg-transparent px-6 py-3 font-heading text-sm font-bold uppercase tracking-wider text-text-secondary transition-colors duration-150 hover:border-ink hover:text-ink"
-          >
-            Back to feed
-          </button>
+            {{ errorMsg }}
+            <button
+              class="mt-2.5 block cursor-pointer rounded-lg border border-border-strong px-3 py-1.5 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
+              @click="goBackToDetails"
+            >
+              Back to details
+            </button>
+          </div>
+
+          <div v-if="stage === 'done'" class="flex flex-col gap-2.5">
+            <button
+              :disabled="!createdClipId"
+              @click="createdClipId && router.push(`/clip/${createdClipId}`)"
+              class="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-xs font-bold text-[#080f0d] transition-[filter] duration-150 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              View your clip
+              <IconArrowRight :size="16" :stroke-width="2.5" />
+            </button>
+            <button
+              @click="router.push('/')"
+              class="flex w-full cursor-pointer items-center justify-center rounded-lg border border-border-strong px-4 py-2.5 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
+            >
+              Back to feed
+            </button>
+          </div>
         </div>
       </div>
     </div>
