@@ -73,7 +73,9 @@ public static class DeviceAuthEndpoints
         var result = await devices.PollAsync(req.DeviceCode, ct);
         return result.Status switch
         {
-            DevicePollStatus.Approved => Results.Ok(new DeviceTokenResponse(result.ApiKey!, "ApiKey")),
+            // "Bearer": the minted key is sent as `Authorization: Bearer <key>`, so the canonical
+            // OAuth token type is the self-documenting, RFC-conformant value here.
+            DevicePollStatus.Approved => Results.Ok(new DeviceTokenResponse(result.ApiKey!, "Bearer")),
             DevicePollStatus.Pending => ProblemResults.BadRequest("authorization_pending", "The user has not approved the request yet."),
             DevicePollStatus.SlowDown => ProblemResults.BadRequest("slow_down", "Polling too frequently; increase the interval."),
             DevicePollStatus.Denied => ProblemResults.BadRequest("access_denied", "The user denied the request."),

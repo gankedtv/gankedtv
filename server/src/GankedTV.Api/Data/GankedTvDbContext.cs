@@ -461,7 +461,9 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             e.HasKey(k => k.Id);
             e.Property(k => k.Id).HasDefaultValueSql("gen_random_uuid()");
             e.Property(k => k.Name).HasMaxLength(100);
-            e.Property(k => k.KeyHash).IsRequired();
+            // SHA-256 hex is always 64 chars; bound the column so a future Hash change can't
+            // silently write longer values.
+            e.Property(k => k.KeyHash).IsRequired().HasMaxLength(64);
             e.Property(k => k.KeyPrefix).IsRequired().HasMaxLength(20);
             e.Property(k => k.CreatedAt).HasDefaultValueSql("now()");
 
@@ -479,7 +481,8 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
         {
             e.HasKey(d => d.Id);
             e.Property(d => d.Id).HasDefaultValueSql("gen_random_uuid()");
-            e.Property(d => d.DeviceCodeHash).IsRequired();
+            // SHA-256 hex is always 64 chars (see ApiKey.KeyHash).
+            e.Property(d => d.DeviceCodeHash).IsRequired().HasMaxLength(64);
             e.Property(d => d.UserCode).IsRequired().HasMaxLength(20);
             e.Property(d => d.ClientName).HasMaxLength(100);
             e.Property(d => d.Status).HasMaxLength(20).HasDefaultValue(DeviceAuthorizationStatuses.Pending);

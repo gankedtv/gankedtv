@@ -3,8 +3,11 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
 using GankedTV.Api.Auth.ApiKeys;
+using GankedTV.Api.Auth.Tokens;
+using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Tests.TestSupport;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace GankedTV.Api.Tests.Integration.Endpoints;
 
@@ -25,6 +28,13 @@ public class DeviceAuthEndpointsTests : IAsyncLifetime
     public async Task DisposeAsync()
     {
         if (_factory is not null) await _factory.DisposeAsync();
+    }
+
+    private async Task<string> MintApiKeyAsync(Guid userId)
+    {
+        using var scope = _factory!.Services.CreateScope();
+        var svc = scope.ServiceProvider.GetRequiredService<ApiKeyService>();
+        return (await svc.CreateAsync(userId, "existing", null)).RawKey!;
     }
 
     private async Task<(string deviceCode, string userCode)> StartAsync(string? clientName = "rewynd")
@@ -196,5 +206,61 @@ public class DeviceAuthEndpointsTests : IAsyncLifetime
             .Should().Be(HttpStatusCode.Unauthorized);
         (await anon.PostAsJsonAsync("/me/device/deny", new { userCode })).StatusCode
             .Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    // Containment: a leaked API key must NOT be able to approve a device on its owner's behalf.
+    // The interactive policy pins the JWT scheme, so a gtv_ key never satisfies it.
+    [Fact]
+    public async Task ApprovalEndpoints_RejectApiKeyAuth()
+    {
+        await _fx.ResetAsync();
+        var (userId, _) = await AuthTestHelpers.SeedUserAndIssueTokenAsync(_fx, _factory!, "owner");
+        var (_, userCode) = await StartAsync();
+        var rawKey = await MintApiKeyAsync(userId);
+
+        using var keyClient = _factory!.CreateClient();
+        keyClient.DefaultRequestHeaders.Add(ApiKeyDefaults.HeaderName, rawKey);
+
+        (await keyClient.GetAsync($"/me/device/{Uri.EscapeDataString(userCode)}")).StatusCode
+            .Should().Be(HttpStatusCode.Unauthorized);
+        (await keyClient.PostAsJsonAsync("/me/device/approve", new { userCode })).StatusCode
+            .Should().Be(HttpStatusCode.Unauthorized);
+        (await keyClient.PostAsJsonAsync("/me/device/deny", new { userCode })).StatusCode
+            .Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task ApproveThenPoll_AtKeyCap_Returns409TooManyKeys()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await AuthTestHelpers.SeedUserAndIssueTokenAsync(_fx, _factory!, "owner");
+
+        await using (var seed = _fx.CreateContext())
+        {
+            for (var i = 0; i < ApiKeyService.MaxActiveKeysPerUser; i++)
+            {
+                seed.ApiKeys.Add(new ApiKey
+                {
+                    UserId = userId,
+                    KeyHash = OpaqueToken.Hash($"cap-{i}"),
+                    KeyPrefix = $"gtv_cap{i}",
+                    CreatedAt = DateTimeOffset.UtcNow,
+                });
+            }
+            await seed.SaveChangesAsync();
+        }
+
+        var (deviceCode, userCode) = await StartAsync();
+        using (var jwt = AuthTestHelpers.CreateBearerClient(_factory!, token))
+        {
+            (await jwt.PostAsJsonAsync("/me/device/approve", new { userCode })).StatusCode
+                .Should().Be(HttpStatusCode.NoContent);
+        }
+
+        using var anon = _factory!.CreateClient();
+        var resp = await anon.PostAsJsonAsync("/auth/device/token", new { deviceCode });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("too_many_keys");
     }
 }

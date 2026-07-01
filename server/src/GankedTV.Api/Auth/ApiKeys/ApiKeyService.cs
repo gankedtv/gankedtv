@@ -40,6 +40,12 @@ public sealed class ApiKeyService
         var now = _clock.GetUtcNow();
         // "Active" = usable right now: neither revoked nor expired. An already-expired key can't
         // authenticate, so it shouldn't count against the quota.
+        //
+        // Intentionally soft: the count and the insert below aren't serialized under a lock, so
+        // two concurrent mints for the same user (e.g. approving two devices at once) could both
+        // pass the check and briefly land a 26th key. The cap is an abuse bound, not a security
+        // boundary, and the owner can revoke the extra — so this race is accepted rather than
+        // paying for a per-mint SELECT FOR UPDATE / advisory lock on a rare, low-harm path.
         var active = await _db.ApiKeys
             .CountAsync(k => k.UserId == userId
                 && k.RevokedAt == null
