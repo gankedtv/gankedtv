@@ -1,32 +1,30 @@
 @import 'tailwindcss';
 
 @theme {
-  /* Fonts */
-  --font-display: 'Rajdhani', sans-serif;
-  --font-heading: 'Barlow Condensed', sans-serif;
-  --font-body: 'DM Sans', sans-serif;
-  --font-mono: 'DM Mono', monospace;
+  /* Fonts — two families, nothing else */
+  --font-condensed: 'Barlow Condensed', sans-serif;
+  --font-body: 'Inter', sans-serif;
 
   /* ============================================================
-     NEWSPRINT — one palette, dark (default) + light via html.light.
-     Ink is the brand: issue numbers, @usernames, links, hover
-     borders, active underlines. Signal is for earned moments only:
-     LIVE, errors, NEW badges.
+     ARENA — one palette, dark (default) + light via html.light.
+     Mint is the only accent: every interactive state (links,
+     active tabs, tags, @usernames, CTAs) uses it. Depth comes
+     from surface color difference, never shadows.
      ============================================================ */
-  --color-surface-base: #161410;
-  --color-surface-raised: #221e16;
-  --color-surface-sunken: #0c0a08;
+  --color-surface-base: #0b0b0f;
+  --color-surface-raised: #111116;
+  --color-surface-high: #18181f;
 
-  --color-text-primary: #f4f1e8;
-  --color-text-secondary: #c5bca7;
-  --color-text-muted: #8a8474;
+  --color-text-primary: #f0f0f4;
+  --color-text-secondary: rgba(255, 255, 255, 0.5);
+  --color-text-muted: rgba(255, 255, 255, 0.28);
 
-  --color-border: #2c2820;
-  --color-border-strong: #3c3a30;
+  --color-border: rgba(255, 255, 255, 0.07);
+  --color-border-strong: rgba(255, 255, 255, 0.12);
 
-  --color-ink: #ed3a47;
-  --color-signal: #6c9bcf;
-  --color-signal-text: #161410;
+  --color-accent: #00e5a0;
+  --color-accent-bg: rgba(0, 229, 160, 0.08);
+  --color-accent-border: rgba(0, 229, 160, 0.25);
 
   /* Vendor brand colors (theme-agnostic — locked to provider identity) */
   --color-discord: #5865f2;
@@ -36,33 +34,37 @@
   --color-google: #131314;
   --color-google-hover: #1f2024;
 
-  /* Radius — sharp system. md (2px) is for inputs only. */
-  --radius-sm: 0px;
-  --radius-md: 2px;
-
   /* Custom breakpoint — 720px is the mobile/tablet boundary.
      Use `tablet:` and `max-tablet:` modifiers. */
   --breakpoint-tablet: 720px;
+
+  /* TEMP Newsprint compat aliases — every phase of the Arena migration stays
+     buildable while call sites move to the tokens above. Deleted in the final
+     cleanup phase once `grep -rE "ink|signal|sunken|font-(heading|display|mono)"`
+     over src comes back empty. */
+  --color-ink: var(--color-accent);
+  --color-signal: var(--color-accent);
+  --color-signal-text: #080f0d;
+  --color-surface-sunken: var(--color-surface-base);
+  --font-heading: 'Barlow Condensed', sans-serif;
+  --font-display: 'Barlow Condensed', sans-serif;
+  --font-mono: 'Inter', sans-serif;
 }
 
-:root {
-  --noise-opacity: 0.025;
-}
-
-/* Light mode — toggled via .light class on <html> */
+/* Light mode — toggled via .light class on <html>. Not an inversion:
+   warm cream page, white cards, deeper mint for WCAG AA on cream. */
 html.light {
-  --color-surface-base: #f4f1e8;
-  --color-surface-raised: #ece8da;
-  --color-surface-sunken: #d8d3c4;
-  --color-text-primary: #1a1810;
-  --color-text-secondary: #5a5444;
-  --color-text-muted: #6b6553;
-  --color-border: #1a1810;
-  --color-border-strong: #1a1810;
-  --color-ink: #c41825;
-  --color-signal: #3a6fb5;
-  --color-signal-text: #f4f1e8;
-  --noise-opacity: 0.018;
+  --color-surface-base: #f7f5f0;
+  --color-surface-raised: #ffffff;
+  --color-surface-high: #f0ece3;
+  --color-text-primary: #1a1a22;
+  --color-text-secondary: #888070;
+  --color-text-muted: #b0a898;
+  --color-border: #e8e4dc;
+  --color-border-strong: #d0ccc0;
+  --color-accent: #00b87d;
+  --color-accent-bg: #e8faf4;
+  --color-accent-border: #b3ead7;
 }
 
 html {
@@ -83,7 +85,7 @@ html.light {
     font-family: var(--font-body);
     background-color: var(--color-surface-base);
     color: var(--color-text-primary);
-    line-height: 1.55;
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     min-height: 100vh;
@@ -105,42 +107,18 @@ html.light {
   }
 }
 
-/* Top-of-fold printed rule, just under the sticky nav */
-body::before {
-  content: '';
-  position: fixed;
-  top: 64px;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: var(--color-border);
-  pointer-events: none;
-  z-index: 1;
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
 }
 
-/* Subtle paper noise — takes the digital sheen off */
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.5 0'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='1'/></svg>");
-  opacity: var(--noise-opacity);
-  pointer-events: none;
-  mix-blend-mode: overlay;
-  z-index: 2;
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 6px;
 }
 
-/* Content above ambient layers. Layered so Tailwind utilities (e.g. the nav's
-   `sticky`/`z-50`) can still override position/z-index — unlayered rules beat
-   every layered utility regardless of specificity, which silently breaks them. */
-@layer base {
-  main,
-  header,
-  footer,
-  nav {
-    position: relative;
-    z-index: 3;
-  }
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* Page eyebrow / live pulse dot */
@@ -154,7 +132,7 @@ body::after {
   }
 }
 
-/* Kill-feed toast animation */
+/* Toast animation */
 @keyframes slideUp {
   from {
     transform: translate(-50%, 60px);
@@ -173,7 +151,7 @@ body::after {
   }
 }
 
-/* Loading ticker bar — pulses width like a wire-service feed */
+/* Loading bar */
 @keyframes tick {
   0%,
   100% {
@@ -184,17 +162,17 @@ body::after {
   }
 }
 
-/* Placeholder art for missing images — flat stripes, the one
-   sanctioned gradient (an honest render-failure fallback) */
+/* Placeholder art for missing images — flat surface, honest fallback */
 .placeholder-art {
   width: 100%;
   height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: repeating-linear-gradient(135deg, #221e16 0 14px, #1a160f 14px 28px);
-  font-family: var(--font-mono);
+  background: var(--color-surface-high);
+  font-family: var(--font-body);
   font-size: 11px;
+  font-weight: 600;
   color: var(--color-text-muted);
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -209,25 +187,19 @@ body::after {
 }
 
 /* ============================================================
-   PLYR — theme the player to the system: ink accent, sharp
-   corners, no menu shadow. The frame (BroadcastFrame) carries
-   the identity; the player skin stays quiet.
+   PLYR — theme the player to the system: mint accent, 6px
+   controls, no menu shadow (the one sanctioned shadow removal).
    ============================================================ */
 
 .plyr {
-  --plyr-color-main: var(--color-ink);
-  --plyr-control-radius: 0;
-  --plyr-menu-radius: 0;
+  --plyr-color-main: var(--color-accent);
+  --plyr-control-radius: 6px;
+  --plyr-menu-radius: 8px;
   --plyr-font-family: var(--font-body);
-  --plyr-tooltip-radius: 0;
+  --plyr-tooltip-radius: 6px;
 }
 
 .plyr__menu__container {
   box-shadow: none;
   border: 1px solid var(--color-border-strong);
-}
-
-.plyr__time,
-.plyr__tooltip {
-  font-family: var(--font-mono);
 }
