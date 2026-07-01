@@ -4,11 +4,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { clips, type ClipFeedItem } from '@/api/clips'
 import { games as gamesApi, type GameListItem } from '@/api/games'
 import { useAuthStore } from '@/stores/auth'
-import { formatNum, formatDuration, formatRelativeTime } from '@/lib/format'
-import { issueNumber } from '@/lib/issue'
+import { formatNum, formatRelativeTime } from '@/lib/format'
 import ClipCard from '@/components/ClipCard.vue'
 import GameTag from '@/components/GameTag.vue'
-import TagChip from '@/components/TagChip.vue'
 import DurationBadge from '@/components/DurationBadge.vue'
 import AuthorHandle from '@/components/AuthorHandle.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
@@ -24,9 +22,14 @@ const route = useRoute()
 const auth = useAuthStore()
 
 type FeedSource = 'public' | 'following'
-const TABS: { key: FeedSource; label: string }[] = [
-  { key: 'public', label: 'Latest' },
+type HomeTab = FeedSource | 'trending' | 'top-rated'
+// "For You" maps to the public latest feed until personalization ships;
+// "Top Rated" renders disabled until the API grows a likes-weighted sort.
+const TABS: { key: HomeTab; label: string; to?: { name: string }; disabled?: boolean }[] = [
+  { key: 'public', label: 'For You' },
   { key: 'following', label: 'Following' },
+  { key: 'trending', label: 'Trending', to: { name: 'trending' } },
+  { key: 'top-rated', label: 'Top Rated', disabled: true },
 ]
 
 // Honour ?tab=following (used after login to bounce a viewer back to the tab they
@@ -49,7 +52,7 @@ const errored = ref(false)
 // "Load more" button so we don't blow away the loaded feed.
 const paginationErrored = ref(false)
 
-// Side-loads for the By Game / Trending bands. Silent failure — the band simply
+// Side-loads for the Top Games / Trending bands. Silent failure — the band simply
 // doesn't render, the feed is never blocked on them.
 const bandGames = ref<GameListItem[]>([])
 const bandTrending = ref<ClipFeedItem[]>([])
@@ -68,12 +71,12 @@ const rest = computed(() => {
   const heroId = hero.value?.id
   return heroId ? items.value.filter((c) => c.id !== heroId) : items.value
 })
-// Band I right rail — ranked Latest Drops list.
+// Hero band right rail — ranked top-clips list.
 const latestDrops = computed(() => rest.value.slice(0, 5))
-// Band IV — everything else, freshest first.
+// Recent Clips band — everything else, freshest first.
 const feed = computed(() => rest.value.slice(5))
 
-// Band III — feature + four runner-ups.
+// Trending band — feature + four runner-ups.
 const trendingFeature = computed(() => bandTrending.value[0] ?? null)
 const trendingList = computed(() => bandTrending.value.slice(1, 5))
 
@@ -111,6 +114,12 @@ async function loadMore() {
   } finally {
     if (source.value === requestedSource) loading.value = false
   }
+}
+
+function onTabSelect(next: HomeTab) {
+  // Link tabs (Trending) navigate on their own; disabled tabs never emit.
+  if (next !== 'public' && next !== 'following') return
+  selectTab(next)
 }
 
 function selectTab(next: FeedSource) {
@@ -177,7 +186,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="mx-auto max-w-360 px-8 pt-10 pb-30 max-tablet:px-4 max-tablet:pt-5 max-tablet:pb-20">
+  <main class="mx-auto max-w-300 px-7 pt-7 pb-16 max-tablet:px-4 max-tablet:pt-4">
     <!-- Initial loading state — explicit so the empty-state branch doesn't flash
          in the gap between mount and the first response. -->
     <StatusPanel
@@ -186,7 +195,7 @@ onMounted(() => {
       message="Loading"
     />
 
-    <!-- Empty state — Following gets its own CTA per the issue spec; Latest falls
+    <!-- Empty state — Following gets its own CTA per the issue spec; For You falls
          through to the original "no clips yet — be the first" path. -->
     <StatusPanel
       v-else-if="showFollowingEmpty"
@@ -195,14 +204,14 @@ onMounted(() => {
     >
       <div class="flex flex-wrap items-center justify-center gap-2">
         <button
-          class="cursor-pointer border border-border bg-transparent px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
+          class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
           @click="selectTab('public')"
         >
-          Browse Latest
+          Browse clips
         </button>
         <RouterLink
           to="/games"
-          class="border border-border px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
+          class="rounded-lg border border-border-strong px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
         >
           Explore games
         </RouterLink>
@@ -216,7 +225,7 @@ onMounted(() => {
     >
       <RouterLink
         to="/upload"
-        class="border border-border px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
+        class="rounded-lg border border-border-strong px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
       >
         Upload a clip
       </RouterLink>
@@ -225,7 +234,7 @@ onMounted(() => {
     <!-- Error state -->
     <StatusPanel v-else-if="errored" kind="error" message="Couldn't load the feed.">
       <button
-        class="cursor-pointer border border-border bg-transparent px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary transition-colors duration-150 hover:border-ink hover:text-ink"
+        class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
         @click="loadMore"
       >
         Retry
@@ -233,106 +242,123 @@ onMounted(() => {
     </StatusPanel>
 
     <template v-else-if="hero">
-      <!-- ====== Band I — Hero + Latest Drops ====== -->
-      <section>
-        <SectionHeader roman="I" :kicker="heroIsFeatured ? 'Clip of the Day' : 'Featured Clip'" />
-        <div class="grid grid-cols-[2fr_1fr] gap-x-9 gap-y-8 pt-6 max-lg:grid-cols-1">
-          <!-- Hero -->
-          <article class="group flex min-w-0 cursor-pointer flex-col" @click="openClip(hero.id)">
-            <div class="flex items-end gap-5">
-              <span
-                class="font-heading text-[clamp(56px,8vw,96px)] font-bold leading-[0.92] tracking-[-0.01em] text-ink"
-                aria-hidden="true"
+      <!-- ====== Feed controls — tabs + game filter pills ====== -->
+      <div class="flex items-center gap-4 border-b border-border">
+        <UnderlineTabs class="border-b-0" :tabs="TABS" :active="source" @select="onTabSelect" />
+        <div
+          v-if="bandGames.length"
+          class="ml-auto flex flex-wrap items-center justify-end gap-1.5 pb-2 max-tablet:hidden"
+        >
+          <span
+            class="rounded-full border border-accent-border bg-accent-bg px-3 py-1 text-[11px] font-semibold text-accent"
+          >
+            All
+          </span>
+          <RouterLink
+            v-for="g in bandGames"
+            :key="g.id"
+            :to="{ name: 'game-detail', params: { slug: g.slug } }"
+            class="rounded-full border border-border px-3 py-1 text-[11px] font-semibold text-text-muted no-underline transition-colors duration-150 hover:border-accent-border hover:text-accent"
+          >
+            {{ g.tag }}
+          </RouterLink>
+        </div>
+      </div>
+
+      <!-- ====== Hero band — featured clip + ranked sidebar ====== -->
+      <section class="mt-5">
+        <div class="grid grid-cols-[1fr_300px] items-start gap-5 max-lg:grid-cols-1">
+          <!-- Hero — full-bleed thumbnail, overlay title (board treatment 1d) -->
+          <article
+            class="group relative aspect-video min-w-0 cursor-pointer overflow-hidden rounded-lg border border-border bg-black transition-colors duration-150 hover:border-border-strong"
+            @click="openClip(hero.id)"
+          >
+            <img :src="hero.thumbnailUrl" alt="" class="absolute inset-0 h-full w-full object-cover" />
+            <!-- The one sanctioned gradient: thumbnail legibility overlay. -->
+            <div
+              class="absolute inset-x-0 bottom-0 h-[64%] bg-[linear-gradient(transparent,rgba(0,0,0,0.88))]"
+            ></div>
+            <div v-if="hero.game" class="absolute top-3 left-3" @click.stop>
+              <RouterLink
+                :to="{ name: 'game-detail', params: { slug: hero.game.slug } }"
+                :aria-label="`Browse ${hero.game.name} clips`"
               >
-                {{ issueNumber(hero.id) }}
+                <GameTag :tag="hero.game.tag" size="md" />
+              </RouterLink>
+            </div>
+            <DurationBadge :seconds="hero.durationSecs" size="md" class="absolute top-3 right-3" />
+            <button
+              class="absolute inset-0 flex cursor-pointer items-center justify-center bg-transparent"
+              :aria-label="`Play: ${hero.title}`"
+              @click.stop="openClip(hero.id)"
+            >
+              <span
+                class="inline-flex size-14 items-center justify-center rounded-full border border-white/30 bg-black/55 text-[#f4f1e8] transition-colors duration-150 group-hover:bg-black/70"
+              >
+                <IconPlay :size="22" />
               </span>
+            </button>
+            <div class="pointer-events-none absolute inset-x-5 bottom-4">
+              <p class="m-0 mb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-accent">
+                {{ heroIsFeatured ? 'Clip of the Day' : 'Featured Clip' }}
+              </p>
               <h2
-                class="m-0 pb-1.5 font-heading text-[clamp(28px,3.5vw,44px)] font-bold uppercase leading-[1.02] text-text-primary transition-colors duration-150 group-hover:text-ink"
+                class="m-0 mb-2 font-condensed text-[clamp(22px,2.6vw,34px)] font-black uppercase leading-[0.98] text-[#f4f1e8]"
               >
                 {{ hero.title }}
               </h2>
-            </div>
-            <div
-              class="relative mt-5 aspect-video overflow-hidden border border-border bg-surface-sunken transition-colors duration-150 group-hover:border-ink"
-            >
-              <img :src="hero.thumbnailUrl" alt="" class="h-full w-full object-cover" />
-              <div v-if="hero.game" class="absolute bottom-2.5 left-2.5">
-                <GameTag :tag="hero.game.tag" size="md" />
-              </div>
-              <DurationBadge
-                :seconds="hero.durationSecs"
-                size="md"
-                class="absolute bottom-2.5 right-2.5"
-              />
-              <button
-                class="absolute inset-0 flex cursor-pointer items-center justify-center bg-transparent"
-                :aria-label="`Play: ${hero.title}`"
-                @click.stop="openClip(hero.id)"
+              <div
+                class="pointer-events-auto flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#f4f1e8]/80"
               >
-                <span
-                  class="inline-flex size-18 items-center justify-center border border-[#f4f1e8]/25 bg-black/45 text-[#f4f1e8] transition-colors duration-150 group-hover:border-ink group-hover:bg-ink group-hover:text-signal-text"
-                >
-                  <IconPlay :size="26" />
-                </span>
-              </button>
-            </div>
-            <div
-              class="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 font-mono text-[11px] uppercase tracking-[0.1em] text-text-muted"
-            >
-              <AuthorHandle
-                :username="hero.author.username"
-                as="link"
-                class="text-ink"
-                @click.stop
-              />
-              <span>· {{ formatRelativeTime(hero.createdAt) }}</span>
-              <span v-if="hero.game">· {{ hero.game.name }}</span>
-              <span class="ml-auto flex items-center gap-3">
+                <AuthorHandle
+                  :username="hero.author.username"
+                  as="link"
+                  class="font-semibold text-accent"
+                  @click.stop
+                />
+                <span class="text-[#f4f1e8]/50">·</span>
                 <span>{{ formatNum(hero.viewCount) }} views</span>
-                <span>{{ formatNum(hero.likeCount) }} ♥</span>
-                <span v-if="hero.durationSecs !== null">{{
-                  formatDuration(hero.durationSecs)
-                }}</span>
-              </span>
-            </div>
-            <div v-if="hero.tags.length" class="mt-3 flex flex-wrap gap-2" @click.stop>
-              <TagChip v-for="t in hero.tags" :key="t.id" :slug="t.slug" :name="t.name" size="md" />
+                <span class="text-[#f4f1e8]/50">·</span>
+                <span>{{ formatNum(hero.likeCount) }} likes</span>
+                <span class="text-[#f4f1e8]/50">·</span>
+                <span>{{ formatRelativeTime(hero.createdAt) }}</span>
+              </div>
             </div>
           </article>
 
-          <!-- Latest Drops — ranked list -->
+          <!-- Ranked sidebar — top clips 01–05 -->
           <aside v-if="latestDrops.length" class="min-w-0">
-            <p
-              class="m-0 font-mono text-[10px] font-medium uppercase leading-none tracking-[0.22em] text-text-secondary"
-            >
-              Latest Drops
+            <p class="m-0 text-[10px] font-bold uppercase tracking-[0.12em] text-text-muted">
+              Top clips today
             </p>
-            <ol data-testid="latest-drops" class="m-0 mt-2 flex list-none flex-col p-0">
+            <ol data-testid="latest-drops" class="m-0 mt-1 flex list-none flex-col p-0">
               <li
                 v-for="(clip, i) in latestDrops"
                 :key="clip.id"
-                class="group flex cursor-pointer items-center gap-4 border-t border-border py-3.5 first:border-t-0"
+                class="group grid cursor-pointer grid-cols-[36px_56px_1fr] items-center gap-2.5 border-b border-border py-2.5"
                 @click="openClip(clip.id)"
               >
                 <span
-                  class="min-w-10 font-heading text-[28px] font-bold leading-none text-text-muted transition-colors duration-150 group-hover:text-ink"
+                  class="font-condensed text-[22px] font-black leading-none"
+                  :class="i === 0 ? 'text-accent' : 'text-text-muted'"
                 >
                   {{ String(i + 1).padStart(2, '0') }}
                 </span>
-                <span class="min-w-0 flex-1">
+                <span
+                  class="relative block aspect-video overflow-hidden rounded-md border border-border bg-black transition-colors duration-150 group-hover:border-border-strong"
+                >
+                  <img :src="clip.thumbnailUrl" alt="" class="h-full w-full object-cover" />
+                </span>
+                <span class="min-w-0">
                   <span
-                    class="block truncate font-heading text-[17px] font-medium uppercase leading-[1.1] text-text-primary transition-colors duration-150 group-hover:text-ink"
+                    class="block truncate text-[11.5px] font-semibold leading-tight text-text-primary transition-colors duration-150 group-hover:text-accent"
                   >
                     {{ clip.title }}
                   </span>
-                  <span
-                    class="mt-1 block font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
-                  >
-                    @{{ clip.author.username }} · {{ formatRelativeTime(clip.createdAt) }}
+                  <span class="mt-0.5 block truncate text-[10px] text-text-secondary">
+                    <span class="text-accent">@{{ clip.author.username }}</span>
+                    · {{ formatNum(clip.viewCount) }} views
                   </span>
-                </span>
-                <span class="shrink-0 font-heading text-xl font-bold text-text-primary">
-                  {{ formatNum(clip.viewCount) }}
                 </span>
               </li>
             </ol>
@@ -340,62 +366,47 @@ onMounted(() => {
         </div>
       </section>
 
-      <!-- ====== Band II — By Game ====== -->
-      <section v-if="bandGames.length" class="pt-10">
-        <SectionHeader
-          roman="II"
-          kicker="By Game"
-          title="The Catalogue"
-          blurb="Where the bracket lives this week."
-          :more-to="{ name: 'games' }"
-        />
-        <div
-          class="grid grid-cols-5 gap-x-5.5 gap-y-7 pt-6 max-lg:grid-cols-3 max-tablet:grid-cols-2"
-        >
-          <GameCoverTile v-for="g in bandGames" :key="g.id" :game="g" />
+      <!-- ====== Top Games ====== -->
+      <section v-if="bandGames.length" class="mt-8 border-t border-border pt-7">
+        <SectionHeader kicker="Browse" title="Top Games" :more-to="{ name: 'games' }" />
+        <div class="grid grid-cols-5 gap-3 max-lg:grid-cols-3 max-tablet:grid-cols-2">
+          <GameCoverTile v-for="(g, i) in bandGames" :key="g.id" :game="g" :rank="i + 1" />
         </div>
       </section>
 
-      <!-- ====== Band III — Trending 24h ====== -->
-      <section v-if="trendingFeature" class="pt-10">
-        <SectionHeader
-          roman="III"
-          kicker="Trending · 24h"
-          title="What Climbed Overnight"
-          :more-to="{ name: 'trending' }"
-        />
-        <div class="grid grid-cols-[1.6fr_1fr] gap-x-9 gap-y-8 pt-6 max-lg:grid-cols-1">
+      <!-- ====== Trending ====== -->
+      <section v-if="trendingFeature" class="mt-8 border-t border-border pt-7">
+        <SectionHeader kicker="Live" title="Trending" :more-to="{ name: 'trending' }" />
+        <div class="grid grid-cols-[1fr_280px] items-start gap-5 max-lg:grid-cols-1">
           <!-- Feature -->
           <article
-            class="group flex min-w-0 cursor-pointer flex-col gap-4"
+            class="group grid min-w-0 cursor-pointer grid-cols-[240px_1fr] items-start gap-4 rounded-lg border border-border bg-surface-raised p-3.5 transition-colors duration-150 hover:border-border-strong max-tablet:grid-cols-1"
             @click="openClip(trendingFeature.id)"
           >
             <div
-              class="relative aspect-video overflow-hidden border border-border bg-surface-sunken transition-colors duration-150 group-hover:border-ink"
+              class="relative aspect-video overflow-hidden rounded-md border border-border bg-black"
             >
               <img :src="trendingFeature.thumbnailUrl" alt="" class="h-full w-full object-cover" />
-              <span
-                class="absolute left-2.5 top-2 font-heading text-2xl font-bold leading-none text-ink opacity-85"
-                aria-hidden="true"
-              >
-                No. {{ issueNumber(trendingFeature.id) }}
-              </span>
-              <div v-if="trendingFeature.game" class="absolute bottom-2 left-2">
-                <GameTag :tag="trendingFeature.game.tag" />
-              </div>
               <DurationBadge
                 :seconds="trendingFeature.durationSecs"
-                class="absolute bottom-2 right-2"
+                class="absolute right-2 bottom-2"
               />
             </div>
-            <div>
+            <div class="min-w-0">
+              <div v-if="trendingFeature.game" class="mb-2" @click.stop>
+                <RouterLink
+                  :to="{ name: 'game-detail', params: { slug: trendingFeature.game.slug } }"
+                >
+                  <GameTag :tag="trendingFeature.game.tag" />
+                </RouterLink>
+              </div>
               <h3
-                class="m-0 font-heading text-[26px] font-bold uppercase leading-[1.05] text-text-primary transition-colors duration-150 group-hover:text-ink"
+                class="m-0 line-clamp-2 text-sm font-semibold leading-snug text-text-primary transition-colors duration-150 group-hover:text-accent"
               >
                 {{ trendingFeature.title }}
               </h3>
-              <p class="m-0 mt-2 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
-                <span class="text-ink">@{{ trendingFeature.author.username }}</span>
+              <p class="m-0 mt-2 text-[11px] text-text-muted">
+                <span class="font-medium text-accent">@{{ trendingFeature.author.username }}</span>
                 · {{ formatNum(trendingFeature.viewCount) }} views ·
                 {{ formatRelativeTime(trendingFeature.createdAt) }}
               </p>
@@ -407,53 +418,41 @@ onMounted(() => {
             <li
               v-for="(clip, i) in trendingList"
               :key="clip.id"
-              class="group flex cursor-pointer items-center gap-4 border-t border-border py-3.5 first:border-t-0 first:pt-0"
+              class="group grid cursor-pointer grid-cols-[30px_1fr_auto] items-center gap-2.5 border-b border-border py-2.5 first:pt-0"
               @click="openClip(clip.id)"
             >
-              <span
-                class="min-w-8 font-heading text-[28px] font-bold leading-none text-text-muted transition-colors duration-150 group-hover:text-ink"
-              >
-                {{ i + 2 }}
+              <span class="font-condensed text-xl font-black leading-none text-text-muted">
+                {{ String(i + 2).padStart(2, '0') }}
               </span>
-              <span
-                class="relative aspect-video w-28 shrink-0 overflow-hidden border border-border bg-surface-sunken transition-colors duration-150 group-hover:border-ink"
-              >
-                <img :src="clip.thumbnailUrl" alt="" class="h-full w-full object-cover" />
-              </span>
-              <span class="min-w-0 flex-1">
+              <span class="min-w-0">
                 <span
-                  class="block truncate font-heading text-base font-medium uppercase leading-[1.1] text-text-primary transition-colors duration-150 group-hover:text-ink"
+                  class="block truncate text-[11.5px] font-semibold leading-tight text-text-primary transition-colors duration-150 group-hover:text-accent"
                 >
                   {{ clip.title }}
                 </span>
-                <span
-                  class="mt-1 block font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted"
-                >
-                  @{{ clip.author.username }} · {{ formatNum(clip.viewCount) }} views
+                <span class="mt-0.5 block truncate text-[10px] text-text-secondary">
+                  <span class="text-accent">@{{ clip.author.username }}</span>
                 </span>
+              </span>
+              <span class="shrink-0 text-[11px] font-semibold text-text-secondary">
+                {{ formatNum(clip.viewCount) }}
               </span>
             </li>
           </ol>
         </div>
       </section>
 
-      <!-- ====== Band IV — The Feed ====== -->
-      <section class="pt-10">
-        <SectionHeader roman="IV" kicker="The Feed" title="Everything Else" blurb="Freshest first.">
-          <template #right>
-            <UnderlineTabs class="border-b-0" :tabs="TABS" :active="source" @select="selectTab" />
-          </template>
-        </SectionHeader>
+      <!-- ====== Recent Clips ====== -->
+      <section class="mt-8 border-t border-border pt-7">
+        <SectionHeader kicker="New" title="Recent Clips" />
         <div
           v-if="feed.length"
           data-testid="feed-grid"
-          class="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-x-5.5 gap-y-7 pt-6"
+          class="grid grid-cols-4 gap-3.5 max-lg:grid-cols-2 max-tablet:grid-cols-1"
         >
           <ClipCard v-for="clip in feed" :key="clip.id" :clip="clip" @click="openClip(clip.id)" />
         </div>
-        <p v-else class="m-0 pt-6 font-mono text-[11px] uppercase tracking-widest text-text-muted">
-          The whole issue is above the fold today.
-        </p>
+        <p v-else class="m-0 text-[11px] text-text-muted">Everything is above the fold today.</p>
 
         <LoadMoreButton
           v-if="cursor || paginationErrored"
