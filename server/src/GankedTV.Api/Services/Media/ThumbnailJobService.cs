@@ -39,10 +39,9 @@ public sealed class ThumbnailJobService : IThumbnailJobService
         var opts = _jobOptions.CurrentValue;
         var buckets = _s3.CurrentValue;
 
-        // Presign a GET against the internal endpoint. ffmpeg in dev resolves the MinIO
-        // hostname inside the docker network; in prod (4060 host), the URL gets rewritten
-        // by S3ObjectStorageService.RewriteHost to the public endpoint already.
-        var videoUrl = _storage.GetPresignedGetUrl(buckets.ClipsBucket, job.VideoKey, DownloadUrlLifetime);
+        // Presign a worker-facing GET: against S3_INTERNAL_ENDPOINT when set (a split worker host
+        // that reaches storage over a trusted internal endpoint), else the same URL browsers get.
+        var videoUrl = _storage.GetPresignedGetUrlForWorker(buckets.ClipsBucket, job.VideoKey, DownloadUrlLifetime);
 
         // Probe first so we know the duration before deciding the seek offset, plus we
         // get width/height to backfill the clip row (issue #57 mentions DurationSecs only,

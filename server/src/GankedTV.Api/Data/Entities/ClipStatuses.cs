@@ -10,6 +10,13 @@ public static class ClipFailureReasons
     public const string FetchFailed = "fetch_failed";
     public const string TranscodeFailed = "transcode_failed";
     public const string ThumbnailFailed = "thumbnail_failed";
+
+    // Whether requeuing a failed clip is worth it. Content rejections (the clip itself is
+    // unacceptable) won't succeed on a retry, so the media-requeue recovery path skips them;
+    // everything else — infra/probe/fetch/transcode/thumbnail faults, or an unrecorded reason —
+    // is retryable once the underlying cause (e.g. a storage TLS misconfig) is fixed.
+    public static bool IsRetryable(string? reason) =>
+        reason is not SourceTooLong and not SourceTooLarge;
 }
 
 public static class ClipStatuses

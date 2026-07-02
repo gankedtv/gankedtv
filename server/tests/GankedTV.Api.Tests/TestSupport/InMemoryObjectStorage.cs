@@ -49,4 +49,5 @@ public sealed class InMemoryObjectStorage : IObjectStorageService
 
     public string GetPresignedPutUrl(string bucket, string key, string contentType, TimeSpan? expiry = null) => string.Empty;
     public string GetPresignedGetUrl(string bucket, string key, TimeSpan? expiry = null) => string.Empty;
+    public string GetPresignedGetUrlForWorker(string bucket, string key, TimeSpan? expiry = null) => GetPresignedGetUrl(bucket, key, expiry);
 }

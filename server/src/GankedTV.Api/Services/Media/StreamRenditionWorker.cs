@@ -19,6 +19,8 @@ public sealed class StreamRenditionWorker : MediaStageWorker<ClaimedStreamJob>
 
     protected override string StageName => "jit";
     protected override bool IsWorkerEnabled(MediaJobOptions opts) => opts.TranscodeWorkerEnabled;
+    // The JIT stage fetches the stored master to build renditions, so it preflights storage too.
+    protected override bool FetchesFromStorage => true;
 
     protected override Task<ClaimedStreamJob?> ClaimAsync(IServiceProvider scope, MediaJobOptions opts, CancellationToken ct) =>
         scope.GetRequiredService<IClipStreamJobStore>().ClaimNextAsync(opts.LeaseDuration, opts.MaxAttempts, ct);

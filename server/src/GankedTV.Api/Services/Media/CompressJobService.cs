@@ -37,7 +37,7 @@ public sealed class CompressJobService : ICompressJobService
         var opts = _jobOptions.CurrentValue;
         var buckets = _s3.CurrentValue;
 
-        var inputUrl = _storage.GetPresignedGetUrl(buckets.ClipsBucket, job.VideoKey, DownloadUrlLifetime);
+        var inputUrl = _storage.GetPresignedGetUrlForWorker(buckets.ClipsBucket, job.VideoKey, DownloadUrlLifetime);
         var outputKey = CompressedKeyFor(job.VideoKey);
 
         // Per-attempt token so a re-claimed lease can't collide on the same temp path.

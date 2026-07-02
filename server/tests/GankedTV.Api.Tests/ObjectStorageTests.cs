@@ -12,7 +12,9 @@ public class ObjectStorageTests
 {
     private static S3ObjectStorageService BuildService(
         IAmazonS3 s3,
-        string? publicUrl = null)
+        string? publicUrl = null,
+        string? internalEndpoint = null,
+        IAmazonS3? workerPresigner = null)
     {
         var options = Options.Create(new S3Options
         {
@@ -20,13 +22,16 @@ public class ObjectStorageTests
             AccessKey = "key",
             SecretKey = "secret",
             PublicUrl = publicUrl,
+            InternalEndpoint = internalEndpoint,
             ClipsBucket = "clips",
             ThumbnailsBucket = "thumbnails",
             GameCoversBucket = "game-covers",
             StreamCacheBucket = "stream-cache",
         });
-        // Same mock for ops + presigner: presign tests keep mocking GetPreSignedURL on `s3`.
-        return new S3ObjectStorageService(s3, s3, options, NullLogger<S3ObjectStorageService>.Instance);
+        // Same mock for ops + presigner: presign tests keep mocking GetPreSignedURL on `s3`. The
+        // worker presigner defaults to the same mock unless a test needs to tell them apart.
+        return new S3ObjectStorageService(
+            s3, s3, workerPresigner ?? s3, options, NullLogger<S3ObjectStorageService>.Instance);
     }
 
     [Fact]
@@ -108,7 +113,7 @@ public class ObjectStorageTests
             AvatarsBucket = "clips", // and the avatars bucket — must not expose private media either
         });
 
-        await new S3ObjectStorageService(s3, s3, options, NullLogger<S3ObjectStorageService>.Instance)
+        await new S3ObjectStorageService(s3, s3, s3, options, NullLogger<S3ObjectStorageService>.Instance)
             .EnsureBucketsAsync();
 
         await s3.DidNotReceive().PutBucketPolicyAsync(
@@ -306,7 +311,7 @@ public class ObjectStorageTests
             ThumbnailsBucket = "thumbnails",
         });
 
-        var url = new S3ObjectStorageService(ops, presigner, options, NullLogger<S3ObjectStorageService>.Instance)
+        var url = new S3ObjectStorageService(ops, presigner, presigner, options, NullLogger<S3ObjectStorageService>.Instance)
             .GetPresignedPutUrl("clips", "key", "video/mp4");
 
         url.Should().Be("https://cdn.example/clips/key?X-Amz-Signature=pub");
@@ -333,12 +338,53 @@ public class ObjectStorageTests
             ThumbnailsBucket = "thumbnails",
         });
 
-        var url = new S3ObjectStorageService(ops, presigner, options, NullLogger<S3ObjectStorageService>.Instance)
+        var url = new S3ObjectStorageService(ops, presigner, presigner, options, NullLogger<S3ObjectStorageService>.Instance)
             .GetPresignedGetUrl("clips", "key");
 
         url.Should().Be("https://cdn.example/clips/key?X-Amz-Signature=pub");
         presigner.Received(1).GetPreSignedURL(Arg.Any<GetPreSignedUrlRequest>());
         ops.DidNotReceive().GetPreSignedURL(Arg.Any<GetPreSignedUrlRequest>());
+    }
+
+    [Fact]
+    public void GetPresignedGetUrlForWorker_NoInternalEndpoint_FallsThroughToPublicPresign()
+    {
+        var s3 = Substitute.For<IAmazonS3>();
+        var worker = Substitute.For<IAmazonS3>();
+        s3.GetPreSignedURL(Arg.Any<GetPreSignedUrlRequest>())
+            .Returns("http://minio:9000/clips/key?X-Amz-Signature=abc");
+
+        var url = BuildService(s3, publicUrl: "http://localhost:9000", workerPresigner: worker)
+            .GetPresignedGetUrlForWorker("clips", "key");
+
+        // With no internal endpoint, workers get the same URL browsers do — the worker presigner
+        // is never touched.
+        url.Should().Be("http://localhost:9000/clips/key?X-Amz-Signature=abc");
+        worker.DidNotReceive().GetPreSignedURL(Arg.Any<GetPreSignedUrlRequest>());
+    }
+
+    [Fact]
+    public void GetPresignedGetUrlForWorker_WithInternalEndpoint_SignsWithWorkerPresignerNoRewrite()
+    {
+        var s3 = Substitute.For<IAmazonS3>();
+        var worker = Substitute.For<IAmazonS3>();
+        GetPreSignedUrlRequest? captured = null;
+        worker.GetPreSignedURL(Arg.Do<GetPreSignedUrlRequest>(r => captured = r))
+            .Returns("http://minio-internal:9000/clips/key?X-Amz-Signature=int");
+
+        var url = BuildService(
+                s3,
+                publicUrl: "https://cdn.example",
+                internalEndpoint: "http://minio-internal:9000",
+                workerPresigner: worker)
+            .GetPresignedGetUrlForWorker("clips", "key");
+
+        // Signed against the internal endpoint and returned verbatim (no rewrite to the public
+        // host), so ffmpeg on a split host fetches over the trusted endpoint.
+        url.Should().Be("http://minio-internal:9000/clips/key?X-Amz-Signature=int");
+        captured!.Verb.Should().Be(HttpVerb.GET);
+        captured.Protocol.Should().Be(Protocol.HTTP);
+        s3.DidNotReceive().GetPreSignedURL(Arg.Any<GetPreSignedUrlRequest>());
     }
 
     [Fact]
@@ -444,7 +490,7 @@ public class ObjectStorageTests
             ClipsBucket = "clips",
             ThumbnailsBucket = "thumbnails",
         });
-        new S3ObjectStorageService(s3, s3, opts, NullLogger<S3ObjectStorageService>.Instance)
+        new S3ObjectStorageService(s3, s3, s3, opts, NullLogger<S3ObjectStorageService>.Instance)
             .GetPresignedPutUrl("clips", "key", "video/mp4");
 
         captured!.Protocol.Should().Be(Protocol.HTTPS);

@@ -6,6 +6,16 @@ public sealed class S3Options
     public string AccessKey { get; set; } = "";
     public string SecretKey { get; set; } = "";
     public string? PublicUrl { get; set; }
+
+    // Endpoint the media WORKERS (thumbnail/compress/JIT) presign their source fetches against,
+    // when it must differ from the browser-facing PublicUrl. On a split deployment the workers
+    // run on a host that reaches storage over a different (internally trusted) endpoint than the
+    // public one; fetching from PublicUrl there fails TLS verification when the worker container
+    // doesn't trust that certificate. Point this at an endpoint the worker trusts (internal http,
+    // or an https host whose CA the worker image bundles). Unset → workers presign the same URL
+    // as browsers (single-host dev/prod, unchanged).
+    public string? InternalEndpoint { get; set; }
+
     public string ClipsBucket { get; set; } = "clips";
     public string ThumbnailsBucket { get; set; } = "thumbnails";
 

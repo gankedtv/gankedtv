@@ -13,17 +13,22 @@ public sealed class S3ObjectStorageService : IObjectStorageService
     // Signs presigned URLs against the browser-facing host (see the "presigner" registration in
     // Program.cs). Separate from _s3 so real ops stay on the fast internal endpoint.
     private readonly IAmazonS3 _presigner;
+    // Signs worker-facing fetch URLs against S3Options.InternalEndpoint (the "worker-presigner"
+    // registration). Same instance as _presigner when no InternalEndpoint is configured.
+    private readonly IAmazonS3 _workerPresigner;
     private readonly S3Options _options;
     private readonly ILogger<S3ObjectStorageService> _logger;
 
     public S3ObjectStorageService(
         IAmazonS3 s3,
         [FromKeyedServices("presigner")] IAmazonS3 presigner,
+        [FromKeyedServices("worker-presigner")] IAmazonS3 workerPresigner,
         IOptions<S3Options> options,
         ILogger<S3ObjectStorageService> logger)
     {
         _s3 = s3;
         _presigner = presigner;
+        _workerPresigner = workerPresigner;
         _options = options.Value;
         _logger = logger;
     }
@@ -173,6 +178,32 @@ public sealed class S3ObjectStorageService : IObjectStorageService
         };
 
         return RewriteHost(_presigner.GetPreSignedURL(request), _options.PublicUrl);
+    }
+
+    public string GetPresignedGetUrlForWorker(
+        string bucket,
+        string key,
+        TimeSpan? expiry = null)
+    {
+        // No internal endpoint configured: workers fetch the same URL browsers get.
+        if (string.IsNullOrWhiteSpace(_options.InternalEndpoint))
+        {
+            return GetPresignedGetUrl(bucket, key, expiry);
+        }
+
+        // Sign against the internal endpoint (the "worker-presigner" client's ServiceURL) so the
+        // canonical host matches the URL the worker fetches; no post-sign host rewrite is needed
+        // because the signed URL already targets InternalEndpoint.
+        var request = new GetPreSignedUrlRequest
+        {
+            BucketName = bucket,
+            Key = key,
+            Verb = HttpVerb.GET,
+            Expires = DateTime.UtcNow.Add(expiry ?? DefaultExpiry),
+            Protocol = ResolveProtocol(_options.InternalEndpoint),
+        };
+
+        return _workerPresigner.GetPreSignedURL(request);
     }
 
     // GetPreSignedURL defaults to https:// regardless of the ServiceURL scheme. For MinIO dev

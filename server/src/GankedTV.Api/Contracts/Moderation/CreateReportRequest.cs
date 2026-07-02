@@ -23,3 +23,10 @@ public sealed record SetClipGameRequest(
     // Nullable so an admin can also CLEAR a bad game tag entirely when no correct one fits;
     // null sets game_id back to NULL on the clip.
     int? GameId);
+
+public sealed record RequeueFailedMediaRequest(
+    // Narrows the requeue to one clip; null requeues every matching failed clip.
+    Guid? ClipId,
+    // Include content rejections (too long / too large) too. Off by default: those won't
+    // succeed on a retry, so the recovery path only revives infra/transient failures.
+    bool? IncludeContentFailures);

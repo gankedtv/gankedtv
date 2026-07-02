@@ -20,6 +20,9 @@ public abstract class ClipStageWorker : MediaStageWorker<ClaimedMediaJob>
     // The clip status this stage claims ('processing' or 'transcoding').
     protected abstract string ClaimStatus { get; }
 
+    // Both clips-table stages fetch the source upload from storage, so both preflight it at boot.
+    protected override bool FetchesFromStorage => true;
+
     // Machine-readable code persisted to clips.failure_reason when this stage exhausts its
     // retry budget. Lets the wizard surface specific copy per stage instead of a generic
     // "import failed" default. Null falls back to "no reason recorded" — kept null on the

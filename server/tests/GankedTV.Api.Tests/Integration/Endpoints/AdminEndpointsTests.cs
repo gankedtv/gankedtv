@@ -662,4 +662,61 @@ public class AdminEndpointsTests : IAsyncLifetime
         var body = await resp.Content.ReadAsStringAsync();
         body.Should().Contain("\"role\":\"admin\"");
     }
+
+    // ---- Requeue failed media ----
+
+    private async Task<Guid> SeedFailedClipAsync(Guid ownerId, string failureReason)
+    {
+        var id = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        await using var db = _fx.CreateContext();
+        db.Clips.Add(new Clip
+        {
+            Id = id,
+            UserId = ownerId,
+            Title = "failed",
+            VideoKey = $"clips/{ownerId}/{id}.mp4",
+            ShareCode = ShareCodeGenerator.Next(),
+            Status = ClipStatuses.Failed,
+            Visibility = "public",
+            ProcessingAttempts = 3,
+            FailureReason = failureReason,
+            CreatedAt = now,
+            UpdatedAt = now,
+        });
+        await db.SaveChangesAsync();
+        return id;
+    }
+
+    [Fact]
+    public async Task RequeueFailedMedia_AsUser_Returns403()
+    {
+        await _fx.ResetAsync();
+        var (_, userToken) = await SeedUserAsync("normal");
+        using var client = AuthTestHelpers.CreateBearerClient(_factory!, userToken);
+
+        var resp = await client.PostAsJsonAsync("/admin/clips/media/requeue", new { });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task RequeueFailedMedia_AsModerator_RequeuesInfraFailure()
+    {
+        await _fx.ResetAsync();
+        var (modId, modToken) = await SeedUserAsync("mod", UserRoles.Moderator);
+        var clipId = await SeedFailedClipAsync(modId, ClipFailureReasons.SourceUnavailable);
+        using var client = AuthTestHelpers.CreateBearerClient(_factory!, modToken);
+
+        var resp = await client.PostAsJsonAsync("/admin/clips/media/requeue", new { });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        body.GetProperty("requeued").GetInt32().Should().Be(1);
+
+        await using var verify = _fx.CreateContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.Status.Should().Be(ClipStatuses.Processing);
+        clip.FailureReason.Should().BeNull();
+    }
 }

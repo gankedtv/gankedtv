@@ -149,6 +149,9 @@ builder.Services.Configure<S3Options>(opts =>
     // .env.example ships `S3_PUBLIC_URL=` (empty); treat empty/whitespace as unset so the config fallback wins.
     var envPublic = Environment.GetEnvironmentVariable("S3_PUBLIC_URL");
     opts.PublicUrl = !string.IsNullOrWhiteSpace(envPublic) ? envPublic : builder.Configuration["S3:PublicUrl"];
+    // Worker-facing fetch endpoint (split-deployment TLS): empty means "same as the public URL".
+    var envInternal = Environment.GetEnvironmentVariable("S3_INTERNAL_ENDPOINT");
+    opts.InternalEndpoint = !string.IsNullOrWhiteSpace(envInternal) ? envInternal : builder.Configuration["S3:InternalEndpoint"];
     var clips = builder.Configuration["S3:ClipsBucket"];
     var thumbs = builder.Configuration["S3:ThumbnailsBucket"];
     var covers = builder.Configuration["S3:GameCoversBucket"];
@@ -181,6 +184,23 @@ builder.Services.AddKeyedSingleton<IAmazonS3>("presigner", (sp, _) =>
 {
     var o = sp.GetRequiredService<IOptions<S3Options>>().Value;
     var signingUrl = string.IsNullOrWhiteSpace(o.PublicUrl) ? o.Endpoint : o.PublicUrl;
+    return new AmazonS3Client(o.AccessKey, o.SecretKey, new AmazonS3Config
+    {
+        ServiceURL = signingUrl,
+        ForcePathStyle = true,
+    });
+});
+
+// Worker presigning client: signs media-worker fetch URLs against the internally trusted
+// endpoint (S3_INTERNAL_ENDPOINT) so ffmpeg on a split worker host fetches over a host it can
+// reach and whose certificate it trusts. Falls back to the public presigner's signing URL when
+// no internal endpoint is set, so single-host deployments are unchanged. Local crypto only.
+builder.Services.AddKeyedSingleton<IAmazonS3>("worker-presigner", (sp, _) =>
+{
+    var o = sp.GetRequiredService<IOptions<S3Options>>().Value;
+    var signingUrl = !string.IsNullOrWhiteSpace(o.InternalEndpoint)
+        ? o.InternalEndpoint
+        : string.IsNullOrWhiteSpace(o.PublicUrl) ? o.Endpoint : o.PublicUrl;
     return new AmazonS3Client(o.AccessKey, o.SecretKey, new AmazonS3Config
     {
         ServiceURL = signingUrl,
@@ -300,6 +320,10 @@ builder.Services.AddScoped<IClipStreamJobStore, ClipStreamJobStore>();
 builder.Services.AddScoped<IThumbnailJobService, ThumbnailJobService>();
 builder.Services.AddScoped<ICompressJobService, CompressJobService>();
 builder.Services.AddScoped<IJitLadderService, JitLadderService>();
+// Boot-time storage reachability/TLS probe for the media-fetching workers. Its own short-timeout
+// HttpClient so a stuck endpoint can't hang worker startup.
+builder.Services.AddHttpClient<IMediaStoragePreflight, MediaStoragePreflight>(c =>
+    c.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddHostedService<ThumbnailWorker>();
 builder.Services.AddHostedService<CompressWorker>();
 builder.Services.AddHostedService<StreamRenditionWorker>();

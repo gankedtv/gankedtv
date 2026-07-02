@@ -152,6 +152,34 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
                 .SetProperty(c => c.UpdatedAt, now), ct);
     }
 
+    public async Task<int> RequeueFailedMediaAsync(Guid? clipId, bool onlyRetryable, CancellationToken ct)
+    {
+        var now = _clock.GetUtcNow();
+
+        var query = _db.Clips.Where(c => c.Status == ClipStatuses.Failed);
+        if (clipId is { } id)
+        {
+            query = query.Where(c => c.Id == id);
+        }
+        if (onlyRetryable)
+        {
+            // Mirrors ClipFailureReasons.IsRetryable, spelled out here so it translates to SQL.
+            query = query.Where(c =>
+                c.FailureReason != ClipFailureReasons.SourceTooLong
+                && c.FailureReason != ClipFailureReasons.SourceTooLarge);
+        }
+
+        // A clip that never got a thumbnail restarts at 'processing'; one that has a thumbnail
+        // but no compressed master restarts at 'transcoding'. Reset the lease + attempt counter
+        // so the retry gets the full budget, and clear the stale failure reason.
+        return await query.ExecuteUpdateAsync(setters => setters
+            .SetProperty(c => c.Status, c => c.ThumbnailKey == null ? ClipStatuses.Processing : ClipStatuses.Transcoding)
+            .SetProperty(c => c.ProcessingAttempts, 0)
+            .SetProperty(c => c.ProcessingStartedAt, (DateTimeOffset?)null)
+            .SetProperty(c => c.FailureReason, (string?)null)
+            .SetProperty(c => c.UpdatedAt, now), ct);
+    }
+
     public async Task<ClaimedImportJob?> ClaimNextImportAsync(
         TimeSpan leaseDuration,
         int maxAttempts,
