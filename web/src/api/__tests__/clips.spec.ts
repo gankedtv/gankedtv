@@ -426,6 +426,20 @@ describe('api/clips', () => {
       expect(new Headers(init.headers).get('Content-Type')).toBe('application/json')
     })
 
+    it('round-trips visibility: private', async () => {
+      const updated = { ...baseDetail, visibility: 'private' as const }
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse(updated)),
+      )
+
+      const result = await clips.update(CLIP_ID, { visibility: 'private' })
+
+      expect(result.visibility).toBe('private')
+      const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(JSON.parse(String(init.body))).toEqual({ visibility: 'private' })
+    })
+
     it('sends only the provided keys (sparse payload)', async () => {
       vi.stubGlobal(
         'fetch',

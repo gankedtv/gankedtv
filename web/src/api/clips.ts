@@ -7,6 +7,11 @@ export interface AuthorSummary {
   avatarUrl: string | null
 }
 
+// User-settable visibility levels. 'public' = in feeds + search; 'unlisted' = hidden from
+// feeds but anyone with the link can watch; 'private' = owner-only, the server 404s every
+// other viewer. The moderation-only 'hidden' status never round-trips through this type.
+export type ClipVisibility = 'public' | 'unlisted' | 'private'
+
 export interface GameSummary {
   id: number
   name: string
@@ -52,7 +57,7 @@ export interface ClipDetail {
   game: GameSummary | null
   tags: TagSummary[]
   likedByMe: boolean
-  visibility: 'public' | 'unlisted'
+  visibility: ClipVisibility
   shareCode: string
   // Set when the clip was ingested via POST /clips/import (Medal.tv / YouTube). Null for
   // direct uploads. The detail page renders a "From {host}" attribution badge linking back
@@ -64,7 +69,7 @@ export interface UpdateClipBody {
   title?: string
   description?: string
   gameId?: number | null
-  visibility?: 'public' | 'unlisted'
+  visibility?: ClipVisibility
   // Omitted = leave tags unchanged. Empty array = clear all tags. Otherwise =
   // replace the tag set with this exact list (post-normalization server-side).
   tags?: string[]
@@ -109,7 +114,7 @@ export interface CreateClipBody {
   title: string
   description: string | null
   gameId: number | null
-  visibility: 'public' | 'unlisted'
+  visibility: ClipVisibility
   // Optional. When omitted, the clip has no tags. Server normalizes (lowercase,
   // hyphenate, max 5) and get-or-creates rows by slug.
   tags?: string[]
@@ -122,7 +127,7 @@ export interface ImportClipBody {
   title?: string | null
   description?: string | null
   gameId?: number | null
-  visibility?: 'public' | 'unlisted'
+  visibility?: ClipVisibility
   tags?: string[]
 }
 

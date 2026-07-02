@@ -1,11 +1,19 @@
 <script setup lang="ts">
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { ApiError } from '@/api/client'
-import { clips, type ClipDetail, type UpdateClipBody, type GameSummary } from '@/api/clips'
+import {
+  clips,
+  type ClipDetail,
+  type ClipVisibility,
+  type UpdateClipBody,
+  type GameSummary,
+} from '@/api/clips'
 import GameSelector from '@/components/GameSelector.vue'
 import TagInput from '@/components/TagInput.vue'
 import IconGlobe from '@/components/icons/IconGlobe.vue'
 import IconLink from '@/components/icons/IconLink.vue'
+import IconLock from '@/components/icons/IconLock.vue'
+import { VISIBILITY_OPTIONS } from '@/lib/visibility'
 
 const props = defineProps<{ clip: ClipDetail; open: boolean }>()
 const emit = defineEmits<{
@@ -17,7 +25,7 @@ const emit = defineEmits<{
 const localTitle = ref(props.clip.title)
 const localDesc = ref(props.clip.description ?? '')
 const localGame = ref<GameSummary | null>(props.clip.game)
-const localVisibility = ref<'public' | 'unlisted'>(props.clip.visibility)
+const localVisibility = ref<ClipVisibility>(props.clip.visibility)
 const localTags = ref<string[]>(props.clip.tags.map((t) => t.slug))
 const submitting = ref(false)
 
@@ -209,28 +217,29 @@ const labelClass =
             <!-- Visibility -->
             <div>
               <label :class="labelClass">Visibility</label>
-              <div class="grid grid-cols-2 gap-2.5">
+              <div class="grid grid-cols-3 gap-2.5">
                 <button
-                  v-for="opt in ['public', 'unlisted'] as const"
-                  :key="opt"
+                  v-for="opt in VISIBILITY_OPTIONS"
+                  :key="opt.value"
                   type="button"
-                  @click="localVisibility = opt"
+                  @click="localVisibility = opt.value"
                   :class="[
                     'cursor-pointer rounded-lg border px-4 py-3 text-left transition-colors duration-150',
-                    localVisibility === opt
+                    localVisibility === opt.value
                       ? 'border-accent text-text-primary'
                       : 'border-border text-text-secondary hover:border-border-strong',
                   ]"
                 >
                   <div class="mb-1 flex items-center gap-2">
-                    <IconGlobe v-if="opt === 'public'" :size="15" />
+                    <IconGlobe v-if="opt.value === 'public'" :size="15" />
+                    <IconLock v-else-if="opt.value === 'private'" :size="15" />
                     <IconLink v-else :size="15" />
                     <span class="font-condensed text-sm font-bold uppercase">
-                      {{ opt === 'public' ? 'Public' : 'Unlisted' }}
+                      {{ opt.label }}
                     </span>
                   </div>
                   <div class="text-xs text-text-muted">
-                    {{ opt === 'public' ? 'Visible on feed + search' : 'Only accessible via link' }}
+                    {{ opt.description }}
                   </div>
                 </button>
               </div>
