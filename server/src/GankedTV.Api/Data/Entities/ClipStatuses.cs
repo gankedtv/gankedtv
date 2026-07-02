@@ -44,17 +44,22 @@ public static class ClipVisibilities
     public const string Public = "public";
     public const string Unlisted = "unlisted";
 
+    // Owner-only: never listed, and every read path (detail, share code, stream, comments,
+    // likes) 404s for anyone but the owner. Unlike unlisted, knowing the link is not enough.
+    public const string Private = "private";
+
     // Set by moderation. Reuses the existing feed predicate (Visibility = 'public') so no
     // new query branches are needed — a hidden clip drops out of every feed automatically.
     // The owner still sees their own clip via owner-scoped read paths; the moderator can
     // restore via /admin/clips/{id}/unhide.
     public const string Hidden = "hidden";
 
-    // Only IsValid keeps its original two-value contract — this gate protects user-facing
-    // visibility writes (create / patch / upload), which must never accept "hidden".
+    // IsValid gates user-facing visibility writes (create / patch / import), which must
+    // never accept "hidden" — that value is reserved for moderation.
     public static bool IsValid(string value) =>
         string.Equals(value, Public, StringComparison.OrdinalIgnoreCase)
-        || string.Equals(value, Unlisted, StringComparison.OrdinalIgnoreCase);
+        || string.Equals(value, Unlisted, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(value, Private, StringComparison.OrdinalIgnoreCase);
 
     // Callers receive the canonical lowercase form so the DB column stays consistent
     // regardless of how the client cased the input.

@@ -3,6 +3,7 @@ using GankedTV.Api.Auth;
 using GankedTV.Api.Clips;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Data;
+using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Notifications;
 using GankedTV.Api.Problems;
 using Microsoft.EntityFrameworkCore;
@@ -35,14 +36,16 @@ public static class LikesEndpoints
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
 
-        var clipOwnerId = await db.Clips.AsNoTracking()
+        var clip = await db.Clips.AsNoTracking()
             .Where(c => c.Id == id)
-            .Select(c => (Guid?)c.UserId)
+            .Select(c => new { c.UserId, c.Visibility })
             .FirstOrDefaultAsync(ct);
-        if (clipOwnerId is null)
+        if (clip is null || (clip.Visibility == ClipVisibilities.Private && clip.UserId != userId))
         {
+            // Private clips look nonexistent to everyone but the owner.
             return ProblemResults.NotFound("not_found");
         }
+        var clipOwnerId = clip.UserId;
 
         // Atomic idempotent insert: ON CONFLICT DO NOTHING collapses a duplicate like (sequential
         // double-click OR two concurrent requests from the same user) into a 0-row insert, so we
@@ -63,7 +66,7 @@ public static class LikesEndpoints
             // row was reinserted). The service drops self-likes; the surrounding transaction
             // means a notification failure rolls back the like row too.
             await notifications.RecordAsync(
-                clipOwnerId.Value, userId, NotificationTypes.Like, id, null, ct);
+                clipOwnerId, userId, NotificationTypes.Like, id, null, ct);
         }
 
         var count = await db.Clips.AsNoTracking()
@@ -89,8 +92,12 @@ public static class LikesEndpoints
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
 
-        var clipExists = await db.Clips.AnyAsync(c => c.Id == id, ct);
-        if (!clipExists)
+        // Mirrors LikeClip's gate: a stranger's stale like on a now-private clip stays put
+        // until the clip becomes visible to them again.
+        var clipVisible = await db.Clips.AsNoTracking()
+            .AnyAsync(c => c.Id == id
+                && (c.Visibility != ClipVisibilities.Private || c.UserId == userId), ct);
+        if (!clipVisible)
         {
             return ProblemResults.NotFound("not_found");
         }

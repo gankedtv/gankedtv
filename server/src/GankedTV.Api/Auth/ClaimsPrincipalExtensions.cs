@@ -16,4 +16,10 @@ public static class ClaimsPrincipalExtensions
             ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         return Guid.TryParse(sub, out userId);
     }
+
+    // Nullable form for anonymous-friendly read paths that still need an owner check
+    // (private clips): null never matches a real owner id, so anonymous callers simply
+    // fail the ownership predicate.
+    public static Guid? GetUserIdOrNull(this ClaimsPrincipal principal) =>
+        principal.TryGetUserId(out var userId) ? userId : null;
 }

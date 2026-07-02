@@ -121,17 +121,21 @@ public class ClipsViewEndpointsTests : IAsyncLifetime
         await _fx.ResetAsync();
         var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
         var unlistedClip = await SeedClipAsync(authorId, visibility: "unlisted");
+        var privateClip = await SeedClipAsync(authorId, visibility: "private");
         var processingClip = await SeedClipAsync(authorId, status: "processing");
 
         using var client = _factory!.CreateClient();
         var unlistedResp = await client.PostAsync($"/clips/{unlistedClip}/view", content: null);
+        var privateResp = await client.PostAsync($"/clips/{privateClip}/view", content: null);
         var processingResp = await client.PostAsync($"/clips/{processingClip}/view", content: null);
 
         unlistedResp.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        privateResp.StatusCode.Should().Be(HttpStatusCode.NoContent);
         processingResp.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
         await using var db = _fx.CreateContext();
         (await db.Clips.Where(c => c.Id == unlistedClip).Select(c => c.ViewCount).FirstAsync()).Should().Be(0);
+        (await db.Clips.Where(c => c.Id == privateClip).Select(c => c.ViewCount).FirstAsync()).Should().Be(0);
         (await db.Clips.Where(c => c.Id == processingClip).Select(c => c.ViewCount).FirstAsync()).Should().Be(0);
         (await db.ClipViews.AnyAsync()).Should().BeFalse();
     }

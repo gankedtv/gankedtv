@@ -39,7 +39,7 @@ public class LikesEndpointsTests : IAsyncLifetime
     private HttpClient ClientWithBearer(string token) =>
         AuthTestHelpers.CreateBearerClient(_factory!, token);
 
-    private async Task<Guid> SeedClipAsync(Guid userId, int initialLikeCount = 0)
+    private async Task<Guid> SeedClipAsync(Guid userId, int initialLikeCount = 0, string visibility = "public")
     {
         var id = Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
@@ -52,7 +52,7 @@ public class LikesEndpointsTests : IAsyncLifetime
             VideoKey = $"clips/{userId}/{id}.mp4",
             ShareCode = ShareCodeGenerator.Next(),
             Status = "ready",
-            Visibility = "public",
+            Visibility = visibility,
             LikeCount = initialLikeCount,
             CreatedAt = now,
             UpdatedAt = now,
@@ -82,6 +82,53 @@ public class LikesEndpointsTests : IAsyncLifetime
         using var client = ClientWithBearer(token);
 
         var resp = await client.PostAsync($"/clips/{Guid.NewGuid()}/like", content: null);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Like_PrivateClip_NonOwnerReturns404()
+    {
+        // Same 404 as a missing clip — a private clip must not be likeable (or discoverable)
+        // by anyone but its owner.
+        await _fx.ResetAsync();
+        var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
+        var (_, token) = await SeedUserAndIssueTokenAsync("fan");
+        var clipId = await SeedClipAsync(authorId, visibility: "private");
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsync($"/clips/{clipId}/like", content: null);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        await using var db = _fx.CreateContext();
+        (await db.Likes.AnyAsync(l => l.ClipId == clipId)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Like_PrivateClip_OwnerReturns200()
+    {
+        await _fx.ResetAsync();
+        var (authorId, token) = await SeedUserAndIssueTokenAsync("author");
+        var clipId = await SeedClipAsync(authorId, visibility: "private");
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsync($"/clips/{clipId}/like", content: null);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("likeCount").GetInt32().Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Unlike_PrivateClip_NonOwnerReturns404()
+    {
+        await _fx.ResetAsync();
+        var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
+        var (_, token) = await SeedUserAndIssueTokenAsync("fan");
+        var clipId = await SeedClipAsync(authorId, visibility: "private");
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.DeleteAsync($"/clips/{clipId}/like");
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }

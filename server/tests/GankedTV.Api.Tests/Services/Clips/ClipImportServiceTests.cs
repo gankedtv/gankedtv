@@ -153,6 +153,23 @@ public class ClipImportServiceTests
         result.Error.Should().Be(ClipUploadError.InvalidVisibility);
     }
 
+    [Theory]
+    [InlineData("unlisted")]
+    [InlineData("private")]
+    public async Task Submit_UserSettableVisibility_Persists(string visibility)
+    {
+        var (svc, db, _, userId) = await BuildAsync();
+
+        var result = await svc.SubmitAsync(
+            userId,
+            new ImportClipInput("https://medal.tv/x", "title", null, null, visibility, null),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        var clip = await db.Clips.AsNoTracking().SingleAsync(c => c.Id == result.Value!.ClipId);
+        clip.Visibility.Should().Be(visibility);
+    }
+
     [Fact]
     public async Task Submit_UnknownGameId_ReturnsInvalidGame()
     {

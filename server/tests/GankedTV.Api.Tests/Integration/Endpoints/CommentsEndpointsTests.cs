@@ -44,7 +44,7 @@ public class CommentsEndpointsTests : IAsyncLifetime
     private HttpClient ClientWithBearer(string token) =>
         AuthTestHelpers.CreateBearerClient(_factory!, token);
 
-    private async Task<Guid> SeedClipAsync(Guid userId)
+    private async Task<Guid> SeedClipAsync(Guid userId, string visibility = "public")
     {
         var id = Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
@@ -58,7 +58,7 @@ public class CommentsEndpointsTests : IAsyncLifetime
             ThumbnailKey = $"thumbs/{id}.jpg",
             ShareCode = ShareCodeGenerator.Next(),
             Status = "ready",
-            Visibility = "public",
+            Visibility = visibility,
             CreatedAt = now,
             UpdatedAt = now,
         });
@@ -115,6 +115,34 @@ public class CommentsEndpointsTests : IAsyncLifetime
         var resp = await client.PostAsJsonAsync($"/clips/{Guid.NewGuid()}/comments", new { body = "hi" });
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Create_PrivateClip_NonOwnerReturns404()
+    {
+        // A private clip must be indistinguishable from a missing one to non-owners.
+        await _fx.ResetAsync();
+        var (ownerId, _) = await SeedUserAndIssueTokenAsync();
+        var (_, strangerToken) = await SeedUserAndIssueTokenAsync("stranger");
+        var clipId = await SeedClipAsync(ownerId, visibility: "private");
+
+        using var client = ClientWithBearer(strangerToken);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/comments", new { body = "hi" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Create_PrivateClip_OwnerReturns201()
+    {
+        await _fx.ResetAsync();
+        var (ownerId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(ownerId, visibility: "private");
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/comments", new { body = "note to self" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Created);
     }
 
     [Fact]
@@ -350,6 +378,84 @@ public class CommentsEndpointsTests : IAsyncLifetime
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         body.GetProperty("items").GetArrayLength().Should().Be(0);
         body.GetProperty("nextCursor").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task List_PrivateClip_NonOwnerReturns200Empty()
+    {
+        // A private clip must be indistinguishable from a nonexistent one: a missing clip
+        // 200s with an empty page, so a private-not-mine clip does too (never 404, which would
+        // confirm existence). The seeded comment must not leak, so items stays empty.
+        await _fx.ResetAsync();
+        var (ownerId, _) = await SeedUserAndIssueTokenAsync();
+        var (_, strangerToken) = await SeedUserAndIssueTokenAsync("stranger");
+        var clipId = await SeedClipAsync(ownerId, visibility: "private");
+        await SeedCommentAsync(clipId, ownerId, "secret note");
+
+        using var anonymous = _factory!.CreateClient();
+        using var stranger = ClientWithBearer(strangerToken);
+        var anonResp = await anonymous.GetAsync($"/clips/{clipId}/comments");
+        var strangerResp = await stranger.GetAsync($"/clips/{clipId}/comments");
+
+        anonResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        strangerResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await anonResp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("items").GetArrayLength().Should().Be(0);
+        (await strangerResp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("items").GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task List_PrivateClip_OwnerReturns200WithComments()
+    {
+        await _fx.ResetAsync();
+        var (ownerId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(ownerId, visibility: "private");
+        await SeedCommentAsync(clipId, ownerId, "note to self");
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.GetAsync($"/clips/{clipId}/comments");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("items").GetArrayLength().Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ListReplies_PrivateClip_NonOwnerReturns200Empty()
+    {
+        // The reply route is keyed by comment id, so the private gate has to travel
+        // through the parent comment's clip. Like ListComments, it returns the same empty
+        // page a nonexistent comment id yields rather than 404-ing (existence oracle).
+        await _fx.ResetAsync();
+        var (ownerId, _) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(ownerId, visibility: "private");
+        var top = await SeedCommentAsync(clipId, ownerId, "top");
+        await SeedCommentAsync(clipId, ownerId, "reply", parentId: top);
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync($"/comments/{top}/replies");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await resp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("items").GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ListReplies_PrivateClip_OwnerReturns200()
+    {
+        await _fx.ResetAsync();
+        var (ownerId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(ownerId, visibility: "private");
+        var top = await SeedCommentAsync(clipId, ownerId, "top");
+        await SeedCommentAsync(clipId, ownerId, "reply", parentId: top);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.GetAsync($"/comments/{top}/replies");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("items").GetArrayLength().Should().Be(1);
     }
 
     [Fact]
