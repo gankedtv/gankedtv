@@ -4,7 +4,7 @@
 # are NOT baked — they're injected at container start into /srv/config.js (see web/docker-entrypoint.sh
 # + src/config.ts), so one published image works for every deployment.
 
-FROM oven/bun:1.3.12-alpine AS build
+FROM oven/bun:1.3.14-alpine AS build
 WORKDIR /app
 
 # Keep the repo-relative layout (/app/web + /app/shared) so envDir:'../' and the prebuild's
