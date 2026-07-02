@@ -1,5 +1,6 @@
 version: 2
 updates:
+  # server/ — .NET / NuGet. One PR for all updates (major included).
   - package-ecosystem: "nuget"
     directory: "/server"
     schedule:
@@ -11,11 +12,11 @@ updates:
       prefix: "chore"
       prefix-development: "chore"
     groups:
-      minor-and-patch:
-        update-types:
-          - "minor"
-          - "patch"
+      server:
+        patterns:
+          - "*"
 
+  # web/ — Vue app (Bun). One PR for all updates (major included).
   - package-ecosystem: "bun"
     directory: "/web"
     schedule:
@@ -27,11 +28,45 @@ updates:
       prefix: "chore"
       prefix-development: "chore"
     groups:
-      minor-and-patch:
-        update-types:
-          - "minor"
-          - "patch"
+      web:
+        patterns:
+          - "*"
 
+  # discord/ — bot (Bun). One PR for all updates (major included).
+  - package-ecosystem: "bun"
+    directory: "/discord"
+    schedule:
+      interval: "monthly"
+    labels:
+      - "dependencies"
+      - "area:discord"
+    commit-message:
+      prefix: "chore"
+      prefix-development: "chore"
+    groups:
+      discord:
+        patterns:
+          - "*"
+
+  # docker — Dockerfile base images across all three apps. One combined PR.
+  - package-ecosystem: "docker"
+    directories:
+      - "/server"
+      - "/web"
+      - "/discord"
+    schedule:
+      interval: "monthly"
+    labels:
+      - "dependencies"
+      - "area:docker"
+    commit-message:
+      prefix: "chore"
+    groups:
+      docker:
+        patterns:
+          - "*"
+
+  # CI — GitHub Actions (docker/*, actions/*). One PR for all updates.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -42,7 +77,6 @@ updates:
     commit-message:
       prefix: "chore"
     groups:
-      minor-and-patch:
-        update-types:
-          - "minor"
-          - "patch"
+      github-actions:
+        patterns:
+          - "*"
