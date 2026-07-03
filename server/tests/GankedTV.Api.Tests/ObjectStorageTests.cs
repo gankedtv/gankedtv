@@ -347,20 +347,22 @@ public class ObjectStorageTests
     }
 
     [Fact]
-    public void GetPresignedGetUrlForWorker_NoInternalEndpoint_FallsThroughToPublicPresign()
+    public void GetPresignedGetUrlForWorker_NoInternalEndpoint_SignsAgainstInternalEndpointNotPublic()
     {
         var s3 = Substitute.For<IAmazonS3>();
         var worker = Substitute.For<IAmazonS3>();
-        s3.GetPreSignedURL(Arg.Any<GetPreSignedUrlRequest>())
+        GetPreSignedUrlRequest? captured = null;
+        worker.GetPreSignedURL(Arg.Do<GetPreSignedUrlRequest>(r => captured = r))
             .Returns("http://minio:9000/clips/key?X-Amz-Signature=abc");
 
-        var url = BuildService(s3, publicUrl: "http://localhost:9000", workerPresigner: worker)
+        var url = BuildService(s3, publicUrl: "https://cdn.example", workerPresigner: worker)
             .GetPresignedGetUrlForWorker("clips", "key");
 
-        // With no internal endpoint, workers get the same URL browsers do — the worker presigner
-        // is never touched.
-        url.Should().Be("http://localhost:9000/clips/key?X-Amz-Signature=abc");
-        worker.DidNotReceive().GetPreSignedURL(Arg.Any<GetPreSignedUrlRequest>());
+        // With no internal endpoint the worker signs against the internal Endpoint (http://minio),
+        // never the public host, and the URL is returned verbatim (no rewrite to PublicUrl).
+        url.Should().Be("http://minio:9000/clips/key?X-Amz-Signature=abc");
+        captured!.Protocol.Should().Be(Protocol.HTTP);
+        s3.DidNotReceive().GetPreSignedURL(Arg.Any<GetPreSignedUrlRequest>());
     }
 
     [Fact]

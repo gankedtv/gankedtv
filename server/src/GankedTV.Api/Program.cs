@@ -191,16 +191,15 @@ builder.Services.AddKeyedSingleton<IAmazonS3>("presigner", (sp, _) =>
     });
 });
 
-// Worker presigning client: signs media-worker fetch URLs against the internally trusted
-// endpoint (S3_INTERNAL_ENDPOINT) so ffmpeg on a split worker host fetches over a host it can
-// reach and whose certificate it trusts. Falls back to the public presigner's signing URL when
-// no internal endpoint is set, so single-host deployments are unchanged. Local crypto only.
+// Worker presigning client: signs media-worker fetch URLs against the internal endpoint the
+// server reaches directly (S3_INTERNAL_ENDPOINT, else the internal S3_ENDPOINT) so server-side
+// ffmpeg fetches over a host it can reach and trust, never the browser-facing public host. This
+// keeps thumbnail/compress/JIT working on split hosts without touching a public certificate.
+// Local crypto only.
 builder.Services.AddKeyedSingleton<IAmazonS3>("worker-presigner", (sp, _) =>
 {
     var o = sp.GetRequiredService<IOptions<S3Options>>().Value;
-    var signingUrl = !string.IsNullOrWhiteSpace(o.InternalEndpoint)
-        ? o.InternalEndpoint
-        : string.IsNullOrWhiteSpace(o.PublicUrl) ? o.Endpoint : o.PublicUrl;
+    var signingUrl = string.IsNullOrWhiteSpace(o.InternalEndpoint) ? o.Endpoint : o.InternalEndpoint;
     return new AmazonS3Client(o.AccessKey, o.SecretKey, new AmazonS3Config
     {
         ServiceURL = signingUrl,

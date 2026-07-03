@@ -180,25 +180,28 @@ reads/writes the shared object store.
 ### Media-worker storage access + TLS
 
 The media workers (thumbnail, compress, JIT) hand ffmpeg/ffprobe a **presigned URL** to fetch the
-source bytes. By default that URL points at `S3_PUBLIC_URL` — the browser-facing host. On a split
-deployment where the GPU/encoder host reaches storage over the LAN, fetching from the public host can
-fail: the reverse proxy's TLS certificate (e.g. Let's Encrypt for `cdn.example.com`) may not resolve
-or be trusted from inside the encoder container, and ffmpeg reports `certificate verify failed`. The
-clip then burns its retry budget and lands in `failed`, and its share page 404s.
+source bytes. That URL is signed against the **internal `S3_ENDPOINT`** — the same host the API uses
+for every other S3 op — never the browser-facing `S3_PUBLIC_URL`. So a worker fetches storage over the
+endpoint it already reaches and trusts, and no public TLS certificate is ever involved. (Browsers still
+get `S3_PUBLIC_URL`; only the server-side fetch differs.)
 
-Two ways to fix it — pick per your infra:
+This matters on a **split deployment** where the GPU/encoder host runs the compress/JIT workers on a
+different box than the main API. If that box only knew the public host, ffmpeg would hit the reverse
+proxy's cert (e.g. Let's Encrypt for `cdn.example.com`), fail to resolve or trust it from inside the
+container, and report `certificate verify failed`; the clip then burns its retry budget, lands in
+`failed`, and its share page 404s. Two ways to keep the encoder box on a reachable endpoint:
 
-- **`S3_INTERNAL_ENDPOINT`** — point the workers at an endpoint they reach and trust directly, distinct
-  from the browser-facing `S3_PUBLIC_URL`. Presigned worker fetches are then signed against (and target)
-  this endpoint. Internal http over the LAN is the simplest:
+- **`S3_INTERNAL_ENDPOINT`** — set this on the worker box when its reachable storage endpoint differs
+  from the `S3_ENDPOINT` it would otherwise use. Presigned worker fetches are signed against (and target)
+  this endpoint. Plain http over the LAN is the simplest and needs no cert at all:
   ```
   S3_INTERNAL_ENDPOINT=http://<storage-lan-ip>:9000
   ```
-  Browsers keep using `S3_PUBLIC_URL`; only the workers switch. Unset → workers fetch the same URL
-  browsers do (single-host, unchanged).
-- **Trust the CA in the encoder image** — if the workers must use an https endpoint whose CA they don't
-  trust (private CA / self-signed), mount the CA into the container and run `update-ca-certificates` so
-  ffmpeg's TLS stack trusts it.
+  Unset → the worker signs against its `S3_ENDPOINT` (the default; correct whenever that endpoint is
+  reachable from the worker, which it must be for the box's other S3 ops).
+- **Trust the CA in the encoder image** — only if you insist the workers use an https endpoint whose CA
+  they don't trust (private CA / self-signed): mount the CA into the container and run
+  `update-ca-certificates` so ffmpeg's TLS stack trusts it. Prefer the plain-LAN endpoint above.
 
 **Boot preflight.** Each storage-fetching worker probes storage once at startup (a presigned fetch of a
 sentinel key) and logs the outcome. A TLS-trust fault logs **`storage TLS verification FAILED`** at

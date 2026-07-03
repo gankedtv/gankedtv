@@ -13,8 +13,8 @@ public sealed class S3ObjectStorageService : IObjectStorageService
     // Signs presigned URLs against the browser-facing host (see the "presigner" registration in
     // Program.cs). Separate from _s3 so real ops stay on the fast internal endpoint.
     private readonly IAmazonS3 _presigner;
-    // Signs worker-facing fetch URLs against S3Options.InternalEndpoint (the "worker-presigner"
-    // registration). Same instance as _presigner when no InternalEndpoint is configured.
+    // Signs worker-facing fetch URLs against the internal endpoint (S3Options.InternalEndpoint,
+    // else the internal Endpoint) so server-side ffmpeg never fetches the browser-facing host.
     private readonly IAmazonS3 _workerPresigner;
     private readonly S3Options _options;
     private readonly ILogger<S3ObjectStorageService> _logger;
@@ -185,22 +185,22 @@ public sealed class S3ObjectStorageService : IObjectStorageService
         string key,
         TimeSpan? expiry = null)
     {
-        // No internal endpoint configured: workers fetch the same URL browsers get.
-        if (string.IsNullOrWhiteSpace(_options.InternalEndpoint))
-        {
-            return GetPresignedGetUrl(bucket, key, expiry);
-        }
+        // Workers (thumbnail/compress/JIT) are server-side: they fetch over the internal endpoint
+        // they already use for every other S3 op, never the browser-facing public host. Sign
+        // against InternalEndpoint when set, else the internal Endpoint; the canonical host then
+        // matches the URL the worker fetches, so no post-sign host rewrite is needed and no public
+        // certificate is involved.
+        var signingUrl = string.IsNullOrWhiteSpace(_options.InternalEndpoint)
+            ? _options.Endpoint
+            : _options.InternalEndpoint;
 
-        // Sign against the internal endpoint (the "worker-presigner" client's ServiceURL) so the
-        // canonical host matches the URL the worker fetches; no post-sign host rewrite is needed
-        // because the signed URL already targets InternalEndpoint.
         var request = new GetPreSignedUrlRequest
         {
             BucketName = bucket,
             Key = key,
             Verb = HttpVerb.GET,
             Expires = DateTime.UtcNow.Add(expiry ?? DefaultExpiry),
-            Protocol = ResolveProtocol(_options.InternalEndpoint),
+            Protocol = ResolveProtocol(signingUrl),
         };
 
         return _workerPresigner.GetPreSignedURL(request);
