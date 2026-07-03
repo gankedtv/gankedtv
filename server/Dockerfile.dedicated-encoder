@@ -27,25 +27,29 @@ ARG FFMPEG_URL=https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v7.
 USER root
 # Extraction is layout-agnostic: jellyfin's portable tarball drops static ffmpeg/ffprobe at the
 # archive root, while a BtbN override nests them under <root>/bin/ (with a sibling lib/ its binaries
-# find via an $ORIGIN rpath). Locate them with `find` and symlink to a stable path rather than
-# hardcoding either layout — a symlink (not a copy) preserves any $ORIGIN-relative lib lookup.
+# find via an $ORIGIN rpath). Locate them with `find`, then symlink into /opt/ffmpeg/bin/ — the
+# canonical, STABLE path this image has always exposed via FFMPEG_PATH/FFPROBE_PATH. Keeping that
+# path fixed (rather than moving to the tarball's own layout) means a deployment that pins
+# FFMPEG_PATH=/opt/ffmpeg/bin/ffmpeg in its env keeps working across an ffmpeg-build swap. A symlink
+# (not a copy) preserves any $ORIGIN-relative lib lookup a nested build needs.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl xz-utils ca-certificates \
-    && mkdir -p /opt/ffmpeg \
+    && mkdir -p /opt/ffmpeg/bin \
     && curl -fsSL "$FFMPEG_URL" -o /tmp/ffmpeg.tar.xz \
     && tar -xJf /tmp/ffmpeg.tar.xz -C /opt/ffmpeg \
     && rm /tmp/ffmpeg.tar.xz \
-    && ln -sf "$(find /opt/ffmpeg -type f -name ffmpeg | head -n1)" /usr/local/bin/ffmpeg \
-    && ln -sf "$(find /opt/ffmpeg -type f -name ffprobe | head -n1)" /usr/local/bin/ffprobe \
+    && ln -sf "$(find /opt/ffmpeg -type f -name ffmpeg | head -n1)" /opt/ffmpeg/bin/ffmpeg \
+    && ln -sf "$(find /opt/ffmpeg -type f -name ffprobe | head -n1)" /opt/ffmpeg/bin/ffprobe \
     && apt-get purge -y xz-utils \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/* \
     # Fail the build if the AV1 NVENC encoder isn't compiled in — this only lists encoders (no GPU
     # needed at build time) and also proves the portable binary loads its bundled libs.
-    && ffmpeg -hide_banner -encoders | grep -q av1_nvenc
+    && /opt/ffmpeg/bin/ffmpeg -hide_banner -encoders | grep -q av1_nvenc
 
-# Override the bundled software ffmpeg/ffprobe (MediaJobOptions reads these).
-ENV FFMPEG_PATH=/usr/local/bin/ffmpeg \
-    FFPROBE_PATH=/usr/local/bin/ffprobe
+# Override the bundled software ffmpeg/ffprobe (MediaJobOptions reads these). This is the same
+# path prior versions of this image used, so a pinned FFMPEG_PATH env survives the build swap.
+ENV FFMPEG_PATH=/opt/ffmpeg/bin/ffmpeg \
+    FFPROBE_PATH=/opt/ffmpeg/bin/ffprobe
 
 USER gankedtv
