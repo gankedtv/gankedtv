@@ -273,6 +273,14 @@ public static class AdminEndpoints
     {
         var onlyRetryable = req?.IncludeContentFailures != true;
         var requeued = await store.RequeueFailedMediaAsync(req?.ClipId, onlyRetryable, ct);
+
+        // A targeted requeue that matched nothing is a client error, not a silent no-op: the clip
+        // doesn't exist, isn't failed, or is a content rejection the caller didn't opt into.
+        if (req?.ClipId is not null && requeued == 0)
+        {
+            return ProblemResults.NotFound("clip_not_requeuable");
+        }
+
         return Results.Ok(new { requeued });
     }
 

@@ -164,14 +164,15 @@ builder.Services.Configure<S3Options>(opts =>
     if (int.TryParse(streamTtl, out var ttl) && ttl > 0) opts.StreamCacheTtlDays = ttl;
 });
 
+// All three S3 clients differ only in the host SigV4 signs against; share the construction so the
+// credential + path-style config can't drift between them.
+static AmazonS3Client BuildS3Client(S3Options o, string serviceUrl) =>
+    new(o.AccessKey, o.SecretKey, new AmazonS3Config { ServiceURL = serviceUrl, ForcePathStyle = true });
+
 builder.Services.AddSingleton<IAmazonS3>(sp =>
 {
     var o = sp.GetRequiredService<IOptions<S3Options>>().Value;
-    return new AmazonS3Client(o.AccessKey, o.SecretKey, new AmazonS3Config
-    {
-        ServiceURL = o.Endpoint,
-        ForcePathStyle = true,
-    });
+    return BuildS3Client(o, o.Endpoint);
 });
 
 // Presigning client: signs against the BROWSER-FACING host (S3_PUBLIC_URL) so SigV4's canonical
@@ -184,11 +185,7 @@ builder.Services.AddKeyedSingleton<IAmazonS3>("presigner", (sp, _) =>
 {
     var o = sp.GetRequiredService<IOptions<S3Options>>().Value;
     var signingUrl = string.IsNullOrWhiteSpace(o.PublicUrl) ? o.Endpoint : o.PublicUrl;
-    return new AmazonS3Client(o.AccessKey, o.SecretKey, new AmazonS3Config
-    {
-        ServiceURL = signingUrl,
-        ForcePathStyle = true,
-    });
+    return BuildS3Client(o, signingUrl);
 });
 
 // Worker presigning client: signs media-worker fetch URLs against the internal endpoint the
@@ -200,11 +197,7 @@ builder.Services.AddKeyedSingleton<IAmazonS3>("worker-presigner", (sp, _) =>
 {
     var o = sp.GetRequiredService<IOptions<S3Options>>().Value;
     var signingUrl = string.IsNullOrWhiteSpace(o.InternalEndpoint) ? o.Endpoint : o.InternalEndpoint;
-    return new AmazonS3Client(o.AccessKey, o.SecretKey, new AmazonS3Config
-    {
-        ServiceURL = signingUrl,
-        ForcePathStyle = true,
-    });
+    return BuildS3Client(o, signingUrl);
 });
 
 builder.Services.AddSingleton<IObjectStorageService, S3ObjectStorageService>();

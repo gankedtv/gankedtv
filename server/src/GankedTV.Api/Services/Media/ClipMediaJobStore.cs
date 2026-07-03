@@ -163,17 +163,23 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
         }
         if (onlyRetryable)
         {
-            // Mirrors ClipFailureReasons.IsRetryable, spelled out here so it translates to SQL.
+            // Same set as ClipFailureReasons.IsRetryable, as a query so it translates to SQL. A
+            // null reason (unrecorded fault) is retryable, matching IsRetryable.
             query = query.Where(c =>
-                c.FailureReason != ClipFailureReasons.SourceTooLong
-                && c.FailureReason != ClipFailureReasons.SourceTooLarge);
+                c.FailureReason == null
+                || !ClipFailureReasons.NonRetryableReasons.Contains(c.FailureReason));
         }
 
-        // A clip that never got a thumbnail restarts at 'processing'; one that has a thumbnail
-        // but no compressed master restarts at 'transcoding'. Reset the lease + attempt counter
-        // so the retry gets the full budget, and clear the stale failure reason.
+        // Restart each clip at the stage it still needs. An import that failed before its source
+        // was fetched (has an import URL but no downloaded bytes) restarts at 'importing'; a clip
+        // that has source but no thumbnail restarts at 'processing'; one with a thumbnail but no
+        // compressed master restarts at 'transcoding'. Reset the lease + attempt counter so the
+        // retry gets the full budget, and clear the stale failure reason.
         return await query.ExecuteUpdateAsync(setters => setters
-            .SetProperty(c => c.Status, c => c.ThumbnailKey == null ? ClipStatuses.Processing : ClipStatuses.Transcoding)
+            .SetProperty(c => c.Status, c =>
+                c.ImportSourceUrl != null && c.FileSizeBytes == null ? ClipStatuses.Importing
+                : c.ThumbnailKey == null ? ClipStatuses.Processing
+                : ClipStatuses.Transcoding)
             .SetProperty(c => c.ProcessingAttempts, 0)
             .SetProperty(c => c.ProcessingStartedAt, (DateTimeOffset?)null)
             .SetProperty(c => c.FailureReason, (string?)null)

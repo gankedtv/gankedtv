@@ -45,7 +45,9 @@ public class ClipMediaJobStoreIntegrationTests
         string? thumbnailKey = null,
         int? gameId = null,
         short? height = null,
-        string? failureReason = null)
+        string? failureReason = null,
+        string? importSourceUrl = null,
+        long? fileSizeBytes = null)
     {
         await using var db = NewContext();
         var clip = new Clip
@@ -64,6 +66,8 @@ public class ClipMediaJobStoreIntegrationTests
             GameId = gameId,
             Height = height,
             FailureReason = failureReason,
+            ImportSourceUrl = importSourceUrl,
+            FileSizeBytes = fileSizeBytes,
         };
         db.Clips.Add(clip);
         await db.SaveChangesAsync();
@@ -666,6 +670,51 @@ public class ClipMediaJobStoreIntegrationTests
         clip.ProcessingAttempts.Should().Be(0);
         clip.ProcessingStartedAt.Should().BeNull();
         clip.FailureReason.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task RequeueFailedMediaAsync_FailedImportWithoutSource_RestartsAtImporting()
+    {
+        await _fx.ResetAsync();
+        var now = DateTimeOffset.UtcNow;
+        var userId = await SeedUserAsync("rq_import");
+        // An import that failed before yt-dlp fetched the source: it has an import URL but no
+        // downloaded bytes (FileSizeBytes null), so restarting it at 'processing' would just fail
+        // again for want of a source. It must go back to 'importing'.
+        var clipId = await SeedClipAsync(userId, ClipStatuses.Failed, now,
+            processingAttempts: 3, thumbnailKey: null, failureReason: ClipFailureReasons.SourceUnavailable,
+            importSourceUrl: "https://medal.tv/clips/abc", fileSizeBytes: null);
+
+        await using var db = NewContext();
+        var count = await NewStore(now, db).RequeueFailedMediaAsync(null, onlyRetryable: true, CancellationToken.None);
+
+        count.Should().Be(1);
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.Status.Should().Be(ClipStatuses.Importing);
+        clip.ProcessingAttempts.Should().Be(0);
+        clip.FailureReason.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task RequeueFailedMediaAsync_FailedImportWithSource_RestartsAtProcessing()
+    {
+        await _fx.ResetAsync();
+        var now = DateTimeOffset.UtcNow;
+        var userId = await SeedUserAsync("rq_import_fetched");
+        // An import that already fetched its source (FileSizeBytes set) then failed at the thumbnail
+        // stage restarts at 'processing' like any other source-in-hand clip, not 'importing'.
+        var clipId = await SeedClipAsync(userId, ClipStatuses.Failed, now,
+            processingAttempts: 3, thumbnailKey: null, failureReason: ClipFailureReasons.ThumbnailFailed,
+            importSourceUrl: "https://medal.tv/clips/def", fileSizeBytes: 2048);
+
+        await using var db = NewContext();
+        var count = await NewStore(now, db).RequeueFailedMediaAsync(null, onlyRetryable: true, CancellationToken.None);
+
+        count.Should().Be(1);
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.Status.Should().Be(ClipStatuses.Processing);
     }
 
     [Fact]

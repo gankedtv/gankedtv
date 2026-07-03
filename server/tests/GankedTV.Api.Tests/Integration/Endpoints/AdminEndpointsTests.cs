@@ -701,6 +701,18 @@ public class AdminEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task RequeueFailedMedia_SpecificClipNotEligible_Returns404()
+    {
+        await _fx.ResetAsync();
+        var (_, modToken) = await SeedUserAsync("mod", UserRoles.Moderator);
+        using var client = AuthTestHelpers.CreateBearerClient(_factory!, modToken);
+
+        var resp = await client.PostAsJsonAsync("/admin/clips/media/requeue", new { clipId = Guid.NewGuid() });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
     public async Task RequeueFailedMedia_AsModerator_RequeuesInfraFailure()
     {
         await _fx.ResetAsync();

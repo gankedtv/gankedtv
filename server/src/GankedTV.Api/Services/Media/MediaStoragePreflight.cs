@@ -68,6 +68,11 @@ public sealed class MediaStoragePreflight : IMediaStoragePreflight
     // (reachable + TLS trusted). Anything under this prefix is never written by the pipeline.
     private const string ProbeKey = "__preflight__/reachability-probe";
 
+    // Cap the boot probe so a black-holed endpoint can't stall startup for the HttpClient default
+    // (100s). A timeout is classified Unreachable by the catch below (timeout token cancels, the
+    // caller token does not).
+    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(10);
+
     private readonly HttpClient _http;
     private readonly IObjectStorageService _storage;
     private readonly IOptionsMonitor<S3Options> _s3;
@@ -105,12 +110,14 @@ public sealed class MediaStoragePreflight : IMediaStoragePreflight
             return new StoragePreflightResult(StorageReachability.Misconfigured, "presigned URL is not absolute");
         }
 
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(ProbeTimeout);
         try
         {
             // GET (the verb the URL is signed for) with headers-only completion: the sentinel
             // key 404s, so no body is transferred. A 4xx is still a good outcome here — it means
             // the request reached storage and TLS verified.
-            using var response = await _http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, ct);
+            using var response = await _http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token);
             return new StoragePreflightResult(
                 StorageReachability.Reachable,
                 $"HTTP {(int)response.StatusCode} from {uri.Scheme}://{uri.Authority}");
