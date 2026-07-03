@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using GankedTV.Api.Services.ObjectStorage;
@@ -51,12 +52,37 @@ public sealed class JitLadderService : IJitLadderService
             // references an audio rendition when one actually exists — otherwise ffmpeg errors
             // on the dangling a:N reference.
             var hasAudio = await ProbeHasAudioAsync(inputUrl, opts, ct);
-            var args = BuildFfmpegArgs(inputUrl, workDir, rungs, opts, hasAudio);
-            var result = await _ffmpeg.RunAsync(opts.FfmpegPath, args, opts.TranscodeTimeout, ct);
-            if (result.ExitCode != 0)
+
+            // Both attempts share ONE TranscodeTimeout budget so a fallback can't overrun the lease.
+            var elapsed = Stopwatch.StartNew();
+            var encoder = opts.JitVideoEncoder;
+            var failure = await RunLadderAsync(inputUrl, workDir, rungs, opts, encoder, hasAudio, opts.TranscodeTimeout, ct);
+
+            // Same NVENC-won't-open failure the compress stage guards against: a hardware JIT encoder
+            // that can't open (ffmpeg newer than the host driver, busy/absent GPU) would 404 playback
+            // of every clip the browser can't decode natively. Fall back once to the software H.264
+            // encoder so the ladder still builds.
+            var remaining = opts.TranscodeTimeout - elapsed.Elapsed;
+            if (failure is not null
+                && opts.HardwareEncoderFallbackEnabled
+                && MediaEncoders.IsNvencEncoder(opts.JitVideoEncoder)
+                && remaining > TimeSpan.Zero
+                && !ct.IsCancellationRequested)
+            {
+                encoder = MediaEncoders.SoftwareEncoderFor(opts.JitVideoEncoder);
+                _logger.LogWarning(
+                    "JIT ladder clip={ClipId}: hardware encoder {Hardware} failed to produce output; falling back to software {Software}.",
+                    job.ClipId, opts.JitVideoEncoder, encoder);
+                // Wipe partial output from the failed attempt so leftover segments/playlists can't be
+                // uploaded alongside the software run's output.
+                ResetDir(workDir);
+                failure = await RunLadderAsync(inputUrl, workDir, rungs, opts, encoder, hasAudio, remaining, ct);
+            }
+
+            if (failure is not null)
             {
                 throw new InvalidOperationException(
-                    $"ffmpeg JIT transcode failed (exit {result.ExitCode}): {ThumbnailJobService.RedactUrls(result.Stderr)}");
+                    $"ffmpeg JIT transcode failed ({ThumbnailJobService.RedactUrls(failure)})");
             }
 
             var masterPath = Path.Combine(workDir, "master.m3u8");
@@ -81,8 +107,8 @@ public sealed class JitLadderService : IJitLadderService
             }
 
             _logger.LogInformation(
-                "JIT ladder cached clip={ClipId} rungs={Rungs} prefix={Prefix}",
-                job.ClipId, rungs.Count, keyPrefix);
+                "JIT ladder cached clip={ClipId} encoder={Encoder} rungs={Rungs} prefix={Prefix}",
+                job.ClipId, encoder, rungs.Count, keyPrefix);
 
             return $"{keyPrefix}/master.m3u8";
         }
@@ -90,6 +116,40 @@ public sealed class JitLadderService : IJitLadderService
         {
             TryDeleteDir(workDir);
         }
+    }
+
+    // Runs one JIT ladder encode with the given encoder, bounded by `timeout`. Returns null on
+    // success, or a redaction-ready "exit N: <stderr>" diagnostic on a non-zero exit.
+    private async Task<string?> RunLadderAsync(
+        string inputUrl,
+        string workDir,
+        IReadOnlyList<HlsRung> rungs,
+        MediaJobOptions opts,
+        string encoder,
+        bool includeAudio,
+        TimeSpan timeout,
+        CancellationToken ct)
+    {
+        var args = BuildFfmpegArgs(inputUrl, workDir, rungs, opts, includeAudio, encoder);
+        var result = await _ffmpeg.RunAsync(opts.FfmpegPath, args, timeout, ct);
+        if (result.ExitCode != 0)
+        {
+            // Raw here; the caller redacts once when it wraps this into the thrown message.
+            return $"exit {result.ExitCode}: {result.Stderr}";
+        }
+
+        return null;
+    }
+
+    // Wipe + recreate the workdir so a fallback attempt starts clean.
+    private static void ResetDir(string dir)
+    {
+        if (Directory.Exists(dir))
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+
+        Directory.CreateDirectory(dir);
     }
 
     // Object-key prefix for one clip's cached HLS output. Relative URIs inside the playlists
@@ -153,8 +213,10 @@ public sealed class JitLadderService : IJitLadderService
         string workDir,
         IReadOnlyList<HlsRung> rungs,
         MediaJobOptions opts,
-        bool includeAudio)
+        bool includeAudio,
+        string? encoder = null)
     {
+        var videoEncoder = encoder ?? opts.JitVideoEncoder;
         var ci = CultureInfo.InvariantCulture;
         var n = rungs.Count;
 
@@ -180,7 +242,7 @@ public sealed class JitLadderService : IJitLadderService
             args.Add("-map");
             args.Add($"[v{i}out]");
             args.Add($"-c:v:{i}");
-            args.Add(opts.JitVideoEncoder);
+            args.Add(videoEncoder);
             args.Add($"-b:v:{i}");
             args.Add($"{rungs[i].VideoKbps.ToString(ci)}k");
             args.Add($"-maxrate:v:{i}");

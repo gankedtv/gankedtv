@@ -51,7 +51,8 @@ public sealed class CompressJobService : ICompressJobService
             // single job attempt past the lease (LeaseDuration), or another worker could re-claim the
             // row mid-encode and flap the deterministic output key. See MediaJobOptions.LeaseDuration.
             var elapsed = Stopwatch.StartNew();
-            var failure = await RunEncodeAsync(inputUrl, outPath, job, opts, opts.VideoEncoder, opts.TranscodeTimeout, ct);
+            var encoder = opts.VideoEncoder;
+            var failure = await RunEncodeAsync(inputUrl, outPath, job, opts, encoder, opts.TranscodeTimeout, ct);
 
             // A hardware (*_nvenc) encoder that won't open — ffmpeg outrunning the host NVIDIA
             // driver, a busy or absent GPU — fails the clip identically on every retry. Fall back
@@ -60,15 +61,15 @@ public sealed class CompressJobService : ICompressJobService
             var remaining = opts.TranscodeTimeout - elapsed.Elapsed;
             if (failure is not null
                 && opts.HardwareEncoderFallbackEnabled
-                && IsNvencEncoder(opts.VideoEncoder)
+                && MediaEncoders.IsNvencEncoder(opts.VideoEncoder)
                 && remaining > TimeSpan.Zero
                 && !ct.IsCancellationRequested)
             {
-                var software = SoftwareEncoderFor(opts.VideoEncoder);
+                encoder = MediaEncoders.SoftwareEncoderFor(opts.VideoEncoder);
                 _logger.LogWarning(
                     "compress clip={ClipId}: hardware encoder {Hardware} failed to produce output; falling back to software {Software}.",
-                    job.ClipId, opts.VideoEncoder, software);
-                failure = await RunEncodeAsync(inputUrl, outPath, job, opts, software, remaining, ct);
+                    job.ClipId, opts.VideoEncoder, encoder);
+                failure = await RunEncodeAsync(inputUrl, outPath, job, opts, encoder, remaining, ct);
             }
 
             if (failure is not null)
@@ -83,8 +84,8 @@ public sealed class CompressJobService : ICompressJobService
             }
 
             _logger.LogInformation(
-                "Compressed clip={ClipId} codec={Codec} key={Key} size={Size}B",
-                job.ClipId, opts.VideoCodec, outputKey, new FileInfo(outPath).Length);
+                "Compressed clip={ClipId} codec={Codec} encoder={Encoder} key={Key} size={Size}B",
+                job.ClipId, opts.VideoCodec, encoder, outputKey, new FileInfo(outPath).Length);
 
             return new CompressionResult(outputKey, opts.VideoCodec, job.VideoKey);
         }
@@ -114,19 +115,6 @@ public sealed class CompressJobService : ICompressJobService
         }
 
         return null;
-    }
-
-    private static bool IsNvencEncoder(string encoder) =>
-        encoder.Contains("nvenc", StringComparison.OrdinalIgnoreCase);
-
-    // Software encoder of the same codec family as a hardware encoder, so a fallback re-encode keeps
-    // the clip's persisted VideoCodec correct. All targets take the CRF quality flag (see BuildCompressArgs).
-    internal static string SoftwareEncoderFor(string hardwareEncoder)
-    {
-        if (hardwareEncoder.Contains("av1", StringComparison.OrdinalIgnoreCase)) return "libsvtav1";
-        if (hardwareEncoder.Contains("hevc", StringComparison.OrdinalIgnoreCase)
-            || hardwareEncoder.Contains("h265", StringComparison.OrdinalIgnoreCase)) return "libx265";
-        return "libx264";
     }
 
     // The compressed master lives at a distinct key (…/{clipId}.cmp.mp4) so the encode never
@@ -165,7 +153,7 @@ public sealed class CompressJobService : ICompressJobService
         args.Add("-c:v");
         args.Add(videoEncoder);
         // NVENC takes the quality target as -cq; software encoders (libx264/libsvtav1) use -crf.
-        args.Add(IsNvencEncoder(videoEncoder) ? "-cq" : "-crf");
+        args.Add(MediaEncoders.IsNvencEncoder(videoEncoder) ? "-cq" : "-crf");
         args.Add(opts.Crf.ToString(ci));
         args.Add("-pix_fmt");
         args.Add("yuv420p");
