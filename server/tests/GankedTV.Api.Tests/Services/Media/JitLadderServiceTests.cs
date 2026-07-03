@@ -168,13 +168,80 @@ public class JitLadderServiceTests
         (await act.Should().ThrowAsync<InvalidOperationException>()).Which.Message.Should().NotContain("sig=secret");
     }
 
-    private static JitLadderService Build(IObjectStorageService storage, IFfmpegRunner ffmpeg)
+    private static JitLadderService Build(IObjectStorageService storage, IFfmpegRunner ffmpeg, MediaJobOptions? opts = null)
     {
+        opts ??= new MediaJobOptions { Ladder = DefaultLadder() };
         var jobOpts = Substitute.For<IOptionsMonitor<MediaJobOptions>>();
-        jobOpts.CurrentValue.Returns(new MediaJobOptions { Ladder = DefaultLadder() });
+        jobOpts.CurrentValue.Returns(opts);
         var s3 = Substitute.For<IOptionsMonitor<S3Options>>();
         s3.CurrentValue.Returns(new S3Options { ClipsBucket = "clips", StreamCacheBucket = "stream-cache" });
 
         return new JitLadderService(storage, ffmpeg, jobOpts, s3, NullLogger<JitLadderService>.Instance);
+    }
+
+    // ffmpeg fake: audio probe reports a stream; a *_nvenc ladder run fails to open (no output),
+    // any software encoder writes a minimal ladder. Records the ladder encoders it was asked to use.
+    private static IFfmpegRunner FfmpegFailingOnNvenc(List<string> encodersSeen)
+    {
+        var ffmpeg = Substitute.For<IFfmpegRunner>();
+        ffmpeg.RunAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                if ((string)call[0] == "ffprobe") return new FfmpegResult(0, "0\n", "");
+                var args = (IReadOnlyList<string>)call[1];
+                var encoder = args.SkipWhile(a => a != "-c:v:0").Skip(1).First();
+                encodersSeen.Add(encoder);
+                if (encoder.Contains("nvenc")) return new FfmpegResult(1, "", "nvenc open failed");
+                var workDir = Path.GetDirectoryName(args.Single(a => a.EndsWith("stream_%v.m3u8")))!;
+                File.WriteAllText(Path.Combine(workDir, "master.m3u8"), "#EXTM3U");
+                File.WriteAllText(Path.Combine(workDir, "stream_0.m3u8"), "#EXTM3U");
+                File.WriteAllText(Path.Combine(workDir, "stream_0_000.ts"), "tsdata");
+                return new FfmpegResult(0, "", "");
+            });
+        return ffmpeg;
+    }
+
+    [Fact]
+    public async Task BuildAsync_HardwareEncoderFails_FallsBackToSoftware_AndCaches()
+    {
+        var storage = Substitute.For<IObjectStorageService>();
+        storage.GetPresignedGetUrlForWorker(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan?>())
+            .Returns("http://minio/clips/master.av1.mp4?sig=x");
+        var encodersSeen = new List<string>();
+        var ffmpeg = FfmpegFailingOnNvenc(encodersSeen);
+
+        var uploaded = new List<string>();
+        storage.PutObjectAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<Stream>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(call => { uploaded.Add((string)call[1]); return Task.CompletedTask; });
+
+        var svc = Build(storage, ffmpeg,
+            new MediaJobOptions { Ladder = DefaultLadder(), JitVideoEncoder = "h264_nvenc" });
+        var clipId = Guid.NewGuid();
+        var job = new ClaimedStreamJob(clipId, "u/clip.cmp.mp4", SourceHeight: 720, AttemptNumber: 1);
+
+        var masterKey = await svc.BuildAsync(job, CancellationToken.None);
+
+        masterKey.Should().Be($"{clipId:N}/master.m3u8");
+        encodersSeen.Should().Equal("h264_nvenc", "libx264"); // GPU first, then software H.264
+        uploaded.Should().Contain($"{clipId:N}/master.m3u8");
+    }
+
+    [Fact]
+    public async Task BuildAsync_FallbackDisabled_HardwareFailureThrowsWithoutRetry()
+    {
+        var storage = Substitute.For<IObjectStorageService>();
+        storage.GetPresignedGetUrlForWorker(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan?>())
+            .Returns("http://x?sig=secret");
+        var encodersSeen = new List<string>();
+        var ffmpeg = FfmpegFailingOnNvenc(encodersSeen);
+
+        var svc = Build(storage, ffmpeg,
+            new MediaJobOptions { Ladder = DefaultLadder(), JitVideoEncoder = "h264_nvenc", HardwareEncoderFallbackEnabled = false });
+        var job = new ClaimedStreamJob(Guid.NewGuid(), "v.mp4", 720, 1);
+
+        var act = async () => await svc.BuildAsync(job, CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+        encodersSeen.Should().Equal("h264_nvenc"); // no software retry when the toggle is off
     }
 }

@@ -166,16 +166,20 @@ out of the box (no manual NVIDIA Container Toolkit), and the encoder image alrea
 ffmpeg, so `av1_nvenc`/`h264_nvenc` work once the GPU is attached. Keep the `gankedtv-dedicated-encoder`
 GHCR package **private** and give the host a `read:packages` token to pull it.
 
-**ffmpeg build vs. NVIDIA driver.** NVENC couples the ffmpeg build to the host driver: a build linked
-against a newer NVENC SDK than the driver provides makes `av1_nvenc` fail to open (`Driver does not
-support the required nvenc API version`), which fails the compress stage. `Dockerfile.dedicated-encoder`
-therefore pins `FFMPEG_URL` to the **n7.1 release branch** (stable NVENC SDK) rather than the floating
-`master` build, so a rebuild can't silently outrun the driver. On locked appliances (TrueNAS Scale ships
-the driver with the OS release, so you can't hand-upgrade it), keep the pin until the platform ships a new
-enough driver, then bump `FFMPEG_URL` via `--build-arg`. As a safety net, `MEDIA_HARDWARE_ENCODER_FALLBACK_ENABLED`
-(default `true`) makes the compress stage retry a failed hardware encode once with the software encoder of the
-same codec family (`av1_nvenc`→`libsvtav1`), so uploads keep flowing (slower) instead of hard-failing every
-clip. Set it `false` on a GPU-only box that must never spend CPU on encodes.
+**ffmpeg build vs. NVIDIA driver.** NVENC couples the ffmpeg build to the host driver — but via the
+**nv-codec-headers version the build was compiled against, not the FFmpeg version number**. A build
+linked against a newer NVENC SDK than the driver provides makes `av1_nvenc` fail to open (`Driver does
+not support the required nvenc API version. Required: 13.1 Found: 13.0`), which fails the compress and
+JIT stages. `Dockerfile.dedicated-encoder` therefore pins `FFMPEG_URL` to **jellyfin-ffmpeg**, whose
+documented NVIDIA floor is driver ≥520.56.06 — so `av1_nvenc` opens on the older drivers shipped by
+appliances like TrueNAS Scale (which bundles the driver with the OS release; you can't hand-upgrade it)
+while still doing hardware AV1 on Ada+ GPUs. Verify with a one-shot encode after any `FFMPEG_URL` change:
+`ffmpeg -f lavfi -i testsrc2=size=256x256:rate=30:duration=1 -c:v av1_nvenc -f null -`. As a safety net,
+`MEDIA_HARDWARE_ENCODER_FALLBACK_ENABLED` (default `true`) makes both GPU stages retry a failed hardware
+encode once with the software encoder of the same codec family (`av1_nvenc`→`libsvtav1`,
+`h264_nvenc`→`libx264`), so uploads and playback keep working (slower) instead of hard-failing. Set it
+`false` on a GPU-only box that must never spend CPU on encodes. To skip NVENC entirely, set the encoders
+to software via env (`MEDIA_VIDEO_ENCODER=libsvtav1`/`MEDIA_JIT_VIDEO_ENCODER=libx264`).
 
 **App-host changes when you move transcoding to the GPU box:**
 1. Set the api's `MEDIA_TRANSCODE_WORKER_ENABLED=false` (and `MEDIA_THUMBNAIL_WORKER_ENABLED=false` if

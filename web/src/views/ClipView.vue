@@ -36,12 +36,17 @@ const DEFAULT_ERROR = "Couldn't load this clip."
 const JIT_ERROR = 'This clip is still being prepared for your device — try again in a moment.'
 const errorMessage = ref(DEFAULT_ERROR)
 // A freshly-uploaded clip 404s until the pipeline (thumbnail + compress) finishes. Rather than
-// bounce the owner straight to not-found, we treat a 404 as "maybe still processing" and poll a
-// few times before giving up.
+// bounce the owner straight to not-found, we treat a 404 as "maybe still processing" and keep
+// polling for a bounded window before giving up. The window is time-based (not a fixed poll
+// count) and generous: when the GPU encoder is unavailable the pipeline falls back to a software
+// transcode that can take minutes, and bouncing to not-found mid-transcode is the reported 404.
+// Aligned with the upload wizard's ~5-min patience. Interval backs off so a long wait (or a
+// genuinely-missing clip) doesn't hammer the endpoint.
 const processing = ref(false)
-const PROCESSING_POLL_MS = 2500
-const MAX_PROCESSING_POLLS = 12 // ~30s — short clips finish well within this
-let processingPolls = 0
+const PROCESSING_POLL_MIN_MS = 2500
+const PROCESSING_POLL_MAX_MS = 10_000
+const PROCESSING_WINDOW_MS = 5 * 60_000
+let processingStartedAt = 0
 let processingTimer: ReturnType<typeof setTimeout> | null = null
 const liked = ref(false)
 const likeCount = ref(0)
@@ -122,7 +127,7 @@ async function loadClip(isPoll = false) {
   if (!isPoll) {
     loading.value = true
     processing.value = false
-    processingPolls = 0
+    processingStartedAt = 0
     clearProcessingTimer()
     clip.value = null
     errorMessage.value = DEFAULT_ERROR
@@ -142,15 +147,19 @@ async function loadClip(isPoll = false) {
     if (myLoadId !== latestLoadId) return
     if (err instanceof ApiError && err.status === 404) {
       // 404 here means "not ready yet" (just uploaded, still transcoding) OR genuinely
-      // missing — the detail endpoint can't tell them apart. Poll a few times showing a
-      // processing state before falling back to not-found.
-      if (processingPolls < MAX_PROCESSING_POLLS) {
-        processingPolls++
+      // missing — the detail endpoint can't tell them apart. Show a processing state and keep
+      // polling until the time window elapses, then fall back to not-found.
+      const now = Date.now()
+      if (processingStartedAt === 0) processingStartedAt = now
+      const elapsed = now - processingStartedAt
+      if (elapsed < PROCESSING_WINDOW_MS) {
         processing.value = true
         loading.value = false
+        // Back off from PROCESSING_POLL_MIN_MS toward PROCESSING_POLL_MAX_MS as the wait grows.
+        const delay = Math.min(PROCESSING_POLL_MAX_MS, PROCESSING_POLL_MIN_MS + elapsed / 20)
         processingTimer = setTimeout(() => {
           if (myLoadId === latestLoadId) loadClip(true)
-        }, PROCESSING_POLL_MS)
+        }, delay)
         return
       }
       router.replace({ name: 'not-found' })

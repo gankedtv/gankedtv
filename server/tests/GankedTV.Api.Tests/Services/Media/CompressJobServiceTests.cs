@@ -107,7 +107,7 @@ public class CompressJobServiceTests
     [InlineData("h265_nvenc", "libx265")]
     public void SoftwareEncoderFor_MapsToSameCodecFamily(string hardware, string expected)
     {
-        CompressJobService.SoftwareEncoderFor(hardware).Should().Be(expected);
+        MediaEncoders.SoftwareEncoderFor(hardware).Should().Be(expected);
     }
 
     [Fact]

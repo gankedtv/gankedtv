@@ -11,28 +11,39 @@
 ARG BASE_IMAGE=ghcr.io/gankedtv/gankedtv-server:latest
 FROM ${BASE_IMAGE}
 
-# Static, self-contained GPL build with NVENC/NVDEC + libsvtav1. Pinned to the n7.1 release
-# branch, NOT the floating master "latest": master tracks the newest nv-codec-headers and can
-# demand a newer NVIDIA driver than the host provides (e.g. NVENC API 13.1 needs driver ≥610),
-# which makes av1_nvenc fail to open and hard-fails every clip. The n7.1 branch uses a stable
-# NVENC SDK compatible with older drivers while still supporting av1_nvenc + libsvtav1. Bump this
-# (or override via --build-arg FFMPEG_URL) once the host driver is new enough for a later branch.
-ARG FFMPEG_URL=https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n7.1-latest-linux64-gpl-7.1.tar.xz
+# Static, self-contained GPL build with NVENC/NVDEC + libsvtav1 + libx264. The NVENC driver floor
+# is set by the nv-codec-headers version the build was COMPILED against, NOT by the FFmpeg version
+# — so the encoder is pinned by *build*, not FFmpeg release number. BtbN's floating `master` tracks
+# the newest nv-codec-headers (NVENC API 13.1 → needs NVIDIA driver ≥610), so av1_nvenc fails to
+# open on an older driver and hard-fails every clip. jellyfin-ffmpeg is built for exactly this
+# constraint: its documented NVIDIA floor is driver ≥520.56.06, so av1_nvenc opens on the older
+# drivers shipped by appliances like TrueNAS Scale while still doing hardware AV1 on Ada+ GPUs.
+# Pinned to a specific version for reproducibility; override with --build-arg FFMPEG_URL=... (any
+# build works — but verify av1_nvenc actually opens on the host driver first).
+ARG FFMPEG_URL=https://repo.jellyfin.org/releases/ffmpeg/7.1.4-3/jellyfin-ffmpeg_7.1.4-3_portable_linux64-gpl.tar.xz
 
 USER root
+# Extraction is layout-agnostic: BtbN nests binaries under <root>/bin/, jellyfin's portable tarball
+# lays them out differently, so locate ffmpeg/ffprobe with `find` and symlink to a stable path
+# rather than hardcoding either layout. Portable binaries resolve their bundled libs via an $ORIGIN
+# rpath, so a symlink (not a copy) keeps them next to their lib/ dir.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl xz-utils ca-certificates \
     && mkdir -p /opt/ffmpeg \
     && curl -fsSL "$FFMPEG_URL" -o /tmp/ffmpeg.tar.xz \
-    && tar -xJf /tmp/ffmpeg.tar.xz -C /opt/ffmpeg --strip-components=1 \
+    && tar -xJf /tmp/ffmpeg.tar.xz -C /opt/ffmpeg \
     && rm /tmp/ffmpeg.tar.xz \
+    && ln -sf "$(find /opt/ffmpeg -type f -name ffmpeg | head -n1)" /usr/local/bin/ffmpeg \
+    && ln -sf "$(find /opt/ffmpeg -type f -name ffprobe | head -n1)" /usr/local/bin/ffprobe \
     && apt-get purge -y xz-utils \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/* \
-    && /opt/ffmpeg/bin/ffmpeg -hide_banner -encoders | grep -q nvenc
+    # Fail the build if the AV1 NVENC encoder isn't compiled in — this only lists encoders (no GPU
+    # needed at build time) and also proves the portable binary loads its bundled libs.
+    && ffmpeg -hide_banner -encoders | grep -q av1_nvenc
 
 # Override the bundled software ffmpeg/ffprobe (MediaJobOptions reads these).
-ENV FFMPEG_PATH=/opt/ffmpeg/bin/ffmpeg \
-    FFPROBE_PATH=/opt/ffmpeg/bin/ffprobe
+ENV FFMPEG_PATH=/usr/local/bin/ffmpeg \
+    FFPROBE_PATH=/usr/local/bin/ffprobe
 
 USER gankedtv

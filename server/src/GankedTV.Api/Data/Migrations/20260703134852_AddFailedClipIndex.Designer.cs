@@ -3,6 +3,7 @@ using System;
 using GankedTV.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using NpgsqlTypes;
@@ -12,9 +13,11 @@ using NpgsqlTypes;
 namespace GankedTV.Api.Data.Migrations
 {
     [DbContext(typeof(GankedTvDbContext))]
-    partial class GankedTvDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260703134852_AddFailedClipIndex")]
+    partial class AddFailedClipIndex
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
