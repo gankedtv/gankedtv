@@ -19,14 +19,16 @@ FROM ${BASE_IMAGE}
 # constraint: its documented NVIDIA floor is driver ≥520.56.06, so av1_nvenc opens on the older
 # drivers shipped by appliances like TrueNAS Scale while still doing hardware AV1 on Ada+ GPUs.
 # Pinned to a specific version for reproducibility; override with --build-arg FFMPEG_URL=... (any
-# build works — but verify av1_nvenc actually opens on the host driver first).
-ARG FFMPEG_URL=https://repo.jellyfin.org/releases/ffmpeg/7.1.4-3/jellyfin-ffmpeg_7.1.4-3_portable_linux64-gpl.tar.xz
+# build works — but verify av1_nvenc actually opens on the host driver first). Downloaded from the
+# GitHub release (stable asset URL) rather than repo.jellyfin.org, whose mirror prunes older
+# versions and 410s on a pinned path.
+ARG FFMPEG_URL=https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v7.1.4-3/jellyfin-ffmpeg_7.1.4-3_portable_linux64-gpl.tar.xz
 
 USER root
-# Extraction is layout-agnostic: BtbN nests binaries under <root>/bin/, jellyfin's portable tarball
-# lays them out differently, so locate ffmpeg/ffprobe with `find` and symlink to a stable path
-# rather than hardcoding either layout. Portable binaries resolve their bundled libs via an $ORIGIN
-# rpath, so a symlink (not a copy) keeps them next to their lib/ dir.
+# Extraction is layout-agnostic: jellyfin's portable tarball drops static ffmpeg/ffprobe at the
+# archive root, while a BtbN override nests them under <root>/bin/ (with a sibling lib/ its binaries
+# find via an $ORIGIN rpath). Locate them with `find` and symlink to a stable path rather than
+# hardcoding either layout — a symlink (not a copy) preserves any $ORIGIN-relative lib lookup.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl xz-utils ca-certificates \
     && mkdir -p /opt/ffmpeg \
