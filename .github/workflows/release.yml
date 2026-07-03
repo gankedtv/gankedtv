@@ -1,10 +1,12 @@
 name: Release
 
 # On push to main: run the per-stack CI (reusable server.yml / web.yml / discord.yml) for whatever
-# changed, then build + push ONLY the images whose tests passed to GHCR. No deploy step — an
-# auto-updater on the host (Watchtower / freshdock) pulls the moved :latest tag. Each image is also
-# tagged with the full commit SHA for pinning/rollback. The change filter avoids touching images
-# whose sources didn't change; their existing :latest still points at the correct digest.
+# changed, then build + push ONLY the images whose tests passed to GHCR, tagged with the full commit
+# SHA. A final `promote` job then flips the :latest deploy tag for every image built in this release
+# AT ONCE, and only once all of them built — so a partial or failed release never moves any :latest,
+# and production never pulls one image ahead of the others. No deploy step of our own: an auto-updater
+# on the host (Watchtower / freshdock) pulls the moved :latest tags. The change filter avoids touching
+# images whose sources didn't change; their existing :latest still points at the correct digest.
 
 on:
   push:
@@ -93,9 +95,8 @@ jobs:
         id: meta
         with:
           images: ghcr.io/${{ github.repository_owner }}/gankedtv-server
-          tags: |
-            type=sha,prefix=,format=long
-            type=raw,value=latest
+          # :latest is deferred to the promote job so all changed images flip together.
+          tags: type=sha,prefix=,format=long
       - uses: docker/build-push-action@v7
         with:
           context: server # server/-scoped: Dockerfile.api COPYs GankedTV.slnx + src/ relative to server/
@@ -127,9 +128,8 @@ jobs:
         id: meta
         with:
           images: ghcr.io/${{ github.repository_owner }}/gankedtv-web
-          tags: |
-            type=sha,prefix=,format=long
-            type=raw,value=latest
+          # :latest is deferred to the promote job so all changed images flip together.
+          tags: type=sha,prefix=,format=long
       - uses: docker/build-push-action@v7
         with:
           context: . # repo root: web build needs web/ + shared/ (see web/Dockerfile + .dockerignore)
@@ -163,9 +163,8 @@ jobs:
         id: meta
         with:
           images: ghcr.io/${{ github.repository_owner }}/gankedtv-discord
-          tags: |
-            type=sha,prefix=,format=long
-            type=raw,value=latest
+          # :latest is deferred to the promote job so all changed images flip together.
+          tags: type=sha,prefix=,format=long
       - uses: docker/build-push-action@v7
         with:
           context: . # repo root: discord/Dockerfile COPYs shared/
@@ -201,9 +200,8 @@ jobs:
         id: meta
         with:
           images: ghcr.io/${{ github.repository_owner }}/gankedtv-dedicated-encoder
-          tags: |
-            type=sha,prefix=,format=long
-            type=raw,value=latest
+          # :latest is deferred to the promote job so all changed images flip together.
+          tags: type=sha,prefix=,format=long
       - uses: docker/build-push-action@v7
         with:
           context: server # unused (the Dockerfile only layers ffmpeg onto the base), mirrors the api job
@@ -215,3 +213,59 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=dedicated-encoder
           cache-to: type=gha,scope=dedicated-encoder,mode=max
+
+  # --- Promote: move the :latest deploy tag for every image built in THIS release to its fresh
+  # :<sha>, all in one job that waits on every build. Runs only if no test or build job failed, so a
+  # partial release never moves any :latest — production either sees the whole new set or the whole
+  # old set, never a mix. Retag is a server-side manifest copy (imagetools), so no image is pulled and
+  # all tags flip within seconds of each other. Each per-image step is guarded by the change filter,
+  # so only the images that actually rebuilt are promoted; unchanged images keep their existing :latest.
+  promote:
+    needs:
+      - changes
+      - test-server
+      - test-web
+      - test-discord
+      - server
+      - web
+      - discord
+      - dedicated-encoder
+    if: >-
+      ${{ !cancelled()
+      && !contains(needs.*.result, 'failure')
+      && (needs.changes.outputs.server == 'true'
+      || needs.changes.outputs.web == 'true'
+      || needs.changes.outputs.discord == 'true') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      OWNER: ${{ github.repository_owner }}
+      SHA: ${{ github.sha }}
+    steps:
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Promote server + dedicated-encoder
+        if: needs.changes.outputs.server == 'true'
+        run: |
+          for img in gankedtv-server gankedtv-dedicated-encoder; do
+            docker buildx imagetools create \
+              --tag "ghcr.io/${OWNER}/${img}:latest" \
+              "ghcr.io/${OWNER}/${img}:${SHA}"
+          done
+      - name: Promote web
+        if: needs.changes.outputs.web == 'true'
+        run: |
+          docker buildx imagetools create \
+            --tag "ghcr.io/${OWNER}/gankedtv-web:latest" \
+            "ghcr.io/${OWNER}/gankedtv-web:${SHA}"
+      - name: Promote discord
+        if: needs.changes.outputs.discord == 'true'
+        run: |
+          docker buildx imagetools create \
+            --tag "ghcr.io/${OWNER}/gankedtv-discord:latest" \
+            "ghcr.io/${OWNER}/gankedtv-discord:${SHA}"
