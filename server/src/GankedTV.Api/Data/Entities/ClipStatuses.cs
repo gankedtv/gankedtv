@@ -1,3 +1,5 @@
+using System.Linq;
+
 namespace GankedTV.Api.Data.Entities;
 
 // Short, machine-readable codes persisted in clips.failure_reason. The web wizard maps
@@ -10,6 +12,17 @@ public static class ClipFailureReasons
     public const string FetchFailed = "fetch_failed";
     public const string TranscodeFailed = "transcode_failed";
     public const string ThumbnailFailed = "thumbnail_failed";
+
+    // Content rejections: the clip itself is unacceptable, so a retry can never fix it. Single
+    // source of truth for both IsRetryable and the media-requeue query (ClipMediaJobStore), which
+    // filters on this same set so the two can't drift.
+    public static readonly string[] NonRetryableReasons = { SourceTooLong, SourceTooLarge };
+
+    // Whether requeuing a failed clip is worth it. Content rejections are skipped; everything else
+    // — infra/probe/fetch/transcode/thumbnail faults, or an unrecorded (null) reason — is retryable
+    // once the underlying cause (e.g. a storage TLS misconfig) is fixed.
+    public static bool IsRetryable(string? reason) =>
+        reason is null || !NonRetryableReasons.Contains(reason);
 }
 
 public static class ClipStatuses

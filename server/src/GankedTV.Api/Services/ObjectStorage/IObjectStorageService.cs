@@ -17,6 +17,15 @@ public interface IObjectStorageService
         string key,
         TimeSpan? expiry = null);
 
+    // GET URL for a server-side media worker to fetch source bytes with. Signed against (and
+    // pointing at) the internal endpoint — S3Options.InternalEndpoint when set, else the internal
+    // Endpoint — never the browser-facing PublicUrl. Keeps ffmpeg/ffprobe on a split worker host
+    // off a public certificate they can't verify (and off hairpin routing to the public host).
+    string GetPresignedGetUrlForWorker(
+        string bucket,
+        string key,
+        TimeSpan? expiry = null);
+
     Task DeleteObjectAsync(string bucket, string key, CancellationToken ct = default);
 
     // Deletes every object under a key prefix (e.g. a clip's cached HLS rendition under

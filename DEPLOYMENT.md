@@ -177,6 +177,43 @@ GHCR package **private** and give the host a `read:packages` token to pull it.
 The worker owns no schema and runs no migrations — it only leases media jobs from the shared DB and
 reads/writes the shared object store.
 
+### Media-worker storage access + TLS
+
+The media workers (thumbnail, compress, JIT) hand ffmpeg/ffprobe a **presigned URL** to fetch the
+source bytes. That URL is signed against the **internal `S3_ENDPOINT`** — the same host the API uses
+for every other S3 op — never the browser-facing `S3_PUBLIC_URL`. So a worker fetches storage over the
+endpoint it already reaches and trusts, and no public TLS certificate is ever involved. (Browsers still
+get `S3_PUBLIC_URL`; only the server-side fetch differs.)
+
+This matters on a **split deployment** where the GPU/encoder host runs the compress/JIT workers on a
+different box than the main API. If that box only knew the public host, ffmpeg would hit the reverse
+proxy's cert (e.g. Let's Encrypt for `cdn.example.com`), fail to resolve or trust it from inside the
+container, and report `certificate verify failed`; the clip then burns its retry budget, lands in
+`failed`, and its share page 404s. Two ways to keep the encoder box on a reachable endpoint:
+
+- **`S3_INTERNAL_ENDPOINT`** — set this on the worker box when its reachable storage endpoint differs
+  from the `S3_ENDPOINT` it would otherwise use. Presigned worker fetches are signed against (and target)
+  this endpoint. Plain http over the LAN is the simplest and needs no cert at all:
+  ```
+  S3_INTERNAL_ENDPOINT=http://<storage-lan-ip>:9000
+  ```
+  Unset → the worker signs against its `S3_ENDPOINT` (the default; correct whenever that endpoint is
+  reachable from the worker, which it must be for the box's other S3 ops).
+- **Trust the CA in the encoder image** — only if you insist the workers use an https endpoint whose CA
+  they don't trust (private CA / self-signed): mount the CA into the container and run
+  `update-ca-certificates` so ffmpeg's TLS stack trusts it. Prefer the plain-LAN endpoint above.
+
+**Boot preflight.** Each storage-fetching worker probes storage once at startup (a presigned fetch of a
+sentinel key) and logs the outcome. A TLS-trust fault logs **`storage TLS verification FAILED`** at
+Critical with the remediation above, so this misconfiguration is caught at boot rather than on the first
+user clip. A reachability/connectivity fault logs at Error.
+
+**Recovering already-failed clips.** After fixing the config, requeue the clips that failed during the
+outage: `POST /admin/clips/media/requeue` (moderator auth). With no body it requeues every `failed`
+clip except content rejections (too long / too large), resetting each to `processing` or `transcoding`
+with a fresh retry budget. Narrow to one clip with `{"clipId":"<guid>"}`, or include content rejections
+with `{"includeContentFailures":true}`.
+
 ## Fail-fast secret validation
 
 On boot in Production the API validates required configuration and **refuses to start** with an

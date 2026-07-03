@@ -78,6 +78,15 @@ public interface IClipMediaJobStore
     // + fromStatus guards prevent this worker from releasing another worker's lease.
     Task ReleaseLeaseAsync(Guid clipId, int expectedAttempt, string fromStatus, CancellationToken ct);
 
+    // Admin recovery: puts 'failed' clips back into the pipeline for another attempt after an
+    // infrastructure fault (e.g. the storage TLS misconfig this issue addresses). A clip with no
+    // thumbnail yet returns to 'processing'; one that has a thumbnail but no compressed master
+    // returns to 'transcoding'. Clears the failure reason + attempt counter so the fresh run gets
+    // the full retry budget. When onlyRetryable is true, content rejections (too long / too
+    // large) are left failed. `clipId` narrows to a single clip; null requeues every match.
+    // Returns the number of clips requeued.
+    Task<int> RequeueFailedMediaAsync(Guid? clipId, bool onlyRetryable, CancellationToken ct);
+
     // Atomically claims one row in status 'importing' that isn't currently leased and hasn't
     // exhausted its retry budget. Same SKIP LOCKED + lease bump as ClaimNextAsync but returns
     // the import URL alongside (the worker needs it for the fetch).

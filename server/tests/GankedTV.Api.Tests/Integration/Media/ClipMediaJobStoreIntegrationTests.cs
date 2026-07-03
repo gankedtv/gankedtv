@@ -44,7 +44,10 @@ public class ClipMediaJobStoreIntegrationTests
         int processingAttempts = 0,
         string? thumbnailKey = null,
         int? gameId = null,
-        short? height = null)
+        short? height = null,
+        string? failureReason = null,
+        string? importSourceUrl = null,
+        long? fileSizeBytes = null)
     {
         await using var db = NewContext();
         var clip = new Clip
@@ -62,6 +65,9 @@ public class ClipMediaJobStoreIntegrationTests
             ThumbnailKey = thumbnailKey,
             GameId = gameId,
             Height = height,
+            FailureReason = failureReason,
+            ImportSourceUrl = importSourceUrl,
+            FileSizeBytes = fileSizeBytes,
         };
         db.Clips.Add(clip);
         await db.SaveChangesAsync();
@@ -643,5 +649,157 @@ public class ClipMediaJobStoreIntegrationTests
         clip.Status.Should().Be(ClipStatuses.Processing);
         // User-supplied title is preserved because it didn't match the placeholder.
         clip.Title.Should().Be("My override");
+    }
+
+    [Fact]
+    public async Task RequeueFailedMediaAsync_FailedWithoutThumbnail_RestartsAtProcessing()
+    {
+        await _fx.ResetAsync();
+        var now = DateTimeOffset.UtcNow;
+        var userId = await SeedUserAsync("rq_thumb");
+        var clipId = await SeedClipAsync(userId, ClipStatuses.Failed, now,
+            processingAttempts: 3, thumbnailKey: null, failureReason: ClipFailureReasons.ThumbnailFailed);
+
+        await using var db = NewContext();
+        var count = await NewStore(now, db).RequeueFailedMediaAsync(null, onlyRetryable: true, CancellationToken.None);
+
+        count.Should().Be(1);
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.Status.Should().Be(ClipStatuses.Processing);
+        clip.ProcessingAttempts.Should().Be(0);
+        clip.ProcessingStartedAt.Should().BeNull();
+        clip.FailureReason.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task RequeueFailedMediaAsync_FailedImportWithoutSource_RestartsAtImporting()
+    {
+        await _fx.ResetAsync();
+        var now = DateTimeOffset.UtcNow;
+        var userId = await SeedUserAsync("rq_import");
+        // An import that failed before yt-dlp fetched the source: it has an import URL but no
+        // downloaded bytes (FileSizeBytes null), so restarting it at 'processing' would just fail
+        // again for want of a source. It must go back to 'importing'.
+        var clipId = await SeedClipAsync(userId, ClipStatuses.Failed, now,
+            processingAttempts: 3, thumbnailKey: null, failureReason: ClipFailureReasons.SourceUnavailable,
+            importSourceUrl: "https://medal.tv/clips/abc", fileSizeBytes: null);
+
+        await using var db = NewContext();
+        var count = await NewStore(now, db).RequeueFailedMediaAsync(null, onlyRetryable: true, CancellationToken.None);
+
+        count.Should().Be(1);
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.Status.Should().Be(ClipStatuses.Importing);
+        clip.ProcessingAttempts.Should().Be(0);
+        clip.FailureReason.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task RequeueFailedMediaAsync_FailedImportWithSource_RestartsAtProcessing()
+    {
+        await _fx.ResetAsync();
+        var now = DateTimeOffset.UtcNow;
+        var userId = await SeedUserAsync("rq_import_fetched");
+        // An import that already fetched its source (FileSizeBytes set) then failed at the thumbnail
+        // stage restarts at 'processing' like any other source-in-hand clip, not 'importing'.
+        var clipId = await SeedClipAsync(userId, ClipStatuses.Failed, now,
+            processingAttempts: 3, thumbnailKey: null, failureReason: ClipFailureReasons.ThumbnailFailed,
+            importSourceUrl: "https://medal.tv/clips/def", fileSizeBytes: 2048);
+
+        await using var db = NewContext();
+        var count = await NewStore(now, db).RequeueFailedMediaAsync(null, onlyRetryable: true, CancellationToken.None);
+
+        count.Should().Be(1);
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.Status.Should().Be(ClipStatuses.Processing);
+    }
+
+    [Fact]
+    public async Task RequeueFailedMediaAsync_FailedWithThumbnail_RestartsAtTranscoding()
+    {
+        await _fx.ResetAsync();
+        var now = DateTimeOffset.UtcNow;
+        var userId = await SeedUserAsync("rq_transcode");
+        var clipId = await SeedClipAsync(userId, ClipStatuses.Failed, now,
+            processingAttempts: 3, thumbnailKey: "u/c.jpg", failureReason: ClipFailureReasons.TranscodeFailed);
+
+        await using var db = NewContext();
+        var count = await NewStore(now, db).RequeueFailedMediaAsync(null, onlyRetryable: true, CancellationToken.None);
+
+        count.Should().Be(1);
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.Status.Should().Be(ClipStatuses.Transcoding);
+        clip.ProcessingAttempts.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task RequeueFailedMediaAsync_OnlyRetryable_SkipsContentRejections()
+    {
+        await _fx.ResetAsync();
+        var now = DateTimeOffset.UtcNow;
+        var userId = await SeedUserAsync("rq_content");
+        var infra = await SeedClipAsync(userId, ClipStatuses.Failed, now, failureReason: ClipFailureReasons.SourceUnavailable);
+        var tooLong = await SeedClipAsync(userId, ClipStatuses.Failed, now, failureReason: ClipFailureReasons.SourceTooLong);
+
+        await using var db = NewContext();
+        var count = await NewStore(now, db).RequeueFailedMediaAsync(null, onlyRetryable: true, CancellationToken.None);
+
+        count.Should().Be(1);
+        await using var verify = NewContext();
+        (await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == infra)).Status.Should().Be(ClipStatuses.Processing);
+        // The content rejection is left failed — a retry can't make an over-long clip acceptable.
+        (await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == tooLong)).Status.Should().Be(ClipStatuses.Failed);
+    }
+
+    [Fact]
+    public async Task RequeueFailedMediaAsync_IncludeContentFailures_RequeuesTooLong()
+    {
+        await _fx.ResetAsync();
+        var now = DateTimeOffset.UtcNow;
+        var userId = await SeedUserAsync("rq_include");
+        var tooLong = await SeedClipAsync(userId, ClipStatuses.Failed, now, failureReason: ClipFailureReasons.SourceTooLong);
+
+        await using var db = NewContext();
+        var count = await NewStore(now, db).RequeueFailedMediaAsync(null, onlyRetryable: false, CancellationToken.None);
+
+        count.Should().Be(1);
+        (await NewContext().Clips.AsNoTracking().SingleAsync(c => c.Id == tooLong)).Status.Should().Be(ClipStatuses.Processing);
+    }
+
+    [Fact]
+    public async Task RequeueFailedMediaAsync_ClipIdFilter_TouchesOnlyThatClip()
+    {
+        await _fx.ResetAsync();
+        var now = DateTimeOffset.UtcNow;
+        var userId = await SeedUserAsync("rq_single");
+        var target = await SeedClipAsync(userId, ClipStatuses.Failed, now, failureReason: ClipFailureReasons.FetchFailed);
+        var other = await SeedClipAsync(userId, ClipStatuses.Failed, now, failureReason: ClipFailureReasons.FetchFailed);
+
+        await using var db = NewContext();
+        var count = await NewStore(now, db).RequeueFailedMediaAsync(target, onlyRetryable: true, CancellationToken.None);
+
+        count.Should().Be(1);
+        await using var verify = NewContext();
+        (await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == target)).Status.Should().Be(ClipStatuses.Processing);
+        (await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == other)).Status.Should().Be(ClipStatuses.Failed);
+    }
+
+    [Fact]
+    public async Task RequeueFailedMediaAsync_LeavesNonFailedClipsAlone()
+    {
+        await _fx.ResetAsync();
+        var now = DateTimeOffset.UtcNow;
+        var userId = await SeedUserAsync("rq_ready");
+        var ready = await SeedClipAsync(userId, ClipStatuses.Ready, now);
+
+        await using var db = NewContext();
+        var count = await NewStore(now, db).RequeueFailedMediaAsync(null, onlyRetryable: true, CancellationToken.None);
+
+        count.Should().Be(0);
+        (await NewContext().Clips.AsNoTracking().SingleAsync(c => c.Id == ready)).Status.Should().Be(ClipStatuses.Ready);
     }
 }

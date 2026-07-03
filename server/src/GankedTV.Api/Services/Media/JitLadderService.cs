@@ -38,7 +38,7 @@ public sealed class JitLadderService : IJitLadderService
         var opts = _jobOptions.CurrentValue;
         var buckets = _s3.CurrentValue;
 
-        var inputUrl = _storage.GetPresignedGetUrl(buckets.ClipsBucket, job.VideoKey, DownloadUrlLifetime);
+        var inputUrl = _storage.GetPresignedGetUrlForWorker(buckets.ClipsBucket, job.VideoKey, DownloadUrlLifetime);
         var rungs = SelectRungs(job.SourceHeight, opts.Ladder);
 
         var workDir = Path.Combine(

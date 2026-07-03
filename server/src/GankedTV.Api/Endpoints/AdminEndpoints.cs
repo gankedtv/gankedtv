@@ -4,6 +4,7 @@ using GankedTV.Api.Contracts.Moderation;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Problems;
+using GankedTV.Api.Services.Media;
 using GankedTV.Api.Services.Moderation;
 using GankedTV.Api.Validation;
 using Microsoft.AspNetCore.Mvc;
@@ -32,6 +33,7 @@ public static class AdminEndpoints
         group.MapPost("/clips/{id:guid}/unhide", UnhideClip);
         group.MapPost("/clips/{id:guid}/game", SetClipGame)
             .WithValidation<SetClipGameRequest>();
+        group.MapPost("/clips/media/requeue", RequeueFailedMedia);
         group.MapPost("/comments/{id:guid}/remove", RemoveComment);
 
         // Ban / unban are admin-only — mods can resolve queues and hide content but can't
@@ -259,6 +261,27 @@ public static class AdminEndpoints
         await tx.CommitAsync(ct);
 
         return Results.Ok(new { id, gameId = clip.GameId });
+    }
+
+    // Recovers clips stuck in 'failed' after an infrastructure fault (e.g. the media workers
+    // failing TLS verification against storage). Puts them back into the pipeline for another
+    // attempt; content rejections (too long / too large) are skipped unless explicitly included.
+    private static async Task<IResult> RequeueFailedMedia(
+        [FromBody] RequeueFailedMediaRequest? req,
+        IClipMediaJobStore store,
+        CancellationToken ct)
+    {
+        var onlyRetryable = req?.IncludeContentFailures != true;
+        var requeued = await store.RequeueFailedMediaAsync(req?.ClipId, onlyRetryable, ct);
+
+        // A targeted requeue that matched nothing is a client error, not a silent no-op: the clip
+        // doesn't exist, isn't failed, or is a content rejection the caller didn't opt into.
+        if (req?.ClipId is not null && requeued == 0)
+        {
+            return ProblemResults.NotFound("clip_not_requeuable");
+        }
+
+        return Results.Ok(new { requeued });
     }
 
     private static async Task<IResult> RemoveComment(

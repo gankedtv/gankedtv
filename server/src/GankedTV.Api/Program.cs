@@ -149,6 +149,9 @@ builder.Services.Configure<S3Options>(opts =>
     // .env.example ships `S3_PUBLIC_URL=` (empty); treat empty/whitespace as unset so the config fallback wins.
     var envPublic = Environment.GetEnvironmentVariable("S3_PUBLIC_URL");
     opts.PublicUrl = !string.IsNullOrWhiteSpace(envPublic) ? envPublic : builder.Configuration["S3:PublicUrl"];
+    // Worker-facing fetch endpoint (split-deployment TLS): empty means "same as the public URL".
+    var envInternal = Environment.GetEnvironmentVariable("S3_INTERNAL_ENDPOINT");
+    opts.InternalEndpoint = !string.IsNullOrWhiteSpace(envInternal) ? envInternal : builder.Configuration["S3:InternalEndpoint"];
     var clips = builder.Configuration["S3:ClipsBucket"];
     var thumbs = builder.Configuration["S3:ThumbnailsBucket"];
     var covers = builder.Configuration["S3:GameCoversBucket"];
@@ -161,14 +164,15 @@ builder.Services.Configure<S3Options>(opts =>
     if (int.TryParse(streamTtl, out var ttl) && ttl > 0) opts.StreamCacheTtlDays = ttl;
 });
 
+// All three S3 clients differ only in the host SigV4 signs against; share the construction so the
+// credential + path-style config can't drift between them.
+static AmazonS3Client BuildS3Client(S3Options o, string serviceUrl) =>
+    new(o.AccessKey, o.SecretKey, new AmazonS3Config { ServiceURL = serviceUrl, ForcePathStyle = true });
+
 builder.Services.AddSingleton<IAmazonS3>(sp =>
 {
     var o = sp.GetRequiredService<IOptions<S3Options>>().Value;
-    return new AmazonS3Client(o.AccessKey, o.SecretKey, new AmazonS3Config
-    {
-        ServiceURL = o.Endpoint,
-        ForcePathStyle = true,
-    });
+    return BuildS3Client(o, o.Endpoint);
 });
 
 // Presigning client: signs against the BROWSER-FACING host (S3_PUBLIC_URL) so SigV4's canonical
@@ -181,11 +185,19 @@ builder.Services.AddKeyedSingleton<IAmazonS3>("presigner", (sp, _) =>
 {
     var o = sp.GetRequiredService<IOptions<S3Options>>().Value;
     var signingUrl = string.IsNullOrWhiteSpace(o.PublicUrl) ? o.Endpoint : o.PublicUrl;
-    return new AmazonS3Client(o.AccessKey, o.SecretKey, new AmazonS3Config
-    {
-        ServiceURL = signingUrl,
-        ForcePathStyle = true,
-    });
+    return BuildS3Client(o, signingUrl);
+});
+
+// Worker presigning client: signs media-worker fetch URLs against the internal endpoint the
+// server reaches directly (S3_INTERNAL_ENDPOINT, else the internal S3_ENDPOINT) so server-side
+// ffmpeg fetches over a host it can reach and trust, never the browser-facing public host. This
+// keeps thumbnail/compress/JIT working on split hosts without touching a public certificate.
+// Local crypto only.
+builder.Services.AddKeyedSingleton<IAmazonS3>("worker-presigner", (sp, _) =>
+{
+    var o = sp.GetRequiredService<IOptions<S3Options>>().Value;
+    var signingUrl = string.IsNullOrWhiteSpace(o.InternalEndpoint) ? o.Endpoint : o.InternalEndpoint;
+    return BuildS3Client(o, signingUrl);
 });
 
 builder.Services.AddSingleton<IObjectStorageService, S3ObjectStorageService>();
@@ -300,6 +312,10 @@ builder.Services.AddScoped<IClipStreamJobStore, ClipStreamJobStore>();
 builder.Services.AddScoped<IThumbnailJobService, ThumbnailJobService>();
 builder.Services.AddScoped<ICompressJobService, CompressJobService>();
 builder.Services.AddScoped<IJitLadderService, JitLadderService>();
+// Boot-time storage reachability/TLS probe for the media-fetching workers. Its own short-timeout
+// HttpClient so a stuck endpoint can't hang worker startup.
+builder.Services.AddHttpClient<IMediaStoragePreflight, MediaStoragePreflight>(c =>
+    c.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddHostedService<ThumbnailWorker>();
 builder.Services.AddHostedService<CompressWorker>();
 builder.Services.AddHostedService<StreamRenditionWorker>();

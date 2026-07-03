@@ -152,6 +152,40 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
                 .SetProperty(c => c.UpdatedAt, now), ct);
     }
 
+    public async Task<int> RequeueFailedMediaAsync(Guid? clipId, bool onlyRetryable, CancellationToken ct)
+    {
+        var now = _clock.GetUtcNow();
+
+        var query = _db.Clips.Where(c => c.Status == ClipStatuses.Failed);
+        if (clipId is { } id)
+        {
+            query = query.Where(c => c.Id == id);
+        }
+        if (onlyRetryable)
+        {
+            // Same set as ClipFailureReasons.IsRetryable, as a query so it translates to SQL. A
+            // null reason (unrecorded fault) is retryable, matching IsRetryable.
+            query = query.Where(c =>
+                c.FailureReason == null
+                || !ClipFailureReasons.NonRetryableReasons.Contains(c.FailureReason));
+        }
+
+        // Restart each clip at the stage it still needs. An import that failed before its source
+        // was fetched (has an import URL but no downloaded bytes) restarts at 'importing'; a clip
+        // that has source but no thumbnail restarts at 'processing'; one with a thumbnail but no
+        // compressed master restarts at 'transcoding'. Reset the lease + attempt counter so the
+        // retry gets the full budget, and clear the stale failure reason.
+        return await query.ExecuteUpdateAsync(setters => setters
+            .SetProperty(c => c.Status, c =>
+                c.ImportSourceUrl != null && c.FileSizeBytes == null ? ClipStatuses.Importing
+                : c.ThumbnailKey == null ? ClipStatuses.Processing
+                : ClipStatuses.Transcoding)
+            .SetProperty(c => c.ProcessingAttempts, 0)
+            .SetProperty(c => c.ProcessingStartedAt, (DateTimeOffset?)null)
+            .SetProperty(c => c.FailureReason, (string?)null)
+            .SetProperty(c => c.UpdatedAt, now), ct);
+    }
+
     public async Task<ClaimedImportJob?> ClaimNextImportAsync(
         TimeSpan leaseDuration,
         int maxAttempts,

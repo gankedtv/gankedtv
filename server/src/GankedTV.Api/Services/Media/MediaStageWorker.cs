@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 namespace GankedTV.Api.Services.Media;
@@ -69,6 +70,13 @@ public abstract class MediaStageWorker<TJob> : BackgroundService
         // of silently retrying every clip until each lands in 'failed'. Warn-only.
         await ProbeBinariesAsync(snapshot, stoppingToken);
 
+        // Stages that fetch source bytes from object storage also preflight it, so a split-host
+        // TLS/connectivity fault is reported loudly at boot rather than failing every clip.
+        if (FetchesFromStorage)
+        {
+            await ProbeStorageAsync(stoppingToken);
+        }
+
         using var timer = new PeriodicTimer(snapshot.PollInterval);
         _logger.LogInformation(
             "{Stage} worker started (pollInterval={Interval}, lease={Lease}, maxAttempts={Max}).",
@@ -99,6 +107,38 @@ public abstract class MediaStageWorker<TJob> : BackgroundService
         catch (OperationCanceledException)
         {
             // Shutdown — not an error.
+        }
+    }
+
+    // Whether this stage fetches source bytes from object storage (so it should preflight
+    // storage reachability + TLS at boot). Import fetches via yt-dlp, not storage, so it opts out.
+    protected virtual bool FetchesFromStorage => false;
+
+    // Presign a worker fetch and probe it once at startup, classifying the outcome so a
+    // split-deployment TLS-trust or connectivity fault is loud here instead of on the first
+    // user clip. Warn-only (mirrors the binary probe) — a transient boot-time blip must not
+    // stop the worker from starting.
+    private async Task ProbeStorageAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var preflight = scope.ServiceProvider.GetService<IMediaStoragePreflight>();
+            if (preflight is null)
+            {
+                return;
+            }
+
+            var result = await preflight.CheckAsync(ct);
+            MediaStoragePreflightLog.Report(_logger, StageName, result);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "{Stage} worker: storage preflight errored; continuing.", StageName);
         }
     }
 
