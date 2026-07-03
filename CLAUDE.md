@@ -66,7 +66,7 @@ time** and cached transiently, never stored permanently. Workers extend the gene
 **Upload-time stages** (status flow `draft → processing → transcoding → ready`):
 
 1. **Thumbnail** (`ThumbnailWorker`, claims `processing`) — poster + ffprobe metadata, then advances to `transcoding` (or straight to `ready` when `TranscodeEnabled=false`).
-2. **Compress** (`CompressWorker` → `CompressJobService`, claims `transcoding`) — re-encodes the raw upload into ONE resolution-capped, quality-targeted master (AV1 on the GPU box, H.264 in dev), repoints the clip's `video_key` at it, records `video_codec`, **deletes the original**, advances to `ready`. Net disk per clip goes *down*.
+2. **Compress** (`CompressWorker` → `CompressJobService`, claims `transcoding`) — re-encodes the raw upload into ONE resolution-capped, quality-targeted master (AV1 on the GPU box, H.264 in dev), repoints the clip's `video_key` at it, records `video_codec`, **deletes the original**, advances to `ready`. Net disk per clip goes *down*. If a hardware (`*_nvenc`) encode fails to open the encoder (ffmpeg newer than the host NVIDIA driver, busy/absent GPU), it retries once with the software encoder of the same codec family (`av1_nvenc`→`libsvtav1`) so uploads don't hard-fail the whole clip — toggle via `MEDIA_HARDWARE_ENCODER_FALLBACK_ENABLED` (default `true`).
 
 **Watch-time JIT stage** (no persisted ladder):
 

@@ -258,6 +258,8 @@ builder.Services.AddOptions<MediaJobOptions>()
         if (!string.IsNullOrWhiteSpace(codec)) opts.VideoCodec = codec;
         var jitEncoder = Environment.GetEnvironmentVariable("MEDIA_JIT_VIDEO_ENCODER");
         if (!string.IsNullOrWhiteSpace(jitEncoder)) opts.JitVideoEncoder = jitEncoder;
+        var hwFallback = Environment.GetEnvironmentVariable("MEDIA_HARDWARE_ENCODER_FALLBACK_ENABLED");
+        if (bool.TryParse(hwFallback, out var hwf)) opts.HardwareEncoderFallbackEnabled = hwf;
         var maxHeight = Environment.GetEnvironmentVariable("MEDIA_MAX_HEIGHT");
         if (int.TryParse(maxHeight, out var mh) && mh > 0) opts.MaxHeight = mh;
         var crf = Environment.GetEnvironmentVariable("MEDIA_CRF");

@@ -76,6 +76,14 @@ public sealed class MediaJobOptions
     public int MaxHeight { get; set; } = 1080;
     public int Crf { get; set; } = 30;
 
+    // When a hardware (*_nvenc) master encode fails to open the encoder — a driver/NVENC-SDK
+    // mismatch (ffmpeg newer than the host driver), a busy or absent GPU — retry the encode once
+    // with the software encoder of the SAME codec family (av1_nvenc→libsvtav1, h264_nvenc→libx264).
+    // Without this, every upload hard-fails all attempts and lands in 'failed'. Slower, but keeps
+    // clips flowing until the GPU path is healthy; the codec label and player path are unchanged.
+    // Set false on a GPU-only box that must never spend CPU on encodes.
+    public bool HardwareEncoderFallbackEnabled { get; set; } = true;
+
     // --- JIT H.264 ladder (transient, watch-time) ---
     // Encoder for the on-demand compatibility ladder — always an H.264 family for universal
     // playback ('libx264' dev, 'h264_nvenc' on the GPU box).
