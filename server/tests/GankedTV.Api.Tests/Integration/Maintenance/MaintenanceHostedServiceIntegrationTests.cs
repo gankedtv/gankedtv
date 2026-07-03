@@ -175,6 +175,70 @@ public class MaintenanceHostedServiceIntegrationTests
     }
 
     [Fact]
+    public async Task SweepFailedClipsAsync_DeletesOnlyOldFailed_MeasuredFromUpdatedAt_AndCallsStorage()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("carol");
+        var now = DateTimeOffset.UtcNow;
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.Clips.AddRange(
+                new Clip
+                {
+                    UserId = userId,
+                    Title = "stale-failed",
+                    VideoKey = "user/failed.mp4",
+                    ThumbnailKey = "user/failed.jpg",
+                    ShareCode = ShareCodeGenerator.Next(),
+                    Status = ClipStatuses.Failed,
+                    FailureReason = ClipFailureReasons.TranscodeFailed,
+                    // Uploaded long ago but only just failed: keyed off updated_at, not created_at.
+                    CreatedAt = now.AddDays(-30),
+                    UpdatedAt = now.AddDays(-4),
+                },
+                new Clip
+                {
+                    UserId = userId,
+                    Title = "recent-failed",
+                    VideoKey = "user/recent.mp4",
+                    ShareCode = ShareCodeGenerator.Next(),
+                    Status = ClipStatuses.Failed,
+                    FailureReason = ClipFailureReasons.TranscodeFailed,
+                    // Created long ago, but failed inside the retention window — must be kept.
+                    CreatedAt = now.AddDays(-30),
+                    UpdatedAt = now.AddHours(-1),
+                },
+                new Clip
+                {
+                    UserId = userId,
+                    Title = "old-ready",
+                    VideoKey = "user/ready.mp4",
+                    ShareCode = ShareCodeGenerator.Next(),
+                    Status = ClipStatuses.Ready,
+                    CreatedAt = now.AddDays(-30),
+                    UpdatedAt = now.AddDays(-30),
+                });
+            await db.SaveChangesAsync();
+        }
+
+        await using var harness = Build(
+            new MaintenanceOptions { FailedClipRetention = TimeSpan.FromDays(3) },
+            now);
+
+        await harness.Service.SweepFailedClipsAsync(harness.Scope, CancellationToken.None);
+
+        await using var verify = _fx.CreateContext();
+        var remainingTitles = await verify.Clips.AsNoTracking().Select(c => c.Title).ToListAsync();
+        remainingTitles.Should().BeEquivalentTo("recent-failed", "old-ready");
+
+        await harness.Storage.Received(1).DeleteObjectAsync("clips", "user/failed.mp4", Arg.Any<CancellationToken>());
+        await harness.Storage.Received(1).DeleteObjectAsync("thumbnails", "user/failed.jpg", Arg.Any<CancellationToken>());
+        await harness.Storage.DidNotReceive().DeleteObjectAsync("clips", "user/recent.mp4", Arg.Any<CancellationToken>());
+        await harness.Storage.DidNotReceive().DeleteObjectAsync("clips", "user/ready.mp4", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task RunTick_ClipSweepFailure_DoesNotSkipRefreshTokenSweep()
     {
         // Independent try/catch around each sweep — sweep 1 throwing must not starve sweep 2.

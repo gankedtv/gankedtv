@@ -215,12 +215,15 @@ builder.Services.AddOptions<MaintenanceOptions>()
         if (int.TryParse(clipHours, out var ch) && ch > 0) opts.ClipStaleThreshold = TimeSpan.FromHours(ch);
         var rtDays = Environment.GetEnvironmentVariable("MAINTENANCE_REFRESH_TOKEN_RETENTION_DAYS");
         if (int.TryParse(rtDays, out var rd) && rd > 0) opts.RefreshTokenRetention = TimeSpan.FromDays(rd);
+        var failedDays = Environment.GetEnvironmentVariable("MAINTENANCE_FAILED_CLIP_RETENTION_DAYS");
+        if (int.TryParse(failedDays, out var fd) && fd > 0) opts.FailedClipRetention = TimeSpan.FromDays(fd);
         var batch = Environment.GetEnvironmentVariable("MAINTENANCE_CLIP_BATCH_SIZE");
         if (int.TryParse(batch, out var bs) && bs > 0) opts.ClipBatchSize = bs;
     })
     .Validate(o => o.SweepInterval > TimeSpan.Zero, "Maintenance.SweepInterval must be positive.")
     .Validate(o => o.ClipStaleThreshold > TimeSpan.Zero, "Maintenance.ClipStaleThreshold must be positive.")
     .Validate(o => o.RefreshTokenRetention > TimeSpan.Zero, "Maintenance.RefreshTokenRetention must be positive.")
+    .Validate(o => o.FailedClipRetention > TimeSpan.Zero, "Maintenance.FailedClipRetention must be positive.")
     .Validate(o => o.ClipBatchSize > 0, "Maintenance.ClipBatchSize must be positive.")
     .ValidateOnStart();
 builder.Services.AddHostedService<MaintenanceHostedService>();

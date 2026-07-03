@@ -42,8 +42,8 @@ public sealed class MaintenanceHostedService : BackgroundService
         // reload affects them; changing the interval requires a restart.
         using var timer = new PeriodicTimer(snapshot.SweepInterval);
         _logger.LogInformation(
-            "Maintenance hosted service started (interval={Interval}, clipThreshold={ClipThreshold}, refreshTokenRetention={Retention}).",
-            snapshot.SweepInterval, snapshot.ClipStaleThreshold, snapshot.RefreshTokenRetention);
+            "Maintenance hosted service started (interval={Interval}, clipThreshold={ClipThreshold}, failedClipRetention={FailedRetention}, refreshTokenRetention={Retention}).",
+            snapshot.SweepInterval, snapshot.ClipStaleThreshold, snapshot.FailedClipRetention, snapshot.RefreshTokenRetention);
 
         try
         {
@@ -81,6 +81,20 @@ public sealed class MaintenanceHostedService : BackgroundService
         try
         {
             using var scope = _scopeFactory.CreateScope();
+            await SweepFailedClipsAsync(scope, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed clip sweep failed");
+        }
+
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
             await SweepExpiredRefreshTokensAsync(scope, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -107,39 +121,66 @@ public sealed class MaintenanceHostedService : BackgroundService
         }
     }
 
-    internal async Task SweepOrphanedClipsAsync(IServiceScope scope, CancellationToken ct)
+    // Never-completed uploads: a draft older than ClipStaleThreshold whose owner abandoned the
+    // wizard. Keyed off created_at (a draft's updated_at never moves past creation).
+    internal Task SweepOrphanedClipsAsync(IServiceScope scope, CancellationToken ct)
+    {
+        var cutoff = _clock.GetUtcNow() - _options.CurrentValue.ClipStaleThreshold;
+        return PurgeClipBatchAsync(
+            scope,
+            db => db.Clips
+                .Where(c => c.Status == ClipStatuses.Draft && c.CreatedAt < cutoff)
+                .OrderBy(c => c.CreatedAt),
+            "orphaned draft",
+            ct);
+    }
+
+    // Dead clips: anything that landed in 'failed' more than FailedClipRetention ago (all failure
+    // reasons). Keyed off updated_at — the moment the pipeline flipped it to 'failed'. This window
+    // is also the requeue deadline; see MaintenanceOptions.FailedClipRetention.
+    internal Task SweepFailedClipsAsync(IServiceScope scope, CancellationToken ct)
+    {
+        var cutoff = _clock.GetUtcNow() - _options.CurrentValue.FailedClipRetention;
+        return PurgeClipBatchAsync(
+            scope,
+            db => db.Clips
+                .Where(c => c.Status == ClipStatuses.Failed && c.UpdatedAt < cutoff)
+                .OrderBy(c => c.UpdatedAt),
+            "failed",
+            ct);
+    }
+
+    // Deletes one capped batch of clips — DB row first, then best-effort S3 blob cleanup (video +
+    // JIT stream cache + thumbnail), same row-first ordering as DELETE /clips/{id}. The caller
+    // supplies an already-filtered+ordered query against the passed-in context so the loaded
+    // entities are change-tracked for removal. ClipBatchSize caps the batch; the remainder (if any)
+    // is picked up on the next tick.
+    private async Task PurgeClipBatchAsync(
+        IServiceScope scope,
+        Func<GankedTvDbContext, IQueryable<Clip>> buildCandidates,
+        string label,
+        CancellationToken ct)
     {
         var db = scope.ServiceProvider.GetRequiredService<GankedTvDbContext>();
         var storage = scope.ServiceProvider.GetRequiredService<IObjectStorageService>();
         var buckets = _s3.CurrentValue;
-        var opts = _options.CurrentValue;
-        var threshold = opts.ClipStaleThreshold;
-        var cutoff = _clock.GetUtcNow() - threshold;
+        var batchSize = _options.CurrentValue.ClipBatchSize;
+
         // +1 so we can tell whether more remain beyond the cap without a second query.
-        var fetchLimit = opts.ClipBatchSize + 1;
-
-        var orphans = await db.Clips
-            .Where(c => c.Status == ClipStatuses.Draft && c.CreatedAt < cutoff)
-            .OrderBy(c => c.CreatedAt)
-            .Take(fetchLimit)
-            .ToListAsync(ct);
-
-        if (orphans.Count == 0)
+        var batch = await buildCandidates(db).Take(batchSize + 1).ToListAsync(ct);
+        if (batch.Count == 0)
         {
-            _logger.LogDebug("No orphaned draft clips older than {Threshold} found.", threshold);
+            _logger.LogDebug("No {Label} clips to sweep.", label);
             return;
         }
 
-        var moreRemaining = orphans.Count > opts.ClipBatchSize;
+        var moreRemaining = batch.Count > batchSize;
         if (moreRemaining)
         {
-            orphans.RemoveAt(orphans.Count - 1);
+            batch.RemoveAt(batch.Count - 1);
         }
 
-        // Mark the DB row for deletion first, then attempt the blob cleanup — same row-first
-        // ordering as DELETE /clips/{id}. SaveChangesAsync below commits all queued removes
-        // in one transaction.
-        foreach (var clip in orphans)
+        foreach (var clip in batch)
         {
             db.Clips.Remove(clip);
             await ClipBlobCleanup.TryDeleteAsync(storage, buckets, clip, _logger, ct);
@@ -149,14 +190,12 @@ public sealed class MaintenanceHostedService : BackgroundService
         if (moreRemaining)
         {
             _logger.LogInformation(
-                "Swept {Count} orphaned draft clips (older than {Threshold}); batch cap reached, remainder will be picked up next tick.",
-                orphans.Count, threshold);
+                "Swept {Count} {Label} clips; batch cap reached, remainder will be picked up next tick.",
+                batch.Count, label);
         }
         else
         {
-            _logger.LogInformation(
-                "Swept {Count} orphaned draft clips (older than {Threshold}).",
-                orphans.Count, threshold);
+            _logger.LogInformation("Swept {Count} {Label} clips.", batch.Count, label);
         }
     }
 

@@ -155,6 +155,8 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             // AddVideoCompressionAndStreamJobs migration — EF keys indexes by column set, so a
             // second HasIndex on { Status, UpdatedAt } would overwrite the 'processing' one
             // rather than add a second partial index. It is intentionally not modeled here.
+            // Same story for idx_clips_failed_updated_at (drives the maintenance failed-clip sweep),
+            // created via raw SQL in the AddFailedClipIndex migration.
             e.HasIndex(c => c.ShareCode).IsUnique().HasDatabaseName("idx_clips_share_code");
             e.Property(c => c.ShareCode).HasMaxLength(12);
             // Title gets weight 'A' so exact title matches outrank description-only hits;
