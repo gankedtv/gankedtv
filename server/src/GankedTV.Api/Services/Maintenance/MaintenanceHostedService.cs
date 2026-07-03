@@ -62,26 +62,21 @@ public sealed class MaintenanceHostedService : BackgroundService
 
     private async Task RunTickAsync(CancellationToken ct)
     {
-        // Each sweep gets its own scope so a half-failed clip sweep cannot leave a dirty
-        // change tracker for the refresh-token sweep that runs after it.
-        try
-        {
-            using var scope = _scopeFactory.CreateScope();
-            await SweepOrphanedClipsAsync(scope, ct);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Orphaned clip sweep failed");
-        }
+        await RunSweepAsync(SweepOrphanedClipsAsync, "Orphaned clip sweep", ct);
+        await RunSweepAsync(SweepFailedClipsAsync, "Failed clip sweep", ct);
+        await RunSweepAsync(SweepExpiredRefreshTokensAsync, "Refresh token sweep", ct);
+        await RunSweepAsync(SweepExpiredDeviceAuthorizationsAsync, "Device authorization sweep", ct);
+    }
 
+    // Each sweep runs in its own scope so a half-failed sweep can't leave a dirty change tracker for
+    // the next one, and its failures are isolated — one sweep throwing must not starve the rest.
+    // Cooperative cancellation still propagates so shutdown isn't swallowed as a sweep error.
+    private async Task RunSweepAsync(Func<IServiceScope, CancellationToken, Task> sweep, string label, CancellationToken ct)
+    {
         try
         {
             using var scope = _scopeFactory.CreateScope();
-            await SweepFailedClipsAsync(scope, ct);
+            await sweep(scope, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -89,35 +84,7 @@ public sealed class MaintenanceHostedService : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed clip sweep failed");
-        }
-
-        try
-        {
-            using var scope = _scopeFactory.CreateScope();
-            await SweepExpiredRefreshTokensAsync(scope, ct);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Refresh token sweep failed");
-        }
-
-        try
-        {
-            using var scope = _scopeFactory.CreateScope();
-            await SweepExpiredDeviceAuthorizationsAsync(scope, ct);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Device authorization sweep failed");
+            _logger.LogError(ex, "{Sweep} failed", label);
         }
     }
 
