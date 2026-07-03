@@ -11,9 +11,13 @@
 ARG BASE_IMAGE=ghcr.io/gankedtv/gankedtv-server:latest
 FROM ${BASE_IMAGE}
 
-# Static, self-contained GPL build with NVENC/NVDEC + libsvtav1. Pin via --build-arg for a
-# reproducible image; "latest" tracks upstream for this personal box.
-ARG FFMPEG_URL=https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz
+# Static, self-contained GPL build with NVENC/NVDEC + libsvtav1. Pinned to the n7.1 release
+# branch, NOT the floating master "latest": master tracks the newest nv-codec-headers and can
+# demand a newer NVIDIA driver than the host provides (e.g. NVENC API 13.1 needs driver ≥610),
+# which makes av1_nvenc fail to open and hard-fails every clip. The n7.1 branch uses a stable
+# NVENC SDK compatible with older drivers while still supporting av1_nvenc + libsvtav1. Bump this
+# (or override via --build-arg FFMPEG_URL) once the host driver is new enough for a later branch.
+ARG FFMPEG_URL=https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n7.1-latest-linux64-gpl-7.1.tar.xz
 
 USER root
 RUN apt-get update \

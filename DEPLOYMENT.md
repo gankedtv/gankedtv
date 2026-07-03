@@ -166,6 +166,17 @@ out of the box (no manual NVIDIA Container Toolkit), and the encoder image alrea
 ffmpeg, so `av1_nvenc`/`h264_nvenc` work once the GPU is attached. Keep the `gankedtv-dedicated-encoder`
 GHCR package **private** and give the host a `read:packages` token to pull it.
 
+**ffmpeg build vs. NVIDIA driver.** NVENC couples the ffmpeg build to the host driver: a build linked
+against a newer NVENC SDK than the driver provides makes `av1_nvenc` fail to open (`Driver does not
+support the required nvenc API version`), which fails the compress stage. `Dockerfile.dedicated-encoder`
+therefore pins `FFMPEG_URL` to the **n7.1 release branch** (stable NVENC SDK) rather than the floating
+`master` build, so a rebuild can't silently outrun the driver. On locked appliances (TrueNAS Scale ships
+the driver with the OS release, so you can't hand-upgrade it), keep the pin until the platform ships a new
+enough driver, then bump `FFMPEG_URL` via `--build-arg`. As a safety net, `MEDIA_HARDWARE_ENCODER_FALLBACK_ENABLED`
+(default `true`) makes the compress stage retry a failed hardware encode once with the software encoder of the
+same codec family (`av1_nvenc`→`libsvtav1`), so uploads keep flowing (slower) instead of hard-failing every
+clip. Set it `false` on a GPU-only box that must never spend CPU on encodes.
+
 **App-host changes when you move transcoding to the GPU box:**
 1. Set the api's `MEDIA_TRANSCODE_WORKER_ENABLED=false` (and `MEDIA_THUMBNAIL_WORKER_ENABLED=false` if
    you moved thumbnails too) — otherwise both hosts race the same jobs.
