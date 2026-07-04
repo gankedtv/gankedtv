@@ -37,10 +37,10 @@ const { data, loading, errored, run } = useLatestRequest<{
 }>(
   async () => {
     const [feed, games] = await Promise.all([
-      clips.feed({ sort: 'trending', window: timeWindow.value, limit: 50 }),
+      clips.feed({ sort: 'trending', window: timeWindow.value, limit: 25 }),
       gamesApi.list(8),
     ])
-    return { topClips: feed.items.slice(0, 50), hotGames: games }
+    return { topClips: feed.items.slice(0, 25), hotGames: games }
   },
   { label: 'trending' },
 )
@@ -107,7 +107,12 @@ function openClip(id: string) {
           <!-- Feature -->
           <article
             class="group flex min-w-0 cursor-pointer flex-col gap-4"
+            role="link"
+            tabindex="0"
+            :aria-label="`Open clip: ${feature.title}`"
             @click="openClip(feature.id)"
+            @keydown.enter.self="openClip(feature.id)"
+            @keydown.space.self.prevent="openClip(feature.id)"
           >
             <div class="flex items-end gap-4">
               <span
@@ -144,7 +149,12 @@ function openClip(id: string) {
               v-for="(clip, i) in runnerUps"
               :key="clip.id"
               class="group flex cursor-pointer items-center gap-3 border-t border-border py-3 first:border-t-0 first:pt-0"
+              role="link"
+              tabindex="0"
+              :aria-label="`Open clip: ${clip.title}`"
               @click="openClip(clip.id)"
+              @keydown.enter.self="openClip(clip.id)"
+              @keydown.space.self.prevent="openClip(clip.id)"
             >
               <span class="min-w-8 font-condensed text-xl font-black leading-none text-text-muted">
                 {{ String(i + 2).padStart(2, '0') }}
@@ -160,9 +170,12 @@ function openClip(id: string) {
                 >
                   {{ clip.title }}
                 </span>
-                <span class="mt-0.5 block truncate text-[10px] text-text-secondary">
-                  <span class="text-accent">@{{ clip.author.username }}</span>
-                  · ♥ {{ formatNum(clip.likeCount) }}
+                <span class="mt-0.5 flex items-center gap-1.5 text-[10px] text-text-secondary">
+                  <GameTag v-if="clip.game" :tag="clip.game.tag" />
+                  <span class="min-w-0 truncate">
+                    <span class="text-accent">@{{ clip.author.username }}</span>
+                    · ♥ {{ formatNum(clip.likeCount) }}
+                  </span>
                 </span>
               </span>
             </li>
@@ -188,7 +201,12 @@ function openClip(id: string) {
             v-for="(clip, i) in longTail"
             :key="clip.id"
             class="group grid cursor-pointer grid-cols-[36px_120px_1fr_auto] items-center gap-3 border-b border-border py-2.5 last:border-b-0 max-tablet:grid-cols-[32px_88px_1fr]"
+            role="link"
+            tabindex="0"
+            :aria-label="`Open clip: ${clip.title}`"
             @click="openClip(clip.id)"
+            @keydown.enter.self="openClip(clip.id)"
+            @keydown.space.self.prevent="openClip(clip.id)"
           >
             <span
               class="font-condensed text-[22px] font-black leading-none text-text-muted"
@@ -207,9 +225,12 @@ function openClip(id: string) {
               >
                 {{ clip.title }}
               </span>
-              <span class="mt-0.5 block truncate text-[11px] text-text-muted">
-                <span class="font-medium text-accent">@{{ clip.author.username }}</span>
-                · ♥ {{ formatNum(clip.likeCount) }} · {{ formatRelativeTime(clip.createdAt) }}
+              <span class="mt-0.5 flex items-center gap-1.5 text-[11px] text-text-muted">
+                <GameTag v-if="clip.game" :tag="clip.game.tag" />
+                <span class="min-w-0 truncate">
+                  <span class="font-medium text-accent">@{{ clip.author.username }}</span>
+                  · ♥ {{ formatNum(clip.likeCount) }} · {{ formatRelativeTime(clip.createdAt) }}
+                </span>
               </span>
             </span>
             <span class="shrink-0 text-[11px] font-semibold text-text-secondary max-tablet:hidden">

@@ -140,7 +140,7 @@ grep -rn  "backdrop-blur" . --include="*.vue"                               # Ap
 grep -rnE "hover:(-)?translate|hover:scale|group-hover:(-)?translate" . --include="*.vue"  # GameCoverTile only
 grep -rnE "rounded-(xl|2xl|3xl)" . --include="*.vue"                        # zero
 grep -rn  "gradient" . --include="*.vue" --include="*.css"                  # legibility overlays + LogoMark only
-grep -rniE "No\.\s*\{|issue.number|vol.*iss" . --include="*.vue" --include="*.ts"  # zero
+grep -rniE "No\.\s*\d{3}|issue.number|vol.*iss" . --include="*.vue" --include="*.ts"  # zero
 grep -rnE "font-display|font-mono|font-heading|Rajdhani|DM Mono|DM Sans" . --include="*.vue" --include="*.css"  # zero
 grep -rnE "text-ink|bg-ink|border-ink|-signal|surface-sunken" . --include="*.vue" --include="*.ts"  # zero
 ```

@@ -39,6 +39,11 @@ export const useThemeStore = defineStore('theme', {
       // Scrub the v1 attribute so stale [data-theme] markup can't linger across
       // a deploy boundary for returning users.
       document.documentElement.removeAttribute('data-theme')
+      // Keep browser chrome (theme-color) in step with the active surface base;
+      // index.html ships the dark default as the pre-hydration fallback.
+      document
+        .querySelector('meta[name="theme-color"]')
+        ?.setAttribute('content', this.mode === 'light' ? '#f7f5f0' : '#0b0b0f')
     },
   },
 })

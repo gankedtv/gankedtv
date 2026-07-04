@@ -62,7 +62,7 @@ function makeRouter(): Router {
       { path: '/upload', name: 'upload', component: stub },
       { path: '/trending', name: 'trending', component: stub },
       { path: '/games', name: 'games', component: stub },
-      { path: '/games/:slug', name: 'game-detail', component: stub },
+      { path: '/game/:slug', name: 'game-detail', component: stub },
       { path: '/feed/reels', name: 'reels', component: stub },
     ],
   })

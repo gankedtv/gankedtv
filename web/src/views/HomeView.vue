@@ -340,7 +340,12 @@ onMounted(() => {
                 v-for="(clip, i) in latestDrops"
                 :key="clip.id"
                 class="group grid cursor-pointer grid-cols-[36px_56px_1fr] items-center gap-2.5 border-b border-border py-2.5"
+                role="link"
+                tabindex="0"
+                :aria-label="`Open clip: ${clip.title}`"
                 @click="openClip(clip.id)"
+                @keydown.enter.self="openClip(clip.id)"
+                @keydown.space.self.prevent="openClip(clip.id)"
               >
                 <span
                   class="font-condensed text-[22px] font-black leading-none"
@@ -359,9 +364,12 @@ onMounted(() => {
                   >
                     {{ clip.title }}
                   </span>
-                  <span class="mt-0.5 block truncate text-[10px] text-text-secondary">
-                    <span class="text-accent">@{{ clip.author.username }}</span>
-                    · {{ formatNum(clip.viewCount) }} views
+                  <span class="mt-0.5 flex items-center gap-1.5 text-[10px] text-text-secondary">
+                    <GameTag v-if="clip.game" :tag="clip.game.tag" />
+                    <span class="min-w-0 truncate">
+                      <span class="text-accent">@{{ clip.author.username }}</span>
+                      · {{ formatNum(clip.viewCount) }} views
+                    </span>
                   </span>
                 </span>
               </li>
@@ -385,7 +393,12 @@ onMounted(() => {
           <!-- Feature -->
           <article
             class="group grid min-w-0 cursor-pointer grid-cols-[240px_1fr] items-start gap-4 rounded-lg border border-border bg-surface-raised p-3.5 transition-colors duration-150 hover:border-border-strong max-tablet:grid-cols-1"
+            role="link"
+            tabindex="0"
+            :aria-label="`Open clip: ${trendingFeature.title}`"
             @click="openClip(trendingFeature.id)"
+            @keydown.enter.self="openClip(trendingFeature.id)"
+            @keydown.space.self.prevent="openClip(trendingFeature.id)"
           >
             <div
               class="relative aspect-video overflow-hidden rounded-md border border-border bg-black"
@@ -423,7 +436,12 @@ onMounted(() => {
               v-for="(clip, i) in trendingList"
               :key="clip.id"
               class="group grid cursor-pointer grid-cols-[30px_1fr_auto] items-center gap-2.5 border-b border-border py-2.5 first:pt-0"
+              role="link"
+              tabindex="0"
+              :aria-label="`Open clip: ${clip.title}`"
               @click="openClip(clip.id)"
+              @keydown.enter.self="openClip(clip.id)"
+              @keydown.space.self.prevent="openClip(clip.id)"
             >
               <span class="font-condensed text-xl font-black leading-none text-text-muted">
                 {{ String(i + 2).padStart(2, '0') }}
@@ -434,8 +452,9 @@ onMounted(() => {
                 >
                   {{ clip.title }}
                 </span>
-                <span class="mt-0.5 block truncate text-[10px] text-text-secondary">
-                  <span class="text-accent">@{{ clip.author.username }}</span>
+                <span class="mt-0.5 flex items-center gap-1.5 text-[10px] text-text-secondary">
+                  <GameTag v-if="clip.game" :tag="clip.game.tag" />
+                  <span class="min-w-0 truncate text-accent">@{{ clip.author.username }}</span>
                 </span>
               </span>
               <span class="shrink-0 text-[11px] font-semibold text-text-secondary">

@@ -2,7 +2,6 @@
   <main
     class="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center gap-4 px-6 text-center"
   >
-    <!-- The number is the illustration. -->
     <h1 class="m-0 font-condensed text-[96px] font-black leading-none text-text-muted">404</h1>
     <p class="m-0 max-w-[40ch] text-sm text-text-secondary">
       This page doesn't exist — it may have been moved or never existed.

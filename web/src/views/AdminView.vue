@@ -151,14 +151,8 @@ async function onFixGameSubmit(gameId: number | null) {
     >
       {{ actionError }}
     </p>
-    <p
-      v-if="error"
-      class="rounded-lg border border-accent-border bg-accent-bg px-4 py-3 text-xs font-medium text-accent"
-    >
-      {{ error }}
-    </p>
-
-    <StatusPanel v-if="loading" kind="loading" message="Loading" />
+    <StatusPanel v-if="error" kind="error" :message="error" />
+    <StatusPanel v-else-if="loading" kind="loading" message="Loading" />
     <StatusPanel v-else-if="items.length === 0" kind="empty" :message="`No ${status} reports.`" />
     <ul v-else class="m-0 flex list-none flex-col gap-3 p-0">
       <li v-for="item in items" :key="item.id">

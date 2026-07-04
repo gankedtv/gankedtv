@@ -90,7 +90,11 @@ function onSeeAll() {
         :class="
           n.readAt === null ? 'bg-surface-high hover:bg-surface-high/70' : 'hover:bg-surface-high'
         "
+        role="link"
+        tabindex="0"
         @click="onRowClick(n)"
+        @keydown.enter.self="onRowClick(n)"
+        @keydown.space.self.prevent="onRowClick(n)"
       >
         <NotificationRow :notification="n" />
       </li>

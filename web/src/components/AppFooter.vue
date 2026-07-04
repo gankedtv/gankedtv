@@ -7,6 +7,7 @@ import LogoMark from './LogoMark.vue'
 // home for Trending/Leaderboards links on phones, where the tab bar only
 // carries the five primary destinations.
 const auth = useAuthStore()
+const currentYear = new Date().getFullYear()
 
 const accountLinks = computed(() =>
   auth.isAuthenticated
@@ -105,7 +106,7 @@ const siteLinks = [
       class="mx-auto flex max-w-300 flex-wrap justify-between gap-4 border-t border-border px-7 py-4 text-[11px] text-text-muted max-tablet:px-4"
     >
       <span>Made for players, by players.</span>
-      <span>© 2026 GankedTV</span>
+      <span>© {{ currentYear }} GankedTV</span>
     </div>
   </footer>
 </template>

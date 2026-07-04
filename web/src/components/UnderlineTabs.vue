@@ -43,6 +43,7 @@ defineEmits<{
       </RouterLink>
       <button
         v-else
+        type="button"
         :class="[
           'relative -mb-px cursor-pointer whitespace-nowrap border-b-2 bg-transparent px-4 py-2.5 text-xs font-semibold transition-colors duration-150',
           t.key === active

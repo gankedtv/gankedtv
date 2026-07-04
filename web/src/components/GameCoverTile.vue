@@ -40,7 +40,7 @@ defineProps<{
       />
       <span
         v-if="rank"
-        class="absolute left-2 top-1.5 font-condensed text-[17px] font-black leading-none text-white/60"
+        class="absolute left-2 top-1.5 font-condensed text-[17px] font-black leading-none text-[#f4f1e8]/60"
         aria-hidden="true"
       >
         {{ String(rank).padStart(2, '0') }}

@@ -93,7 +93,11 @@ async function onLoadMore() {
             'list-none cursor-pointer border-b border-border transition-colors duration-150',
             n.readAt === null ? 'bg-surface-high' : 'hover:bg-surface-raised',
           ]"
+          role="link"
+          tabindex="0"
           @click="onRowClick(n)"
+          @keydown.enter.self="onRowClick(n)"
+          @keydown.space.self.prevent="onRowClick(n)"
         >
           <NotificationRow :notification="n" />
         </li>

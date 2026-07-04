@@ -77,9 +77,7 @@ const hasQuery = () => typeof route.query.q === 'string' && route.query.q.trim()
 
 <template>
   <main class="mx-auto max-w-300 px-7 pt-7 pb-16 max-tablet:px-4">
-    <PageHeader
-      :title="hasQuery() ? `&quot;${lastQuery || String(route.query.q)}&quot;` : 'Search'"
-    >
+    <PageHeader :title="hasQuery() ? `“${lastQuery || String(route.query.q)}”` : 'Search'">
       <template #caption>
         <template v-if="hasQuery()">
           {{ results.clips.length }} clips · {{ results.games.length }} games

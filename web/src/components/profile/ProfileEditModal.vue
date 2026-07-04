@@ -336,7 +336,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
               <p
                 class="m-0 text-[10px] font-bold uppercase leading-none tracking-[0.14em] text-text-secondary"
               >
-                Your file
+                Your profile
               </p>
               <h2
                 class="m-0 mt-2 font-condensed text-lg font-extrabold uppercase leading-none tracking-wide text-text-primary"

@@ -112,7 +112,7 @@ const shareCode = computed(() => {
 // the band just doesn't render; clip playback is never blocked on it.
 const recommended = ref<ClipFeedItem[]>([])
 watch(
-  () => clip.value?.id,
+  () => [clip.value?.id, clip.value?.game?.slug] as const,
   async () => {
     recommended.value = []
     const current = clip.value

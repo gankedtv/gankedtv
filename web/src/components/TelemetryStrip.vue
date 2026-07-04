@@ -26,6 +26,7 @@ defineEmits<{
       <span v-if="i > 0" class="text-text-muted" aria-hidden="true">·</span>
       <component
         :is="cell.action ? 'button' : 'div'"
+        :type="cell.action ? 'button' : undefined"
         :class="[
           'group flex items-baseline gap-1.5 p-0 text-left',
           cell.action && 'cursor-pointer',
