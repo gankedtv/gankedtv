@@ -16,9 +16,9 @@ const AVATAR_MAX = 512
 const BANNER_W = 1600
 const BANNER_H = 400
 
-// Preset accent swatches sourced from the design system brand/neon tokens so users get
-// a tasteful starting set. They're a convenience; the picker still allows any hex value.
-const ACCENT_PRESETS = ['#6D28D9', '#7C3AED', '#00E5A0', '#FF4466', '#F59E0B', '#0EA5E9']
+// Preset accent swatches — mint-first plus a few neutrals. They're a convenience;
+// the picker still allows any hex.
+const ACCENT_PRESETS = ['#00E5A0', '#7DFFD8', '#00A376', '#F0F0F4', '#888070']
 
 const username = ref('')
 const bio = ref('')
@@ -303,8 +303,9 @@ async function save() {
 }
 
 const inputClass =
-  'w-full rounded-md border border-border bg-surface-raised px-3.5 py-3 font-body text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-border-hover transition-colors duration-150'
-const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest text-text-muted'
+  'w-full rounded-md border border-border bg-surface-high px-3.5 py-3 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent transition-colors duration-150'
+const labelClass =
+  'mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-text-secondary'
 const sectionClass = 'flex flex-col gap-2.5'
 
 const currentAvatarUrl = computed(() => avatarPreview.value ?? safeImageUrl(auth.user?.avatarUrl))
@@ -327,20 +328,27 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
         <div class="absolute inset-0 bg-black/70" @click="emit('close')" />
 
         <div
-          class="relative z-10 flex max-h-[90vh] w-full max-w-2xl flex-col rounded-md border border-border bg-surface-raised shadow-[0_0_40px_var(--color-brand-glow)]"
+          class="relative z-10 flex max-h-[90vh] w-full max-w-2xl flex-col rounded-lg border border-border-strong bg-surface-raised"
           @click.stop
         >
-          <div class="flex items-center justify-between border-b border-border px-5 py-4">
-            <h2
-              class="font-heading text-lg font-bold uppercase tracking-[0.04em] text-text-primary"
-            >
-              Edit profile
-            </h2>
+          <div class="flex items-start justify-between border-b border-border px-5 py-4">
+            <div>
+              <p
+                class="m-0 text-[10px] font-bold uppercase leading-none tracking-[0.14em] text-text-secondary"
+              >
+                Your profile
+              </p>
+              <h2
+                class="m-0 mt-2 font-condensed text-lg font-extrabold uppercase leading-none tracking-wide text-text-primary"
+              >
+                Edit profile
+              </h2>
+            </div>
             <button
               type="button"
               @click="emit('close')"
               aria-label="Close"
-              class="cursor-pointer font-mono text-xl leading-none text-text-muted transition-colors duration-150 hover:text-text-primary"
+              class="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-border text-base leading-none text-text-muted transition-colors duration-150 hover:border-accent hover:text-accent"
             >
               ×
             </button>
@@ -351,7 +359,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
             <div :class="sectionClass">
               <label :class="labelClass">Banner</label>
               <div
-                class="relative h-32 w-full overflow-hidden rounded-md border border-border bg-surface-overlay"
+                class="relative h-32 w-full overflow-hidden rounded-lg border border-border bg-surface-high"
               >
                 <img
                   v-if="currentBannerUrl"
@@ -365,7 +373,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
               </div>
               <div class="flex items-center gap-2">
                 <label
-                  class="cursor-pointer rounded-md border border-border bg-surface-overlay px-3 py-2 font-mono text-[11px] uppercase tracking-widest text-text-secondary transition-colors duration-150 hover:border-border-hover hover:text-text-primary"
+                  class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-3 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
                 >
                   Choose banner…
                   <input type="file" accept="image/*" class="hidden" @change="pickBanner" />
@@ -373,7 +381,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
                 <button
                   v-if="bannerFile"
                   type="button"
-                  class="cursor-pointer font-mono text-[11px] uppercase tracking-widest text-text-muted hover:text-text-primary"
+                  class="cursor-pointer text-xs font-medium text-text-muted transition-colors duration-150 hover:text-text-primary"
                   @click="clearBannerChoice"
                 >
                   Discard pick
@@ -386,7 +394,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
               <label :class="labelClass">Avatar</label>
               <div class="flex items-center gap-4">
                 <div
-                  class="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-surface-overlay text-xs text-text-muted"
+                  class="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-surface-high text-xs text-text-muted"
                 >
                   <img
                     v-if="currentAvatarUrl"
@@ -398,7 +406,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
                 </div>
                 <div class="flex flex-col gap-2">
                   <label
-                    class="cursor-pointer self-start rounded-md border border-border bg-surface-overlay px-3 py-2 font-mono text-[11px] uppercase tracking-widest text-text-secondary transition-colors duration-150 hover:border-border-hover hover:text-text-primary"
+                    class="cursor-pointer self-start rounded-lg border border-border-strong bg-transparent px-3 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
                   >
                     Choose avatar…
                     <input type="file" accept="image/*" class="hidden" @change="pickAvatar" />
@@ -406,7 +414,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
                   <button
                     v-if="avatarFile"
                     type="button"
-                    class="self-start cursor-pointer font-mono text-[11px] uppercase tracking-widest text-text-muted hover:text-text-primary"
+                    class="self-start cursor-pointer text-xs font-medium text-text-muted transition-colors duration-150 hover:text-text-primary"
                     @click="clearAvatarChoice"
                   >
                     Discard pick
@@ -415,7 +423,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
                     v-if="canShowResetAvatar"
                     type="button"
                     :disabled="resetBusy"
-                    class="self-start cursor-pointer font-mono text-[11px] uppercase tracking-widest text-text-muted hover:text-neon disabled:opacity-60"
+                    class="self-start cursor-pointer text-xs font-medium text-text-muted transition-colors duration-150 hover:text-accent disabled:opacity-60"
                     @click="resetToOAuthAvatar"
                   >
                     {{ resetBusy ? 'Resetting…' : 'Switch back to my Discord/Google picture' }}
@@ -439,7 +447,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
             <div :class="sectionClass">
               <div class="flex items-baseline justify-between">
                 <label :class="labelClass + ' mb-0'">Bio</label>
-                <span class="font-mono text-[10px] text-text-muted">{{ bio.length }}/500</span>
+                <span class="text-[10px] text-text-muted">{{ bio.length }}/500</span>
               </div>
               <textarea
                 v-model="bio"
@@ -456,15 +464,15 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
               <div class="flex flex-wrap items-center gap-3">
                 <input
                   type="color"
-                  :value="accent || '#6d28d9'"
-                  class="h-9 w-12 cursor-pointer rounded-sm border border-border bg-transparent"
+                  :value="accent || '#00e5a0'"
+                  class="h-9 w-12 cursor-pointer rounded-md border border-border bg-transparent"
                   @input="(e) => (accent = (e.target as HTMLInputElement).value.toUpperCase())"
                 />
                 <input
                   v-model="accent"
                   placeholder="#RRGGBB"
                   maxlength="7"
-                  :class="inputClass + ' w-32 font-mono'"
+                  :class="inputClass + ' w-32'"
                 />
                 <div class="flex flex-wrap gap-1.5">
                   <button
@@ -472,7 +480,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
                     :key="hex"
                     type="button"
                     :title="hex"
-                    class="h-7 w-7 cursor-pointer rounded-full border border-border transition-transform duration-150 hover:scale-110"
+                    class="h-7 w-7 cursor-pointer rounded-full border border-border transition-colors duration-150 hover:border-accent"
                     :style="{ background: hex }"
                     @click="accent = hex"
                   />
@@ -480,7 +488,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
                 <button
                   v-if="accent"
                   type="button"
-                  class="cursor-pointer font-mono text-[11px] uppercase tracking-widest text-text-muted hover:text-text-primary"
+                  class="cursor-pointer text-xs font-medium text-text-muted transition-colors duration-150 hover:text-text-primary"
                   @click="accent = ''"
                 >
                   Clear
@@ -494,7 +502,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
               <div class="grid gap-2 sm:grid-cols-3">
                 <label class="flex items-center gap-2">
                   <span
-                    class="w-16 shrink-0 font-mono text-[11px] uppercase tracking-widest text-text-muted"
+                    class="w-16 shrink-0 text-[10px] font-bold uppercase tracking-widest text-text-muted"
                     >Twitch</span
                   >
                   <input
@@ -506,7 +514,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
                 </label>
                 <label class="flex items-center gap-2">
                   <span
-                    class="w-16 shrink-0 font-mono text-[11px] uppercase tracking-widest text-text-muted"
+                    class="w-16 shrink-0 text-[10px] font-bold uppercase tracking-widest text-text-muted"
                     >YouTube</span
                   >
                   <input
@@ -518,7 +526,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
                 </label>
                 <label class="flex items-center gap-2">
                   <span
-                    class="w-16 shrink-0 font-mono text-[11px] uppercase tracking-widest text-text-muted"
+                    class="w-16 shrink-0 text-[10px] font-bold uppercase tracking-widest text-text-muted"
                     >Twitter</span
                   >
                   <input
@@ -533,7 +541,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
 
             <p
               v-if="errorMsg"
-              class="rounded-sm border border-[color:var(--color-error)] bg-[color:var(--color-error)]/10 px-3 py-2 font-mono text-[12px] text-[color:var(--color-error)]"
+              class="rounded-md border border-accent-border bg-accent-bg px-3 py-2 text-xs font-medium text-accent"
             >
               {{ errorMsg }}
             </p>
@@ -544,7 +552,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
               type="button"
               :disabled="hasUploadInFlight"
               @click="emit('close')"
-              class="cursor-pointer rounded-md border border-border bg-surface-overlay px-5 py-2.5 font-heading text-sm font-bold uppercase tracking-wider text-text-secondary transition-colors duration-150 hover:text-text-primary disabled:opacity-60"
+              class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-4 py-1.5 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent disabled:opacity-60"
             >
               Cancel
             </button>
@@ -552,7 +560,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
               type="button"
               :disabled="hasUploadInFlight"
               @click="save"
-              class="cursor-pointer rounded-md bg-brand-light px-5 py-2.5 font-heading text-sm font-bold uppercase tracking-wider text-white transition-colors duration-150 hover:bg-brand disabled:cursor-not-allowed disabled:bg-surface-overlay disabled:text-text-muted"
+              class="cursor-pointer rounded-lg bg-accent px-4 py-1.5 text-xs font-bold text-[#080f0d] transition-[filter] duration-150 hover:brightness-105 disabled:cursor-not-allowed disabled:bg-surface-high disabled:text-text-muted"
             >
               {{ hasUploadInFlight ? 'Saving…' : 'Save' }}
             </button>

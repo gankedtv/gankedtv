@@ -1,43 +1,46 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { clips, type ClipFeedItem } from '@/api/clips'
 import { games as gamesApi, type GameListItem } from '@/api/games'
 import { useLatestRequest } from '@/composables/useLatestRequest'
-import { formatNum } from '@/lib/format'
+import { formatNum, formatRelativeTime } from '@/lib/format'
 import GameTag from '@/components/GameTag.vue'
+import GameCoverTile from '@/components/GameCoverTile.vue'
 import DurationBadge from '@/components/DurationBadge.vue'
-import AuthorHandle from '@/components/AuthorHandle.vue'
+import SectionHeader from '@/components/SectionHeader.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
 import PageHeader from '@/components/PageHeader.vue'
-import IconChevronRight from '@/components/icons/IconChevronRight.vue'
+import UnderlineTabs from '@/components/UnderlineTabs.vue'
 
-// Only 24h and 7d hit the server-side trending feed today. The other windows surface the
-// UX intent (and the issue's "drop fake arrows for v1" sentiment is to ship what the
-// server actually supports), so they're rendered but aria-disabled until follow-up windows land.
+const router = useRouter()
+
+// Only 24h and 7d hit the server-side trending feed today. The other windows
+// render as disabled tabs (visible, never emitting) until follow-up windows land.
 type TrendingWindow = '24h' | '7d'
-const TIME_WINDOWS = [
-  { key: '1h', label: 'Last hour', enabled: false },
-  { key: '24h', label: '24 hours', enabled: true },
-  { key: '7d', label: 'This week', enabled: true },
-  { key: '30d', label: 'This month', enabled: false },
-  { key: 'all', label: 'All time', enabled: false },
-] as const
+const TIME_WINDOWS: { key: string; label: string; disabled?: boolean }[] = [
+  { key: '1h', label: 'Last hour', disabled: true },
+  { key: '24h', label: '24 hours' },
+  { key: '7d', label: 'This week' },
+  { key: '30d', label: 'This month', disabled: true },
+  { key: 'all', label: 'All time', disabled: true },
+]
 
 const timeWindow = ref<TrendingWindow>('24h')
 
 // Hot games don't depend on the window, so reloading them on each toggle is wasted work
 // but the simplicity wins (and they're cheap). One composable covers both so a rapid
-// window flip still gets a single loading/errored signal.
+// window flip still gets one shared loading/errored state.
 const { data, loading, errored, run } = useLatestRequest<{
   topClips: ClipFeedItem[]
   hotGames: GameListItem[]
 }>(
   async () => {
     const [feed, games] = await Promise.all([
-      clips.feed({ sort: 'trending', window: timeWindow.value, limit: 50 }),
+      clips.feed({ sort: 'trending', window: timeWindow.value, limit: 25 }),
       gamesApi.list(8),
     ])
-    return { topClips: feed.items.slice(0, 10), hotGames: games }
+    return { topClips: feed.items.slice(0, 25), hotGames: games }
   },
   { label: 'trending' },
 )
@@ -45,69 +48,51 @@ const { data, loading, errored, run } = useLatestRequest<{
 const topClips = computed(() => data.value?.topClips ?? [])
 const hotGames = computed(() => data.value?.hotGames ?? [])
 
+// Feature band — #1 hero + four runner-ups; Full Chart — everything after.
+const feature = computed(() => topClips.value[0] ?? null)
+const runnerUps = computed(() => topClips.value.slice(1, 5))
+const longTail = computed(() => topClips.value.slice(5, 25))
+
 onMounted(run)
 watch(timeWindow, run)
 
-function selectWindow(key: string, enabled: boolean) {
-  if (!enabled || key === timeWindow.value) return
+function selectWindow(key: string) {
+  // Disabled tabs never emit, so only supported windows reach here.
+  if (key === timeWindow.value) return
   timeWindow.value = key as TrendingWindow
 }
 
-const timeBtnBase =
-  'px-3.5 py-1.5 rounded-sm font-mono text-[11px] uppercase tracking-[0.06em] border-none'
-const timeBtnActive = `${timeBtnBase} bg-brand text-white cursor-pointer transition-[background] duration-150`
-const timeBtnInactiveEnabled = `${timeBtnBase} bg-transparent text-text-secondary cursor-pointer transition-[color] duration-150`
-const timeBtnInactiveDisabled = `${timeBtnBase} bg-transparent text-text-secondary opacity-50 cursor-not-allowed`
-
-const rankBase = 'font-heading font-bold text-[28px] leading-none'
-const rankTop = `${rankBase} text-brand-light`
-const rankRest = `${rankBase} text-text-muted`
+function openClip(id: string) {
+  router.push({ name: 'clip', params: { id } })
+}
 </script>
 
 <template>
-  <main class="mx-auto max-w-360 px-6 pt-8 pb-30">
+  <main class="mx-auto max-w-300 px-7 pt-7 pb-16 max-tablet:px-4">
     <PageHeader title="Trending">
-      <template #caption>Ranked by recent engagement (likes × 3 + views, decayed by age)</template>
+      <template #caption>Likes × 3 + views, decayed by age</template>
 
-      <p id="time-window-hint" class="sr-only">
+      <p class="sr-only">
         24-hour and 7-day windows are available; the other ranges are coming soon.
       </p>
-      <div
-        class="mt-5 inline-flex gap-0.5 p-1 bg-surface-raised border border-border rounded-sm"
-        role="group"
-        aria-label="Trending time window"
-      >
-        <button
-          v-for="tw in TIME_WINDOWS"
-          :key="tw.key"
-          type="button"
-          :class="
-            timeWindow === tw.key
-              ? timeBtnActive
-              : tw.enabled
-                ? timeBtnInactiveEnabled
-                : timeBtnInactiveDisabled
-          "
-          :aria-disabled="!tw.enabled"
-          :aria-pressed="tw.key === timeWindow"
-          aria-describedby="time-window-hint"
-          @click="selectWindow(tw.key, tw.enabled)"
-        >
-          {{ tw.label }}
-        </button>
-      </div>
+      <UnderlineTabs
+        class="mt-5"
+        :tabs="TIME_WINDOWS"
+        :active="timeWindow"
+        @select="selectWindow"
+      />
     </PageHeader>
 
     <StatusPanel v-if="errored" kind="error" message="Couldn't load trending.">
       <button
-        class="cursor-pointer rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+        class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
         @click="run"
       >
         Retry
       </button>
     </StatusPanel>
 
-    <StatusPanel v-else-if="loading && topClips.length === 0" kind="loading" message="Loading…" />
+    <StatusPanel v-else-if="loading && topClips.length === 0" kind="loading" message="Loading" />
 
     <StatusPanel
       v-else-if="!loading && topClips.length === 0"
@@ -115,88 +100,145 @@ const rankRest = `${rankBase} text-text-muted`
       message="No clips trending yet — check back soon."
     />
 
-    <!-- Two-column layout -->
-    <div
-      v-else
-      class="grid grid-cols-[minmax(0,1fr)_340px] gap-7 items-start max-[960px]:grid-cols-1"
-    >
-      <!-- LEFT: Top 10 leaderboard -->
-      <div class="bg-surface-raised border border-border rounded-md overflow-hidden mt-7">
-        <div class="px-4 py-3.5 border-b border-border">
-          <span class="font-heading font-bold text-sm uppercase text-text-secondary tracking-wider"
-            >Top 10 right now</span
+    <template v-else-if="feature">
+      <!-- ====== Feature band — #1 hero + runner-ups ====== -->
+      <section class="mt-7">
+        <div class="grid grid-cols-[1.6fr_1fr] items-start gap-x-6 gap-y-8 max-lg:grid-cols-1">
+          <!-- Feature -->
+          <article
+            class="group flex min-w-0 cursor-pointer flex-col gap-4"
+            role="link"
+            tabindex="0"
+            :aria-label="`Open clip: ${feature.title}`"
+            @click="openClip(feature.id)"
+            @keydown.enter.self="openClip(feature.id)"
+            @keydown.space.self.prevent="openClip(feature.id)"
           >
-        </div>
-
-        <RouterLink
-          v-for="(clip, i) in topClips"
-          :key="clip.id"
-          :to="{ name: 'clip', params: { id: clip.id } }"
-          :aria-label="`#${i + 1}: ${clip.title}`"
-          class="grid grid-cols-[40px_120px_1fr_auto_auto] gap-4 items-center px-4 py-3 transition-[background] duration-150 border-b border-border last:border-b-0 outline-none hover:bg-surface-overlay focus-visible:bg-surface-overlay focus-visible:ring-2 focus-visible:ring-brand-light"
-        >
-          <span :class="i < 3 ? rankTop : rankRest">#{{ i + 1 }}</span>
-
-          <div class="relative rounded-[4px] overflow-hidden aspect-video bg-surface-sunken">
-            <img :src="clip.thumbnailUrl" alt="" class="w-full h-full object-cover block" />
-            <DurationBadge :seconds="clip.durationSecs" class="absolute bottom-1 right-1" />
-          </div>
-
-          <div class="min-w-0 flex flex-col gap-1">
-            <span
-              class="font-body text-[13px] font-medium text-text-primary leading-[1.35] line-clamp-2"
-              >{{ clip.title }}</span
-            >
-            <div class="flex items-center gap-1.5 font-mono text-[10px]">
-              <GameTag v-if="clip.game" :tag="clip.game.tag" tone="subtle" />
-              <AuthorHandle :username="clip.author.username" class="text-neon" />
-            </div>
-          </div>
-
-          <div
-            class="flex flex-col gap-1 text-right font-mono text-[11px] text-text-secondary whitespace-nowrap"
-          >
-            <span>♥ {{ formatNum(clip.likeCount) }}</span>
-            <span class="text-text-muted">{{ formatNum(clip.viewCount) }} plays</span>
-          </div>
-
-          <div class="text-text-muted">
-            <IconChevronRight :size="16" />
-          </div>
-        </RouterLink>
-      </div>
-
-      <!-- RIGHT sidebar -->
-      <div class="flex flex-col gap-4 mt-7">
-        <div class="bg-surface-raised border border-border rounded-md overflow-hidden">
-          <div class="px-4 py-3.5 border-b border-border">
-            <span
-              class="section-title-bar flex items-center gap-2.5 font-heading font-bold text-sm uppercase text-text-secondary tracking-wider"
-              >Hot Games</span
-            >
-          </div>
-
-          <RouterLink
-            v-for="g in hotGames"
-            :key="g.id"
-            :to="{ name: 'games', query: { game: g.slug } }"
-            :aria-label="`Filter feed by ${g.name}`"
-            class="flex items-center gap-3 px-4 py-2.5 border-b border-border last:border-b-0 transition-[background] duration-150 outline-none hover:bg-surface-overlay focus-visible:bg-surface-overlay focus-visible:ring-2 focus-visible:ring-brand-light"
-          >
-            <GameTag :tag="g.tag" variant="square" />
-            <div class="min-w-0 flex-1 flex flex-col gap-px">
+            <div class="flex items-end gap-4">
               <span
-                class="font-body text-[13px] font-medium text-text-primary whitespace-nowrap overflow-hidden text-ellipsis"
+                class="font-condensed text-[clamp(40px,5vw,64px)] font-black leading-[0.92] text-accent"
+                aria-hidden="true"
               >
-                {{ g.name }}
+                1
               </span>
-              <span class="font-mono text-[10px] text-text-muted">
-                {{ g.slug }}
-              </span>
+              <h2
+                class="m-0 pb-1 font-condensed text-[clamp(22px,2.6vw,34px)] font-black uppercase leading-[1.02] text-text-primary transition-colors duration-150 group-hover:text-accent"
+              >
+                {{ feature.title }}
+              </h2>
             </div>
-          </RouterLink>
+            <div
+              class="relative aspect-video overflow-hidden rounded-lg border border-border bg-black transition-colors duration-150 group-hover:border-border-strong"
+            >
+              <img :src="feature.thumbnailUrl" alt="" class="h-full w-full object-cover" />
+              <div v-if="feature.game" class="absolute bottom-2 left-2">
+                <GameTag :tag="feature.game.tag" />
+              </div>
+              <DurationBadge :seconds="feature.durationSecs" class="absolute bottom-2 right-2" />
+            </div>
+            <p class="m-0 text-[11px] text-text-muted">
+              <span class="font-medium text-accent">@{{ feature.author.username }}</span>
+              · ♥ {{ formatNum(feature.likeCount) }} · {{ formatNum(feature.viewCount) }} views ·
+              {{ formatRelativeTime(feature.createdAt) }}
+            </p>
+          </article>
+
+          <!-- Runner-ups -->
+          <ol class="m-0 flex list-none flex-col p-0">
+            <li
+              v-for="(clip, i) in runnerUps"
+              :key="clip.id"
+              class="group flex cursor-pointer items-center gap-3 border-t border-border py-3 first:border-t-0 first:pt-0"
+              role="link"
+              tabindex="0"
+              :aria-label="`Open clip: ${clip.title}`"
+              @click="openClip(clip.id)"
+              @keydown.enter.self="openClip(clip.id)"
+              @keydown.space.self.prevent="openClip(clip.id)"
+            >
+              <span class="min-w-8 font-condensed text-xl font-black leading-none text-text-muted">
+                {{ String(i + 2).padStart(2, '0') }}
+              </span>
+              <span
+                class="relative aspect-video w-28 shrink-0 overflow-hidden rounded-md border border-border bg-black transition-colors duration-150 group-hover:border-border-strong"
+              >
+                <img :src="clip.thumbnailUrl" alt="" class="h-full w-full object-cover" />
+              </span>
+              <span class="min-w-0 flex-1">
+                <span
+                  class="block truncate text-[11.5px] font-semibold leading-tight text-text-primary transition-colors duration-150 group-hover:text-accent"
+                >
+                  {{ clip.title }}
+                </span>
+                <span class="mt-0.5 flex items-center gap-1.5 text-[10px] text-text-secondary">
+                  <GameTag v-if="clip.game" :tag="clip.game.tag" />
+                  <span class="min-w-0 truncate">
+                    <span class="text-accent">@{{ clip.author.username }}</span>
+                    · ♥ {{ formatNum(clip.likeCount) }}
+                  </span>
+                </span>
+              </span>
+            </li>
+          </ol>
         </div>
-      </div>
-    </div>
+      </section>
+
+      <!-- ====== Hot Games ====== -->
+      <section v-if="hotGames.length" class="mt-8 border-t border-border pt-7">
+        <SectionHeader kicker="Browse" title="Hot Games" :more-to="{ name: 'games' }" />
+        <div class="flex gap-3 overflow-x-auto pb-1">
+          <div v-for="g in hotGames" :key="g.id" class="w-30 shrink-0">
+            <GameCoverTile :game="g" />
+          </div>
+        </div>
+      </section>
+
+      <!-- ====== Full Chart ====== -->
+      <section v-if="longTail.length" class="mt-8 border-t border-border pt-7">
+        <SectionHeader kicker="Ranked" title="Full Chart" />
+        <ol class="m-0 flex list-none flex-col p-0">
+          <li
+            v-for="(clip, i) in longTail"
+            :key="clip.id"
+            class="group grid cursor-pointer grid-cols-[36px_120px_1fr_auto] items-center gap-3 border-b border-border py-2.5 last:border-b-0 max-tablet:grid-cols-[32px_88px_1fr]"
+            role="link"
+            tabindex="0"
+            :aria-label="`Open clip: ${clip.title}`"
+            @click="openClip(clip.id)"
+            @keydown.enter.self="openClip(clip.id)"
+            @keydown.space.self.prevent="openClip(clip.id)"
+          >
+            <span
+              class="font-condensed text-[22px] font-black leading-none text-text-muted"
+              aria-hidden="true"
+            >
+              {{ String(i + 6).padStart(2, '0') }}
+            </span>
+            <span
+              class="relative block aspect-video overflow-hidden rounded-md border border-border bg-black transition-colors duration-150 group-hover:border-border-strong"
+            >
+              <img :src="clip.thumbnailUrl" alt="" class="h-full w-full object-cover" />
+            </span>
+            <span class="min-w-0">
+              <span
+                class="block truncate text-sm font-semibold leading-tight text-text-primary transition-colors duration-150 group-hover:text-accent"
+              >
+                {{ clip.title }}
+              </span>
+              <span class="mt-0.5 flex items-center gap-1.5 text-[11px] text-text-muted">
+                <GameTag v-if="clip.game" :tag="clip.game.tag" />
+                <span class="min-w-0 truncate">
+                  <span class="font-medium text-accent">@{{ clip.author.username }}</span>
+                  · ♥ {{ formatNum(clip.likeCount) }} · {{ formatRelativeTime(clip.createdAt) }}
+                </span>
+              </span>
+            </span>
+            <span class="shrink-0 text-[11px] font-semibold text-text-secondary max-tablet:hidden">
+              {{ formatNum(clip.viewCount) }} views
+            </span>
+          </li>
+        </ol>
+      </section>
+    </template>
   </main>
 </template>

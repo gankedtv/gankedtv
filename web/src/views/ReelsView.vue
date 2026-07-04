@@ -331,19 +331,19 @@ function onLikedChanged(payload: { id: string; liked: boolean; count: number }) 
 </script>
 
 <template>
-  <div class="fixed inset-x-0 top-16 bottom-0 z-10 flex justify-center bg-surface-base">
+  <div class="fixed inset-x-0 top-14 bottom-15.5 z-10 flex justify-center bg-black lg:bottom-0">
     <!-- Initial load -->
     <StatusPanel
       v-if="loading && items.length === 0 && !errored"
       kind="loading"
-      message="Loading reels…"
+      message="Loading reels"
     />
 
     <!-- Initial error -->
     <StatusPanel v-else-if="errored" kind="error" message="Couldn't load reels.">
       <button
         type="button"
-        class="cursor-pointer rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+        class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
         @click="loadFirstPage"
       >
         Retry
@@ -358,17 +358,17 @@ function onLikedChanged(payload: { id: string; liked: boolean; count: number }) 
     >
       <RouterLink
         to="/upload"
-        class="rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+        class="rounded-lg border border-border-strong px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
       >
         Upload a clip
       </RouterLink>
     </StatusPanel>
 
-    <!-- Feed -->
+    <!-- Feed — vertical snap column; the full-screen viewport itself is the container. -->
     <div
       v-else
       ref="scrollEl"
-      class="h-full w-full max-w-[min(420px,calc(100vh*9/16))] snap-y snap-mandatory overflow-y-scroll overscroll-contain scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      class="h-full w-full max-w-[min(448px,calc(100vh*9/16))] snap-y snap-mandatory overflow-y-scroll overscroll-contain scroll-smooth scrollbar-none [&::-webkit-scrollbar]:hidden"
       aria-label="Reels feed"
     >
       <div
@@ -396,7 +396,7 @@ function onLikedChanged(payload: { id: string; liked: boolean; count: number }) 
       >
         <button
           type="button"
-          class="cursor-pointer rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+          class="cursor-pointer rounded-lg border border-white/20 bg-black/60 px-4 py-2 text-xs font-semibold text-[#f4f1e8] transition-colors duration-150 hover:border-accent hover:text-accent"
           @click="loadMore"
         >
           Couldn't load more — retry

@@ -1,190 +1,161 @@
-# GankedTV Frontend Design System
+# GankedTV Design System — Arena
 
-## Concept
-
-An editorial gaming zine meets esports broadcast UI — raw, intentional, high-contrast. Dark-first. The same components and layout ship under three interchangeable palettes; only tokens change.
-
----
-
-## Ambient atmosphere
-
-The body renders two persistent full-viewport layers (z-index 1 and 2, pointer-events none):
-- **Grid gradient** (`body::before`): radial glow in brand color at the top of the viewport via `--grid-bg`.
-- **Noise + scanlines** (`body::after`): SVG fractal noise texture at `--noise-opacity` (0.035 dark / 0.02 light), mixed via `overlay`.
-
-These are defined in `base.css` and require no opt-in per component.
+**Status:** Shipped. This file is the source of truth for all frontend work.
+**Spec:** [docs/superpowers/specs/2026-06-29-arena-design-system-design.md](../docs/superpowers/specs/2026-06-29-arena-design-system-design.md)
+**Replaces:** Newsprint ("Broadcast Almanac") v2.
 
 ---
 
-## Typography
+## 1 — Concept
 
-| Role | Font | Weights | Usage |
-|------|------|---------|-------|
-| Logo / display | `Rajdhani` | 500, 600, 700 | Nav logo, hero callouts |
-| Headings | `Barlow Condensed` | 500, 700 | Page titles, section headers, stat values |
-| UI text | `DM Sans` | 400, 500 | Labels, buttons, body copy |
-| Metadata | `DM Mono` | 400, 500 | Usernames, timestamps, stats, IDs, tags |
+A premium gaming clip platform. The UI is confident but invisible — one accent color, clean surfaces, no decorative metaphors. Content (clips, game covers) does the talking.
 
-Google Fonts loaded in `index.html`. CSS vars: `--font-display`, `--font-heading`, `--font-body`, `--font-mono`.
+Two modes with genuinely different personalities:
 
-**Rules:**
-- Page titles: `font-heading` (Barlow Condensed), `font-weight: 700`, `text-transform: uppercase`, `font-size: clamp(32px, 4vw, 52px)`
-- Section titles: `font-heading` 24px bold uppercase, with a 6×22px brand bar before (via `::before` or inline `<span>`)
-- Logo: `font-display` (Rajdhani), uppercase, 700 — "GANKED" primary, ".TV" brand-light
-- Metadata / timestamps / IDs / tags: always `font-mono`
+- **Dark (primary):** Late-night LAN. Near-black, Neon Mint accent, high contrast.
+- **Light (secondary):** Game day. Warm cream page, white cards, deeper mint for contrast. Not an inversion — a different mood.
+
+Reference: Medal.tv as the floor. Beat it in aesthetics, navigation clarity, discovery, and search.
 
 ---
 
-## Themes
+## 2 — The rules (load-bearing)
 
-Three palettes share the same CSS-variable contract. The active palette is selected by `data-theme` on `<html>`, written by `useThemeStore().setName(name)`. Components don't change — they read `var(--color-…)` (directly or via Tailwind utilities) and repaint when tokens swap.
+Dropping any of these lets the system drift back toward generic:
 
-| Theme | Vibe | Brand | Accent | Corners | Background |
-|-------|------|-------|--------|---------|------------|
-| `underground` | Editorial dark | `#6d28d9` purple | `#00e5a0` neon green | Chamfered (10px cut) | Radial purple glow |
-| `tactical` | HUD / broadcast | `#ff7a00` orange | `#ffffff` white | Square | Repeating line grid |
-| `arcade` | CRT / chunky neon | `#ff3d8b` pink | `#ffe600` yellow | Square | Pink/yellow gradient + scanlines |
-
-**Default for new visitors:** `arcade`. Persisted under `localStorage['theme:name']`. Stamped on `<html>` before mount in `main.ts` to avoid FOUC.
-
-Tactical also swaps `--font-heading` to `Rajdhani` (everything else stays); Underground and Arcade use `Barlow Condensed`.
-
-## Color Tokens
-
-All tokens are in [base.css](src/assets/base.css). The `@theme {}` block defines Tailwind utilities (`bg-brand`, `text-neon`, `border-border`, …) and acts as the static fallback. Each `[data-theme="…"]` block overrides the same set of variables at runtime, so utilities resolve to whatever the active theme dictates.
-
-### Underground (token reference)
-
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--color-surface-base` | `#080810` | Page background |
-| `--color-surface-raised` | `#10101c` | Cards, panels |
-| `--color-surface-overlay` | `#18182a` | Dropdowns, hover states |
-| `--color-surface-sunken` | `#05050c` | Video player bg, deep recesses |
-| `--color-text-primary` | `#f0eeff` | Main text |
-| `--color-text-secondary` | `#8888aa` | Subtitles, secondary labels |
-| `--color-text-muted` | `#44445a` | Placeholders, timestamps, disabled |
-| `--color-border` | `#1e1e30` | Default borders |
-| `--color-border-hover` | `#2e2e48` | Hovered borders |
-| `--color-border-strong` | `#3a3a58` | Emphasized borders, game tags |
-| `--color-brand` | `#6d28d9` | Primary buttons, active states |
-| `--color-brand-light` | `#7c3aed` | Hover on brand, active nav underline |
-| `--color-brand-glow` | `rgba(124,58,237,0.35)` | Card hover shadows |
-| `--color-neon` | `#00e5a0` | Live dots, @usernames, success |
-| `--color-neon-dim` | `rgba(0,229,160,0.18)` | Neon-tinted icon backgrounds |
-| `--color-error` | `#ff4466` | Errors, live badges |
-| `--color-warning` | `#ffaa00` | Warnings |
-
-Tactical and Arcade override the same tokens with their own values — see `base.css` for the full set.
-
-### Light mode (`.light` on `<html>`)
-
-Toggled by `useThemeStore().toggle()`. Overrides surface, text, and border tokens scoped per theme (`html.light[data-theme="underground"]`, etc). Brand stays; `--color-neon` flips to a high-contrast color in Tactical and Arcade for legibility on light backgrounds.
-
-### Theme CSS-only vars (not Tailwind utilities)
-
-| Var | Underground | Tactical | Arcade | Usage |
-|-----|-------------|----------|--------|-------|
-| `--corner-cut` | `10px` | `0px` | `0px` | `.chamfer` polygon corners (no-op in Tactical/Arcade) |
-| `--grid-bg` | radial purple | line grid | pink/yellow gradient | body::before ambient layer |
-| `--noise-opacity` | `0.035` | `0.02` | `0.03` | body::after noise layer |
-| `--scanline-opacity` | `0` | `0` | `0.08` | body::after scanlines |
-| `--feed-gap` | `16px` | `16px` | `16px` | `.feed-grid` gap (theme-agnostic) |
+1. **One accent, everywhere.** Mint owns every interactive state: active nav links, CTA buttons, game tags, author handles, section labels, active tab underlines, filter pill borders. No second accent — errors, danger, and "new" states are also mint; copy and weight carry the meaning.
+2. **Borders, not shadows.** Depth is surface color difference (`surface-base` → `surface-raised` → `surface-high`). No `box-shadow`, no `shadow-*` utilities — ever.
+3. **No hover transforms.** Hover = border color shift + text color shift. Cards stay put. Sole exception: game cover tiles get `-translate-y-0.5` — earned because the catalogue is browsable, not a feed.
+4. **Plain section names.** "Top Games", "Trending", "Recent Clips". No editorial kicker copy, no roman numerals, no issue framing.
+5. **No issue numbers anywhere.** Ranking is plain numerals (`01`, `02`, …) in condensed type — not a publishing metaphor.
+6. **8px card radius.** Cards/nav/popovers/buttons are `rounded-lg` (8px). Inputs `rounded-md` (6px). Tiny badges `rounded-sm` (4px). Avatars/pills/dots `rounded-full`. Nothing sharp, nothing above `rounded-lg`.
+7. **No UI gradients.** The sanctioned exceptions: the legibility overlay on video thumbnails/reels (`bg-[linear-gradient(transparent,rgba(0,0,0,0.85–0.88))]`) and the logo mark's internal SVG gradients + glow (`LogoMark.vue` — brand art, not UI).
+8. **Backdrop blur on the nav only.** `backdrop-blur-md` lives in `AppNav.vue` and nowhere else.
+9. **Tabs as underlines, not pills.** Feed/window tabs use a 2px mint bottom border on active (`UnderlineTabs.vue`). Filter pills (game filters, tag chips) are the only pill shapes.
+10. **Mint deepens in light mode.** Light accent is `#00b87d` (WCAG AA on cream) — the token handles it; never hardcode `#00e5a0` on light surfaces.
 
 ---
 
-## Spacing & Radius
+## 3 — Tokens
 
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--radius-sm` | `0.375rem` | Tags, badges, small chips |
-| `--radius-md` | `0.625rem` | Inputs, buttons, cards |
-| `--radius-lg` | `1rem` | Hero cards, large panels |
-| `--radius-xl` | `1.5rem` | Modals |
+One palette, dark (default) + light via `.light` on `<html>` (persisted by `useThemeStore`, `localStorage['theme']`). Defined in the `@theme` block of [src/assets/base.css](src/assets/base.css).
 
-Page max-width: `1440px`. Content padding: `32px 24px 120px` (desktop), `16px 14px 80px` (mobile).
+| Token | Dark | Light | Role |
+|---|---|---|---|
+| `--color-surface-base` | `#0b0b0f` | `#f7f5f0` | Page background |
+| `--color-surface-raised` | `#111116` | `#ffffff` | Cards, nav |
+| `--color-surface-high` | `#18181f` | `#f0ece3` | Inputs, hover rows, unread rows |
+| `--color-text-primary` | `#f0f0f4` | `#1a1a22` | Headings, body, card titles |
+| `--color-text-secondary` | `rgba(255,255,255,0.50)` | `#888070` | Bylines, meta |
+| `--color-text-muted` | `rgba(255,255,255,0.28)` | `#b0a898` | Timestamps, placeholders, rank numerals |
+| `--color-border` | `rgba(255,255,255,0.07)` | `#e8e4dc` | Default borders, dividers |
+| `--color-border-strong` | `rgba(255,255,255,0.12)` | `#d0ccc0` | Focused inputs, popovers, card hover |
+| `--color-accent` | `#00e5a0` | `#00b87d` | Mint — all interactive states |
+| `--color-accent-bg` | `rgba(0,229,160,0.08)` | `#e8faf4` | Tag fills, active pill background |
+| `--color-accent-border` | `rgba(0,229,160,0.25)` | `#b3ead7` | Tag borders, focus accents |
 
----
+Usage rules:
 
-## Navigation
-
-`AppNav` is `position: sticky; top: 0; z-index: 50; height: 64px`. Content sits directly below with no padding-top offset.
-
-Elements: logo mark (polygon clip-path + neon dot) → logo text → nav links (Feed, Games, Trending) → search bar (≥1281px) → icon buttons → upload button → avatar.
-
-Active nav link: `color: var(--color-text-primary)` + 2px brand-light underline.
-
----
-
-## Components
-
-### UserAvatar (`web/src/components/UserAvatar.vue`)
-Colored initial block. Background is a linear gradient derived from the user's avatar color. Always circular. Shows 2-letter uppercase initials in `font-mono` bold.
-
-Props: `user: string` (key in USERS), `size?: number` (px, default 32).
-
-### ClipCard (`web/src/components/ClipCard.vue`)
-Grid tile: 16:9 thumbnail + game tag (top-left) + duration (bottom-right) + body with title (line-clamp 2) + avatar + @username (neon) + stats (likes / views).
-
-Hover: `translateY(-2px)` + brand glow `box-shadow` + border-brand.
-
-Emits: `click`.
-
-### Feed grid (`.feed-grid` global class)
-`grid-template-columns: repeat(auto-fill, minmax(280px, 1fr))`, 4-col at ≥1200px. Gap driven by `--feed-gap`.
+- **Text over video** (duration badges, overlay titles, reels controls) uses literals: `#f4f1e8`, `text-[#f4f1e8]/80`, `bg-black/55–75`, `border-white/20–30` — never tokens; it must stay light in both modes. Same for text on mint CTAs: `text-[#080f0d]`.
+- **Video letterbox/player backgrounds** are `bg-black` (literal); dialog scrims are `bg-black/70`.
+- **Vendor colors** (`--color-discord`, `--color-google` + hovers) are identity-locked.
 
 ---
 
-## Motion Principles
+## 4 — Typography
 
-- **Page transitions:** 150ms opacity fade (`<Transition name="fade" mode="out-in">` in App.vue)
-- **Hover states:** 150–200ms on color, border, transform
-- **Card hover:** `translateY(-2px)` + brand glow shadow
-- **Pulsing dot:** `@keyframes pulse` 2s — opacity 1 → 0.3 → 1 — used on live indicators and eyebrow dots
-- **Toast (killfeed):** `slideUp` 300ms in, `slideDown` 300ms out after 2.2s
+Two fonts (Google Fonts, loaded in `index.html`). No others.
 
-CSS-only. No animation libraries.
+| Role | Font | Weights | Used for |
+|---|---|---|---|
+| `font-condensed` | Barlow Condensed | 700 / 800 / 900 | Wordmark, page/section titles, hero titles, rank numerals, stat values |
+| default (Inter) | Inter | 400–700 | Everything else — no font class needed |
+
+Scale highlights: wordmark 18px/900 caps; page title `clamp(30px,3.6vw,42px)` 900 caps; section title 20px/800 caps; hero overlay title `clamp(22px,2.6vw,34px)` 900 caps; card title 12px Inter 600 sentence case (2-line clamp); kicker 10px Inter 700 caps `tracking-[0.14em]`; meta 10–11px Inter 400–500 sentence case; rank numeral 22px condensed 900 (#1 mint, rest muted); button label 12px Inter 600–700 sentence case.
 
 ---
 
-## Logo mark
+## 5 — Layout rhythm
 
-```html
-<span class="logo__mark"></span>
+- **Nav** ([AppNav.vue](src/components/AppNav.vue)): 56px sticky (`h-14`), `bg-surface-raised/90 backdrop-blur-md`, hairline bottom border. Logo + links (active = mint pill highlight `bg-accent-bg`), centered search (max 300px, `⌘K` chip, global ⌘K/Ctrl+K focuses it), mint Upload CTA, bell + mint badge, 30px avatar with mint border.
+- **Page shell:** `mx-auto max-w-300 px-7 pt-7 pb-16 max-tablet:px-4`.
+- **Band separation:** `mt-8 border-t border-border pt-7` on each section after the first.
+- **Section header** ([SectionHeader.vue](src/components/SectionHeader.vue)): `{ kicker, title, moreTo?, moreLabel? }` → mint kicker + condensed title on one baseline + `ml-auto` "See all →".
+- **Home band order:** feed controls (tabs + game pills) → hero band `grid-cols-[1fr_300px] gap-5` (overlay hero + ranked 01–05 sidebar) → Top Games `grid-cols-5 gap-3` → Trending `grid-cols-[1fr_280px]` → Recent Clips `grid-cols-4 gap-3.5` → Load more.
+- **Grid gaps:** `gap-3` game tiles, `gap-3.5` clip cards.
+- **Mobile:** `MobileTabBar` fixed bottom (Feed / Games / Upload / Reels / You), active item mint, center mint upload button. Nav collapses; feeds go 2-col → 1-col (`max-lg` / `max-tablet`).
+
+---
+
+## 6 — Component recipes
+
+- **Clip card** ([ClipCard.vue](src/components/ClipCard.vue)): `rounded-lg border border-border bg-surface-raised overflow-hidden hover:border-border-strong`. Thumb `aspect-video bg-black` with GameTag top-left + DurationBadge bottom-right. Below: Inter 600 12px title (2-line clamp) + meta (`@author` mint · time · views/likes right). No tag chips on cards — tags live on detail surfaces.
+- **Hero (Home):** full-bleed 16:9 with legibility gradient, mint kicker ("Clip of the Day"), condensed 900 overlay title in `#f4f1e8`, meta row, centered play button (`rounded-full bg-black/55 border-white/30`).
+- **Ranked lists:** `grid-cols-[36px_56px_1fr]` (rank / 16:9 thumb / title+meta), rank `font-condensed text-[22px] font-black`, #1 `text-accent`, rest `text-text-muted`, zero-padded.
+- **Game tile** ([GameCoverTile.vue](src/components/GameCoverTile.vue)): `aspect-3/4 rounded-lg border border-border`, optional rank numeral on cover, name below (Inter 700 11px) + `#footer-extra` for clip counts. `group-hover:-translate-y-0.5 group-hover:border-accent-border` — the sole transform.
+- **Tabs** ([UnderlineTabs.vue](src/components/UnderlineTabs.vue)): `px-4 py-2.5 text-xs font-semibold border-b-2`; active `border-accent text-text-primary`; `disabled: true` renders `opacity-40 cursor-not-allowed` (never hidden — shows what's coming).
+- **Filter pills:** `rounded-full border px-3 py-1 text-[11px] font-semibold`; active `bg-accent-bg border-accent-border text-accent`; idle `border-border text-text-muted hover:border-accent-border hover:text-accent`.
+- **Buttons:** primary `rounded-lg bg-accent px-4 py-1.5 text-xs font-bold text-[#080f0d] hover:brightness-105`; secondary `rounded-lg border border-border-strong text-text-secondary hover:border-accent hover:text-accent`; ghost `text-accent hover:underline`; icon `size-8.5 rounded-lg border border-border hover:border-border-strong`.
+- **Inputs:** `rounded-md border border-border bg-surface-high px-3 text-sm focus:border-accent focus:outline-none`; labels Inter 10px 700 caps `tracking-widest text-text-secondary`. Errors: mint text / `border-accent-border bg-accent-bg` boxes.
+- **Dialogs:** scrim `bg-black/70`; panel `rounded-lg border border-border-strong bg-surface-raised`. Popovers/menus: `rounded-lg border border-border-strong bg-surface-base`.
+- **Toasts:** `rounded-lg border border-border-strong bg-surface-raised`, `slideUp`/`slideDown` keyframes (250ms).
+- **Status states** ([StatusPanel.vue](src/components/StatusPanel.vue)): loading = mint tick bar; empty/error = raised card with kicker + copy.
+- **Logo** ([LogoMark.vue](src/components/LogoMark.vue)): mint HUD-frame SVG mark; wordmark `GANKED.TV` condensed 900 caps, `.TV` mint. Nav usage: `:size="23" glow`.
+
+---
+
+## 7 — Motion
+
+- Page transitions: 150ms opacity fade (App.vue).
+- Border/text hovers: 150ms `transition-colors`.
+- Game tile lift: 150ms `transition-[border-color,transform]`.
+- Mint CTAs: `hover:brightness-105` on `transition-[filter]`.
+- Toasts: 250ms `slideUp` in, `slideDown` out. Loading bars: `tick` keyframe.
+- No `transition-transform` on clip cards — they stay put.
+
+---
+
+## 8 — Data honesty (missing-API policy)
+
+What the API doesn't serve is **not rendered** — no mock numbers:
+
+- No "players online" count (nav) and no "follows online" panel (hero) until a presence endpoint exists.
+- Home "Top Rated" tab renders disabled until a likes-weighted feed sort exists.
+- "For You" maps to the latest feed until personalization exists.
+- Home game filter pills deep-link to `/game/:slug` until the feed API grows a `gameId` param.
+- No rank-movement copy ("up 38 spots") — the API has no rank history.
+
+Backend follow-ups are tracked as GitHub issues (online presence, top-rated sort, for-you feed, feed game filter).
+
+---
+
+## 9 — Banned list + sweep
+
+Run before any PR:
+
+```bash
+cd web/src
+grep -rnE "shadow-\[|shadow-(sm|md|lg|xl|2xl)" . --include="*.vue"          # zero
+grep -rn  "backdrop-blur" . --include="*.vue"                               # AppNav only
+grep -rnE "hover:(-)?translate|hover:scale|group-hover:(-)?translate" . --include="*.vue"  # GameCoverTile only
+grep -rnE "rounded-(xl|2xl|3xl)" . --include="*.vue"                        # zero
+grep -rn  "gradient" . --include="*.vue" --include="*.css"                  # legibility overlays + LogoMark only
+grep -rniE "No\.\s*\d{3}|issue.number|vol.*iss" . --include="*.vue" --include="*.ts"  # zero
+grep -rnE "font-display|font-mono|font-heading|Rajdhani|DM Mono|DM Sans" . --include="*.vue" --include="*.css"  # zero
+grep -rnE "text-ink|bg-ink|border-ink|-signal|surface-sunken" . --include="*.vue" --include="*.ts"  # zero
 ```
-Global CSS in `base.css`: polygon clip-path with neon corner dot via `::before` and recessed inner shape via `::after`. Do not reproduce inline.
+
+Sanctioned exceptions (the only allowed hits): nav backdrop-blur, game-tile lift, thumbnail/reels legibility gradients, LogoMark SVG gradients + glow, and the Plyr menu `box-shadow: none` override in base.css (it *removes* a vendor shadow).
 
 ---
 
-## Chamfer utility
+## 10 — Component conventions
 
-```html
-<div class="chamfer">…</div>
-```
-Clips two opposite corners via `clip-path: polygon(var(--corner-cut) 0, …)`. `--corner-cut` is `10px` by default.
+- Tailwind utility classes in templates; tokens via `@theme`. Scoped CSS only when utilities can't express it (custom keyframes live in base.css).
+- Dynamic values (user accent, avatar fills) via inline `:style`.
+- Icons: stroke-based SVG components inheriting `currentColor` ([src/components/icons/](src/components/icons/)).
+- Images from user input: `<img>`, never CSS `background-image`.
+- Game cover art: `<img>` with `object-cover aspect-3/4`. Clip thumbnails: `<img>` with `object-cover aspect-video`.
+- Theme mechanism: `.light` class on `<html>` via `useThemeStore` — do not introduce `data-theme`.
 
----
-
-## Tailwind usage rules
-
-**Tailwind v4 utility classes for everything** — color, spacing, typography, layout, hover/focus states, media queries. No `style="..."` inline attributes on elements. No `<style scoped>` blocks for cases Tailwind can already express.
-
-If a specific color (e.g. a vendor brand color like Discord blue) doesn't exist in Tailwind's defaults, **add it to the `@theme {}` block** in [base.css](src/assets/base.css) so a utility class is generated, then use the utility (`bg-discord`, `hover:bg-discord-hover`). Don't drop hex values into the template.
-
-Legitimate exceptions, narrow:
-- **Dynamic runtime values** (e.g. an avatar gradient computed from a per-user color) — use inline `:style="..."` Vue bindings; utilities can't express runtime values.
-- **Pseudo-elements that Tailwind's `before:` / `after:` modifiers can't express** (e.g. complex multi-property `clip-path` shapes) — `<style scoped>` is acceptable for the pseudo-element only.
-
----
-
-## Anti-patterns
-
-- No light backgrounds as default — dark-first always
-- No gradients on primary surfaces (use flat + border depth)
-- No Inter, Roboto, or system-ui as display fonts
-- No scoped CSS for layout, color, or typography — Tailwind utilities
-- No inline `style="..."` for static values — Tailwind utilities or a token-backed utility
-- No `pt-16` or `pt-[64px]` padding on page content — nav is sticky, not fixed
-- No hardcoded brand/surface/text hex values in components — always go through the token (`var(--color-…)` or the matching Tailwind utility), or theme switching breaks for that element
-- No unscoped `<style>` blocks in views — class names collide globally
-- No string-literal event handlers in templates (`onmouseover="..."`) — use Vue handlers (`@mouseenter`) or a CSS `:hover` rule
+Before writing any component: check the token table (§3), reuse the recipes (§6), run the sweep (§9). If something isn't covered: least visual noise, most content, mint only for interactive states.

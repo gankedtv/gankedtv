@@ -150,13 +150,11 @@ watch(slug, () => {
 </script>
 
 <template>
-  <main
-    class="mx-auto max-w-360 px-6 pt-8 pb-30 max-[899px]:px-3.5 max-[899px]:pt-4 max-[899px]:pb-20"
-  >
+  <main class="mx-auto max-w-300 px-7 pt-7 pb-16 max-tablet:px-4">
     <StatusPanel v-if="notFound" kind="empty" message="No tag with that slug.">
       <RouterLink
         to="/"
-        class="rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+        class="rounded-lg border border-border-strong px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
       >
         Back to feed
       </RouterLink>
@@ -164,34 +162,25 @@ watch(slug, () => {
 
     <StatusPanel v-else-if="errored" kind="error" message="Couldn't load this tag.">
       <button
-        class="cursor-pointer rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+        class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
         @click="retry"
       >
         Retry
       </button>
     </StatusPanel>
 
-    <StatusPanel v-else-if="initialLoading && !tag" kind="loading" message="Loading…" />
+    <StatusPanel v-else-if="initialLoading && !tag" kind="loading" message="Loading" />
 
     <template v-else-if="tag">
-      <section
-        class="relative mb-10 overflow-hidden rounded-lg border border-border bg-surface-raised"
-      >
-        <div class="relative px-8 py-8 max-[899px]:px-5 max-[899px]:py-7">
-          <PageHeader :title="`#${tag.slug}`" pulse>
-            <template #caption>
-              Tag · {{ tag.clipCount }} clip{{ tag.clipCount === 1 ? '' : 's' }}
-            </template>
-            <div class="mt-3 flex items-center gap-3">
-              <span class="font-mono text-[11px] uppercase tracking-[0.08em] text-text-muted">
-                {{ tag.name }}
-              </span>
-            </div>
-          </PageHeader>
-        </div>
-      </section>
+      <!-- The mint #tagname title is per spec — the tag itself is the accent. -->
+      <PageHeader :title="`#${tag.slug}`" class="mb-7 [&_h1]:text-accent">
+        <template #caption> {{ tag.clipCount }} clip{{ tag.clipCount === 1 ? '' : 's' }} </template>
+      </PageHeader>
 
-      <div v-if="items.length" class="feed-grid">
+      <div
+        v-if="items.length"
+        class="grid grid-cols-4 gap-3.5 max-lg:grid-cols-2 max-tablet:grid-cols-1"
+      >
         <ClipCard
           v-for="clip in items"
           :key="clip.id"
@@ -204,7 +193,7 @@ watch(slug, () => {
         <RouterLink
           v-if="auth.isAuthenticated"
           to="/upload"
-          class="rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+          class="rounded-lg border border-border-strong px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
         >
           Upload a clip
         </RouterLink>
@@ -215,19 +204,17 @@ watch(slug, () => {
         v-if="loading && !reachedEnd"
         role="status"
         aria-live="polite"
-        class="-mt-6 flex items-center justify-center py-3 font-mono text-[11px] uppercase tracking-widest text-text-muted"
+        class="-mt-6 flex items-center justify-center py-3 text-[11px] text-text-muted"
       >
         Loading more…
       </div>
 
       <div v-if="paginationErrored" class="mt-2 flex flex-col items-center gap-2">
-        <span class="font-mono text-[11px] uppercase tracking-widest text-text-muted">
-          Couldn't load more — try again.
-        </span>
+        <span class="text-[11px] text-text-muted">Couldn't load more — try again.</span>
         <button
           :disabled="loading"
           @click="retryLoadMore"
-          class="cursor-pointer rounded-sm border border-border bg-surface-raised px-6 py-2.5 font-mono text-[11px] uppercase tracking-[0.08em] text-text-primary transition-colors duration-150 hover:border-brand-light disabled:opacity-50"
+          class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-6 py-2.5 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent disabled:opacity-50"
         >
           Retry
         </button>

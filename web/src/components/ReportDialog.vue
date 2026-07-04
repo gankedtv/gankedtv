@@ -112,23 +112,30 @@ async function submit() {
         <div class="absolute inset-0 bg-black/70" @click="!submitting && emit('cancel')" />
 
         <div
-          class="relative z-10 w-full max-w-lg rounded-md border border-border bg-surface-raised shadow-[0_0_40px_var(--color-brand-glow)]"
+          class="relative z-10 w-full max-w-lg rounded-lg border border-border-strong bg-surface-raised"
           @click.stop
         >
-          <div class="flex items-center justify-between border-b border-border px-5 py-4">
-            <h2
-              :id="titleId"
-              class="font-heading text-lg font-bold uppercase tracking-[0.04em] text-text-primary"
-            >
-              Report
-              {{ targetType === 'clip' ? 'clip' : targetType === 'comment' ? 'comment' : 'user' }}
-            </h2>
+          <div class="flex items-start justify-between border-b border-border px-5 py-4">
+            <div>
+              <p
+                class="m-0 text-[10px] font-bold uppercase leading-none tracking-[0.14em] text-text-secondary"
+              >
+                File a report
+              </p>
+              <h2
+                :id="titleId"
+                class="m-0 mt-2 font-condensed text-lg font-extrabold uppercase leading-none tracking-wide text-text-primary"
+              >
+                Report
+                {{ targetType === 'clip' ? 'clip' : targetType === 'comment' ? 'comment' : 'user' }}
+              </h2>
+            </div>
             <button
               type="button"
               :disabled="submitting"
               @click="emit('cancel')"
               aria-label="Close"
-              class="cursor-pointer font-mono text-xl leading-none text-text-muted transition-colors duration-150 hover:text-text-primary disabled:pointer-events-none disabled:opacity-40"
+              class="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-border text-base leading-none text-text-muted transition-colors duration-150 hover:border-accent hover:text-accent disabled:pointer-events-none disabled:opacity-40"
             >
               ×
             </button>
@@ -136,7 +143,7 @@ async function submit() {
 
           <form @submit.prevent="submit" class="px-5 py-4">
             <label
-              class="mb-2 block font-heading text-xs font-bold uppercase tracking-wider text-text-muted"
+              class="mb-2 block text-[10px] font-bold uppercase tracking-widest text-text-secondary"
             >
               Reason
             </label>
@@ -144,16 +151,16 @@ async function submit() {
               ref="reasonSelect"
               v-model="reason"
               :disabled="submitting"
-              class="mb-4 block w-full cursor-pointer rounded-md border border-border bg-surface-overlay px-3 py-2 font-body text-sm text-text-primary"
+              class="mb-4 block h-11 w-full cursor-pointer rounded-md border border-border bg-surface-high px-3 text-sm text-text-primary focus:border-accent focus:outline-none"
             >
               <option v-for="r in REASONS" :key="r.value" :value="r.value">{{ r.label }}</option>
             </select>
 
             <label
-              class="mb-2 block font-heading text-xs font-bold uppercase tracking-wider text-text-muted"
+              class="mb-2 block text-[10px] font-bold uppercase tracking-widest text-text-secondary"
             >
               Note
-              <span v-if="noteRequired" class="text-[color:var(--color-error)]">(required)</span>
+              <span v-if="noteRequired" class="text-accent">(required)</span>
               <span v-else class="text-text-muted">(optional)</span>
             </label>
             <textarea
@@ -161,11 +168,11 @@ async function submit() {
               :disabled="submitting"
               rows="4"
               maxlength="2000"
-              class="mb-2 block w-full rounded-md border border-border bg-surface-overlay px-3 py-2 font-body text-sm text-text-primary"
+              class="mb-2 block w-full rounded-md border border-border bg-surface-high px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
               :placeholder="noteRequired ? `What's the issue?` : 'Add any extra context...'"
             />
 
-            <p v-if="error" class="mb-2 font-mono text-xs text-[color:var(--color-error)]">
+            <p v-if="error" class="mb-2 text-xs font-medium text-accent">
               {{ error }}
             </p>
 
@@ -174,7 +181,7 @@ async function submit() {
                 type="button"
                 :disabled="submitting"
                 @click="emit('cancel')"
-                class="cursor-pointer rounded-md border border-border bg-surface-overlay px-5 py-2.5 font-heading text-sm font-bold uppercase tracking-wider text-text-secondary transition-colors duration-150 hover:text-text-primary disabled:pointer-events-none disabled:opacity-40"
+                class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-4 py-1.5 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent disabled:pointer-events-none disabled:opacity-40"
               >
                 Cancel
               </button>
@@ -182,10 +189,10 @@ async function submit() {
                 type="submit"
                 :disabled="!canSubmit"
                 :class="[
-                  'rounded-md px-5 py-2.5 font-heading text-sm font-bold uppercase tracking-wider transition-all duration-150',
+                  'rounded-lg px-4 py-1.5 text-xs font-bold transition-[filter] duration-150',
                   !canSubmit
-                    ? 'cursor-not-allowed border border-border bg-surface-overlay text-text-muted'
-                    : 'cursor-pointer bg-[color:var(--color-error)] text-white hover:bg-[color:var(--color-error)]/90',
+                    ? 'cursor-not-allowed border border-border bg-transparent text-text-muted'
+                    : 'cursor-pointer bg-accent text-[#080f0d] hover:brightness-105',
                 ]"
               >
                 {{ submitting ? 'Reporting…' : 'Report' }}

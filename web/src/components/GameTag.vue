@@ -2,15 +2,12 @@
 // Renders the game's short tag (e.g. VALORANT, RL).
 //
 // `variant`:
-//   - 'pill' (default) — bordered horizontal chip used inline (cards, leaderboard).
-//     Pair with `size='sm'|'md'` for density vs. presence.
+//   - 'pill' (default) — mint tag chip used on thumbnails and inline rows.
 //   - 'square'          — 40×40 boxed tile, used in list rows where the tag stands
 //     in for cover art (e.g. Trending's Hot Games sidebar).
 //
-// `tone` covers the three text-color variants the design uses today:
-//   - default → primary
-//   - subtle  → secondary
-//   - muted   → text-muted
+// Arena badge grammar: one mint accent. 'subtle'/'muted' tones render hairline
+// outlines in neutral text colors so rows can de-emphasize without a second hue.
 
 defineProps<{
   tag: string
@@ -23,27 +20,23 @@ defineProps<{
 <template>
   <span
     v-if="variant === 'square'"
-    class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[4px] border border-border-strong bg-surface-base font-mono text-[10px] font-medium uppercase tracking-[0.06em]"
-    :class="
-      tone === 'subtle'
-        ? 'text-text-secondary'
-        : tone === 'muted'
-          ? 'text-text-muted'
-          : 'text-text-primary'
-    "
+    class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border-strong bg-surface-base text-[10px] font-bold uppercase tracking-[0.06em]"
+    :class="tone === 'muted' ? 'text-text-muted' : 'text-text-secondary'"
   >
     {{ tag }}
   </span>
   <span
     v-else
-    class="rounded-[3px] border border-border-strong bg-surface-base font-mono font-medium uppercase tracking-[0.06em]"
+    class="inline-flex items-center rounded-sm border font-bold uppercase leading-none"
     :class="[
-      size === 'md' ? 'px-2.5 py-1 text-[10px] tracking-[0.08em]' : 'px-1.5 py-0.5 text-[10px]',
+      size === 'md'
+        ? 'px-2 py-1 text-[10px] tracking-[0.07em]'
+        : 'px-1.5 py-1 text-[9px] tracking-[0.07em]',
       tone === 'subtle'
-        ? 'text-text-secondary'
+        ? 'border-border bg-transparent text-text-secondary'
         : tone === 'muted'
-          ? 'text-text-muted'
-          : 'text-text-primary',
+          ? 'border-border bg-transparent text-text-muted'
+          : 'border-accent-border bg-accent-bg text-accent',
     ]"
   >
     {{ tag }}

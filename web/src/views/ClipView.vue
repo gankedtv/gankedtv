@@ -5,14 +5,18 @@ import Plyr from 'plyr'
 import 'plyr/dist/plyr.css'
 import Hls from 'hls.js'
 import { ApiError } from '@/api/client'
-import { clips, type ClipDetail } from '@/api/clips'
-import { formatNum, formatRelativeTime } from '@/lib/format'
+import { clips, type ClipDetail, type ClipFeedItem } from '@/api/clips'
+import { games } from '@/api/games'
+import { formatNum, formatDuration, formatRelativeTime } from '@/lib/format'
 import { useAuthStore } from '@/stores/auth'
 import { safeImageUrl } from '@/lib/url'
-import GameTag from '@/components/GameTag.vue'
 import TagChip from '@/components/TagChip.vue'
 import AuthorHandle from '@/components/AuthorHandle.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
+import GameTag from '@/components/GameTag.vue'
+import TelemetryStrip, { type TelemetryCell } from '@/components/TelemetryStrip.vue'
+import SectionHeader from '@/components/SectionHeader.vue'
+import ClipCard from '@/components/ClipCard.vue'
 import ClipEditDialog from '@/components/ClipEditDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ReportDialog from '@/components/ReportDialog.vue'
@@ -108,6 +112,50 @@ const shareCode = computed(() => {
   const code = route.params.code
   return Array.isArray(code) ? code[0] : (code as string | undefined)
 })
+
+// Recommended band — same-game clips, current one excluded. Silent failure:
+// the band just doesn't render; clip playback is never blocked on it.
+const recommended = ref<ClipFeedItem[]>([])
+watch(
+  () => [clip.value?.id, clip.value?.game?.slug] as const,
+  async () => {
+    recommended.value = []
+    const current = clip.value
+    if (!current?.game) return
+    try {
+      const page = await games.clips(current.game.slug, { limit: 5 })
+      if (clip.value?.id !== current.id) return
+      recommended.value = page.items.filter((c) => c.id !== current.id).slice(0, 4)
+    } catch {
+      recommended.value = []
+    }
+  },
+)
+
+const telemetryCells = computed<TelemetryCell[]>(() => {
+  const c = clip.value
+  if (!c) return []
+  return [
+    { key: 'views', label: 'Views', value: formatNum(c.viewCount) },
+    {
+      key: 'likes',
+      label: 'Likes',
+      value: formatNum(likeCount.value),
+      ink: liked.value,
+      action: true,
+    },
+    {
+      key: 'duration',
+      label: 'Runtime',
+      value: c.durationSecs !== null ? formatDuration(c.durationSecs) : '—',
+    },
+    { key: 'filed', label: 'Posted', value: formatRelativeTime(c.createdAt) },
+  ]
+})
+
+function onTelemetryClick(key: string) {
+  if (key === 'likes') void toggleLike()
+}
 
 // Attribution badge for clips ingested via POST /clips/import. The host is shown to the
 // viewer instead of the full URL (which can be long + carries query params); the link still
@@ -482,9 +530,9 @@ async function onConfirmDelete() {
 </script>
 
 <template>
-  <div class="mx-auto max-w-350 px-6 pt-8 pb-30">
+  <main class="mx-auto max-w-300 px-7 pt-7 pb-16 max-tablet:px-4">
     <!-- Loading -->
-    <StatusPanel v-if="loading" kind="loading" message="Loading…" />
+    <StatusPanel v-if="loading" kind="loading" message="Loading" />
 
     <!-- Still processing (freshly uploaded; transcoding) -->
     <StatusPanel
@@ -496,7 +544,7 @@ async function onConfirmDelete() {
     <!-- Error -->
     <StatusPanel v-else-if="errored" kind="error" :message="errorMessage">
       <button
-        class="cursor-pointer rounded-sm border border-border bg-surface-raised px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+        class="cursor-pointer rounded-lg border border-border bg-transparent px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
         @click="(clipId || shareCode) && loadClip()"
       >
         Retry
@@ -504,59 +552,34 @@ async function onConfirmDelete() {
     </StatusPanel>
 
     <div v-else-if="clip">
-      <!-- Breadcrumb -->
-      <div
-        class="mb-5 flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.08em] text-text-muted"
-      >
-        <router-link to="/" class="transition-colors hover:text-text-secondary">Feed</router-link>
-        <span>/</span>
-        <span>{{ clip.id.slice(0, 8) }}</span>
-      </div>
-
-      <!-- Video Player -->
-      <div class="overflow-hidden rounded-md border border-border bg-black">
+      <!-- Player -->
+      <div class="overflow-hidden rounded-lg border border-border bg-black">
         <video ref="videoEl" controls playsinline class="block aspect-video w-full"></video>
       </div>
 
-      <!-- Title + Meta Row -->
+      <!-- Meta block -->
       <div class="mt-5">
-        <div v-if="clip.game" class="mb-2">
-          <GameTag :tag="clip.game.tag" />
-          <span class="ml-2 font-mono text-[11px] uppercase tracking-[0.06em] text-text-muted">
+        <div v-if="clip.game" class="flex flex-wrap items-center gap-2">
+          <GameTag :tag="clip.game.tag" size="md" />
+          <RouterLink
+            :to="{ name: 'game-detail', params: { slug: clip.game.slug } }"
+            class="text-[11px] font-semibold text-text-secondary transition-colors duration-150 hover:text-accent"
+          >
             {{ clip.game.name }}
-          </span>
+          </RouterLink>
         </div>
         <h1
-          class="font-heading text-[34px] font-bold leading-[1.05] uppercase tracking-[0.01em] text-text-primary"
+          class="m-0 mt-2 font-condensed text-[22px] font-extrabold uppercase leading-tight text-text-primary"
         >
           {{ clip.title }}
         </h1>
 
-        <div v-if="clip.tags.length" class="mt-3 flex flex-wrap gap-2">
-          <TagChip v-for="t in clip.tags" :key="t.id" :slug="t.slug" :name="t.name" size="md" />
-        </div>
-
-        <!-- Source attribution for imported clips. Subtle pill; clicking opens the original
-             in a new tab so reviewers can confirm credit / spot reuploads at a glance. -->
-        <a
-          v-if="clip.importSourceUrl && importSourceHost"
-          :href="clip.importSourceUrl"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="mt-3 inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-raised px-3 py-1 font-mono text-[11px] uppercase tracking-[0.06em] text-text-muted transition-colors hover:border-brand-light hover:text-text-primary"
-        >
-          <IconLink :size="12" />
-          <span>Imported from {{ importSourceHost }}</span>
-        </a>
-
-        <div class="mt-4 flex flex-wrap items-center gap-3">
-          <!-- Author info -->
-          <div class="flex items-center gap-2">
+        <!-- Author + action row -->
+        <div class="mt-3 flex flex-wrap items-center gap-3">
+          <div class="flex items-center gap-2.5">
             <span
-              class="inline-flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full font-mono text-xs font-semibold text-white"
-              :style="{
-                background: `linear-gradient(135deg, ${authorColor}, color-mix(in oklab, ${authorColor} 40%, #000))`,
-              }"
+              class="inline-flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-semibold text-white"
+              :style="{ background: authorColor }"
             >
               <img
                 v-if="authorAvatarUrl"
@@ -570,9 +593,9 @@ async function onConfirmDelete() {
               <AuthorHandle
                 :username="clip.author.username"
                 as="link"
-                class="text-[13px] font-semibold text-neon"
+                class="text-[13px] font-semibold text-accent"
               />
-              <div class="font-mono text-[10px] tracking-[0.04em] text-text-muted">
+              <div class="text-[11px] text-text-muted">
                 Uploaded {{ formatRelativeTime(clip.createdAt) }} ago
               </div>
             </div>
@@ -580,24 +603,24 @@ async function onConfirmDelete() {
 
           <div class="flex-1" />
 
-          <!-- Action buttons -->
           <div class="flex items-center gap-2">
             <button
-              class="flex items-center gap-1.5 rounded px-3 py-1.5 font-mono text-[12px] transition-all duration-150 disabled:opacity-60"
+              class="flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors duration-150 disabled:opacity-60"
               :class="
                 liked
-                  ? 'bg-brand text-white'
-                  : 'border border-border bg-surface-raised text-text-secondary'
+                  ? 'border-accent-border bg-accent-bg text-accent'
+                  : 'border-border text-text-secondary hover:border-border-strong hover:text-accent'
               "
               :disabled="likeBusy"
               @click="toggleLike"
             >
               <IconHeart :size="14" />
               <span>{{ formatNum(likeCount) }}</span>
+              <span>Like</span>
             </button>
 
             <button
-              class="flex items-center gap-1.5 rounded border border-border bg-surface-raised px-3 py-1.5 font-mono text-[12px] text-text-secondary transition-all duration-150"
+              class="flex cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-transparent px-3 py-1.5 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-border-strong hover:text-text-primary"
               @click="handleShare"
             >
               <IconShare :size="14" />
@@ -606,55 +629,65 @@ async function onConfirmDelete() {
 
             <button
               v-if="auth.isAuthenticated && !isOwner"
-              class="flex items-center gap-1.5 rounded border border-border bg-surface-raised px-3 py-1.5 font-mono text-[12px] text-text-secondary transition-all duration-150 hover:text-[color:var(--color-error)]"
+              class="cursor-pointer rounded-lg border border-border bg-transparent px-3 py-1.5 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-border-strong hover:text-text-primary"
               @click="reportOpen = true"
             >
-              <span>Report</span>
+              Report
             </button>
 
             <KebabMenu
               v-if="isOwner"
               :items="ownerMenuItems"
               icon-orientation="vertical"
-              trigger-variant="plain"
+              trigger-variant="outlined"
             />
           </div>
         </div>
-      </div>
 
-      <!-- Stat Block -->
-      <div class="mt-6 grid grid-cols-3 gap-px overflow-hidden rounded-md bg-border">
-        <div
-          v-for="stat in [
-            { label: 'Plays', value: formatNum(clip.viewCount) },
-            { label: 'Likes', value: formatNum(likeCount) },
-            { label: 'Uploaded', value: formatRelativeTime(clip.createdAt) + ' ago' },
-          ]"
-          :key="stat.label"
-          class="flex flex-col gap-1 bg-surface-raised px-4 py-3"
+        <!-- Stats — like also lives on the stat itself -->
+        <TelemetryStrip class="mt-4" :cells="telemetryCells" @cell-click="onTelemetryClick" />
+
+        <!-- Description -->
+        <p
+          v-if="clip.description"
+          class="m-0 mt-4 max-w-[64ch] text-[13px] leading-relaxed text-text-secondary"
         >
-          <span class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">{{
-            stat.label
-          }}</span>
-          <span class="font-heading text-xl font-bold leading-[1.2] text-text-primary">{{
-            stat.value
-          }}</span>
+          {{ clip.description }}
+        </p>
+
+        <div v-if="clip.tags.length" class="mt-4 flex flex-wrap gap-2">
+          <TagChip v-for="t in clip.tags" :key="t.id" :slug="t.slug" :name="t.name" size="md" />
         </div>
+
+        <!-- Source attribution for imported clips. Clicking opens the original
+             in a new tab so reviewers can confirm credit / spot reuploads at a glance. -->
+        <a
+          v-if="clip.importSourceUrl && importSourceHost"
+          :href="clip.importSourceUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-[11px] font-semibold text-text-muted transition-colors duration-150 hover:border-accent hover:text-accent"
+        >
+          <IconLink :size="12" />
+          <span>Imported from {{ importSourceHost }}</span>
+        </a>
       </div>
 
-      <!-- Description -->
-      <div
-        v-if="clip.description"
-        class="mt-4 rounded-md border border-border bg-surface-raised p-4"
-      >
-        <div class="mb-2 font-mono text-[10px] uppercase tracking-widest text-text-muted">
-          Description
-        </div>
-        <p class="text-sm leading-[1.6] text-text-secondary">{{ clip.description }}</p>
-      </div>
+      <!-- Comments — component root carries its own top margin -->
+      <CommentsSection :clip-id="clip.id" class="border-t border-border pt-7" />
 
-      <!-- Comments -->
-      <CommentsSection :clip-id="clip.id" />
+      <!-- Recommended — same game, current clip excluded -->
+      <section v-if="recommended.length && clip.game" class="mt-8 border-t border-border pt-7">
+        <SectionHeader kicker="Recommended" title="More Clips" />
+        <div class="grid grid-cols-4 gap-3.5 max-lg:grid-cols-2 max-tablet:grid-cols-1">
+          <ClipCard
+            v-for="rec in recommended"
+            :key="rec.id"
+            :clip="rec"
+            @click="router.push({ name: 'clip', params: { id: rec.id } })"
+          />
+        </div>
+      </section>
     </div>
 
     <ClipEditDialog
@@ -695,10 +728,10 @@ async function onConfirmDelete() {
     >
       <div
         v-if="showToast"
-        class="fixed bottom-6 left-1/2 z-9999 flex -translate-x-1/2 items-center gap-2 rounded-md border border-brand bg-surface-overlay px-4 py-3 font-mono text-[13px] tracking-[0.04em] whitespace-nowrap text-text-primary shadow-[0_0_20px_var(--color-brand-glow)]"
+        class="fixed bottom-6 left-1/2 z-9999 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-border-strong bg-surface-raised px-4 py-3 text-[13px] whitespace-nowrap text-text-primary"
       >
         {{ toastText }}
       </div>
     </Transition>
-  </div>
+  </main>
 </template>

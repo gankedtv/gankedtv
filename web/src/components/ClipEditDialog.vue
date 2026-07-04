@@ -106,8 +106,9 @@ async function save() {
 }
 
 const inputClass =
-  'w-full rounded-md border border-border bg-surface-raised px-3.5 py-3 font-body text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-border-hover transition-colors duration-150'
-const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest text-text-muted'
+  'w-full rounded-md border border-border bg-surface-high px-3.5 py-3 text-sm text-text-primary outline-none placeholder:text-text-muted focus:border-accent transition-colors duration-150'
+const labelClass =
+  'mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-text-secondary'
 </script>
 
 <template>
@@ -123,26 +124,33 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
         class="fixed inset-0 z-50 flex items-center justify-center px-4"
         @click.self="emit('close')"
       >
-        <!-- Backdrop -->
+        <!-- Backdrop — plain scrim, no blur. -->
         <div class="absolute inset-0 bg-black/70" @click="emit('close')" />
 
         <!-- Dialog card -->
         <div
-          class="relative z-10 w-full max-w-lg rounded-md border border-border bg-surface-raised shadow-[0_0_40px_var(--color-brand-glow)]"
+          class="relative z-10 w-full max-w-lg rounded-lg border border-border-strong bg-surface-raised"
           @click.stop
         >
           <!-- Header -->
-          <div class="flex items-center justify-between border-b border-border px-5 py-4">
-            <h2
-              class="font-heading text-lg font-bold uppercase tracking-[0.04em] text-text-primary"
-            >
-              Edit Clip
-            </h2>
+          <div class="flex items-start justify-between border-b border-border px-5 py-4">
+            <div>
+              <p
+                class="m-0 text-[10px] font-bold uppercase leading-none tracking-[0.14em] text-text-secondary"
+              >
+                Edit filing
+              </p>
+              <h2
+                class="m-0 mt-2 font-condensed text-lg font-extrabold uppercase leading-none tracking-wide text-text-primary"
+              >
+                Edit Clip
+              </h2>
+            </div>
             <button
               type="button"
               @click="emit('close')"
               aria-label="Close"
-              class="cursor-pointer font-mono text-xl leading-none text-text-muted transition-colors duration-150 hover:text-text-primary"
+              class="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-border text-base leading-none text-text-muted transition-colors duration-150 hover:border-accent hover:text-accent"
             >
               ×
             </button>
@@ -154,9 +162,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
             <div>
               <div class="mb-1.5 flex items-baseline justify-between">
                 <label :class="labelClass + ' mb-0'">Title</label>
-                <span class="font-mono text-[10px] text-text-muted">
-                  {{ localTitle.length }}/100
-                </span>
+                <span class="text-[10px] text-text-muted"> {{ localTitle.length }}/100 </span>
               </div>
               <input
                 v-model="localTitle"
@@ -173,9 +179,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
                   Description
                   <span class="text-[9px] text-text-muted">(optional)</span>
                 </label>
-                <span class="font-mono text-[10px] text-text-muted">
-                  {{ localDesc.length }}/500
-                </span>
+                <span class="text-[10px] text-text-muted"> {{ localDesc.length }}/500 </span>
               </div>
               <textarea
                 v-model="localDesc"
@@ -212,20 +216,20 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
                   type="button"
                   @click="localVisibility = opt"
                   :class="[
-                    'cursor-pointer rounded-md border px-4 py-3 text-left transition-all duration-150',
+                    'cursor-pointer rounded-lg border px-4 py-3 text-left transition-colors duration-150',
                     localVisibility === opt
-                      ? 'border-brand-light bg-brand-glow text-text-primary'
-                      : 'border-border bg-surface-overlay text-text-secondary',
+                      ? 'border-accent text-text-primary'
+                      : 'border-border text-text-secondary hover:border-border-strong',
                   ]"
                 >
                   <div class="mb-1 flex items-center gap-2">
                     <IconGlobe v-if="opt === 'public'" :size="15" />
                     <IconLink v-else :size="15" />
-                    <span class="font-heading text-sm font-bold uppercase">
+                    <span class="font-condensed text-sm font-bold uppercase">
                       {{ opt === 'public' ? 'Public' : 'Unlisted' }}
                     </span>
                   </div>
-                  <div class="font-body text-xs text-text-muted">
+                  <div class="text-xs text-text-muted">
                     {{ opt === 'public' ? 'Visible on feed + search' : 'Only accessible via link' }}
                   </div>
                 </button>
@@ -238,7 +242,7 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
             <button
               type="button"
               @click="emit('close')"
-              class="cursor-pointer rounded-md border border-border bg-surface-overlay px-5 py-2.5 font-heading text-sm font-bold uppercase tracking-wider text-text-secondary transition-colors duration-150 hover:text-text-primary"
+              class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-4 py-1.5 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
             >
               Cancel
             </button>
@@ -247,10 +251,10 @@ const labelClass = 'mb-1.5 block font-mono text-[10px] uppercase tracking-widest
               :disabled="!canSave || submitting"
               @click="save"
               :class="[
-                'rounded-md px-5 py-2.5 font-heading text-sm font-bold uppercase tracking-wider transition-all duration-150',
+                'rounded-lg px-4 py-1.5 text-xs font-bold transition-[filter] duration-150',
                 canSave && !submitting
-                  ? 'cursor-pointer bg-brand-light text-white hover:bg-brand'
-                  : 'cursor-not-allowed border border-border bg-surface-overlay text-text-muted',
+                  ? 'cursor-pointer bg-accent text-[#080f0d] hover:brightness-105'
+                  : 'cursor-not-allowed border border-border bg-transparent text-text-muted',
               ]"
             >
               {{ submitting ? 'Saving…' : 'Save' }}

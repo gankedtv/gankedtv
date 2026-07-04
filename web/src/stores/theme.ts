@@ -1,55 +1,49 @@
 import { defineStore } from 'pinia'
 
-export type ThemeName = 'underground' | 'tactical' | 'arcade'
+export type ThemeMode = 'dark' | 'light'
 
-export const THEME_NAMES: readonly ThemeName[] = ['underground', 'tactical', 'arcade'] as const
-export const DEFAULT_THEME: ThemeName = 'arcade'
+const MODE_STORAGE_KEY = 'theme'
+// v1's three-theme system stored a name under this key. Newsprint has one
+// palette, so the key is removed on init — users on 'tactical'/'arcade' land
+// on Newsprint silently, keeping whatever dark/light mode they had.
+const LEGACY_NAME_KEY = 'theme:name'
 
-const THEME_STORAGE_KEY = 'theme:name'
-
-function isThemeName(value: unknown): value is ThemeName {
-  return typeof value === 'string' && (THEME_NAMES as readonly string[]).includes(value)
-}
-
-function getInitialIsDark(): boolean {
+function getInitialMode(): ThemeMode {
   try {
-    const stored = localStorage.getItem('theme')
-    if (stored !== null) return stored !== 'light'
+    localStorage.removeItem(LEGACY_NAME_KEY)
   } catch {}
-  return true
-}
-
-function getInitialThemeName(): ThemeName {
   try {
-    const stored = localStorage.getItem(THEME_STORAGE_KEY)
-    if (isThemeName(stored)) return stored
+    const stored = localStorage.getItem(MODE_STORAGE_KEY)
+    if (stored !== null) return stored === 'light' ? 'light' : 'dark'
   } catch {}
-  return DEFAULT_THEME
+  return 'dark'
 }
 
 export const useThemeStore = defineStore('theme', {
   state: () => ({
-    isDark: getInitialIsDark(),
-    name: getInitialThemeName(),
+    mode: getInitialMode(),
   }),
+  getters: {
+    isDark: (state): boolean => state.mode === 'dark',
+  },
   actions: {
     toggle() {
-      this.isDark = !this.isDark
+      this.mode = this.mode === 'dark' ? 'light' : 'dark'
       this.applyToDOM()
       try {
-        localStorage.setItem('theme', this.isDark ? 'dark' : 'light')
-      } catch {}
-    },
-    setName(name: ThemeName) {
-      this.name = name
-      this.applyToDOM()
-      try {
-        localStorage.setItem(THEME_STORAGE_KEY, name)
+        localStorage.setItem(MODE_STORAGE_KEY, this.mode)
       } catch {}
     },
     applyToDOM() {
-      document.documentElement.classList.toggle('light', !this.isDark)
-      document.documentElement.setAttribute('data-theme', this.name)
+      document.documentElement.classList.toggle('light', this.mode === 'light')
+      // Scrub the v1 attribute so stale [data-theme] markup can't linger across
+      // a deploy boundary for returning users.
+      document.documentElement.removeAttribute('data-theme')
+      // Keep browser chrome (theme-color) in step with the active surface base;
+      // index.html ships the dark default as the pre-hydration fallback.
+      document
+        .querySelector('meta[name="theme-color"]')
+        ?.setAttribute('content', this.mode === 'light' ? '#f7f5f0' : '#0b0b0f')
     },
   },
 })

@@ -54,21 +54,28 @@ function submit() {
       >
         <div class="absolute inset-0 bg-black/70" @click="emit('cancel')" />
         <div
-          class="relative z-10 w-full max-w-md rounded-md border border-border bg-surface-raised shadow-[0_0_40px_var(--color-brand-glow)]"
+          class="relative z-10 w-full max-w-md rounded-lg border border-border-strong bg-surface-raised"
           @click.stop
         >
-          <div class="flex items-center justify-between border-b border-border px-5 py-4">
-            <h2
-              :id="titleId"
-              class="font-heading text-lg font-bold uppercase tracking-[0.04em] text-text-primary"
-            >
-              Fix game tag
-            </h2>
+          <div class="flex items-start justify-between border-b border-border px-5 py-4">
+            <div>
+              <p
+                class="m-0 text-[10px] font-bold uppercase leading-none tracking-[0.14em] text-text-secondary"
+              >
+                Re-file
+              </p>
+              <h2
+                :id="titleId"
+                class="m-0 mt-2 font-condensed text-lg font-extrabold uppercase leading-none tracking-wide text-text-primary"
+              >
+                Fix game tag
+              </h2>
+            </div>
             <button
               type="button"
               @click="emit('cancel')"
               aria-label="Close"
-              class="cursor-pointer font-mono text-xl leading-none text-text-muted transition-colors duration-150 hover:text-text-primary"
+              class="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-border text-base leading-none text-text-muted transition-colors duration-150 hover:border-accent hover:text-accent"
             >
               ×
             </button>
@@ -76,12 +83,12 @@ function submit() {
 
           <form @submit.prevent="submit" class="px-5 py-4">
             <label
-              class="mb-2 block font-heading text-xs font-bold uppercase tracking-wider text-text-muted"
+              class="mb-2 block text-[10px] font-bold uppercase tracking-widest text-text-secondary"
             >
               Game
             </label>
             <GameSelector v-model="selected" />
-            <p class="mt-2 font-mono text-[10px] text-text-muted">
+            <p class="mt-2 text-[10px] text-text-muted">
               Leave empty to clear the game tag entirely.
             </p>
 
@@ -89,13 +96,13 @@ function submit() {
               <button
                 type="button"
                 @click="emit('cancel')"
-                class="cursor-pointer rounded-md border border-border bg-surface-overlay px-5 py-2.5 font-heading text-sm font-bold uppercase tracking-wider text-text-secondary transition-colors duration-150 hover:text-text-primary"
+                class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-4 py-1.5 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                class="cursor-pointer rounded-md bg-brand-light px-5 py-2.5 font-heading text-sm font-bold uppercase tracking-wider text-white transition-all duration-150 hover:bg-brand"
+                class="cursor-pointer rounded-lg bg-accent px-4 py-1.5 text-xs font-bold text-[#080f0d] transition-[filter] duration-150 hover:brightness-105"
               >
                 Save
               </button>

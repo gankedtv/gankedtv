@@ -27,23 +27,18 @@ const isOwn = computed(
     <UserAvatar :user="comment.author" :size="32" class="mt-0.5" />
     <div class="min-w-0 flex-1">
       <div class="flex items-baseline gap-2">
-        <span class="font-mono text-[13px] font-semibold text-text-primary">{{
-          comment.author.username
-        }}</span>
-        <span class="font-mono text-[11px] text-text-muted">{{
+        <span class="text-xs font-semibold text-accent">@{{ comment.author.username }}</span>
+        <span class="text-[10.5px] text-text-muted">{{
           formatRelativeTime(comment.createdAt)
         }}</span>
       </div>
 
-      <p
-        v-if="comment.deleted"
-        class="mt-0.5 font-body text-sm italic leading-relaxed text-text-muted"
-      >
+      <p v-if="comment.deleted" class="mt-0.5 text-sm italic leading-relaxed text-text-muted">
         [deleted]
       </p>
       <p
         v-else
-        class="mt-0.5 whitespace-pre-wrap break-words font-body text-sm leading-relaxed text-text-secondary"
+        class="mt-0.5 whitespace-pre-wrap break-words text-sm leading-relaxed text-text-secondary"
       >
         {{ comment.body }}
       </p>
@@ -52,7 +47,7 @@ const isOwn = computed(
         <button
           v-if="canReply"
           type="button"
-          class="cursor-pointer font-mono text-[11px] uppercase tracking-wider text-text-muted transition-colors duration-150 hover:text-text-primary"
+          class="cursor-pointer text-[11px] font-medium text-text-muted transition-colors duration-150 hover:text-accent"
           @click="emit('reply', comment.id)"
         >
           Reply
@@ -60,7 +55,7 @@ const isOwn = computed(
         <button
           v-if="isOwn"
           type="button"
-          class="cursor-pointer font-mono text-[11px] uppercase tracking-wider text-text-muted transition-colors duration-150 hover:text-[color:var(--color-error)]"
+          class="cursor-pointer text-[11px] font-medium text-text-muted transition-colors duration-150 hover:text-accent"
           @click="emit('delete', comment.id)"
         >
           Delete
@@ -68,7 +63,7 @@ const isOwn = computed(
         <button
           v-if="!isOwn && currentUserId && !comment.deleted"
           type="button"
-          class="cursor-pointer font-mono text-[11px] uppercase tracking-wider text-text-muted transition-colors duration-150 hover:text-[color:var(--color-error)]"
+          class="cursor-pointer text-[11px] font-medium text-text-muted transition-colors duration-150 hover:text-accent"
           @click="emit('report', comment.id)"
         >
           Report

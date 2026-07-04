@@ -29,28 +29,27 @@ const commentSnippet = computed(() => {
 </script>
 
 <template>
-  <div class="flex items-start gap-3 px-4 py-3">
-    <UserAvatar :user="notification.actor" :size="32" />
+  <div class="flex items-start gap-3 px-1 py-3.5">
+    <UserAvatar :user="notification.actor" :size="30" />
     <div class="flex min-w-0 flex-1 flex-col">
-      <p class="m-0 truncate font-body text-sm text-text-primary">
-        <span class="font-semibold">{{ notification.actor.username }}</span>
+      <p class="m-0 truncate text-sm text-text-primary">
+        <span class="text-xs font-semibold text-accent">@{{ notification.actor.username }}</span>
         <span class="text-text-secondary"> {{ actionLabel }}</span>
         <span v-if="clipTitle" class="text-text-secondary"> &ldquo;{{ clipTitle }}&rdquo;</span>
       </p>
-      <p
-        v-if="commentSnippet"
-        class="m-0 mt-0.5 truncate font-body text-xs text-text-secondary italic"
-      >
+      <p v-if="commentSnippet" class="m-0 mt-0.5 truncate text-xs text-text-secondary italic">
         {{ commentSnippet }}
       </p>
-      <span class="mt-0.5 font-mono text-[11px] tracking-[0.04em] text-text-muted uppercase">
+    </div>
+    <span class="mt-1 flex shrink-0 items-center gap-2">
+      <span class="text-[10px] text-text-muted">
         {{ formatRelativeTime(notification.createdAt) }}
       </span>
-    </div>
-    <span
-      v-if="notification.readAt === null"
-      class="mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full bg-brand"
-      aria-label="Unread"
-    ></span>
+      <span
+        v-if="notification.readAt === null"
+        class="size-1.75 rounded-full bg-accent"
+        aria-label="Unread"
+      ></span>
+    </span>
   </div>
 </template>

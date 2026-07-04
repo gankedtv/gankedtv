@@ -45,25 +45,27 @@ const userIsBanned = computed(
 
 <template>
   <article
-    class="rounded-md border border-border bg-surface-raised p-4 transition-colors duration-150 hover:border-border-hover"
+    class="rounded-lg border border-border bg-surface-raised p-4 transition-colors duration-150 hover:border-border-strong"
   >
     <header class="mb-3 flex items-baseline justify-between gap-2">
       <div class="flex items-center gap-3">
         <span
-          class="rounded-sm bg-surface-overlay px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-secondary"
+          class="rounded-sm border border-border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.07em] text-text-muted"
           >{{ item.targetType }}</span
         >
         <span
-          class="rounded-sm bg-[color:var(--color-error)]/15 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-[color:var(--color-error)]"
+          class="rounded-sm border border-border bg-surface-high px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.07em] text-text-secondary"
           >{{ item.reason }}</span
         >
-        <span class="font-mono text-[10px] text-text-muted">
+        <span class="text-[11px] text-text-muted">
           {{ new Date(item.createdAt).toLocaleString() }}
         </span>
       </div>
-      <span v-if="!isOpen" class="font-mono text-[10px] uppercase tracking-wider text-text-muted">{{
-        item.status
-      }}</span>
+      <span
+        v-if="!isOpen"
+        class="text-[10px] font-bold uppercase tracking-[0.14em] text-text-muted"
+        >{{ item.status }}</span
+      >
     </header>
 
     <div class="mb-3 flex items-start gap-3">
@@ -72,35 +74,38 @@ const userIsBanned = computed(
         :href="targetLink ?? undefined"
         target="_blank"
         rel="noopener"
-        class="flex-1 font-body text-sm text-text-primary"
+        class="flex-1 text-sm text-text-primary"
       >
         <p class="line-clamp-2 break-words">{{ targetTitle }}</p>
-        <p v-if="clipIsHidden" class="mt-1 font-mono text-[10px] text-[color:var(--color-error)]">
+        <p
+          v-if="clipIsHidden"
+          class="mt-1 w-fit rounded-sm border border-border-strong bg-surface-high px-1.5 py-0.5 text-[10px] font-bold text-text-primary"
+        >
           Clip is hidden
         </p>
-        <p v-if="userIsBanned" class="mt-1 font-mono text-[10px] text-[color:var(--color-error)]">
+        <p
+          v-if="userIsBanned"
+          class="mt-1 w-fit rounded-sm border border-border-strong bg-surface-high px-1.5 py-0.5 text-[10px] font-bold text-text-primary"
+        >
           User is banned
         </p>
       </component>
     </div>
 
-    <p
-      v-if="item.note"
-      class="mb-3 rounded-sm bg-surface-overlay p-2 font-mono text-xs text-text-secondary"
-    >
+    <p v-if="item.note" class="mb-3 border-l-2 border-border pl-3 text-xs text-text-secondary">
       {{ item.note }}
     </p>
 
     <footer class="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
-      <p class="font-mono text-[11px] text-text-muted">
-        by <span class="text-text-secondary">{{ item.reporter.username }}</span>
+      <p class="text-[11px] text-text-muted">
+        by <span class="font-semibold text-accent">@{{ item.reporter.username }}</span>
       </p>
       <div v-if="isOpen" class="flex flex-wrap gap-2">
         <button
           v-if="item.targetType === 'clip' && item.reason === 'wrong_game'"
           type="button"
           @click="$emit('fixGame')"
-          class="cursor-pointer rounded-md border border-border bg-surface-overlay px-3 py-1.5 font-heading text-[11px] font-bold uppercase tracking-wider text-text-secondary transition-colors duration-150 hover:text-text-primary"
+          class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-3 py-1.5 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
         >
           Fix game
         </button>
@@ -108,7 +113,7 @@ const userIsBanned = computed(
           v-if="item.targetType === 'clip'"
           type="button"
           @click="clipIsHidden ? $emit('unhideClip') : $emit('hideClip')"
-          class="cursor-pointer rounded-md border border-border bg-surface-overlay px-3 py-1.5 font-heading text-[11px] font-bold uppercase tracking-wider text-text-secondary transition-colors duration-150 hover:text-text-primary"
+          class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-3 py-1.5 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
         >
           {{ clipIsHidden ? 'Unhide clip' : 'Hide clip' }}
         </button>
@@ -116,7 +121,7 @@ const userIsBanned = computed(
           v-if="item.targetType === 'comment'"
           type="button"
           @click="$emit('removeComment')"
-          class="cursor-pointer rounded-md border border-border bg-surface-overlay px-3 py-1.5 font-heading text-[11px] font-bold uppercase tracking-wider text-text-secondary transition-colors duration-150 hover:text-text-primary"
+          class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-3 py-1.5 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
         >
           Remove comment
         </button>
@@ -124,21 +129,21 @@ const userIsBanned = computed(
           v-if="item.targetType === 'user' && auth.isAdmin"
           type="button"
           @click="userIsBanned ? $emit('unbanUser') : $emit('banUser')"
-          class="cursor-pointer rounded-md border border-[color:var(--color-error)] bg-[color:var(--color-error)]/15 px-3 py-1.5 font-heading text-[11px] font-bold uppercase tracking-wider text-[color:var(--color-error)] transition-colors duration-150 hover:bg-[color:var(--color-error)]/25"
+          class="cursor-pointer rounded-lg border border-accent-border bg-transparent px-3 py-1.5 text-xs font-semibold text-accent transition-colors duration-150 hover:border-accent hover:bg-accent-bg"
         >
           {{ userIsBanned ? 'Unban user' : 'Ban user' }}
         </button>
         <button
           type="button"
           @click="$emit('dismiss')"
-          class="cursor-pointer rounded-md border border-border bg-surface-overlay px-3 py-1.5 font-heading text-[11px] font-bold uppercase tracking-wider text-text-secondary transition-colors duration-150 hover:text-text-primary"
+          class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-3 py-1.5 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
         >
           Dismiss
         </button>
         <button
           type="button"
           @click="$emit('resolve')"
-          class="cursor-pointer rounded-md border border-[color:var(--color-neon)] bg-[color:var(--color-neon-dim)] px-3 py-1.5 font-heading text-[11px] font-bold uppercase tracking-wider text-[color:var(--color-neon)] transition-colors duration-150 hover:brightness-110"
+          class="cursor-pointer rounded-lg bg-accent px-3 py-1.5 text-xs font-bold text-[#080f0d] transition-colors duration-150 hover:bg-accent/85"
         >
           Resolve
         </button>

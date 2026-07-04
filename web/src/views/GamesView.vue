@@ -5,6 +5,7 @@ import { games as gamesApi, type GameListItem } from '@/api/games'
 import { clips, type ClipFeedItem } from '@/api/clips'
 import ClipCard from '@/components/ClipCard.vue'
 import GameCoverTile from '@/components/GameCoverTile.vue'
+import SectionHeader from '@/components/SectionHeader.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
 import PageHeader from '@/components/PageHeader.vue'
 
@@ -49,19 +50,16 @@ onMounted(load)
 </script>
 
 <template>
-  <main class="mx-auto max-w-360 px-6 pt-8 pb-30">
-    <PageHeader title="Games" pulse>
+  <main class="mx-auto max-w-300 px-7 pt-7 pb-16 max-tablet:px-4">
+    <PageHeader title="Games">
       <template #caption>
-        Library · {{ allGames.length }} games · {{ allClips.length }} clips loaded
+        {{ allGames.length }} games · {{ allClips.length }} clips loaded
       </template>
-      <p class="m-0 mt-2 max-w-[56ch] text-[15px] leading-normal text-text-secondary">
-        Every clip is tagged with its game. Pick one to see all its clips.
-      </p>
     </PageHeader>
 
     <StatusPanel v-if="errored" kind="error" message="Couldn't load games.">
       <button
-        class="cursor-pointer rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+        class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
         @click="load"
       >
         Retry
@@ -69,39 +67,34 @@ onMounted(load)
     </StatusPanel>
 
     <template v-else>
-      <!-- Box-art wall — portrait (3:4) game covers, each links to /game/:slug.
+      <!-- Box-art grid — portrait (3:4) game covers, each links to /game/:slug.
            Tile rendering lives in GameCoverTile so SearchView's games section
            stays visually identical. -->
-      <div
-        class="mt-8 grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-4 max-[640px]:grid-cols-[repeat(auto-fill,minmax(8rem,1fr))] max-[640px]:gap-3"
-      >
+      <div class="mt-7 grid grid-cols-5 gap-3 max-lg:grid-cols-3 max-tablet:grid-cols-2">
         <GameCoverTile v-for="g in allGames" :key="g.id" :game="g">
           <template #footer-extra>
             <!-- Per-game clip counts are derived from the loaded feed page (rough
                  indicator); the authoritative count is on the game-detail page. -->
-            <span class="font-mono text-[10px] tracking-[0.08em] text-text-secondary">
+            <span class="text-[10px] text-text-muted">
               {{ clipCountByGame.get(g.slug) ?? 0 }} clips
             </span>
           </template>
         </GameCoverTile>
       </div>
 
-      <!-- Featured clips teaser -->
-      <div class="mt-12">
-        <div class="mb-5 flex items-baseline justify-between gap-4">
-          <h2
-            class="section-title-bar m-0 inline-flex items-center gap-3.5 font-heading text-2xl font-bold uppercase tracking-[0.02em] text-text-primary"
-          >
-            Featured across all games
-          </h2>
-        </div>
+      <!-- Latest clips across all games -->
+      <section class="mt-8 border-t border-border pt-7">
+        <SectionHeader kicker="New" title="Latest Clips" />
 
         <StatusPanel
           v-if="loading && featuredClips.length === 0"
           kind="loading"
-          message="Loading…"
+          message="Loading"
         />
-        <div v-else-if="featuredClips.length" class="feed-grid">
+        <div
+          v-else-if="featuredClips.length"
+          class="grid grid-cols-4 gap-3.5 max-lg:grid-cols-2 max-tablet:grid-cols-1"
+        >
           <ClipCard
             v-for="clip in featuredClips"
             :key="clip.id"
@@ -109,13 +102,8 @@ onMounted(load)
             @click="router.push({ name: 'clip', params: { id: clip.id } })"
           />
         </div>
-        <div
-          v-else
-          class="rounded-md border border-border bg-surface-raised p-8 text-center font-mono text-sm uppercase tracking-widest text-text-muted"
-        >
-          No clips yet.
-        </div>
-      </div>
+        <p v-else class="m-0 text-[11px] text-text-muted">No clips yet.</p>
+      </section>
     </template>
   </main>
 </template>

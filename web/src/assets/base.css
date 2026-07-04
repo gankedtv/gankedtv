@@ -1,39 +1,30 @@
 @import 'tailwindcss';
 
 @theme {
-  /* Fonts */
-  --font-display: 'Rajdhani', sans-serif;
-  --font-heading: 'Barlow Condensed', sans-serif;
-  --font-body: 'DM Sans', sans-serif;
-  --font-mono: 'DM Mono', monospace;
+  /* Fonts — two families, nothing else */
+  --font-condensed: 'Barlow Condensed', sans-serif;
+  --font-body: 'Inter', sans-serif;
 
-  /* Brand */
-  --color-brand: #6d28d9;
-  --color-brand-light: #7c3aed;
-  --color-brand-glow: rgba(124, 58, 237, 0.35);
-  --color-neon: #00e5a0;
-  --color-neon-dim: rgba(0, 229, 160, 0.18);
+  /* ============================================================
+     ARENA — one palette, dark (default) + light via html.light.
+     Mint is the only accent: every interactive state (links,
+     active tabs, tags, @usernames, CTAs) uses it. Depth comes
+     from surface color difference, never shadows.
+     ============================================================ */
+  --color-surface-base: #0b0b0f;
+  --color-surface-raised: #111116;
+  --color-surface-high: #18181f;
 
-  /* Dark surfaces (default) */
-  --color-surface-base: #080810;
-  --color-surface-raised: #10101c;
-  --color-surface-overlay: #18182a;
-  --color-surface-sunken: #05050c;
+  --color-text-primary: #f0f0f4;
+  --color-text-secondary: rgba(255, 255, 255, 0.5);
+  --color-text-muted: rgba(255, 255, 255, 0.28);
 
-  /* Text */
-  --color-text-primary: #f0eeff;
-  --color-text-secondary: #8888aa;
-  --color-text-muted: #44445a;
+  --color-border: rgba(255, 255, 255, 0.07);
+  --color-border-strong: rgba(255, 255, 255, 0.12);
 
-  /* Borders */
-  --color-border: #1e1e30;
-  --color-border-hover: #2e2e48;
-  --color-border-strong: #3a3a58;
-
-  /* Feedback */
-  --color-success: #00e5a0;
-  --color-error: #ff4466;
-  --color-warning: #ffaa00;
+  --color-accent: #00e5a0;
+  --color-accent-bg: rgba(0, 229, 160, 0.08);
+  --color-accent-border: rgba(0, 229, 160, 0.25);
 
   /* Vendor brand colors (theme-agnostic — locked to provider identity) */
   --color-discord: #5865f2;
@@ -43,197 +34,25 @@
   --color-google: #131314;
   --color-google-hover: #1f2024;
 
-  /* Radius */
-  --radius-sm: 0.375rem;
-  --radius-md: 0.625rem;
-  --radius-lg: 1rem;
-  --radius-xl: 1.5rem;
-
-  /* Custom breakpoint — 720px is the mobile/tablet boundary used to drop
-     secondary nav links + theme picker. Use `tablet:` and `max-tablet:` modifiers. */
+  /* Custom breakpoint — 720px is the mobile/tablet boundary.
+     Use `tablet:` and `max-tablet:` modifiers. */
   --breakpoint-tablet: 720px;
 }
 
-/* Theme-agnostic ambient defaults (overridden per theme below) */
-:root {
-  --corner-cut: 10px;
-  --grid-bg: radial-gradient(
-    ellipse 80% 60% at 50% -10%,
-    rgba(109, 40, 217, 0.18),
-    transparent 60%
-  );
-  --noise-opacity: 0.035;
-  --scanline-opacity: 0;
-  --feed-gap: 16px;
-}
-
-/* ============================================================
-   THEMES — three palettes, one CSS-variable contract.
-   Selected via <html data-theme="…"> in stores/theme.ts.
-   ============================================================ */
-
-/* Underground — editorial dark, purple + neon-green, chamfer corners */
-[data-theme='underground'] {
-  --font-display: 'Rajdhani', sans-serif;
-  --font-heading: 'Barlow Condensed', sans-serif;
-  --font-body: 'DM Sans', sans-serif;
-  --font-mono: 'DM Mono', monospace;
-
-  --color-brand: #6d28d9;
-  --color-brand-light: #7c3aed;
-  --color-brand-glow: rgba(124, 58, 237, 0.35);
-  --color-neon: #00e5a0;
-  --color-neon-dim: rgba(0, 229, 160, 0.18);
-
-  --color-surface-base: #080810;
-  --color-surface-raised: #10101c;
-  --color-surface-overlay: #18182a;
-  --color-surface-sunken: #05050c;
-
-  --color-text-primary: #f0eeff;
-  --color-text-secondary: #8888aa;
-  --color-text-muted: #44445a;
-
-  --color-border: #1e1e30;
-  --color-border-hover: #2e2e48;
-  --color-border-strong: #3a3a58;
-
-  --corner-cut: 10px;
-  --grid-bg: radial-gradient(
-    ellipse 80% 60% at 50% -10%,
-    rgba(109, 40, 217, 0.18),
-    transparent 60%
-  );
-  --noise-opacity: 0.035;
-  --scanline-opacity: 0;
-}
-
-/* Tactical — HUD / broadcast, orange + white, square corners, line grid */
-[data-theme='tactical'] {
-  --font-display: 'Rajdhani', sans-serif;
-  --font-heading: 'Rajdhani', sans-serif;
-  --font-body: 'DM Sans', sans-serif;
-  --font-mono: 'DM Mono', monospace;
-
-  --color-brand: #ff7a00;
-  --color-brand-light: #ffa340;
-  --color-brand-glow: rgba(255, 122, 0, 0.35);
-  --color-neon: #ffffff;
-  --color-neon-dim: rgba(255, 255, 255, 0.18);
-
-  --color-surface-base: #0a0d10;
-  --color-surface-raised: #12161b;
-  --color-surface-overlay: #1a1f26;
-  --color-surface-sunken: #060809;
-
-  --color-text-primary: #ecedee;
-  --color-text-secondary: #8a9099;
-  --color-text-muted: #4a5057;
-
-  --color-border: #1e242c;
-  --color-border-hover: #303842;
-  --color-border-strong: #424c58;
-
-  --corner-cut: 0px;
-  --grid-bg:
-    repeating-linear-gradient(
-      0deg,
-      transparent 0,
-      transparent 39px,
-      rgba(255, 255, 255, 0.02) 39px,
-      rgba(255, 255, 255, 0.02) 40px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      transparent 0,
-      transparent 39px,
-      rgba(255, 255, 255, 0.02) 39px,
-      rgba(255, 255, 255, 0.02) 40px
-    );
-  --noise-opacity: 0.02;
-  --scanline-opacity: 0;
-}
-
-/* Arcade — CRT / chunky neon, pink + yellow, scanlines on */
-[data-theme='arcade'] {
-  --font-display: 'Rajdhani', sans-serif;
-  --font-heading: 'Barlow Condensed', sans-serif;
-  --font-body: 'DM Sans', sans-serif;
-  --font-mono: 'DM Mono', monospace;
-
-  --color-brand: #ff3d8b;
-  --color-brand-light: #ff6aa8;
-  --color-brand-glow: rgba(255, 61, 139, 0.45);
-  --color-neon: #ffe600;
-  --color-neon-dim: rgba(255, 230, 0, 0.2);
-
-  --color-surface-base: #0a0818;
-  --color-surface-raised: #14102a;
-  --color-surface-overlay: #1f1840;
-  --color-surface-sunken: #060410;
-
-  --color-text-primary: #fff8e8;
-  --color-text-secondary: #b9a9d8;
-  --color-text-muted: #5d4c88;
-
-  --color-border: #2a1f55;
-  --color-border-hover: #3d2d7a;
-  --color-border-strong: #503d9a;
-
-  --corner-cut: 0px;
-  --grid-bg:
-    linear-gradient(180deg, rgba(255, 61, 139, 0.08), transparent 40%),
-    radial-gradient(ellipse 70% 50% at 50% 100%, rgba(255, 230, 0, 0.05), transparent 60%);
-  --noise-opacity: 0.03;
-  --scanline-opacity: 0.08;
-}
-
-/* Light-mode overrides — toggled via .light class on <html>, scoped per theme */
-html.light[data-theme='underground'] {
-  --color-surface-base: #f7f5ff;
+/* Light mode — toggled via .light class on <html>. Not an inversion:
+   warm cream page, white cards, deeper mint for WCAG AA on cream. */
+html.light {
+  --color-surface-base: #f7f5f0;
   --color-surface-raised: #ffffff;
-  --color-surface-overlay: #ecebff;
-  --color-surface-sunken: #efecff;
-  --color-text-primary: #0a0a18;
-  --color-text-secondary: #5a5a7a;
-  --color-text-muted: #a0a0c0;
-  --color-border: #e0dff2;
-  --color-border-hover: #c5c3e5;
-  --color-border-strong: #a8a5d4;
-  --grid-bg: radial-gradient(
-    ellipse 80% 60% at 50% -10%,
-    rgba(109, 40, 217, 0.12),
-    transparent 60%
-  );
-  --noise-opacity: 0.02;
-}
-
-html.light[data-theme='tactical'] {
-  --color-surface-base: #f4f4f2;
-  --color-surface-raised: #ffffff;
-  --color-surface-overlay: #ebebe8;
-  --color-surface-sunken: #eeeeeb;
-  --color-text-primary: #12161b;
-  --color-text-secondary: #5a6069;
-  --color-text-muted: #9aa0a9;
-  --color-border: #dcdcd8;
-  --color-border-hover: #c0c0bc;
-  --color-border-strong: #a0a09c;
-  --color-neon: #12161b;
-}
-
-html.light[data-theme='arcade'] {
-  --color-surface-base: #fff5ec;
-  --color-surface-raised: #ffffff;
-  --color-surface-overlay: #ffe8d0;
-  --color-surface-sunken: #ffeedb;
-  --color-text-primary: #2a0e1e;
-  --color-text-secondary: #6a3a52;
-  --color-text-muted: #b088a0;
-  --color-border: #ffd2b8;
-  --color-border-hover: #ffb890;
-  --color-border-strong: #e89868;
-  --color-neon: #c46b00;
+  --color-surface-high: #f0ece3;
+  --color-text-primary: #1a1a22;
+  --color-text-secondary: #888070;
+  --color-text-muted: #b0a898;
+  --color-border: #e8e4dc;
+  --color-border-strong: #d0ccc0;
+  --color-accent: #00b87d;
+  --color-accent-bg: #e8faf4;
+  --color-accent-border: #b3ead7;
 }
 
 html {
@@ -254,11 +73,12 @@ html.light {
     font-family: var(--font-body);
     background-color: var(--color-surface-base);
     color: var(--color-text-primary);
-    line-height: 1.55;
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     min-height: 100vh;
-    overflow-x: hidden;
+    /* clip, not hidden: hidden makes body a scroll container and breaks the sticky nav */
+    overflow-x: clip;
   }
 
   a {
@@ -275,87 +95,21 @@ html.light {
   }
 }
 
-/* Ambient grid background */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background: var(--grid-bg);
-  pointer-events: none;
-  z-index: 1;
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
 }
 
-/* Ambient noise + scanlines */
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background:
-    repeating-linear-gradient(
-      0deg,
-      rgba(255, 255, 255, var(--scanline-opacity)) 0,
-      rgba(255, 255, 255, var(--scanline-opacity)) 1px,
-      transparent 1px,
-      transparent 3px
-    ),
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.5 0'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='1'/></svg>");
-  opacity: var(--noise-opacity);
-  pointer-events: none;
-  mix-blend-mode: overlay;
-  z-index: 2;
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 6px;
 }
 
-/* Content above ambient layers */
-main,
-header,
-footer {
-  position: relative;
-  z-index: 3;
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-/* Chamfered corner utility (two opposite corners cut) */
-.chamfer {
-  clip-path: polygon(
-    var(--corner-cut) 0,
-    100% 0,
-    100% calc(100% - var(--corner-cut)),
-    calc(100% - var(--corner-cut)) 100%,
-    0 100%,
-    0 var(--corner-cut)
-  );
-}
-
-/* Logo mark shape */
-.logo__mark {
-  width: 22px;
-  height: 22px;
-  background: var(--color-brand);
-  display: inline-block;
-  position: relative;
-  clip-path: polygon(0 0, 100% 0, 100% 70%, 70% 100%, 0 100%);
-  flex-shrink: 0;
-}
-
-.logo__mark::after {
-  content: '';
-  position: absolute;
-  inset: 4px;
-  background: var(--color-surface-base);
-  clip-path: polygon(0 0, 100% 0, 100% 60%, 60% 100%, 0 100%);
-}
-
-.logo__mark::before {
-  content: '';
-  position: absolute;
-  width: 6px;
-  height: 6px;
-  right: 4px;
-  bottom: 4px;
-  background: var(--color-neon);
-  z-index: 2;
-}
-
-/* Page eyebrow pulse dot */
+/* Page eyebrow / live pulse dot */
 @keyframes pulse {
   0%,
   100% {
@@ -366,7 +120,7 @@ footer {
   }
 }
 
-/* Kill-feed toast animation */
+/* Toast animation */
 @keyframes slideUp {
   from {
     transform: translate(-50%, 60px);
@@ -385,19 +139,29 @@ footer {
   }
 }
 
-/* Placeholder art (SVG gradient for missing images) */
+/* Loading bar */
+@keyframes tick {
+  0%,
+  100% {
+    transform: scaleX(0);
+  }
+  50% {
+    transform: scaleX(1);
+  }
+}
+
+/* Placeholder art for missing images — flat surface, honest fallback */
 .placeholder-art {
   width: 100%;
   height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  background:
-    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.03) 0 8px, transparent 8px 16px),
-    linear-gradient(135deg, var(--stop1, #3a2a6a), var(--stop2, #1a1040));
-  font-family: var(--font-mono);
+  background: var(--color-surface-high);
+  font-family: var(--font-body);
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.5);
+  font-weight: 600;
+  color: var(--color-text-muted);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   position: relative;
@@ -410,43 +174,20 @@ footer {
   left: 10px;
 }
 
-/* Section title accent bar */
-.section-title-bar::before {
-  content: '';
-  width: 6px;
-  height: 22px;
-  background: var(--color-brand);
-  display: inline-block;
+/* ============================================================
+   PLYR — theme the player to the system: mint accent, 6px
+   controls, no menu shadow (the one sanctioned shadow removal).
+   ============================================================ */
+
+.plyr {
+  --plyr-color-main: var(--color-accent);
+  --plyr-control-radius: 6px;
+  --plyr-menu-radius: 8px;
+  --plyr-font-family: var(--font-body);
+  --plyr-tooltip-radius: 6px;
 }
 
-/* Feed grid — gap driven by --feed-gap for density toggle */
-.feed-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: var(--feed-gap);
-}
-
-@media (min-width: 1200px) {
-  .feed-grid {
-    grid-template-columns: repeat(4, 1fr);
-  }
-}
-
-/* Tactical and Arcade are square-cornered — chamfer is a no-op. */
-[data-theme='tactical'] .chamfer,
-[data-theme='arcade'] .chamfer {
-  clip-path: none;
-}
-
-/* Logo ".TV" suffix — color is theme-coupled, lives here to override per data-theme */
-.logo__tv {
-  color: var(--color-brand-light);
-}
-
-[data-theme='tactical'] .logo__tv {
-  color: var(--color-brand);
-}
-
-[data-theme='arcade'] .logo__tv {
-  color: var(--color-neon);
+.plyr__menu__container {
+  box-shadow: none;
+  border: 1px solid var(--color-border-strong);
 }

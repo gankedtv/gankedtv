@@ -112,8 +112,10 @@ describe('UserView (issue #92 regression)', () => {
     await flushPromises()
 
     expect(wrapper.find('img[alt$="banner"]').exists()).toBe(false)
-    // Gradient applied inline on the banner container.
-    expect(wrapper.html()).toContain('linear-gradient')
+    // Flat username-hashed fill applied inline on the banner container. (The DOM
+    // serializer may normalize hsl() to rgb(), so assert the inline style exists
+    // rather than its exact color syntax.)
+    expect(wrapper.find('[data-testid="banner"]').attributes('style')).toContain('background')
   })
 
   it('renders profile clips once loaded', async () => {
@@ -155,10 +157,12 @@ describe('UserView (issue #92 regression)', () => {
 
     expect(wrapper.text()).toContain('Seed Clip 01')
     // Bug #1 guard: the clip thumbnail renders, bound to thumbnailUrl.
-    expect(wrapper.find('.feed-grid img').attributes('src')).toBe('https://cdn.test/thumb.jpg')
+    expect(wrapper.find('[data-testid="clips-grid"] img').attributes('src')).toBe(
+      'https://cdn.test/thumb.jpg',
+    )
 
     // Onward-navigation guard (issue #92): clicking a clip card routes to its detail page.
-    await wrapper.find('.feed-grid article').trigger('click')
+    await wrapper.find('[data-testid="clips-grid"] article').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.name).toBe('clip')
     expect(router.currentRoute.value.params.id).toBe('clp_01')

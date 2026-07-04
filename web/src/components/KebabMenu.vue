@@ -6,7 +6,7 @@ import IconMoreHorizontal from '@/components/icons/IconMoreHorizontal.vue'
 export interface KebabMenuItem {
   label: string
   onClick: () => void
-  // `danger` paints the label red — used for destructive actions (Delete, Sign out, Ban).
+  // `danger` paints the label in the accent — used for destructive actions (Delete, Sign out, Ban).
   variant?: 'default' | 'danger'
   // Hide the item without forcing the caller to filter its own list. Convenient when
   // the visibility depends on reactive state (e.g. owner-only actions).
@@ -95,10 +95,10 @@ onBeforeUnmount(() => {
     <button
       type="button"
       :class="[
-        'flex cursor-pointer items-center justify-center transition-[border-color,background-color] duration-150',
+        'flex cursor-pointer items-center justify-center rounded-lg transition-colors duration-150',
         triggerVariant === 'outlined'
-          ? 'h-9 w-9 rounded-sm border border-border bg-surface-raised text-text-secondary hover:border-border-hover'
-          : 'h-7 w-7 rounded text-text-secondary hover:bg-surface-raised',
+          ? 'h-9 w-9 border border-border bg-transparent text-text-secondary hover:border-accent hover:text-accent'
+          : 'h-7 w-7 text-text-secondary hover:bg-surface-high',
       ]"
       :aria-label="ariaLabel"
       aria-haspopup="true"
@@ -116,7 +116,7 @@ onBeforeUnmount(() => {
       ref="menuRef"
       role="menu"
       :style="shiftX ? { transform: `translateX(${shiftX}px)` } : undefined"
-      class="absolute right-0 top-full z-20 mt-1 min-w-36 rounded-md border border-border-strong bg-surface-overlay shadow-[0_4px_20px_rgba(0,0,0,0.4)]"
+      class="absolute right-0 top-full z-20 mt-1 min-w-36 overflow-hidden rounded-lg border border-border-strong bg-surface-base"
     >
       <button
         v-for="item in items.filter((i) => !i.hidden)"
@@ -124,8 +124,8 @@ onBeforeUnmount(() => {
         type="button"
         role="menuitem"
         :class="[
-          'w-full cursor-pointer rounded-md px-4 py-2.5 text-left font-body text-sm transition-colors duration-100 hover:bg-surface-raised',
-          item.variant === 'danger' ? 'text-error' : 'text-text-primary',
+          'w-full cursor-pointer px-3 py-2 text-left text-xs font-medium transition-colors duration-150 hover:bg-surface-high',
+          item.variant === 'danger' ? 'text-accent' : 'text-text-secondary hover:text-text-primary',
         ]"
         @click="onItemClick(item)"
       >

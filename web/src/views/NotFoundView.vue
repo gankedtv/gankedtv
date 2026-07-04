@@ -1,6 +1,16 @@
 <template>
-  <div class="flex flex-col items-center justify-center min-h-[calc(100vh-4rem)] gap-3">
-    <h1 class="font-heading text-3xl font-bold uppercase tracking-wide text-text-primary">404</h1>
-    <p class="font-body text-base text-text-secondary">Page not found</p>
-  </div>
+  <main
+    class="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center gap-4 px-6 text-center"
+  >
+    <h1 class="m-0 font-condensed text-[96px] font-black leading-none text-text-muted">404</h1>
+    <p class="m-0 max-w-[40ch] text-sm text-text-secondary">
+      This page doesn't exist — it may have been moved or never existed.
+    </p>
+    <RouterLink
+      to="/"
+      class="mt-2 rounded-lg bg-accent px-4 py-2 text-xs font-bold text-[#080f0d] no-underline transition-[filter] duration-150 hover:brightness-105"
+    >
+      Go home
+    </RouterLink>
+  </main>
 </template>

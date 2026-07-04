@@ -3,6 +3,7 @@ import { computed, onMounted, watch } from 'vue'
 import { leaderboards, type LeaderboardWindow } from '@/api/leaderboards'
 import { useLatestRequest } from '@/composables/useLatestRequest'
 import LeaderboardRow from '@/components/LeaderboardRow.vue'
+import SectionHeader from '@/components/SectionHeader.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -33,32 +34,26 @@ const windowLabel = {
 </script>
 
 <template>
-  <section
-    v-if="loading || errored || entries.length > 0"
-    class="mb-8 overflow-hidden rounded-md border border-border bg-surface-raised"
-  >
-    <div class="flex items-center justify-between border-b border-border px-4 py-3.5">
-      <span class="font-heading text-sm font-bold tracking-wider text-text-secondary uppercase">
-        Top {{ windowLabel[window] }}
-      </span>
-      <RouterLink
-        to="/leaderboards"
-        class="font-mono text-[10px] tracking-widest text-text-muted uppercase no-underline hover:text-text-primary"
-      >
-        All leaderboards →
-      </RouterLink>
-    </div>
+  <!-- Band, not card: section header + border-separated rows directly on the
+       page surface. The parent owns the surrounding section spacing. -->
+  <section v-if="loading || errored || entries.length > 0" class="mb-10">
+    <SectionHeader
+      :kicker="windowLabel[window]"
+      title="Top Clips"
+      :more-to="{ name: 'leaderboards' }"
+      more-label="All leaderboards →"
+    />
 
     <div
       v-if="loading && entries.length === 0"
-      class="px-4 py-6 text-center font-mono text-[11px] tracking-widest text-text-muted uppercase"
+      class="px-4 py-6 text-center text-xs text-text-muted"
     >
-      Loading…
+      Loading
     </div>
 
     <div
       v-else-if="errored && entries.length === 0"
-      class="px-4 py-6 text-center font-mono text-[11px] tracking-widest text-text-muted uppercase"
+      class="px-4 py-6 text-center text-xs text-text-muted"
     >
       Couldn't load leaderboard.
     </div>

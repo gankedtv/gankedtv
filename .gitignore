@@ -65,4 +65,5 @@ graphify-out/
 .obsidian/
 
 # Misc
-/tmp/
+tmp/
+.superpowers/

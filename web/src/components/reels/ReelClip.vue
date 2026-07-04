@@ -272,9 +272,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <article
-    class="relative flex h-full w-full items-center justify-center overflow-hidden bg-surface-sunken"
-  >
+  <article class="relative flex h-full w-full items-center justify-center overflow-hidden bg-black">
     <!-- Thumbnail layer — visible until video element mounts. -->
     <img
       v-if="!detail"
@@ -296,27 +294,29 @@ onBeforeUnmount(() => {
       class="block max-h-full max-w-full object-contain"
     />
 
-    <!-- Delayed-fade loading spinner. -->
+    <!-- Delayed loading ticker. -->
     <div
       v-if="spinnerVisible && !detail && !detailErrored"
       class="pointer-events-none absolute inset-0 flex items-center justify-center"
     >
-      <div
-        class="h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-white/80"
-      ></div>
+      <span class="block h-1.5 w-5.5 overflow-hidden rounded-full bg-white/15">
+        <span
+          class="block h-full w-full origin-left bg-accent animate-[tick_1.6s_ease-in-out_infinite]"
+        ></span>
+      </span>
     </div>
 
     <!-- Per-slot detail load error. -->
     <div
       v-if="detailErrored"
-      class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/50 text-center"
+      class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/60 text-center"
     >
-      <p class="font-mono text-xs uppercase tracking-widest text-text-secondary">
+      <p class="m-0 text-[10px] font-bold uppercase tracking-[0.14em] text-accent">
         Couldn't load video
       </p>
       <button
         type="button"
-        class="cursor-pointer rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+        class="cursor-pointer rounded-lg border border-white/20 bg-black/60 px-4 py-2 text-xs font-semibold text-[#f4f1e8] transition-colors duration-150 hover:border-accent hover:text-accent"
         @click="onRetryDetail"
       >
         Retry
@@ -328,14 +328,12 @@ onBeforeUnmount(() => {
          than pulling hls.js + JIT polling into every slot. -->
     <div
       v-else-if="detail && codecUnsupported"
-      class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/50 px-6 text-center"
+      class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/60 px-6 text-center"
     >
-      <p class="font-mono text-xs uppercase tracking-widest text-text-secondary">
-        This format needs the full player
-      </p>
+      <p class="m-0 text-sm text-[#f4f1e8]/80">This format needs the full player</p>
       <RouterLink
         :to="detailHref"
-        class="rounded-sm border border-border bg-surface-overlay px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary no-underline"
+        class="rounded-lg border border-white/20 bg-black/60 px-4 py-2 text-xs font-semibold text-[#f4f1e8] no-underline transition-colors duration-150 hover:border-accent hover:text-accent"
       >
         Open in detail →
       </RouterLink>
@@ -350,35 +348,39 @@ onBeforeUnmount(() => {
       @click="handleTapToPlay"
     >
       <span
-        class="inline-flex h-16 w-16 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white backdrop-blur-md"
+        class="inline-flex size-16 items-center justify-center rounded-full border border-white/25 bg-black/55 text-[#f4f1e8]"
       >
         <IconPlay :size="26" />
       </span>
     </button>
 
-    <!-- Top gradient strip — title + game name. -->
+    <!-- Bottom legibility gradient — sanctioned overlay for text over video. -->
     <div
-      class="pointer-events-none absolute inset-x-0 top-0 flex flex-col gap-1 bg-gradient-to-b from-black/70 to-transparent px-4 pt-4 pb-10 text-white"
+      class="pointer-events-none absolute inset-x-0 bottom-0 h-[40%] bg-[linear-gradient(transparent,rgba(0,0,0,0.88))]"
+    ></div>
+
+    <!-- Bottom overlay — game tag, title, author. Literal light colors: text
+         over video never themes. -->
+    <div
+      class="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-start gap-1.5 px-4 pb-4 pr-16"
     >
-      <p v-if="clip.game" class="font-mono text-[10px] uppercase tracking-[0.12em] text-white/70">
+      <span
+        v-if="clip.game"
+        class="inline-flex items-center rounded-sm border border-accent-border bg-[rgba(0,229,160,0.16)] px-1.5 py-1 text-[9px] font-bold uppercase leading-none tracking-[0.07em] text-accent"
+      >
         {{ clip.game.tag }}
-      </p>
-      <h2 class="m-0 line-clamp-2 font-heading text-base font-bold uppercase tracking-[0.01em]">
+      </span>
+      <h2 class="m-0 line-clamp-2 text-sm font-semibold text-[#f4f1e8]">
         {{ clip.title }}
       </h2>
+      <RouterLink :to="authorHref" class="pointer-events-auto flex items-center gap-2 no-underline">
+        <UserAvatar :user="clip.author" :size="32" />
+        <AuthorHandle :username="clip.author.username" class="text-xs font-semibold text-accent" />
+      </RouterLink>
     </div>
 
-    <!-- Bottom gradient — author handle. -->
-    <RouterLink
-      :to="authorHref"
-      class="pointer-events-auto absolute inset-x-0 bottom-0 flex items-center gap-2 bg-gradient-to-t from-black/70 to-transparent px-4 pt-10 pb-5 text-white no-underline"
-    >
-      <UserAvatar :user="clip.author" :size="32" />
-      <AuthorHandle :username="clip.author.username" class="text-sm font-semibold" />
-    </RouterLink>
-
     <!-- Right-rail actions. -->
-    <div class="absolute right-3 bottom-24 flex flex-col items-center gap-4 text-white">
+    <div class="absolute right-3 bottom-24 flex flex-col items-center gap-4 text-[#f4f1e8]">
       <button
         type="button"
         class="flex cursor-pointer flex-col items-center gap-1 bg-transparent disabled:opacity-60"
@@ -388,12 +390,18 @@ onBeforeUnmount(() => {
         @click="toggleLike"
       >
         <span
-          class="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 backdrop-blur-md"
-          :class="liked ? 'bg-brand text-white' : 'bg-black/45 text-white'"
+          class="inline-flex size-11 items-center justify-center rounded-full border"
+          :class="
+            liked
+              ? 'border-accent bg-accent text-[#080f0d]'
+              : 'border-white/20 bg-black/40 text-[#f4f1e8]'
+          "
         >
           <IconHeart :size="20" />
         </span>
-        <span class="font-mono text-[11px] tabular-nums">{{ formatNum(likeCount) }}</span>
+        <span class="text-[10px] font-semibold tabular-nums text-[#f4f1e8]">{{
+          formatNum(likeCount)
+        }}</span>
       </button>
 
       <button
@@ -404,7 +412,7 @@ onBeforeUnmount(() => {
         @click="onToggleMute"
       >
         <span
-          class="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/45 backdrop-blur-md"
+          class="inline-flex size-11 items-center justify-center rounded-full border border-white/20 bg-black/40 text-[#f4f1e8]"
         >
           <IconVolumeMute v-if="globalMuted" :size="18" />
           <IconVolume v-else :size="18" />
@@ -413,13 +421,13 @@ onBeforeUnmount(() => {
 
       <button
         type="button"
-        class="flex cursor-pointer flex-col items-center gap-1 bg-transparent text-white"
+        class="flex cursor-pointer flex-col items-center gap-1 bg-transparent"
         aria-label="Open comments"
         :aria-expanded="commentsOpen"
         @click="openComments"
       >
         <span
-          class="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-black/45 backdrop-blur-md"
+          class="inline-flex size-11 items-center justify-center rounded-full border border-white/20 bg-black/40 text-[#f4f1e8]"
         >
           <IconMessageCircle :size="18" />
         </span>
@@ -448,31 +456,31 @@ onBeforeUnmount(() => {
           >
             <div
               v-if="commentsOpen"
-              class="absolute inset-x-0 bottom-0 flex max-h-[75vh] flex-col rounded-t-xl border-t border-border bg-surface-raised shadow-[0_-12px_36px_rgba(0,0,0,0.5)]"
+              class="absolute inset-x-0 bottom-0 flex max-h-[75vh] flex-col rounded-t-lg border-t border-border-strong bg-surface-base"
               role="dialog"
               aria-label="Comments"
               @click.stop
             >
               <div
-                class="mx-auto mt-2 h-1.5 w-10 shrink-0 rounded-full bg-border-strong"
+                class="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-border-strong"
                 aria-hidden="true"
               ></div>
               <div class="flex shrink-0 items-center justify-between gap-3 px-4 py-3">
                 <h2
-                  class="m-0 font-heading text-base font-bold uppercase tracking-[0.04em] text-text-primary"
+                  class="m-0 font-condensed text-base font-bold uppercase tracking-[0.04em] text-text-primary"
                 >
                   Comments
                 </h2>
                 <div class="flex items-center gap-2">
                   <RouterLink
                     :to="detailHref"
-                    class="font-mono text-[10px] uppercase tracking-[0.08em] text-text-secondary no-underline transition-colors hover:text-text-primary"
+                    class="text-xs font-semibold text-text-secondary no-underline transition-colors hover:text-accent"
                   >
                     View full clip →
                   </RouterLink>
                   <button
                     type="button"
-                    class="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-border bg-surface-overlay text-text-secondary transition-colors hover:text-text-primary"
+                    class="inline-flex size-8 cursor-pointer items-center justify-center rounded-full border border-border-strong bg-transparent text-text-secondary transition-colors hover:border-accent hover:text-accent"
                     aria-label="Close comments"
                     @click="closeComments"
                   >

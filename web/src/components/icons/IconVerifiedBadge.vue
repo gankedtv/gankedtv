@@ -11,7 +11,7 @@ withDefaults(defineProps<{ size?: number }>(), { size: 14 })
     aria-hidden="true"
     class="text-white"
   >
-    <circle cx="12" cy="12" r="10" class="fill-brand" />
+    <circle cx="12" cy="12" r="10" class="fill-ink" />
     <path
       d="M9 12l2 2 4-4"
       stroke="currentColor"

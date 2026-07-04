@@ -46,32 +46,30 @@ async function onLoadMore() {
 </script>
 
 <template>
-  <main class="mx-auto max-w-3xl px-6 pt-8 pb-30 max-[899px]:px-3.5 max-[899px]:pt-4">
-    <PageHeader title="Notifications">
-      <template #caption>
-        <span>Recent activity</span>
-      </template>
-      <div class="mt-3 flex">
-        <button
-          type="button"
-          class="cursor-pointer rounded-sm border border-border bg-surface-raised px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.04em] text-text-secondary transition-colors duration-150 hover:border-border-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
-          :disabled="store.unreadCount === 0"
-          @click="store.markAllRead()"
-        >
-          Mark all read
-        </button>
-      </div>
-    </PageHeader>
+  <main class="mx-auto w-full max-w-3xl px-7 pt-7 pb-16 max-tablet:px-4">
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <PageHeader title="Notifications">
+        <template #caption>Recent activity</template>
+      </PageHeader>
+      <button
+        type="button"
+        class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-3 py-1.5 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+        :disabled="store.unreadCount === 0"
+        @click="store.markAllRead()"
+      >
+        Mark all read
+      </button>
+    </div>
 
     <StatusPanel
       v-if="store.loading && store.items.length === 0 && !store.errored"
       kind="loading"
-      message="Loading…"
+      message="Loading"
     />
 
     <StatusPanel v-else-if="store.errored" kind="error" message="Couldn't load notifications.">
       <button
-        class="cursor-pointer rounded-sm border border-border bg-surface-raised px-4 py-2 font-mono text-xs uppercase tracking-widest text-text-primary"
+        class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
         @click="store.loadFirstPage(20)"
       >
         Retry
@@ -85,13 +83,21 @@ async function onLoadMore() {
     />
 
     <template v-else>
-      <ul class="mt-6 grid grid-cols-1 gap-2 p-0">
+      <!-- Border-separated rows, no card chrome — unread rows get a raised
+           background on top of the mint dot inside NotificationRow. -->
+      <ul class="m-0 mt-4 grid grid-cols-1 p-0">
         <li
           v-for="n in store.items"
           :key="n.id"
-          class="list-none cursor-pointer rounded-sm border border-border bg-surface-raised transition-colors duration-150 hover:border-border-hover"
-          :class="n.readAt === null ? 'border-l-2 border-l-brand' : ''"
+          :class="[
+            'list-none cursor-pointer border-b border-border transition-colors duration-150',
+            n.readAt === null ? 'bg-surface-high' : 'hover:bg-surface-raised',
+          ]"
+          role="link"
+          tabindex="0"
           @click="onRowClick(n)"
+          @keydown.enter.self="onRowClick(n)"
+          @keydown.space.self.prevent="onRowClick(n)"
         >
           <NotificationRow :notification="n" />
         </li>
