@@ -21,7 +21,7 @@ const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
 
-type FeedSource = 'public' | 'following' | 'for-you'
+type FeedSource = 'following' | 'for-you'
 type HomeTab = FeedSource | 'trending' | 'top-rated'
 // "For You" is the personalized feed: tiered by followed authors + liked games for
 // signed-in users, transparent global latest for anonymous. "Top Rated" renders disabled
