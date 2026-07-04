@@ -79,6 +79,8 @@ interface ClipFeedQueryBase {
   cursor?: string | null
   limit?: number
   source?: 'public' | 'following'
+  // Filter the feed to a single game (the Home game pills). Composes with source/sort.
+  gameId?: number
 }
 
 // Discriminated union: trending REQUIRES a window (server 400s without one) and
@@ -177,6 +179,7 @@ export const clips = {
     if (query.cursor) params.set('cursor', query.cursor)
     if (query.limit !== undefined) params.set('limit', String(query.limit))
     if (query.source) params.set('source', query.source)
+    if (query.gameId !== undefined) params.set('gameId', String(query.gameId))
     // Only serialize sort/window when trending — `sort=latest` is the default
     // and the latest variant has no window. The type union enforces this shape
     // statically; the runtime check just mirrors it for the emitted JS.

@@ -57,13 +57,28 @@ const paginationErrored = ref(false)
 const bandGames = ref<GameListItem[]>([])
 const bandTrending = ref<ClipFeedItem[]>([])
 
-// Hero prefers today's featured pick (computed server-side via /clips/featured)
-// and falls back to items[0] (newest ready clip) so the hero never goes blank
-// — handles fresh-platform / pre-engagement / featured-fetch-failed cases.
-const hero = computed<ClipFeedItem | null>(() => featured.value ?? items.value[0] ?? null)
-// True only when the hero is actually today's featured pick — the badge must
-// not lie about provenance.
-const heroIsFeatured = computed(() => featured.value !== null)
+// Active game filter (the pills below the tabs). null = All. Seeded from ?game= so a
+// filtered view survives reload and is shareable. Resolved against bandGames — a ?game=
+// outside the pill set falls back to unfiltered (see onMounted).
+const initialGameSlug = typeof route.query.game === 'string' ? route.query.game : null
+const activeGameSlug = ref<string | null>(initialGameSlug)
+const activeGame = computed(
+  () => bandGames.value.find((g) => g.slug === activeGameSlug.value) ?? null,
+)
+// Stable key for the active (source, game) filter — loadMore captures it so a tab/pill
+// switch mid-flight discards the now-stale response instead of dropping it into the new list.
+const filterKey = computed(() => `${source.value}:${activeGameSlug.value ?? ''}`)
+
+// Hero prefers today's featured pick (computed server-side via /clips/featured) and falls
+// back to items[0] (newest ready clip) so the hero never goes blank. Under an active game
+// filter it uses items[0] instead — the global Clip of the Day is a different game and would
+// contradict the filter.
+const hero = computed<ClipFeedItem | null>(
+  () => (activeGameSlug.value ? items.value[0] : (featured.value ?? items.value[0])) ?? null,
+)
+// True only when the hero is actually today's featured pick — the badge must not lie about
+// provenance, and a filtered hero is never the featured pick.
+const heroIsFeatured = computed(() => !activeGameSlug.value && featured.value !== null)
 // The hero isn't always items[0] — a featured "Clip of the Day" sits outside the
 // feed ordering. Slicing the bands from a fixed offset would drop the newest clip
 // and double-render the featured pick, so exclude the hero clip by id instead.
@@ -91,20 +106,23 @@ async function loadMore() {
   loading.value = true
   if (isFirstPage) errored.value = false
   paginationErrored.value = false
-  // Capture the source at request time so a tab switch mid-flight doesn't drop the
-  // response into the wrong list.
+  // Capture the filter (source + game) at request time so a tab/pill switch mid-flight
+  // doesn't drop the response into the wrong list.
+  const requestedKey = filterKey.value
   const requestedSource = source.value
+  const requestedGameId = activeGame.value?.id
   try {
     const page = await clips.feed({
       cursor: cursor.value,
       limit: 20,
       source: requestedSource,
+      gameId: requestedGameId,
     })
-    if (source.value !== requestedSource) return
+    if (filterKey.value !== requestedKey) return
     items.value.push(...page.items)
     cursor.value = page.nextCursor
   } catch (err) {
-    if (source.value !== requestedSource) return
+    if (filterKey.value !== requestedKey) return
     console.error('feed: load failed', err)
     if (isFirstPage) {
       errored.value = true
@@ -112,7 +130,7 @@ async function loadMore() {
       paginationErrored.value = true
     }
   } finally {
-    if (source.value === requestedSource) loading.value = false
+    if (filterKey.value === requestedKey) loading.value = false
   }
 }
 
@@ -120,6 +138,21 @@ function onTabSelect(next: HomeTab) {
   // Link tabs (Trending) navigate on their own; disabled tabs never emit.
   if (next !== 'public' && next !== 'following') return
   selectTab(next)
+}
+
+// Reset the feed to page one and refetch under the current filter. Releasing the loading
+// flag first is deliberate: a prior in-flight fetch (for the old filter) leaves loading=true,
+// which would otherwise make the loadMore() below early-return at its `if (loading.value)`
+// guard — and that stale fetch's drift-detected early-return never clears the flag, wedging
+// the UI in a loading state. The stale request discards its response via the filterKey
+// check, so dropping the flag here is safe.
+function reloadFeed() {
+  items.value = []
+  cursor.value = null
+  errored.value = false
+  paginationErrored.value = false
+  loading.value = false
+  loadMore()
 }
 
 function selectTab(next: FeedSource) {
@@ -131,19 +164,35 @@ function selectTab(next: FeedSource) {
     return
   }
   source.value = next
-  items.value = []
-  cursor.value = null
-  errored.value = false
-  paginationErrored.value = false
-  // Release ownership of the loading flag before triggering the new fetch.
-  // Without this, the loadMore() call below would early-return at its
-  // `if (loading.value) return` guard (a prior in-flight fetch for the old
-  // source has loading=true). That prior fetch's drift-detected early-return
-  // then never clears loading, leaving the UI stuck in a loading state forever.
-  // The in-flight request will discard its response via the source check, so
-  // dropping the flag here is safe.
-  loading.value = false
-  loadMore()
+  reloadFeed()
+}
+
+function selectGame(slug: string | null) {
+  if (slug === activeGameSlug.value) return
+  activeGameSlug.value = slug
+  syncGameQuery(slug)
+  reloadFeed()
+}
+
+// Reflect the active game in ?game= so a filtered view is shareable and survives reload.
+// replace (not push) so toggling pills doesn't stack history entries; other query params
+// (e.g. ?tab=) are preserved.
+function syncGameQuery(slug: string | null) {
+  const query = { ...route.query }
+  if (slug) query.game = slug
+  else delete query.game
+  void router.replace({ query })
+}
+
+const PILL_BASE =
+  'cursor-pointer rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors duration-150'
+function pillClasses(active: boolean) {
+  return [
+    PILL_BASE,
+    active
+      ? 'border-accent-border bg-accent-bg text-accent'
+      : 'border-border text-text-muted hover:border-accent-border hover:text-accent',
+  ]
 }
 
 async function loadFeatured() {
@@ -180,8 +229,26 @@ function openClip(id: string) {
 }
 
 onMounted(() => {
-  // Independent loads — no band failure may block the feed and vice versa.
-  void Promise.allSettled([loadMore(), loadFeatured(), loadBandGames(), loadBandTrending()])
+  const gamesLoaded = loadBandGames()
+  if (activeGameSlug.value) {
+    // Deep-linked to ?game=: resolve the id from the band list before the first fetch so the
+    // initial page is already filtered (no unfiltered flash). If the slug isn't a pill game,
+    // drop the stale filter and load unfiltered.
+    void loadFeatured()
+    void loadBandTrending()
+    void gamesLoaded.then(() => {
+      if (activeGameSlug.value && !activeGame.value) {
+        activeGameSlug.value = null
+        syncGameQuery(null)
+      }
+      void loadMore()
+    })
+  } else {
+    // Common path: fire the feed first (don't wait on the games list), then the side bands.
+    void loadMore()
+    void loadFeatured()
+    void loadBandTrending()
+  }
 })
 </script>
 
@@ -245,23 +312,31 @@ onMounted(() => {
       <!-- ====== Feed controls — tabs + game filter pills ====== -->
       <div class="flex items-center gap-4 border-b border-border">
         <UnderlineTabs class="border-b-0" :tabs="TABS" :active="source" @select="onTabSelect" />
+        <!-- Pills filter the feed in place (Arena rule, no extra click). "All" resets. -->
         <div
           v-if="bandGames.length"
           class="ml-auto flex flex-wrap items-center justify-end gap-1.5 pb-2 max-tablet:hidden"
+          role="group"
+          aria-label="Filter by game"
         >
-          <span
-            class="rounded-full border border-accent-border bg-accent-bg px-3 py-1 text-[11px] font-semibold text-accent"
+          <button
+            type="button"
+            :class="pillClasses(activeGameSlug === null)"
+            :aria-pressed="activeGameSlug === null"
+            @click="selectGame(null)"
           >
             All
-          </span>
-          <RouterLink
+          </button>
+          <button
             v-for="g in bandGames"
             :key="g.id"
-            :to="{ name: 'game-detail', params: { slug: g.slug } }"
-            class="rounded-full border border-border px-3 py-1 text-[11px] font-semibold text-text-muted no-underline transition-colors duration-150 hover:border-accent-border hover:text-accent"
+            type="button"
+            :class="pillClasses(activeGameSlug === g.slug)"
+            :aria-pressed="activeGameSlug === g.slug"
+            @click="selectGame(g.slug)"
           >
             {{ g.tag }}
-          </RouterLink>
+          </button>
         </div>
       </div>
 
@@ -379,7 +454,9 @@ onMounted(() => {
       </section>
 
       <!-- ====== Top Games ====== -->
-      <section v-if="bandGames.length" class="mt-8 border-t border-border pt-7">
+      <!-- Hidden under an active game filter: it's global discovery that would
+           contradict the focused, single-game view. -->
+      <section v-if="bandGames.length && !activeGameSlug" class="mt-8 border-t border-border pt-7">
         <SectionHeader kicker="Browse" title="Top Games" :more-to="{ name: 'games' }" />
         <div class="grid grid-cols-5 gap-3 max-lg:grid-cols-3 max-tablet:grid-cols-2">
           <GameCoverTile v-for="(g, i) in bandGames" :key="g.id" :game="g" :rank="i + 1" />
@@ -387,7 +464,8 @@ onMounted(() => {
       </section>
 
       <!-- ====== Trending ====== -->
-      <section v-if="trendingFeature" class="mt-8 border-t border-border pt-7">
+      <!-- Hidden under an active game filter (global discovery, not this game's feed). -->
+      <section v-if="trendingFeature && !activeGameSlug" class="mt-8 border-t border-border pt-7">
         <SectionHeader kicker="Live" title="Trending" :more-to="{ name: 'trending' }" />
         <div class="grid grid-cols-[1fr_280px] items-start gap-5 max-lg:grid-cols-1">
           <!-- Feature -->

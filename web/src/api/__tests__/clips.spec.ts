@@ -102,6 +102,30 @@ describe('api/clips', () => {
       expect(url).not.toContain('sort=')
       expect(url).not.toContain('window=')
     })
+
+    it('encodes gameId into the query string when set', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ items: [], nextCursor: null })),
+      )
+
+      await clips.feed({ gameId: 5 })
+
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+      expect(url).toBe(`${BASE_URL}/clips/feed?gameId=5`)
+    })
+
+    it('omits gameId when not provided', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ items: [], nextCursor: null })),
+      )
+
+      await clips.feed({ source: 'following' })
+
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+      expect(url).not.toContain('gameId=')
+    })
   })
 
   describe('featured()', () => {

@@ -503,6 +503,89 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         byId[withoutGame].GetProperty("game").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
+    // ---- GET /clips/feed?gameId= ----
+
+    [Fact]
+    public async Task Feed_GameIdFilter_ReturnsOnlyThatGamesClips_AndCachesPerGame()
+    {
+        // Two different gameId requests are both no-cursor first pages, so each is cached.
+        // Asserting valorant then apex return disjoint sets proves both the filter AND that
+        // the per-game cache key doesn't leak one game's page into the other's.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        // gameId 2 = valorant, gameId 5 = apex-legends (seeded in the Initial migration).
+        var (val1, _) = await SeedClipAsync(userId, now.AddSeconds(-1), title: "val-1", gameId: 2);
+        var (val2, _) = await SeedClipAsync(userId, now.AddSeconds(-2), title: "val-2", gameId: 2);
+        var (apex1, _) = await SeedClipAsync(userId, now.AddSeconds(-3), title: "apex-1", gameId: 5);
+        await SeedClipAsync(userId, now.AddSeconds(-4), title: "no-game");
+
+        using var client = _factory!.CreateClient();
+
+        var valResp = await client.GetAsync("/clips/feed?gameId=2");
+        valResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var valIds = (await valResp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("items").EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid()).ToList();
+        valIds.Should().Equal(val1, val2);
+
+        var apexResp = await client.GetAsync("/clips/feed?gameId=5");
+        apexResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var apexIds = (await apexResp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("items").EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid()).ToList();
+        apexIds.Should().Equal(apex1);
+    }
+
+    [Fact]
+    public async Task Feed_GameIdFilter_UnknownGame_ReturnsEmpty()
+    {
+        // An unknown/non-matching gameId simply matches no clips (empty page), never 400 —
+        // same forgive-and-fall-back spirit as the source/cursor handling.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        await SeedClipAsync(userId, DateTimeOffset.UtcNow, title: "val", gameId: 2);
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/feed?gameId=999999");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("items").GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Feed_GameIdFilter_ComposesWithFollowingSource()
+    {
+        // gameId must compose with source=following: the result is the intersection of
+        // "followed authors" and "this game", so a followed author's clip for another game
+        // and a stranger's clip for this game are both excluded.
+        await _fx.ResetAsync();
+        var (viewerId, viewerToken) = await SeedUserAndIssueTokenAsync("viewer");
+        var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
+        var (strangerId, _) = await SeedUserAndIssueTokenAsync("stranger");
+        var now = DateTimeOffset.UtcNow;
+
+        var (authorVal, _) = await SeedClipAsync(authorId, now.AddSeconds(-1), title: "author-val", gameId: 2);
+        await SeedClipAsync(authorId, now.AddSeconds(-2), title: "author-apex", gameId: 5);
+        await SeedClipAsync(strangerId, now.AddSeconds(-3), title: "stranger-val", gameId: 2);
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.Follows.Add(new Follow { FollowerId = viewerId, FolloweeId = authorId, CreatedAt = now });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = ClientWithBearer(viewerToken);
+        var resp = await client.GetAsync("/clips/feed?source=following&gameId=2");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var ids = (await resp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("items").EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid()).ToList();
+        ids.Should().Equal(authorVal);
+    }
+
     // ---- GET /clips/feed?sort=trending ----
 
     [Fact]

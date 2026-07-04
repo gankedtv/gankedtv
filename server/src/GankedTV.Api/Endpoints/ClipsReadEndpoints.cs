@@ -128,6 +128,7 @@ public static class ClipsReadEndpoints
         string? cursor,
         int? limit,
         string? source,
+        int? gameId,
         string? sort,
         string? window,
         ClaimsPrincipal principal,
@@ -139,6 +140,18 @@ public static class ClipsReadEndpoints
     {
         var baseQuery = db.Clips.AsNoTracking()
             .WherePublicReady();
+
+        // Optional per-game filter (the Home game pills). Applied to baseQuery so it composes
+        // with `source` and `sort` — they all narrow the same query. An unknown/non-matching
+        // id just yields an empty page rather than 400, matching the lenient source/cursor
+        // handling. The key suffix keeps each game's cached first page distinct from the
+        // global feed and from other games'.
+        var gameKeySuffix = string.Empty;
+        if (gameId is int gid)
+        {
+            baseQuery = baseQuery.Where(c => c.GameId == gid);
+            gameKeySuffix = $":game={gid}";
+        }
 
         // `source` is treated leniently: only the literal "following" switches behaviour;
         // anything else (null, "public", garbage) falls through to the global feed. Matches
@@ -185,7 +198,7 @@ public static class ClipsReadEndpoints
 
             var trendingLimit = Math.Clamp(limit ?? FeedDefaultLimit, 1, TrendingMaxLimit);
             var cachedTrending = await feedCache.GetOrCreateTrendingAsync(
-                $"feed:trending:{window}:{trendingLimit}",
+                $"feed:trending:{window}:{trendingLimit}{gameKeySuffix}",
                 c => new ValueTask<CachedFeedPage>(
                     BuildAnonymousTrendingFeedAsync(baseQuery, since, limit, db, storage, s3, c)),
                 ct);
@@ -199,7 +212,7 @@ public static class ClipsReadEndpoints
         {
             var feedLimit = Math.Clamp(limit ?? FeedDefaultLimit, 1, FeedMaxLimit);
             var cached = await feedCache.GetOrCreateFeedAsync(
-                $"feed:latest:{feedLimit}",
+                $"feed:latest:{feedLimit}{gameKeySuffix}",
                 c => new ValueTask<CachedFeedPage>(
                     BuildAnonymousFeedPageAsync(baseQuery, null, limit, storage, s3, c)),
                 ct);
