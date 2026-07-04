@@ -173,7 +173,8 @@ public static class ClipsReadEndpoints
         // (`?sort=trendng`) instead of silently serving latest under a different label.
         if (!string.IsNullOrEmpty(sort)
             && !string.Equals(sort, "latest", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(sort, "trending", StringComparison.OrdinalIgnoreCase))
+            && !string.Equals(sort, "trending", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(sort, "top", StringComparison.OrdinalIgnoreCase))
         {
             return ProblemResults.BadRequest("invalid_sort");
         }
@@ -204,6 +205,39 @@ public static class ClipsReadEndpoints
                 ct);
             var trendingItems = await ApplyLikedByMeAsync(cachedTrending.Items, principal, db, ct);
             return Results.Ok(new ClipFeedResponse(trendingItems, cachedTrending.NextCursor));
+        }
+
+        if (string.Equals(sort, "top", StringComparison.OrdinalIgnoreCase))
+        {
+            // Like trending, `window` is required and an unknown value is a 400 — "top" has no
+            // defined ranking window otherwise, so we surface the typo rather than guessing.
+            if (!TryParseTopWindow(window, out var since))
+            {
+                return ProblemResults.BadRequest("invalid_window");
+            }
+
+            // The window bounds the *candidate set* by creation time (Reddit "Top: this week"
+            // model), which keeps the ranking key on stable clip columns so the keyset cursor
+            // pages exactly like the latest feed. `all` uses MinValue, so the filter is a no-op.
+            var topBase = baseQuery.Where(c => c.CreatedAt >= since);
+
+            // Cache only the global first page (no cursor, not following), same as latest. The
+            // ranking's like_count freshness is TTL-bounded-stale under FeedTag — the accepted
+            // tradeoff the latest feed already makes (likes don't bust the cache).
+            if (cursor is null && !isFollowing)
+            {
+                var topLimit = Math.Clamp(limit ?? FeedDefaultLimit, 1, FeedMaxLimit);
+                var cachedTop = await feedCache.GetOrCreateFeedAsync(
+                    $"feed:top:{window}:{topLimit}{gameKeySuffix}",
+                    c => new ValueTask<CachedFeedPage>(
+                        BuildAnonymousTopFeedPageAsync(topBase, null, limit, storage, s3, c)),
+                    ct);
+                var topItems = await ApplyLikedByMeAsync(cachedTop.Items, principal, db, ct);
+                return Results.Ok(new ClipFeedResponse(topItems, cachedTop.NextCursor));
+            }
+
+            var topPage = await BuildTopFeedPageAsync(topBase, cursor, limit, principal, db, storage, s3, ct);
+            return Results.Ok(topPage);
         }
 
         // Cache only the global latest first page (no cursor, not personalised). Cursor pages
@@ -237,6 +271,34 @@ public static class ClipsReadEndpoints
                 return true;
             case "7d":
                 since = now.AddDays(-7);
+                return true;
+            default:
+                since = default;
+                return false;
+        }
+    }
+
+    // Windows for the likes-ranked "top" feed. Coarser than trending (adds 30d + all-time):
+    // "top of the day/week/month/all time" are the meaningful ranking windows for the Home and
+    // Game "Top Rated" tabs. `all` maps to MinValue so the same `CreatedAt >= since` filter
+    // covers every window with no branching. Kept separate from TryParseTrendingWindow so the
+    // two feeds' window vocabularies can evolve independently.
+    internal static bool TryParseTopWindow(string? window, out DateTimeOffset since)
+    {
+        var now = DateTimeOffset.UtcNow;
+        switch (window)
+        {
+            case "24h":
+                since = now.AddHours(-24);
+                return true;
+            case "7d":
+                since = now.AddDays(-7);
+                return true;
+            case "30d":
+                since = now.AddDays(-30);
+                return true;
+            case "all":
+                since = DateTimeOffset.MinValue;
                 return true;
             default:
                 since = default;
@@ -380,6 +442,75 @@ public static class ClipsReadEndpoints
 
         var items = ProjectAnonymousFeedItems(page, storage, s3);
         var nextCursor = hasMore ? KeysetCursor.Build(page[^1].CreatedAt, page[^1].Id) : null;
+
+        return new CachedFeedPage(items, nextCursor);
+    }
+
+    // Likes-ranked ("top") counterpart to BuildFeedPageAsync. Caller passes a baseQuery already
+    // filtered to the window's candidate set; this owns the ranking order, keyset cursoring over
+    // the ranking tuple, includes, likedByMe, thumbnail signing, and nextCursor minting.
+    internal static async Task<ClipFeedResponse> BuildTopFeedPageAsync(
+        IQueryable<Clip> baseQuery,
+        string? cursor,
+        int? limit,
+        ClaimsPrincipal principal,
+        GankedTvDbContext db,
+        IObjectStorageService storage,
+        IOptions<S3Options> s3,
+        CancellationToken ct)
+    {
+        var page = await BuildAnonymousTopFeedPageAsync(baseQuery, cursor, limit, storage, s3, ct);
+        var items = await ApplyLikedByMeAsync(page.Items, principal, db, ct);
+        return new ClipFeedResponse(items, page.NextCursor);
+    }
+
+    // Caller-independent half of BuildTopFeedPageAsync (the shape FeedCache stores). Ranks by the
+    // denormalized (LikeCount, ViewCount) counters with recency + id as the final tiebreaks — a
+    // total order, so the keyset cursor pages without dupes or skips even when many clips share a
+    // like_count. Unlike trending, this is a real cursor-paginated feed (NextCursor is set).
+    internal static async Task<CachedFeedPage> BuildAnonymousTopFeedPageAsync(
+        IQueryable<Clip> baseQuery,
+        string? cursor,
+        int? limit,
+        IObjectStorageService storage,
+        IOptions<S3Options> s3,
+        CancellationToken ct)
+    {
+        var clampedLimit = Math.Clamp(limit ?? FeedDefaultLimit, 1, FeedMaxLimit);
+
+        // Invalid/foreign cursors silently fall back to page 1, matching the latest feed.
+        var hasCursor = TopFeedCursor.TryParse(
+            cursor, out var cLikes, out var cViews, out var cCreatedAt, out var cId);
+
+        var query = baseQuery;
+        if (hasCursor)
+        {
+            // Descending keyset over (LikeCount, ViewCount, CreatedAt, Id): step strictly past the
+            // cursor row down the same tiebreak chain the ORDER BY uses.
+            query = query.Where(c =>
+                c.LikeCount < cLikes
+                || (c.LikeCount == cLikes && c.ViewCount < cViews)
+                || (c.LikeCount == cLikes && c.ViewCount == cViews && c.CreatedAt < cCreatedAt)
+                || (c.LikeCount == cLikes && c.ViewCount == cViews && c.CreatedAt == cCreatedAt
+                    && c.Id.CompareTo(cId) < 0));
+        }
+
+        var rows = await query
+            .OrderByDescending(c => c.LikeCount)
+            .ThenByDescending(c => c.ViewCount)
+            .ThenByDescending(c => c.CreatedAt)
+            .ThenByDescending(c => c.Id)
+            .IncludeFeedRelations()
+            .Take(clampedLimit + 1)
+            .ToListAsync(ct);
+
+        var hasMore = rows.Count > clampedLimit;
+        var page = hasMore ? rows.GetRange(0, clampedLimit) : rows;
+
+        var items = ProjectAnonymousFeedItems(page, storage, s3);
+        var nextCursor = hasMore
+            ? TopFeedCursor.Build(page[^1].LikeCount, page[^1].ViewCount, page[^1].CreatedAt, page[^1].Id)
+            : null;
 
         return new CachedFeedPage(items, nextCursor);
     }

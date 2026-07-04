@@ -83,12 +83,18 @@ interface ClipFeedQueryBase {
   gameId?: number
 }
 
-// Discriminated union: trending REQUIRES a window (server 400s without one) and
-// `latest` is the default omitted shape, so `window` is meaningless there. Encoding
-// this in the type stops callers from constructing combos the server will reject.
+// Windows the likes-ranked `top` sort accepts. Wider than trending's (adds 30d + all-time):
+// "top of the day/week/month/all time" are the meaningful ranking windows.
+export type TopWindow = '24h' | '7d' | '30d' | 'all'
+
+// Discriminated union: trending + top each REQUIRE a window (server 400s without one) and
+// `latest` is the default omitted shape, so `window` is meaningless there. Encoding this in
+// the type stops callers from constructing combos the server will reject. `top` keyset-paginates
+// like `latest` (real nextCursor); `trending` is a single ranked page (nextCursor always null).
 export type ClipFeedQuery =
   | (ClipFeedQueryBase & { sort?: 'latest'; window?: never })
   | (ClipFeedQueryBase & { sort: 'trending'; window: '24h' | '7d' })
+  | (ClipFeedQueryBase & { sort: 'top'; window: TopWindow })
 
 export interface UploadUrl {
   url: string
@@ -180,11 +186,11 @@ export const clips = {
     if (query.limit !== undefined) params.set('limit', String(query.limit))
     if (query.source) params.set('source', query.source)
     if (query.gameId !== undefined) params.set('gameId', String(query.gameId))
-    // Only serialize sort/window when trending — `sort=latest` is the default
-    // and the latest variant has no window. The type union enforces this shape
+    // Only serialize sort/window for the windowed sorts (trending/top) — `sort=latest`
+    // is the default and its variant has no window. The type union enforces this shape
     // statically; the runtime check just mirrors it for the emitted JS.
-    if (query.sort === 'trending') {
-      params.set('sort', 'trending')
+    if (query.sort === 'trending' || query.sort === 'top') {
+      params.set('sort', query.sort)
       params.set('window', query.window)
     }
     const qs = params.toString()

@@ -138,6 +138,15 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             e.HasIndex(c => c.GameId).HasDatabaseName("idx_clips_game_id");
             e.HasIndex(c => c.CreatedAt).IsDescending().HasDatabaseName("idx_clips_created_at");
             e.HasIndex(c => c.Status).HasFilter("status = 'ready'").HasDatabaseName("idx_clips_status");
+            // Serves the sort=top feed's ORDER BY like_count DESC, view_count DESC, created_at DESC,
+            // id DESC over public+ready clips. All-DESC composite so a forward index scan yields the
+            // ranking order directly (no sort step); the partial filter keeps it to visible rows.
+            // window=all is served entirely by the index; windowed variants add a created_at range
+            // filter on top of the same scan.
+            e.HasIndex(c => new { c.LikeCount, c.ViewCount, c.CreatedAt, c.Id })
+                .IsDescending()
+                .HasFilter("status = 'ready' AND visibility = 'public'")
+                .HasDatabaseName("idx_clips_top_ranked");
             // Drives the orphan-clip sweep query (status = 'draft' AND created_at < cutoff).
             // Composite key so EF distinguishes it from idx_clips_created_at; partial filter
             // keeps the index tiny — only a transient minority of rows are ever 'draft'.

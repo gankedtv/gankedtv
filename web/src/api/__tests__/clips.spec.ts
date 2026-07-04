@@ -90,6 +90,21 @@ describe('api/clips', () => {
       expect(url).toContain('limit=50')
     })
 
+    it('encodes sort and window for top queries', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ items: [], nextCursor: null })),
+      )
+
+      await clips.feed({ sort: 'top', window: '30d', cursor: 'c1', limit: 20 })
+
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+      expect(url).toContain('sort=top')
+      expect(url).toContain('window=30d')
+      // top keyset-paginates like latest, so the cursor rides through unchanged.
+      expect(url).toContain('cursor=c1')
+    })
+
     it('omits sort and window for default (latest) queries', async () => {
       vi.stubGlobal(
         'fetch',

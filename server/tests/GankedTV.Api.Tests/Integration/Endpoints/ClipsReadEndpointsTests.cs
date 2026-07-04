@@ -46,7 +46,9 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         string? title = null,
         int? gameId = null,
         string? videoCodec = null,
-        string? importSourceUrl = null)
+        string? importSourceUrl = null,
+        int likeCount = 0,
+        int viewCount = 0)
     {
         var id = Guid.NewGuid();
         var shareCode = ShareCodeGenerator.Next();
@@ -68,6 +70,8 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
             Height = 1080,
             FileSizeBytes = 1_000_000,
             ImportSourceUrl = importSourceUrl,
+            LikeCount = likeCount,
+            ViewCount = viewCount,
             CreatedAt = createdAt,
             UpdatedAt = createdAt,
         });
@@ -881,6 +885,262 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
 
         explicitIds.Should().Equal(c, b, a);
         defaultIds.Should().Equal(c, b, a);
+    }
+
+    // ---- GET /clips/feed?sort=top ----
+
+    [Fact]
+    public async Task Top_OrdersByLikeCountDesc()
+    {
+        // "Top" ranks by the denormalized like_count. Views/recency only break ties, so with
+        // distinct like counts the order is purely likes-descending regardless of age.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        // Oldest clip has the most likes: proves likes beat recency.
+        var (most, _) = await SeedClipAsync(userId, now.AddHours(-3), title: "most", likeCount: 10);
+        var (mid, _) = await SeedClipAsync(userId, now.AddHours(-2), title: "mid", likeCount: 5);
+        var (least, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "least", likeCount: 1);
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/feed?sort=top&window=24h");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var ids = body.GetProperty("items").EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid()).ToList();
+        ids.Should().Equal(most, mid, least);
+    }
+
+    [Fact]
+    public async Task Top_TiesBrokenByViewsThenRecency()
+    {
+        // Equal like counts: higher view_count wins; on equal views the newer clip wins.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var (moreViews, _) = await SeedClipAsync(userId, now.AddHours(-3), title: "more-views", likeCount: 5, viewCount: 100);
+        var (newer, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "newer", likeCount: 5, viewCount: 10);
+        var (older, _) = await SeedClipAsync(userId, now.AddHours(-2), title: "older", likeCount: 5, viewCount: 10);
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/feed?sort=top&window=24h");
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var ids = body.GetProperty("items").EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid()).ToList();
+        // moreViews (views tiebreak) → newer, then older (recency tiebreak on equal likes+views).
+        ids.Should().Equal(moreViews, newer, older);
+    }
+
+    [Fact]
+    public async Task Top_WindowFiltersByClipCreationTime()
+    {
+        // The window bounds the candidate set by created_at (Reddit "Top: this week" model): a
+        // highly-liked clip created outside the window is excluded, however many likes it has.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var (recent, _) = await SeedClipAsync(userId, now.AddHours(-2), title: "recent", likeCount: 1);
+        var (old, _) = await SeedClipAsync(userId, now.AddDays(-3), title: "old-but-loved", likeCount: 999);
+
+        using var client = _factory!.CreateClient();
+
+        var dayIds = (await (await client.GetAsync("/clips/feed?sort=top&window=24h")).Content
+            .ReadFromJsonAsync<JsonElement>())
+            .GetProperty("items").EnumerateArray().Select(e => e.GetProperty("id").GetGuid()).ToList();
+        dayIds.Should().Equal(recent);
+
+        // 7d widens the window to admit the 3-day-old clip, which then outranks on likes.
+        var weekIds = (await (await client.GetAsync("/clips/feed?sort=top&window=7d")).Content
+            .ReadFromJsonAsync<JsonElement>())
+            .GetProperty("items").EnumerateArray().Select(e => e.GetProperty("id").GetGuid()).ToList();
+        weekIds.Should().Equal(old, recent);
+    }
+
+    [Fact]
+    public async Task Top_AllWindow_IncludesArbitrarilyOldClips()
+    {
+        // window=all applies no created_at bound, so a year-old clip is eligible.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var (ancient, _) = await SeedClipAsync(userId, now.AddDays(-400), title: "ancient", likeCount: 3);
+
+        using var client = _factory!.CreateClient();
+
+        var dayIds = (await (await client.GetAsync("/clips/feed?sort=top&window=24h")).Content
+            .ReadFromJsonAsync<JsonElement>())
+            .GetProperty("items").EnumerateArray().Select(e => e.GetProperty("id").GetGuid()).ToList();
+        dayIds.Should().BeEmpty();
+
+        var allIds = (await (await client.GetAsync("/clips/feed?sort=top&window=all")).Content
+            .ReadFromJsonAsync<JsonElement>())
+            .GetProperty("items").EnumerateArray().Select(e => e.GetProperty("id").GetGuid()).ToList();
+        allIds.Should().Equal(ancient);
+    }
+
+    [Fact]
+    public async Task Top_ExcludesNonPublicAndNonReady()
+    {
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var (publicReady, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "public-ready", likeCount: 5);
+        await SeedClipAsync(userId, now.AddHours(-1), visibility: "unlisted", title: "unlisted", likeCount: 50);
+        await SeedClipAsync(userId, now.AddHours(-1), status: "processing", title: "processing", likeCount: 50);
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/feed?sort=top&window=24h");
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var ids = body.GetProperty("items").EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid()).ToList();
+
+        ids.Should().Equal(publicReady);
+    }
+
+    [Fact]
+    public async Task Top_IncludesZeroLikeClips_WithinWindow()
+    {
+        // Unlike trending (which requires engagement in the window), "top" is a ranking of all
+        // public clips in the window — a brand-new clip with no likes still appears, ranked last.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var (liked, _) = await SeedClipAsync(userId, now.AddHours(-2), title: "liked", likeCount: 3);
+        var (unliked, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "unliked", likeCount: 0);
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/feed?sort=top&window=24h");
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var ids = body.GetProperty("items").EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid()).ToList();
+
+        ids.Should().Equal(liked, unliked);
+    }
+
+    [Fact]
+    public async Task Top_PaginationKeyset_DrainsAllInRankOrderWithoutSkips()
+    {
+        // Keyset pagination over the (like_count, view_count, created_at, id) ranking tuple must
+        // walk the full ordered result across pages with no dupes and no skips — the same contract
+        // the latest feed's (created_at, id) cursor provides.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var expected = new List<Guid>();
+        // Distinct like counts 5..1 so the expected rank order is unambiguous.
+        foreach (var likes in new[] { 5, 4, 3, 2, 1 })
+        {
+            var (id, _) = await SeedClipAsync(userId, now.AddMinutes(-likes), title: $"likes-{likes}", likeCount: likes);
+            expected.Add(id);
+        }
+
+        using var client = _factory!.CreateClient();
+        var drained = new List<Guid>();
+        string? cursor = null;
+        for (var page = 0; page < 10; page++)
+        {
+            var url = $"/clips/feed?sort=top&window=24h&limit=2"
+                + (cursor is null ? "" : $"&cursor={Uri.EscapeDataString(cursor)}");
+            var body = await (await client.GetAsync(url)).Content.ReadFromJsonAsync<JsonElement>();
+            drained.AddRange(body.GetProperty("items").EnumerateArray().Select(e => e.GetProperty("id").GetGuid()));
+            cursor = body.GetProperty("nextCursor").ValueKind == JsonValueKind.Null
+                ? null : body.GetProperty("nextCursor").GetString();
+            if (cursor is null) break;
+        }
+
+        drained.Should().Equal(expected);
+    }
+
+    [Fact]
+    public async Task Top_PaginationKeyset_EqualLikeCounts_NoSkipsAcrossPages()
+    {
+        // The hard case: every clip shares the same like_count, so paging relies entirely on the
+        // view_count/created_at/id tiebreaks travelling in the cursor. A like_count-only cursor
+        // would skip or repeat rows at each page boundary.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var expected = new List<Guid>();
+        foreach (var views in new[] { 40, 30, 20, 10 })
+        {
+            var (id, _) = await SeedClipAsync(userId, now.AddMinutes(-views), title: $"v{views}", likeCount: 7, viewCount: views);
+            expected.Add(id);
+        }
+
+        using var client = _factory!.CreateClient();
+        var drained = new List<Guid>();
+        string? cursor = null;
+        for (var page = 0; page < 10; page++)
+        {
+            var url = $"/clips/feed?sort=top&window=24h&limit=2"
+                + (cursor is null ? "" : $"&cursor={Uri.EscapeDataString(cursor)}");
+            var body = await (await client.GetAsync(url)).Content.ReadFromJsonAsync<JsonElement>();
+            drained.AddRange(body.GetProperty("items").EnumerateArray().Select(e => e.GetProperty("id").GetGuid()));
+            cursor = body.GetProperty("nextCursor").ValueKind == JsonValueKind.Null
+                ? null : body.GetProperty("nextCursor").GetString();
+            if (cursor is null) break;
+        }
+
+        drained.Should().Equal(expected);
+    }
+
+    [Fact]
+    public async Task Top_InvalidWindow_Returns400()
+    {
+        await _fx.ResetAsync();
+        using var client = _factory!.CreateClient();
+
+        var resp = await client.GetAsync("/clips/feed?sort=top&window=bogus");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Top_MissingWindow_Returns400()
+    {
+        // Like trending, "top" is meaningless without a window — a missing value is a 400 rather
+        // than a silent default so a UI bug surfaces instead of an arbitrary ranking window.
+        await _fx.ResetAsync();
+        using var client = _factory!.CreateClient();
+
+        var resp = await client.GetAsync("/clips/feed?sort=top");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Top_EmptyResult_Returns200WithNoItems()
+    {
+        await _fx.ResetAsync();
+        using var client = _factory!.CreateClient();
+
+        var resp = await client.GetAsync("/clips/feed?sort=top&window=all");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("items").GetArrayLength().Should().Be(0);
+        body.GetProperty("nextCursor").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task Top_30dWindow_IsAccepted()
+    {
+        // Coverage for the 30d window value the Home/Trending window tabs use.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var (inside, _) = await SeedClipAsync(userId, now.AddDays(-20), title: "inside-30d", likeCount: 2);
+        await SeedClipAsync(userId, now.AddDays(-45), title: "outside-30d", likeCount: 99);
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/feed?sort=top&window=30d");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var ids = (await resp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("items").EnumerateArray().Select(e => e.GetProperty("id").GetGuid()).ToList();
+        ids.Should().Equal(inside);
     }
 
     // ---- GET /clips/{id} ----
