@@ -23,6 +23,7 @@ using GankedTV.Api.Services.Maintenance;
 using GankedTV.Api.Services.Media;
 using GankedTV.Api.Services.Moderation;
 using GankedTV.Api.Services.Health;
+using GankedTV.Api.Services.Presence;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Services.Tags;
 using GankedTV.Api.Tools;
@@ -439,6 +440,23 @@ builder.Services.AddOptions<IgdbOptions>()
     .Validate(o => o.SyncInterval > TimeSpan.Zero, "Igdb.SyncInterval must be positive.")
     .ValidateOnStart();
 
+// ---- Presence (online count) ----
+builder.Services.AddOptions<PresenceOptions>()
+    .Configure(opts =>
+    {
+        builder.Configuration.GetSection("Presence").Bind(opts);
+        var enabled = Environment.GetEnvironmentVariable("PRESENCE_ENABLED");
+        if (bool.TryParse(enabled, out var e)) opts.Enabled = e;
+        var window = Environment.GetEnvironmentVariable("PRESENCE_WINDOW_SECONDS");
+        if (int.TryParse(window, out var w) && w > 0) opts.WindowSeconds = w;
+        var cap = Environment.GetEnvironmentVariable("PRESENCE_FOLLOWS_ONLINE_CAP");
+        if (int.TryParse(cap, out var c) && c > 0) opts.FollowsOnlineCap = c;
+    })
+    .Validate(o => o.WindowSeconds > 0, "Presence.WindowSeconds must be positive.")
+    .Validate(o => o.FollowsOnlineCap > 0, "Presence.FollowsOnlineCap must be positive.")
+    .ValidateOnStart();
+builder.Services.AddSingleton<PresenceTracker>();
+
 // api.igdb.com responses (game metadata) are small JSON; cap at 8 MB to bound a large
 // popular-games page. Cover image downloads hit images.igdb.com — a separate buffer cap.
 builder.Services.AddHttpClient(IgdbMetadataService.ApiClientName, c =>
@@ -499,7 +517,8 @@ builder.Services.AddRateLimiter(opts => opts
     .AddCredentialsPolicy()
     .AddDevicePolicy()
     .AddClipsWritePolicy()
-    .AddClipsViewPolicy());
+    .AddClipsViewPolicy()
+    .AddPresencePolicy());
 
 // Backs the view-dedup window in ClipsViewEndpoints. In-process for v1; per-pod state is
 // fine for an anti-spam dedup (the worst-case drift on restart is a single bonus view per
@@ -700,6 +719,7 @@ app.MapCommentsEndpoints();
 app.MapUsersEndpoints();
 app.MapFollowsEndpoints();
 app.MapNotificationsEndpoints();
+app.MapPresenceEndpoints();
 app.MapGamesEndpoints();
 app.MapLeaderboardsEndpoints();
 app.MapTagsEndpoints();
