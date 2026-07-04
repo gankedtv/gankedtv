@@ -1346,6 +1346,47 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         LikedByMe(otherBody, clip).Should().BeFalse();
     }
 
+    [Fact]
+    public async Task ForYou_SignalGainedBetweenPages_RestartsPersonalisedRankingGracefully()
+    {
+        await _fx.ResetAsync();
+        var (me, token) = await SeedUserAndIssueTokenAsync("reader");
+        var (author, _) = await SeedUserAndIssueTokenAsync("author");
+        var (stranger, _) = await SeedUserAndIssueTokenAsync("stranger");
+        var now = DateTimeOffset.UtcNow;
+        // No signals yet → cold-start serves the plain latest ordering, newest-first.
+        var (b1, _) = await SeedClipAsync(stranger, now.AddMinutes(-1), title: "b1");
+        var (b2, _) = await SeedClipAsync(stranger, now.AddMinutes(-2), title: "b2");
+        await SeedClipAsync(stranger, now.AddMinutes(-3), title: "b3");
+        // A followed-author clip OLDER than every backfill clip: only a tier-0 restart (not
+        // recency) can surface it at the front of page 2.
+        var (fa, _) = await SeedClipAsync(author, now.AddMinutes(-10), title: "followed");
+
+        using var client = ClientWithBearer(token);
+
+        // Page 1: cold-start → latest ordering + a plain KeysetCursor.
+        var page1 = await client.GetFromJsonAsync<JsonElement>("/clips/feed?source=for-you&limit=2");
+        FeedIds(page1).Should().Equal(b1, b2);
+        var cursor = page1.GetProperty("nextCursor").GetString();
+        cursor.Should().NotBeNullOrEmpty();
+
+        // Caller follows an author between the two page requests.
+        await using (var db = _fx.CreateContext())
+        {
+            db.Follows.Add(new Follow { FollowerId = me, FolloweeId = author, CreatedAt = now });
+            await db.SaveChangesAsync();
+        }
+
+        // Page 2 replays the page-1 cursor, but the caller now has signals, so the feed re-ranks
+        // into tiers. The plain (cross-type) cursor is intentionally NOT honoured for continuation:
+        // paging restarts at tier 0 — gracefully (200, no error), so the followed author leads
+        // despite being the oldest clip. Repeating page-1 backfill (b1) is the accepted cost of a
+        // mid-session re-rank; a stable session never crosses cursor types.
+        var page2 = await client.GetFromJsonAsync<JsonElement>(
+            $"/clips/feed?source=for-you&limit=2&cursor={Uri.EscapeDataString(cursor!)}");
+        FeedIds(page2).Should().Equal(fa, b1);
+    }
+
     // ---- GET /clips/{id} ----
 
     [Fact]

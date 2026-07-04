@@ -253,7 +253,11 @@ public static class ClipsReadEndpoints
                 var items = await ProjectFeedItemsAsync(forYou.Clips, principal, db, storage, s3, ct);
                 return Results.Ok(new ClipFeedResponse(items, forYou.NextCursor));
             }
-            // fall through to the latest path (cold-start): cached first page + keyset cursor pages
+            // Cold-start falls through to the shared latest path, which emits a plain KeysetCursor
+            // (personalised pages emit a TieredKeysetCursor). If a caller gains or loses signals
+            // mid-pagination the cross-type cursor is rejected and paging restarts from the top —
+            // intentional: a signal change re-ranks the whole feed, so no cursor shape could
+            // continue it seamlessly. A stable session never crosses cursor types.
         }
 
         // Cache only the global latest first page (no cursor, not personalised). Cursor pages
