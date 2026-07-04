@@ -586,6 +586,37 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         ids.Should().Equal(authorVal);
     }
 
+    [Fact]
+    public async Task Feed_GameIdFilter_ComposesWithTrendingSort()
+    {
+        // gameId must also narrow the trending path, whose ranked result is cached under a
+        // game-suffixed key. Both clips have equal engagement in the window, so without the
+        // filter both would rank; ?gameId=2 must return only the valorant clip.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        var (val, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "val-hot", gameId: 2);
+        var (apex, _) = await SeedClipAsync(userId, now.AddHours(-1), title: "apex-hot", gameId: 5);
+
+        await using (var db = _fx.CreateContext())
+        {
+            db.ClipViews.AddRange(
+                Enumerable.Range(0, 5).Select(_ => new ClipView { ClipId = val, CreatedAt = now.AddMinutes(-5) }));
+            db.ClipViews.AddRange(
+                Enumerable.Range(0, 5).Select(_ => new ClipView { ClipId = apex, CreatedAt = now.AddMinutes(-5) }));
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/clips/feed?sort=trending&window=24h&gameId=2");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var ids = (await resp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("items").EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid()).ToList();
+        ids.Should().Equal(val);
+    }
+
     // ---- GET /clips/feed?sort=trending ----
 
     [Fact]

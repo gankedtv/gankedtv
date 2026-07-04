@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { createRouter, createMemoryHistory, type Router } from 'vue-router'
 import { createPinia } from 'pinia'
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, nextTick } from 'vue'
 import type { ClipFeedItem, ClipFeedPage } from '@/api/clips'
 import LoadMoreButton from '@/components/LoadMoreButton.vue'
 
@@ -322,5 +322,61 @@ describe('HomeView — game filter pills', () => {
     await flushPromises()
 
     expect(wrapper.text()).not.toContain('Top Games')
+  })
+
+  it('shows the loading state (not the empty state) while a deep-linked ?game= resolves', async () => {
+    // Hold games.list open so the deep-link branch is mid-resolve when we inspect the DOM.
+    let resolveGames!: (g: GameListItem[]) => void
+    gamesList.mockReturnValue(
+      new Promise<GameListItem[]>((r) => {
+        resolveGames = r
+      }),
+    )
+    feed.mockResolvedValue(makePage([makeClip('v', { title: 'Valorant Clip' })]))
+    featured.mockResolvedValue(null)
+
+    const router = makeRouter()
+    await router.push('/?game=valorant')
+    await router.isReady()
+    const wrapper = mount(HomeView, { global: { plugins: [router, createPinia()] } })
+    await nextTick()
+
+    // bandGames still pending → loading panel up, no misleading "no content" panel, and the
+    // game-scoped feed load hasn't been dispatched yet (only the trending band's limit-5 call).
+    expect(wrapper.text()).toContain('Loading')
+    expect(wrapper.text()).not.toContain('No clips')
+    expect(feed).not.toHaveBeenCalledWith(expect.objectContaining({ limit: 20 }))
+
+    resolveGames([makeGame(2, 'Valorant', 'valorant')])
+    await flushPromises()
+
+    // Resolved → the first main feed load is already game-scoped.
+    expect(feed).toHaveBeenCalledWith(feedLoad({ gameId: 2 }))
+  })
+
+  it('shows a game-filter empty state with a Clear filter action when the filtered feed is empty', async () => {
+    gamesList.mockResolvedValue([makeGame(2, 'Valorant', 'valorant')])
+    featured.mockResolvedValue(null)
+    // Unfiltered feed has clips; the Valorant filter legitimately returns nothing.
+    feed.mockImplementation((q?: { gameId?: number }) =>
+      Promise.resolve(makePage(q?.gameId === 2 ? [] : [makeClip('a')])),
+    )
+
+    const { wrapper, router } = await mountHomeAt()
+    await findPill(wrapper, 'VALORANT')!.trigger('click')
+    await flushPromises()
+
+    // Dedicated message, not the generic "be the first" / Following panels.
+    expect(wrapper.text()).toContain('No clips for Valorant yet.')
+    expect(wrapper.text()).not.toContain('be the first')
+
+    const clear = wrapper.findAll('button').find((b) => b.text() === 'Clear filter')
+    await clear!.trigger('click')
+    await flushPromises()
+
+    // Clearing resets to All and the unfiltered feed returns.
+    expect(router.currentRoute.value.query.game).toBeUndefined()
+    expect(findPill(wrapper, 'All')?.attributes('aria-pressed')).toBe('true')
+    expect(wrapper.text()).not.toContain('No clips for Valorant yet.')
   })
 })

@@ -65,6 +65,10 @@ const activeGameSlug = ref<string | null>(initialGameSlug)
 const activeGame = computed(
   () => bandGames.value.find((g) => g.slug === activeGameSlug.value) ?? null,
 )
+// True only while a deep-linked ?game= slug is being resolved against bandGames before the
+// first (game-scoped) fetch is dispatched. Keeps the loading panel up instead of flashing the
+// empty state, since loadMore() — the only thing that sets `loading` — is deferred until then.
+const resolvingGameFilter = ref(!!initialGameSlug)
 // Stable key for the active (source, game) filter — loadMore captures it so a tab/pill
 // switch mid-flight discards the now-stale response instead of dropping it into the new list.
 const filterKey = computed(() => `${source.value}:${activeGameSlug.value ?? ''}`)
@@ -98,6 +102,13 @@ const trendingList = computed(() => bandTrending.value.slice(1, 5))
 const showFollowingEmpty = computed(
   () =>
     source.value === 'following' && !loading.value && !errored.value && items.value.length === 0,
+)
+// A game filter that legitimately returns nothing (e.g. Following ∩ a game the followed
+// creators haven't posted, or a rare race where a pill game's last clip vanished). Gets its
+// own message + a "Clear filter" escape instead of the misleading "be the first" / Following
+// panels, and takes priority over both since the filter is the specific cause.
+const showGameFilterEmpty = computed(
+  () => !!activeGameSlug.value && !loading.value && !errored.value && items.value.length === 0,
 )
 
 async function loadMore() {
@@ -241,6 +252,9 @@ onMounted(() => {
         activeGameSlug.value = null
         syncGameQuery(null)
       }
+      // Hand the loading panel back to loadMore() (which sets `loading` synchronously) in the
+      // same tick, so there's no frame where both flags are false and the empty state shows.
+      resolvingGameFilter.value = false
       void loadMore()
     })
   } else {
@@ -254,13 +268,28 @@ onMounted(() => {
 
 <template>
   <main class="mx-auto max-w-300 px-7 pt-7 pb-16 max-tablet:px-4 max-tablet:pt-4">
-    <!-- Initial loading state — explicit so the empty-state branch doesn't flash
-         in the gap between mount and the first response. -->
+    <!-- Initial loading state — explicit so the empty-state branch doesn't flash in the gap
+         between mount and the first response, including while a deep-linked ?game= resolves. -->
     <StatusPanel
-      v-if="loading && items.length === 0 && !errored"
+      v-if="(loading || resolvingGameFilter) && items.length === 0 && !errored"
       kind="loading"
       message="Loading"
     />
+
+    <!-- Active game filter returned nothing — dedicated message + a way to clear it, rather
+         than the generic "be the first" panel implying the whole site is empty. -->
+    <StatusPanel
+      v-else-if="showGameFilterEmpty"
+      kind="empty"
+      :message="`No clips for ${activeGame?.name ?? 'this game'} yet.`"
+    >
+      <button
+        class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
+        @click="selectGame(null)"
+      >
+        Clear filter
+      </button>
+    </StatusPanel>
 
     <!-- Empty state — Following gets its own CTA per the issue spec; For You falls
          through to the original "no clips yet — be the first" path. -->
