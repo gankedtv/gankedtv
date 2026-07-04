@@ -78,7 +78,7 @@ export interface ClipFeedPage {
 interface ClipFeedQueryBase {
   cursor?: string | null
   limit?: number
-  source?: 'public' | 'following'
+  source?: 'public' | 'following' | 'for-you'
   // Filter the feed to a single game (the Home game pills). Composes with source/sort.
   gameId?: number
 }
