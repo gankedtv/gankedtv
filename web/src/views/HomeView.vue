@@ -21,12 +21,13 @@ const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
 
-type FeedSource = 'public' | 'following'
+type FeedSource = 'public' | 'following' | 'for-you'
 type HomeTab = FeedSource | 'trending' | 'top-rated'
-// "For You" maps to the public latest feed until personalization ships;
-// "Top Rated" renders disabled until the API grows a likes-weighted sort.
+// "For You" is the personalized feed: tiered by followed authors + liked games for
+// signed-in users, transparent global latest for anonymous. "Top Rated" renders disabled
+// until the API grows a likes-weighted sort.
 const TABS: { key: HomeTab; label: string; to?: { name: string }; disabled?: boolean }[] = [
-  { key: 'public', label: 'For You' },
+  { key: 'for-you', label: 'For You' },
   { key: 'following', label: 'Following' },
   { key: 'trending', label: 'Trending', to: { name: 'trending' } },
   { key: 'top-rated', label: 'Top Rated', disabled: true },
@@ -35,9 +36,10 @@ const TABS: { key: HomeTab; label: string; to?: { name: string }; disabled?: boo
 // Honour ?tab=following (used after login to bounce a viewer back to the tab they
 // clicked while signed-out). Gated on auth so a signed-out user landing on
 // `/?tab=following` directly doesn't hit a 401 and the generic error panel — they
-// fall through to public, which is the right initial state for anonymous browsing.
+// fall through to For You, the default for anonymous browsing (For You serves global
+// latest when signed-out, so it's a safe anonymous landing tab).
 const initialTab: FeedSource =
-  route.query.tab === 'following' && auth.isAuthenticated ? 'following' : 'public'
+  route.query.tab === 'following' && auth.isAuthenticated ? 'following' : 'for-you'
 const source = ref<FeedSource>(initialTab)
 
 const items = ref<ClipFeedItem[]>([])
@@ -146,8 +148,9 @@ async function loadMore() {
 }
 
 function onTabSelect(next: HomeTab) {
-  // Link tabs (Trending) navigate on their own; disabled tabs never emit.
-  if (next !== 'public' && next !== 'following') return
+  // Link tabs (Trending) navigate on their own; disabled tabs never emit. Only the two
+  // local-state feed tabs (For You + Following) reach selectTab.
+  if (next !== 'for-you' && next !== 'following') return
   selectTab(next)
 }
 
@@ -168,8 +171,8 @@ function reloadFeed() {
 
 function selectTab(next: FeedSource) {
   if (next === source.value) return
-  // Signed-out users can browse public but not following — bounce through /login with
-  // a tab=following hint so they land back here after auth.
+  // Signed-out users can browse For You + Latest but not Following — bounce through /login
+  // with a tab=following hint so they land back here after auth.
   if (next === 'following' && !auth.isAuthenticated) {
     router.push({ name: 'login', query: { redirect: '/?tab=following' } })
     return
@@ -301,7 +304,7 @@ onMounted(() => {
       <div class="flex flex-wrap items-center justify-center gap-2">
         <button
           class="cursor-pointer rounded-lg border border-border-strong bg-transparent px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
-          @click="selectTab('public')"
+          @click="selectTab('for-you')"
         >
           Browse clips
         </button>
