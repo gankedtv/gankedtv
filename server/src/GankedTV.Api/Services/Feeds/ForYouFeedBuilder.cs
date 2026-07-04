@@ -25,6 +25,7 @@ internal static class ForYouFeedBuilder
     internal static async Task<ForYouPage?> BuildPageAsync(
         GankedTvDbContext db,
         Guid me,
+        int? gameId,
         string? cursor,
         int? limit,
         CancellationToken ct)
@@ -57,6 +58,13 @@ internal static class ForYouFeedBuilder
         IQueryable<Clip> TierQuery(int tier)
         {
             var q = db.Clips.AsNoTracking().WherePublicReady();
+            // The Home game pills narrow every tier to one game, so the personalised ranking
+            // still applies but only within that game (followed authors first, then liked-game
+            // and backfill of the same game). Mirrors the latest path's gameId filter.
+            if (gameId is int gid)
+            {
+                q = q.Where(c => c.GameId == gid);
+            }
             return tier switch
             {
                 0 => q.Where(c => followedAuthorIds.Contains(c.UserId)),

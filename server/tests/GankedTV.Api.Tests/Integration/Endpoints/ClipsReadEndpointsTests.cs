@@ -1265,6 +1265,28 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ForYou_GameIdFilter_NarrowsEveryTierToThatGame_PreservingTierOrder()
+    {
+        await _fx.ResetAsync();
+        var (me, token, followed, stranger) = await SeedForYouSignalsAsync();
+        var now = DateTimeOffset.UtcNow;
+        // The game pills must narrow the personalised feed just like the latest path does.
+        // Tier order still dominates recency *within* the filtered game: the followed author's
+        // game-2 clip (tier 0, older) leads the stranger's game-2 clip (tier 1, newer).
+        var (faVal, _) = await SeedClipAsync(followed, now.AddMinutes(-9), title: "fa-val", gameId: 2);
+        var (strVal, _) = await SeedClipAsync(stranger, now.AddMinutes(-1), title: "str-val", gameId: 2);
+        // Off-game clips that would otherwise rank (tier 0 / tier 1) must be excluded by ?gameId=2.
+        var (faApex, _) = await SeedClipAsync(followed, now, title: "fa-apex", gameId: 5);
+        var (strBackfill, _) = await SeedClipAsync(stranger, now, title: "str-backfill");
+
+        using var client = ClientWithBearer(token);
+        var ids = FeedIds(await client.GetFromJsonAsync<JsonElement>("/clips/feed?source=for-you&gameId=2"));
+
+        ids.Should().Equal(faVal, strVal);
+        ids.Should().NotContain(faApex).And.NotContain(strBackfill);
+    }
+
+    [Fact]
     public async Task ForYou_CrossTierPageFill_SpansBoundaryAndResumesViaCursor()
     {
         await _fx.ResetAsync();

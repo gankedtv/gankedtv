@@ -247,7 +247,7 @@ public static class ClipsReadEndpoints
         var isForYou = string.Equals(source, "for-you", StringComparison.OrdinalIgnoreCase);
         if (isForYou && principal.TryGetUserId(out var viewerId))
         {
-            var forYou = await ForYouFeedBuilder.BuildPageAsync(db, viewerId, cursor, limit, ct);
+            var forYou = await ForYouFeedBuilder.BuildPageAsync(db, viewerId, gameId, cursor, limit, ct);
             if (forYou is not null) // null = caller has no personalisation signals -> cold-start
             {
                 var items = await ProjectFeedItemsAsync(forYou.Clips, principal, db, storage, s3, ct);
