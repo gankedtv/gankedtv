@@ -1143,6 +1143,272 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         ids.Should().Equal(inside);
     }
 
+    // ---- GET /clips/feed?source=for-you ----
+
+    // me follows `followed`; me has liked a clip in game 2 (Valorant). Returns the ids of the
+    // three seeded authors plus me's token so each test can assert tier placement.
+    private async Task<(Guid me, string token, Guid followed, Guid stranger)> SeedForYouSignalsAsync()
+    {
+        var (me, token) = await SeedUserAndIssueTokenAsync("reader");
+        var (followed, _) = await SeedUserAndIssueTokenAsync("followed");
+        var (stranger, _) = await SeedUserAndIssueTokenAsync("stranger");
+
+        // Establish liked-game {2}: me likes an (unlisted, so it never appears in the feed
+        // itself) clip in game 2. The liked-game signal ignores the liked clip's visibility.
+        var (likeSeed, _) = await SeedClipAsync(
+            stranger, DateTimeOffset.UtcNow, visibility: "unlisted", title: "like-seed", gameId: 2);
+        await using (var db = _fx.CreateContext())
+        {
+            db.Follows.Add(new Follow { FollowerId = me, FolloweeId = followed, CreatedAt = DateTimeOffset.UtcNow });
+            db.Likes.Add(new Like { UserId = me, ClipId = likeSeed, CreatedAt = DateTimeOffset.UtcNow });
+            await db.SaveChangesAsync();
+        }
+        return (me, token, followed, stranger);
+    }
+
+    private static List<Guid> FeedIds(JsonElement body) =>
+        body.GetProperty("items").EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid()).ToList();
+
+    [Fact]
+    public async Task ForYou_Anonymous_IdenticalToLatest()
+    {
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var now = DateTimeOffset.UtcNow;
+        await SeedClipAsync(userId, now.AddMinutes(-1), title: "c1");
+        await SeedClipAsync(userId, now.AddMinutes(-2), title: "c2");
+        await SeedClipAsync(userId, now.AddMinutes(-3), title: "c3");
+
+        using var client = _factory!.CreateClient();
+        var forYou = await client.GetFromJsonAsync<JsonElement>("/clips/feed?source=for-you");
+        var latest = await client.GetFromJsonAsync<JsonElement>("/clips/feed");
+
+        FeedIds(forYou).Should().Equal(FeedIds(latest));
+    }
+
+    [Fact]
+    public async Task ForYou_AuthenticatedColdStart_IdenticalToLatest()
+    {
+        await _fx.ResetAsync();
+        var (me, token) = await SeedUserAndIssueTokenAsync("reader");
+        var (author, _) = await SeedUserAndIssueTokenAsync("author");
+        var now = DateTimeOffset.UtcNow;
+        await SeedClipAsync(author, now.AddMinutes(-1), title: "c1");
+        await SeedClipAsync(author, now.AddMinutes(-2), title: "c2");
+
+        using var client = ClientWithBearer(token);
+        var forYou = await client.GetFromJsonAsync<JsonElement>("/clips/feed?source=for-you");
+        var latest = await client.GetFromJsonAsync<JsonElement>("/clips/feed");
+
+        FeedIds(forYou).Should().Equal(FeedIds(latest));
+    }
+
+    [Fact]
+    public async Task ForYou_TierOrdering_FollowBeatsLikedGameBeatsBackfill_RegardlessOfRecency()
+    {
+        await _fx.ResetAsync();
+        var (me, token, followed, stranger) = await SeedForYouSignalsAsync();
+        var now = DateTimeOffset.UtcNow;
+        // Tier 0 is the OLDEST clip, tier 2 the NEWEST — proves tier dominates recency.
+        var (t0, _) = await SeedClipAsync(followed, now.AddMinutes(-10), title: "t0-follow");
+        var (t1, _) = await SeedClipAsync(stranger, now.AddMinutes(-5), title: "t1-liked-game", gameId: 2);
+        var (t2, _) = await SeedClipAsync(stranger, now.AddMinutes(-1), title: "t2-backfill");
+
+        using var client = ClientWithBearer(token);
+        var body = await client.GetFromJsonAsync<JsonElement>("/clips/feed?source=for-you");
+
+        FeedIds(body).Should().Equal(t0, t1, t2);
+    }
+
+    [Fact]
+    public async Task ForYou_FollowedAuthorInLikedGame_AppearsOnceInTier0()
+    {
+        await _fx.ResetAsync();
+        var (me, token, followed, stranger) = await SeedForYouSignalsAsync();
+        var now = DateTimeOffset.UtcNow;
+        // Followed author posts in the liked game (game 2). It must appear once, in tier 0 —
+        // so it ranks above a stranger's NEWER liked-game (tier 1) clip.
+        var (dual, _) = await SeedClipAsync(followed, now.AddMinutes(-5), title: "dual", gameId: 2);
+        var (strangerLikedGame, _) = await SeedClipAsync(stranger, now.AddMinutes(-1), title: "t1", gameId: 2);
+
+        using var client = ClientWithBearer(token);
+        var ids = FeedIds(await client.GetFromJsonAsync<JsonElement>("/clips/feed?source=for-you"));
+
+        ids.Count(id => id == dual).Should().Be(1);
+        ids.Should().Equal(dual, strangerLikedGame);
+    }
+
+    [Fact]
+    public async Task ForYou_LikedGameInference_SurfacesOtherClipsInThatGameInTier1()
+    {
+        await _fx.ResetAsync();
+        var (me, token) = await SeedUserAndIssueTokenAsync("reader");
+        var (stranger, _) = await SeedUserAndIssueTokenAsync("stranger");
+        var now = DateTimeOffset.UtcNow;
+        // me likes a clip in game 3; NO follows. A different clip in game 3 must surface in tier 1
+        // above a newer backfill clip.
+        var (liked, _) = await SeedClipAsync(stranger, now.AddMinutes(-9), title: "liked", gameId: 3);
+        var (sameGame, _) = await SeedClipAsync(stranger, now.AddMinutes(-5), title: "same-game", gameId: 3);
+        var (backfill, _) = await SeedClipAsync(stranger, now.AddMinutes(-1), title: "backfill");
+        await using (var db = _fx.CreateContext())
+        {
+            db.Likes.Add(new Like { UserId = me, ClipId = liked, CreatedAt = now });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = ClientWithBearer(token);
+        var ids = FeedIds(await client.GetFromJsonAsync<JsonElement>("/clips/feed?source=for-you"));
+
+        // liked + sameGame are both game 3 (tier 1, newest-first); backfill is tier 2.
+        ids.Should().Equal(sameGame, liked, backfill);
+    }
+
+    [Fact]
+    public async Task ForYou_GameIdFilter_NarrowsEveryTierToThatGame_PreservingTierOrder()
+    {
+        await _fx.ResetAsync();
+        var (me, token, followed, stranger) = await SeedForYouSignalsAsync();
+        var now = DateTimeOffset.UtcNow;
+        // The game pills must narrow the personalised feed just like the latest path does.
+        // Tier order still dominates recency *within* the filtered game: the followed author's
+        // game-2 clip (tier 0, older) leads the stranger's game-2 clip (tier 1, newer).
+        var (faVal, _) = await SeedClipAsync(followed, now.AddMinutes(-9), title: "fa-val", gameId: 2);
+        var (strVal, _) = await SeedClipAsync(stranger, now.AddMinutes(-1), title: "str-val", gameId: 2);
+        // Off-game clips that would otherwise rank (tier 0 / tier 1) must be excluded by ?gameId=2.
+        var (faApex, _) = await SeedClipAsync(followed, now, title: "fa-apex", gameId: 5);
+        var (strBackfill, _) = await SeedClipAsync(stranger, now, title: "str-backfill");
+
+        using var client = ClientWithBearer(token);
+        var ids = FeedIds(await client.GetFromJsonAsync<JsonElement>("/clips/feed?source=for-you&gameId=2"));
+
+        ids.Should().Equal(faVal, strVal);
+        ids.Should().NotContain(faApex).And.NotContain(strBackfill);
+    }
+
+    [Fact]
+    public async Task ForYou_CrossTierPageFill_SpansBoundaryAndResumesViaCursor()
+    {
+        await _fx.ResetAsync();
+        var (me, token, followed, stranger) = await SeedForYouSignalsAsync();
+        var now = DateTimeOffset.UtcNow;
+        // 2 per tier, newest-first within tier.
+        var (t0a, _) = await SeedClipAsync(followed, now.AddMinutes(-1), title: "t0a");
+        var (t0b, _) = await SeedClipAsync(followed, now.AddMinutes(-2), title: "t0b");
+        var (t1a, _) = await SeedClipAsync(stranger, now.AddMinutes(-3), title: "t1a", gameId: 2);
+        var (t1b, _) = await SeedClipAsync(stranger, now.AddMinutes(-4), title: "t1b", gameId: 2);
+        var (t2a, _) = await SeedClipAsync(stranger, now.AddMinutes(-5), title: "t2a");
+        var (t2b, _) = await SeedClipAsync(stranger, now.AddMinutes(-6), title: "t2b");
+
+        using var client = ClientWithBearer(token);
+        var page1 = await client.GetFromJsonAsync<JsonElement>("/clips/feed?source=for-you&limit=3");
+        FeedIds(page1).Should().Equal(t0a, t0b, t1a);
+        var cursor = page1.GetProperty("nextCursor").GetString();
+        cursor.Should().NotBeNullOrEmpty();
+
+        var page2 = await client.GetFromJsonAsync<JsonElement>(
+            $"/clips/feed?source=for-you&limit=3&cursor={Uri.EscapeDataString(cursor!)}");
+        FeedIds(page2).Should().Equal(t1b, t2a, t2b);
+        page2.GetProperty("nextCursor").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task ForYou_DeepPagination_LimitOne_WalksEveryTierAndDrains()
+    {
+        await _fx.ResetAsync();
+        var (me, token, followed, stranger) = await SeedForYouSignalsAsync();
+        var now = DateTimeOffset.UtcNow;
+        var (t0, _) = await SeedClipAsync(followed, now.AddMinutes(-1), title: "t0");
+        var (t1, _) = await SeedClipAsync(stranger, now.AddMinutes(-2), title: "t1", gameId: 2);
+        var (t2, _) = await SeedClipAsync(stranger, now.AddMinutes(-3), title: "t2");
+        var expected = new[] { t0, t1, t2 };
+
+        using var client = ClientWithBearer(token);
+        var collected = new List<Guid>();
+        string? cursor = null;
+        for (var i = 0; i < 10; i++) // safety bound; real loop breaks on null cursor
+        {
+            var url = cursor is null
+                ? "/clips/feed?source=for-you&limit=1"
+                : $"/clips/feed?source=for-you&limit=1&cursor={Uri.EscapeDataString(cursor)}";
+            var body = await client.GetFromJsonAsync<JsonElement>(url);
+            collected.AddRange(FeedIds(body));
+            var next = body.GetProperty("nextCursor");
+            if (next.ValueKind == JsonValueKind.Null) break;
+            cursor = next.GetString();
+        }
+
+        collected.Should().Equal(expected); // no repeats, no skips, drained across tier boundaries
+    }
+
+    [Fact]
+    public async Task ForYou_LikedByMe_IsPerCaller()
+    {
+        await _fx.ResetAsync();
+        var (me, token, followed, stranger) = await SeedForYouSignalsAsync();
+        var (other, otherToken) = await SeedUserAndIssueTokenAsync("other");
+        var (clip, _) = await SeedClipAsync(followed, DateTimeOffset.UtcNow.AddMinutes(-1), title: "clip");
+        await using (var db = _fx.CreateContext())
+        {
+            db.Likes.Add(new Like { UserId = me, ClipId = clip, CreatedAt = DateTimeOffset.UtcNow });
+            await db.SaveChangesAsync();
+        }
+
+        using var meClient = ClientWithBearer(token);
+        using var otherClient = ClientWithBearer(otherToken);
+        var meBody = await meClient.GetFromJsonAsync<JsonElement>("/clips/feed?source=for-you");
+        var otherBody = await otherClient.GetFromJsonAsync<JsonElement>("/clips/feed?source=for-you");
+
+        bool LikedByMe(JsonElement body, Guid id) => body.GetProperty("items").EnumerateArray()
+            .First(e => e.GetProperty("id").GetGuid() == id).GetProperty("likedByMe").GetBoolean();
+
+        LikedByMe(meBody, clip).Should().BeTrue();
+        // `other` has no follows/likes → cold-start → served the latest path; the clip still
+        // appears (global latest) with likedByMe=false.
+        LikedByMe(otherBody, clip).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ForYou_SignalGainedBetweenPages_RestartsPersonalisedRankingGracefully()
+    {
+        await _fx.ResetAsync();
+        var (me, token) = await SeedUserAndIssueTokenAsync("reader");
+        var (author, _) = await SeedUserAndIssueTokenAsync("author");
+        var (stranger, _) = await SeedUserAndIssueTokenAsync("stranger");
+        var now = DateTimeOffset.UtcNow;
+        // No signals yet → cold-start serves the plain latest ordering, newest-first.
+        var (b1, _) = await SeedClipAsync(stranger, now.AddMinutes(-1), title: "b1");
+        var (b2, _) = await SeedClipAsync(stranger, now.AddMinutes(-2), title: "b2");
+        await SeedClipAsync(stranger, now.AddMinutes(-3), title: "b3");
+        // A followed-author clip OLDER than every backfill clip: only a tier-0 restart (not
+        // recency) can surface it at the front of page 2.
+        var (fa, _) = await SeedClipAsync(author, now.AddMinutes(-10), title: "followed");
+
+        using var client = ClientWithBearer(token);
+
+        // Page 1: cold-start → latest ordering + a plain KeysetCursor.
+        var page1 = await client.GetFromJsonAsync<JsonElement>("/clips/feed?source=for-you&limit=2");
+        FeedIds(page1).Should().Equal(b1, b2);
+        var cursor = page1.GetProperty("nextCursor").GetString();
+        cursor.Should().NotBeNullOrEmpty();
+
+        // Caller follows an author between the two page requests.
+        await using (var db = _fx.CreateContext())
+        {
+            db.Follows.Add(new Follow { FollowerId = me, FolloweeId = author, CreatedAt = now });
+            await db.SaveChangesAsync();
+        }
+
+        // Page 2 replays the page-1 cursor, but the caller now has signals, so the feed re-ranks
+        // into tiers. The plain (cross-type) cursor is intentionally NOT honoured for continuation:
+        // paging restarts at tier 0 — gracefully (200, no error), so the followed author leads
+        // despite being the oldest clip. Repeating page-1 backfill (b1) is the accepted cost of a
+        // mid-session re-rank; a stable session never crosses cursor types.
+        var page2 = await client.GetFromJsonAsync<JsonElement>(
+            $"/clips/feed?source=for-you&limit=2&cursor={Uri.EscapeDataString(cursor!)}");
+        FeedIds(page2).Should().Equal(fa, b1);
+    }
+
     // ---- GET /clips/{id} ----
 
     [Fact]

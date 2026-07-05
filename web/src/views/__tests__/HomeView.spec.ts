@@ -380,3 +380,14 @@ describe('HomeView — game filter pills', () => {
     expect(wrapper.text()).not.toContain('No clips for Valorant yet.')
   })
 })
+
+describe('HomeView — For You is the default tab', () => {
+  it('requests the for-you feed on mount', async () => {
+    feed.mockResolvedValue(makePage([makeClip('a')]))
+    featured.mockResolvedValue(null)
+
+    await mountHome()
+
+    expect(feed).toHaveBeenCalledWith(expect.objectContaining({ source: 'for-you', limit: 20 }))
+  })
+})

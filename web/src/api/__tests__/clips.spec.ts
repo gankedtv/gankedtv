@@ -64,6 +64,18 @@ describe('api/clips', () => {
       expect(url).toBe(`${BASE_URL}/clips/feed?source=following`)
     })
 
+    it('passes source=for-you through when set', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ items: [], nextCursor: null })),
+      )
+
+      await clips.feed({ source: 'for-you' })
+
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+      expect(url).toBe(`${BASE_URL}/clips/feed?source=for-you`)
+    })
+
     it('omits source when not provided (falls back to public on the server)', async () => {
       vi.stubGlobal(
         'fetch',

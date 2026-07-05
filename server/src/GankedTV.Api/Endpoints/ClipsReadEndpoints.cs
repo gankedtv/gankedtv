@@ -240,6 +240,26 @@ public static class ClipsReadEndpoints
             return Results.Ok(topPage);
         }
 
+        // For You: personalised re-ordering of the public+ready feed into relevance tiers for a
+        // signed-in caller with signals. Placed after the trending block so `source=for-you&
+        // sort=trending` keeps global-trending behaviour. Anonymous and no-signal (cold-start)
+        // callers fall through to the latest path below — identical to a Latest request.
+        var isForYou = string.Equals(source, "for-you", StringComparison.OrdinalIgnoreCase);
+        if (isForYou && principal.TryGetUserId(out var viewerId))
+        {
+            var forYou = await ForYouFeedBuilder.BuildPageAsync(db, viewerId, gameId, cursor, limit, ct);
+            if (forYou is not null) // null = caller has no personalisation signals -> cold-start
+            {
+                var items = await ProjectFeedItemsAsync(forYou.Clips, principal, db, storage, s3, ct);
+                return Results.Ok(new ClipFeedResponse(items, forYou.NextCursor));
+            }
+            // Cold-start falls through to the shared latest path, which emits a plain KeysetCursor
+            // (personalised pages emit a TieredKeysetCursor). If a caller gains or loses signals
+            // mid-pagination the cross-type cursor is rejected and paging restarts from the top —
+            // intentional: a signal change re-ranks the whole feed, so no cursor shape could
+            // continue it seamlessly. A stable session never crosses cursor types.
+        }
+
         // Cache only the global latest first page (no cursor, not personalised). Cursor pages
         // and following feeds bypass the cache and query Postgres directly.
         if (cursor is null && !isFollowing)
