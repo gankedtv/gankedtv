@@ -24,6 +24,27 @@ describe('buildMessage', () => {
   });
 });
 
+describe('buildMessage thumbnail attachment', () => {
+  test('with downloaded bytes → file attached and embed points at it', () => {
+    const c = clip({ thumbnailUrl: 'https://minio.local/thumbs/x.jpg?sig=1' });
+    const bytes = Buffer.from('JPEGDATA');
+
+    const msg = buildMessage(c, { pingRoleId: null }, 'https://gankedtv.com', bytes);
+
+    expect(msg.files).toEqual([{ attachment: bytes, name: 'clip.jpg' }]);
+    expect(msg.embeds[0]?.image?.url).toBe('attachment://clip.jpg');
+  });
+
+  test('download failed (null) → no files, embed falls back to the raw URL', () => {
+    const c = clip({ thumbnailUrl: 'https://minio.local/thumbs/x.jpg?sig=1' });
+
+    const msg = buildMessage(c, { pingRoleId: null }, 'https://gankedtv.com', null);
+
+    expect(msg.files).toBeUndefined();
+    expect(msg.embeds[0]?.image?.url).toBe(c.thumbnailUrl);
+  });
+});
+
 describe('postToChannel', () => {
   const message: ClipMessage = { embeds: [{ title: 't' }] };
 

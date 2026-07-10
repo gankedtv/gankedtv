@@ -35,6 +35,7 @@ function deps(overrides: Partial<FanoutDeps> = {}): FanoutDeps & {
     },
     log: silentLog(),
     publicBase: PUBLIC_BASE,
+    fetchThumbnail: async () => null,
     removed,
     ...overrides,
   } as FanoutDeps & { log: ReturnType<typeof silentLog>; removed: string[] };
@@ -163,5 +164,31 @@ describe('createFanout', () => {
 
     const payload = send.mock.calls[0]![0] as { content?: string };
     expect(payload.content).toBe('<@&42>');
+  });
+
+  test('downloads the thumbnail once per clip and attaches it to every channel post', async () => {
+    const { channel, send } = sendableChannel();
+    let fetches = 0;
+    const bytes = Buffer.from('JPEGDATA');
+    const d = deps({
+      channels: { fetch: async () => channel },
+      fetchThumbnail: async () => {
+        fetches++;
+        return bytes;
+      },
+    });
+    const fan = createFanout(d);
+    const c = clip({ shareCode: 'thumb1' });
+
+    expect(await fan(c, target)).toBe(true);
+    expect(await fan(c, { channelId: 'chan-2', pingRoleId: null })).toBe(true);
+
+    expect(fetches).toBe(1);
+    const payload = send.mock.calls[0]?.[0] as {
+      files?: unknown[];
+      embeds: { image?: { url?: string } }[];
+    };
+    expect(payload.files).toEqual([{ attachment: bytes, name: 'clip.jpg' }]);
+    expect(payload.embeds[0]?.image?.url).toBe('attachment://clip.jpg');
   });
 });

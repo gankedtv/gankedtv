@@ -1,5 +1,6 @@
 import { DiscordAPIError, RateLimitError } from 'discord.js';
 import type { Db } from './db.ts';
+import type { ThumbnailFetcher } from './lib/thumbnail.ts';
 import { buildMessage, postToChannel, type Sendable } from './posting.ts';
 import type { Fanout, PollerLogger } from './poller.ts';
 
@@ -16,7 +17,13 @@ export type FanoutDeps = {
   db: Pick<Db, 'removeAllSubscriptionsForChannel'>;
   log: PollerLogger;
   publicBase: string;
+  fetchThumbnail: ThumbnailFetcher;
 };
+
+// One clip fans out to many channels; download its thumbnail once and reuse the
+// bytes for every (clip, channel) pair. Small FIFO cap — a poll round only ever
+// touches a handful of fresh clips.
+const THUMBNAIL_CACHE_MAX = 50;
 
 function isRateLimit(err: unknown): boolean {
   return err instanceof RateLimitError || (err instanceof DiscordAPIError && err.status === 429);
@@ -27,6 +34,18 @@ function isRateLimit(err: unknown): boolean {
 // post-log row is written. Returning false means the poller isPosted()-checks
 // this pair again next round and retries.
 export function createFanout(deps: FanoutDeps): Fanout {
+  const thumbnails = new Map<string, Buffer | null>();
+  async function thumbnailFor(clipId: string, url: string | null): Promise<Buffer | null> {
+    if (thumbnails.has(clipId)) return thumbnails.get(clipId) ?? null;
+    const bytes = await deps.fetchThumbnail(url);
+    if (thumbnails.size >= THUMBNAIL_CACHE_MAX) {
+      const oldest = thumbnails.keys().next().value;
+      if (oldest !== undefined) thumbnails.delete(oldest);
+    }
+    thumbnails.set(clipId, bytes);
+    return bytes;
+  }
+
   return async (clip, target) => {
     // fetch() pulls from the cache when warm, REST when cold. discord.js v14
     // THROWS DiscordAPIError for missing/inaccessible resources; the `null`
@@ -67,7 +86,13 @@ export function createFanout(deps: FanoutDeps): Fanout {
       });
       return false;
     }
-    const message = buildMessage(clip, { pingRoleId: target.pingRoleId }, deps.publicBase);
+    const thumbnail = await thumbnailFor(clip.id, clip.thumbnailUrl);
+    const message = buildMessage(
+      clip,
+      { pingRoleId: target.pingRoleId },
+      deps.publicBase,
+      thumbnail,
+    );
     try {
       return await postToChannel(channel as Sendable, message);
     } catch (err) {

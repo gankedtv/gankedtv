@@ -5,8 +5,17 @@ import {
 } from 'discord.js';
 import type { Command, CommandContext } from './index.ts';
 import { ephemeral, safeDefer } from './replies.ts';
-import { buildClipEmbed } from '../embeds.ts';
+import { buildClipPayload } from '../posting.ts';
 import { respondGameAutocomplete } from '../lib/games.ts';
+import type { ClipFeedItem } from '../api.ts';
+
+async function clipReply(
+  clip: ClipFeedItem,
+  ctx: CommandContext,
+): Promise<ReturnType<typeof buildClipPayload>> {
+  const thumbnail = await ctx.fetchThumbnail(clip.thumbnailUrl);
+  return buildClipPayload(clip, ctx.publicBase, thumbnail);
+}
 
 const data = new SlashCommandBuilder()
   .setName('clip')
@@ -77,7 +86,7 @@ async function handleLatest(
     );
     return;
   }
-  await interaction.editReply({ embeds: [buildClipEmbed(clip, ctx.publicBase).toJSON()] });
+  await interaction.editReply(await clipReply(clip, ctx));
 }
 
 async function handleTop(
@@ -92,7 +101,7 @@ async function handleTop(
     await interaction.editReply(`No trending clips in the last ${window}.`);
     return;
   }
-  await interaction.editReply({ embeds: [buildClipEmbed(clip, ctx.publicBase).toJSON()] });
+  await interaction.editReply(await clipReply(clip, ctx));
 }
 
 async function handleSearch(
@@ -107,7 +116,7 @@ async function handleSearch(
     await interaction.editReply(`No clips matched "${query}".`);
     return;
   }
-  await interaction.editReply({ embeds: [buildClipEmbed(clip, ctx.publicBase).toJSON()] });
+  await interaction.editReply(await clipReply(clip, ctx));
 }
 
 async function autocomplete(
