@@ -213,26 +213,27 @@ describe('createFanout', () => {
     expect(second.files).toEqual([{ attachment: bytes, name: 'clip.jpg' }]);
   });
 
-  test('cache evicts oldest beyond the cap, so an early clip re-downloads', async () => {
+  test('cache evicts oldest past the byte budget, so an early clip re-downloads', async () => {
     const { channel } = sendableChannel();
     let fetches = 0;
+    // 7 × 5 MB = 35 MB > the 32 MB budget, so caching the 7th evicts the 1st.
     const d = deps({
       channels: { fetch: async () => channel },
       fetchThumbnail: async () => {
         fetches++;
-        return Buffer.from('J');
+        return Buffer.alloc(5 * 1024 * 1024);
       },
     });
     const fan = createFanout(d);
 
     const first = clip({});
     await fan(first, target);
-    for (let i = 0; i < 50; i++) {
+    for (let i = 0; i < 6; i++) {
       await fan(clip({}), target);
     }
     await fan(first, target);
 
-    // 1 (first) + 50 (fill past the cap) + 1 (first again after eviction).
-    expect(fetches).toBe(52);
+    // 1 (first) + 6 (fill past the budget) + 1 (first again after eviction).
+    expect(fetches).toBe(8);
   });
 });

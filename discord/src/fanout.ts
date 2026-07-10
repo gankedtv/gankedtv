@@ -21,9 +21,9 @@ export type FanoutDeps = {
 };
 
 // One clip fans out to many channels; download its thumbnail once and reuse the
-// bytes for every (clip, channel) pair. Small FIFO cap — a poll round only ever
-// touches a handful of fresh clips.
-const THUMBNAIL_CACHE_MAX = 50;
+// bytes for every (clip, channel) pair. FIFO-evicted on a byte budget so a run of
+// unusually large images can't pile up — a poll round only touches fresh clips.
+const THUMBNAIL_CACHE_MAX_BYTES = 32 * 1024 * 1024;
 
 function isRateLimit(err: unknown): boolean {
   return err instanceof RateLimitError || (err instanceof DiscordAPIError && err.status === 429);
@@ -35,6 +35,7 @@ function isRateLimit(err: unknown): boolean {
 // this pair again next round and retries.
 export function createFanout(deps: FanoutDeps): Fanout {
   const thumbnails = new Map<string, Buffer>();
+  let thumbnailBytes = 0;
   async function thumbnailFor(clipId: string, url: string | null): Promise<Buffer | null> {
     const cached = thumbnails.get(clipId);
     if (cached !== undefined) return cached;
@@ -42,11 +43,13 @@ export function createFanout(deps: FanoutDeps): Fanout {
     // Only successes are memoized: a transient download failure must not pin every
     // later post of this clip to the short-lived URL fallback.
     if (bytes !== null) {
-      if (thumbnails.size >= THUMBNAIL_CACHE_MAX) {
-        const oldest = thumbnails.keys().next().value;
-        if (oldest !== undefined) thumbnails.delete(oldest);
+      while (thumbnails.size > 0 && thumbnailBytes + bytes.byteLength > THUMBNAIL_CACHE_MAX_BYTES) {
+        const oldest = thumbnails.keys().next().value!;
+        thumbnailBytes -= thumbnails.get(oldest)!.byteLength;
+        thumbnails.delete(oldest);
       }
       thumbnails.set(clipId, bytes);
+      thumbnailBytes += bytes.byteLength;
     }
     return bytes;
   }

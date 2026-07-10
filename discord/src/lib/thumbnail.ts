@@ -22,6 +22,9 @@ export async function downloadThumbnail(
   try {
     const resp = await fetchImpl(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!resp.ok) return null;
+    // Cheap early-exit before arrayBuffer() pulls the whole body into memory.
+    const contentLength = Number(resp.headers.get('content-length') ?? 0);
+    if (contentLength > MAX_BYTES) return null;
     const bytes = Buffer.from(await resp.arrayBuffer());
     if (bytes.byteLength === 0 || bytes.byteLength > MAX_BYTES) return null;
     return bytes;

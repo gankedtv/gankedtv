@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { downloadThumbnail, THUMBNAIL_FILENAME } from '../../src/lib/thumbnail.ts';
 
-function fetchImpl(impl: () => Promise<Response>): typeof fetch {
+function fetchImpl(impl: (url: unknown, init?: RequestInit) => Promise<Response>): typeof fetch {
   return impl as unknown as typeof fetch;
 }
 
@@ -62,6 +62,33 @@ describe('downloadThumbnail', () => {
       fetchImpl(async () => new Response(Buffer.alloc(8 * 1024 * 1024 + 1))),
     );
 
+    expect(bytes).toBeNull();
+  });
+
+  test('oversized Content-Length → null before the body is buffered', async () => {
+    const bytes = await downloadThumbnail(
+      'https://minio.local/thumbs/x.jpg',
+      fetchImpl(async () => {
+        const resp = new Response('tiny');
+        resp.headers.set('content-length', String(9 * 1024 * 1024));
+        return resp;
+      }),
+    );
+
+    expect(bytes).toBeNull();
+  });
+
+  test('wires an abort signal and maps a timeout abort to null', async () => {
+    let seenSignal: unknown;
+    const bytes = await downloadThumbnail(
+      'https://minio.local/thumbs/x.jpg',
+      fetchImpl(async (_url, init) => {
+        seenSignal = init?.signal;
+        throw new DOMException('The operation timed out.', 'TimeoutError');
+      }),
+    );
+
+    expect(seenSignal).toBeInstanceOf(AbortSignal);
     expect(bytes).toBeNull();
   });
 
