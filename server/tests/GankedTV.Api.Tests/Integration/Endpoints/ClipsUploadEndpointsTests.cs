@@ -150,8 +150,10 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
         body.GetProperty("errors").GetProperty("Title").GetArrayLength().Should().BeGreaterThan(0);
     }
 
-    [Fact]
-    public async Task Create_InvalidVisibility_Returns400()
+    [Theory]
+    [InlineData("hidden")] // moderation-owned, never user-settable
+    [InlineData("friends")] // unknown value
+    public async Task Create_InvalidVisibility_Returns400(string visibility)
     {
         // Visibility validation lives in ClipUploadService (case-insensitive allowed-values)
         // rather than a DataAnnotation, so this surfaces via ProblemResults with code=invalid_visibility.
@@ -159,11 +161,28 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
         var (_, token) = await SeedUserAndIssueTokenAsync();
         using var client = ClientWithBearer(token);
 
-        var resp = await client.PostAsJsonAsync("/clips", new { title = "x", visibility = "private" });
+        var resp = await client.PostAsJsonAsync("/clips", new { title = "x", visibility });
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         body.GetProperty("code").GetString().Should().Be("invalid_visibility");
+    }
+
+    [Fact]
+    public async Task Create_PrivateVisibility_Persists()
+    {
+        await _fx.ResetAsync();
+        var (_, token) = await SeedUserAndIssueTokenAsync();
+        using var client = ClientWithBearer(token);
+
+        var resp = await client.PostAsJsonAsync("/clips", new { title = "just for me", visibility = "private" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var id = (await resp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+
+        await using var db = _fx.CreateContext();
+        var clip = await db.Clips.AsNoTracking().SingleAsync(c => c.Id == id);
+        clip.Visibility.Should().Be("private");
     }
 
     [Fact]

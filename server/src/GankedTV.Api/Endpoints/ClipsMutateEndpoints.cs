@@ -19,7 +19,6 @@ namespace GankedTV.Api.Endpoints;
 
 public static class ClipsMutateEndpoints
 {
-    private static readonly string[] AllowedVisibilities = [ClipVisibilities.Public, ClipVisibilities.Unlisted];
     private static readonly TimeSpan VideoUrlLifetime = TimeSpan.FromHours(1);
     private static readonly string LogCategory = typeof(ClipsMutateEndpoints).FullName!;
 
@@ -111,11 +110,13 @@ public static class ClipsMutateEndpoints
 
         if (req.Visibility is not null)
         {
-            if (!AllowedVisibilities.Contains(req.Visibility))
+            // Same gate + normalization as create/import: user-settable values only,
+            // so "hidden" (moderation-owned) can never arrive through PATCH.
+            if (!ClipVisibilities.IsValid(req.Visibility))
             {
                 return ProblemResults.BadRequest("invalid_visibility");
             }
-            clip.Visibility = req.Visibility;
+            clip.Visibility = ClipVisibilities.Normalize(req.Visibility);
         }
 
         if (req.GameId is not null)

@@ -171,7 +171,7 @@ public class SearchEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Search_HidesUnlistedAndProcessingClips()
+    public async Task Search_HidesUnlistedPrivateAndProcessingClips()
     {
         await _fx.ResetAsync();
         var userId = await SeedUserAsync();
@@ -179,6 +179,7 @@ public class SearchEndpointsTests : IAsyncLifetime
 
         await SeedClipAsync(userId, DateTimeOffset.UtcNow, valorantId, title: "Valorant public", status: "ready", visibility: "public");
         await SeedClipAsync(userId, DateTimeOffset.UtcNow, valorantId, title: "Valorant unlisted", visibility: "unlisted");
+        await SeedClipAsync(userId, DateTimeOffset.UtcNow, valorantId, title: "Valorant private", visibility: "private");
         await SeedClipAsync(userId, DateTimeOffset.UtcNow, valorantId, title: "Valorant processing", status: "processing");
 
         using var client = _factory!.CreateClient();

@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { ApiError } from '@/api/client'
 import { config } from '@/config'
 import { clips } from '@/api/clips'
-import type { ClipStatus, GameSummary } from '@/api/clips'
+import type { ClipStatus, ClipVisibility, GameSummary } from '@/api/clips'
 import GameSelector from '@/components/GameSelector.vue'
 import TagInput from '@/components/TagInput.vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -15,6 +15,8 @@ import IconArrowRight from '@/components/icons/IconArrowRight.vue'
 import IconArrowLeft from '@/components/icons/IconArrowLeft.vue'
 import IconGlobe from '@/components/icons/IconGlobe.vue'
 import IconLink from '@/components/icons/IconLink.vue'
+import IconLock from '@/components/icons/IconLock.vue'
+import { VISIBILITY_OPTIONS } from '@/lib/visibility'
 
 const router = useRouter()
 
@@ -101,7 +103,7 @@ let posterRequestId = 0
 const MAX_PREVIEW_DIM = 1280
 const title = ref('')
 const desc = ref('')
-const visibility = ref<'public' | 'unlisted'>('public')
+const visibility = ref<ClipVisibility>('public')
 const dragging = ref(false)
 
 const selectedGame = ref<GameSummary | null>(null)
@@ -915,27 +917,28 @@ const IMPORT_HOSTS_HINT = IMPORT_ALLOWED_HOSTS.filter(
 
             <div>
               <label :class="labelClass">Visibility</label>
-              <div class="grid grid-cols-2 gap-2.5">
+              <div class="grid grid-cols-3 gap-2.5">
                 <button
-                  v-for="opt in ['public', 'unlisted'] as const"
-                  :key="opt"
-                  @click="visibility = opt"
+                  v-for="opt in VISIBILITY_OPTIONS"
+                  :key="opt.value"
+                  @click="visibility = opt.value"
                   :class="[
                     'cursor-pointer rounded-lg border p-3 text-left transition-colors duration-150',
-                    visibility === opt
+                    visibility === opt.value
                       ? 'border-accent bg-accent-bg'
                       : 'border-border hover:border-border-strong',
                   ]"
                 >
                   <div class="mb-1 flex items-center gap-2 text-text-primary">
-                    <IconGlobe v-if="opt === 'public'" :size="16" />
+                    <IconGlobe v-if="opt.value === 'public'" :size="16" />
+                    <IconLock v-else-if="opt.value === 'private'" :size="16" />
                     <IconLink v-else :size="16" />
                     <span class="text-xs font-bold">
-                      {{ opt === 'public' ? 'Public' : 'Unlisted' }}
+                      {{ opt.label }}
                     </span>
                   </div>
                   <div class="text-xs text-text-muted">
-                    {{ opt === 'public' ? 'Visible on feed + search' : 'Only accessible via link' }}
+                    {{ opt.description }}
                   </div>
                 </button>
               </div>

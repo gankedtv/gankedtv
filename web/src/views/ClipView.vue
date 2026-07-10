@@ -24,6 +24,7 @@ import CommentsSection from '@/components/CommentsSection.vue'
 import IconHeart from '@/components/icons/IconHeart.vue'
 import IconShare from '@/components/icons/IconShare.vue'
 import IconLink from '@/components/icons/IconLink.vue'
+import IconLock from '@/components/icons/IconLock.vue'
 import KebabMenu, { type KebabMenuItem } from '@/components/KebabMenu.vue'
 
 const route = useRoute()
@@ -573,6 +574,22 @@ async function onConfirmDelete() {
         >
           {{ clip.title }}
         </h1>
+
+        <!-- Owner-only visibility badge: reminds the uploader a clip isn't public. Other
+             viewers never reach a private clip, and unlisted needs no callout for them. -->
+        <div
+          v-if="isOwner && clip.visibility !== 'public'"
+          class="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-text-muted"
+          :title="
+            clip.visibility === 'private'
+              ? 'Only you can see this clip'
+              : 'Hidden from feeds, anyone with the link can watch'
+          "
+        >
+          <IconLock v-if="clip.visibility === 'private'" :size="12" />
+          <IconLink v-else :size="12" />
+          <span>{{ clip.visibility === 'private' ? 'Private' : 'Unlisted' }}</span>
+        </div>
 
         <!-- Author + action row -->
         <div class="mt-3 flex flex-wrap items-center gap-3">

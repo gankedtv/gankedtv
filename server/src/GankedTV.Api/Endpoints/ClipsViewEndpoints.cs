@@ -53,7 +53,7 @@ public static class ClipsViewEndpoints
 
         if (rows == 0)
         {
-            // Clip is missing, draft, processing, or unlisted — silently no-op.
+            // Clip is missing, draft, processing, unlisted, or private — silently no-op.
             return Results.NoContent();
         }
 

@@ -251,31 +251,35 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
         persisted.Description.Should().Be("before");
     }
 
-    [Fact]
-    public async Task Patch_UpdatesVisibility_Persists()
+    [Theory]
+    [InlineData("unlisted")]
+    [InlineData("private")]
+    public async Task Patch_UpdatesVisibility_Persists(string visibility)
     {
         await _fx.ResetAsync();
         var (ownerId, token) = await SeedUserAndIssueTokenAsync();
         var clipId = await SeedClipAsync(ownerId, visibility: "public");
 
         using var client = ClientWithBearer(token);
-        var resp = await client.PatchAsJsonAsync($"/clips/{clipId}", new { visibility = "unlisted" });
+        var resp = await client.PatchAsJsonAsync($"/clips/{clipId}", new { visibility });
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         await using var db = _fx.CreateContext();
         var persisted = await db.Clips.AsNoTracking().FirstAsync(c => c.Id == clipId);
-        persisted.Visibility.Should().Be("unlisted");
+        persisted.Visibility.Should().Be(visibility);
     }
 
-    [Fact]
-    public async Task Patch_InvalidVisibility_Returns400()
+    [Theory]
+    [InlineData("hidden")] // moderation-owned, never user-settable
+    [InlineData("secret")] // unknown value
+    public async Task Patch_InvalidVisibility_Returns400(string visibility)
     {
         await _fx.ResetAsync();
         var (ownerId, token) = await SeedUserAndIssueTokenAsync();
         var clipId = await SeedClipAsync(ownerId);
 
         using var client = ClientWithBearer(token);
-        var resp = await client.PatchAsJsonAsync($"/clips/{clipId}", new { visibility = "private" });
+        var resp = await client.PatchAsJsonAsync($"/clips/{clipId}", new { visibility });
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }

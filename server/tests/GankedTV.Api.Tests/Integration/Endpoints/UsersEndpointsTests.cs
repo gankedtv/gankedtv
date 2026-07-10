@@ -88,6 +88,7 @@ public class UsersEndpointsTests : IAsyncLifetime
         var ready2 = await SeedClipAsync(userId, now.AddSeconds(-2), title: "ready-2");
         await SeedClipAsync(userId, now, status: "processing", title: "not-ready");
         await SeedClipAsync(userId, now, visibility: "unlisted", title: "unlisted");
+        await SeedClipAsync(userId, now, visibility: "private", title: "private");
 
         using var client = _factory!.CreateClient();
         var resp = await client.GetAsync("/users/alice");
@@ -105,17 +106,18 @@ public class UsersEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GetUser_AsOwner_IncludesUnlistedClips_ButNotHidden()
+    public async Task GetUser_AsOwner_IncludesUnlistedAndPrivateClips_ButNotHidden()
     {
-        // Owner viewing their own profile sees public + unlisted (so they can find their
-        // own private-link uploads), but NOT hidden clips — those are a moderation outcome
-        // and need an explicit admin unhide before they reappear anywhere.
+        // Owner viewing their own profile sees public + unlisted + private (so they can
+        // find everything they uploaded), but NOT hidden clips — those are a moderation
+        // outcome and need an explicit admin unhide before they reappear anywhere.
         await _fx.ResetAsync();
         var (userId, token) = await SeedUserAndIssueTokenAsync("alice");
         var now = DateTimeOffset.UtcNow;
         var pub = await SeedClipAsync(userId, now.AddSeconds(-1), title: "public");
         var unl = await SeedClipAsync(userId, now.AddSeconds(-2), visibility: "unlisted", title: "unlisted");
-        await SeedClipAsync(userId, now.AddSeconds(-3), visibility: "hidden", title: "hidden");
+        var priv = await SeedClipAsync(userId, now.AddSeconds(-3), visibility: "private", title: "private");
+        await SeedClipAsync(userId, now.AddSeconds(-4), visibility: "hidden", title: "hidden");
 
         using var client = ClientWithBearer(token);
         var resp = await client.GetAsync("/users/alice");
@@ -124,11 +126,11 @@ public class UsersEndpointsTests : IAsyncLifetime
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         var clipIds = body.GetProperty("clips").EnumerateArray()
             .Select(e => e.GetProperty("id").GetGuid()).ToList();
-        clipIds.Should().BeEquivalentTo(new[] { pub, unl });
+        clipIds.Should().BeEquivalentTo(new[] { pub, unl, priv });
     }
 
     [Fact]
-    public async Task GetUser_AsForeignViewer_OmitsUnlistedAndHidden()
+    public async Task GetUser_AsForeignViewer_OmitsUnlistedPrivateAndHidden()
     {
         // Sanity: even an authenticated viewer who isn't the owner still only sees public.
         await _fx.ResetAsync();
@@ -137,7 +139,8 @@ public class UsersEndpointsTests : IAsyncLifetime
         var now = DateTimeOffset.UtcNow;
         var pub = await SeedClipAsync(ownerId, now.AddSeconds(-1), title: "public");
         await SeedClipAsync(ownerId, now.AddSeconds(-2), visibility: "unlisted", title: "unlisted");
-        await SeedClipAsync(ownerId, now.AddSeconds(-3), visibility: "hidden", title: "hidden");
+        await SeedClipAsync(ownerId, now.AddSeconds(-3), visibility: "private", title: "private");
+        await SeedClipAsync(ownerId, now.AddSeconds(-4), visibility: "hidden", title: "hidden");
 
         using var client = ClientWithBearer(viewerToken);
         var resp = await client.GetAsync("/users/alice");

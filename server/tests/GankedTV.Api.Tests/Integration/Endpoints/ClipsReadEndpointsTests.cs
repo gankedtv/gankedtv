@@ -99,13 +99,14 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
     public async Task Feed_OrdersByCreatedAtDesc_AndOmitsNonPublicOrNonReady()
     {
         await _fx.ResetAsync();
-        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
         var now = DateTimeOffset.UtcNow;
         var (a, _) = await SeedClipAsync(userId, now.AddMinutes(-3), title: "oldest-ready");
         var (b, _) = await SeedClipAsync(userId, now.AddMinutes(-2), title: "middle-ready");
         var (c, _) = await SeedClipAsync(userId, now.AddMinutes(-1), title: "newest-ready");
         await SeedClipAsync(userId, now, status: "processing", title: "not-ready");
         await SeedClipAsync(userId, now, visibility: "unlisted", title: "unlisted");
+        await SeedClipAsync(userId, now, visibility: "private", title: "private");
 
         using var client = _factory!.CreateClient();
         var resp = await client.GetAsync("/clips/feed");
@@ -116,6 +117,16 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
             .Select(e => e.GetProperty("id").GetGuid()).ToList();
         ids.Should().Equal(c, b, a);
         body.GetProperty("nextCursor").ValueKind.Should().Be(JsonValueKind.Null);
+
+        // The feed is public-only even for the uploader — private clips live on the
+        // owner's profile, never in feeds.
+        using var ownerClient = ClientWithBearer(token);
+        var ownerResp = await ownerClient.GetAsync("/clips/feed");
+        ownerResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var ownerBody = await ownerResp.Content.ReadFromJsonAsync<JsonElement>();
+        ownerBody.GetProperty("items").EnumerateArray()
+            .Select(e => e.GetProperty("id").GetGuid())
+            .Should().Equal(c, b, a);
     }
 
     [Fact]
@@ -1450,6 +1461,49 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Detail_Private_OwnerReturns200()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync("privowner");
+        var (clipId, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, visibility: "private");
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.GetAsync($"/clips/{clipId}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("visibility").GetString().Should().Be("private");
+    }
+
+    [Fact]
+    public async Task Detail_Private_OtherUserReturns404()
+    {
+        await _fx.ResetAsync();
+        var (ownerId, _) = await SeedUserAndIssueTokenAsync("privowner");
+        var (_, strangerToken) = await SeedUserAndIssueTokenAsync("stranger");
+        var (clipId, _) = await SeedClipAsync(ownerId, DateTimeOffset.UtcNow, visibility: "private");
+
+        using var client = ClientWithBearer(strangerToken);
+        var resp = await client.GetAsync($"/clips/{clipId}");
+
+        // Same 404 as a nonexistent clip — knowing the id must not confirm anything.
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Detail_Private_AnonymousReturns404()
+    {
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync("privowner");
+        var (clipId, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, visibility: "private");
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync($"/clips/{clipId}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
     public async Task Detail_Found_ReturnsPresignedUrlAndMetadata()
     {
         await _fx.ResetAsync();
@@ -1614,6 +1668,38 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         using var client = _factory!.CreateClient();
         var resp = await client.GetAsync($"/clips/{Guid.NewGuid()}/stream");
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Stream_Private_OwnerReturns202()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync("privstreamer");
+        var (clipId, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, visibility: "private");
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.GetAsync($"/clips/{clipId}/stream");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
+    }
+
+    [Fact]
+    public async Task Stream_Private_NonOwnerReturns404_NoJobEnqueued()
+    {
+        await _fx.ResetAsync();
+        var (ownerId, _) = await SeedUserAndIssueTokenAsync("privstreamer");
+        var (_, strangerToken) = await SeedUserAndIssueTokenAsync("stranger");
+        var (clipId, _) = await SeedClipAsync(ownerId, DateTimeOffset.UtcNow, visibility: "private");
+
+        using var anonymous = _factory!.CreateClient();
+        using var stranger = ClientWithBearer(strangerToken);
+        var anonResp = await anonymous.GetAsync($"/clips/{clipId}/stream");
+        var strangerResp = await stranger.GetAsync($"/clips/{clipId}/stream");
+
+        anonResp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        strangerResp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        await using var db = _fx.CreateContext();
+        (await db.ClipStreamJobs.AsNoTracking().AnyAsync(j => j.ClipId == clipId)).Should().BeFalse();
     }
 
     [Fact]
@@ -1840,6 +1926,53 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         var resp = await client.GetAsync($"/c/{shareCode}");
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task ShareCodeResolve_Private_OwnerReturns200()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync("privowner");
+        var (_, shareCode) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, visibility: "private");
+
+        using var client = ClientWithBearer(token);
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+        var resp = await client.GetAsync($"/c/{shareCode}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task ShareCodeResolve_Private_AnonymousReturns404()
+    {
+        // Unlike unlisted, holding the share link is not enough for a private clip.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync("privowner");
+        var (_, shareCode) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, visibility: "private");
+
+        using var client = _factory!.CreateClient();
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+        var resp = await client.GetAsync($"/c/{shareCode}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task ShareCodeResolve_Private_CrawlerGets404NoOgHtml()
+    {
+        // Crawlers are anonymous, so a private clip must never leak OG metadata to link previews.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync("privowner");
+        var (_, shareCode) = await SeedClipAsync(
+            userId, DateTimeOffset.UtcNow, visibility: "private", title: "Secret Clip");
+
+        using var client = _factory!.CreateClient();
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Discordbot/2.0");
+        var resp = await client.GetAsync($"/c/{shareCode}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        var body = await resp.Content.ReadAsStringAsync();
+        body.Should().NotContain("Secret Clip");
     }
 
     [Fact]
