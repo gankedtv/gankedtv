@@ -226,8 +226,11 @@ public class SearchEndpointsTests : IAsyncLifetime
     public async Task Search_MatchesUsers_PrefixOutranksSubstring()
     {
         await _fx.ResetAsync();
-        await SeedUserAsync("thegankster");
-        await SeedUserAsync("gank-lord");
+        // Alphabetical order would put the substring match first — the expectation is
+        // deliberately anti-alphabetical so this test fails on its own if prefix
+        // ranking regresses to a plain name sort.
+        await SeedUserAsync("agankster");
+        await SeedUserAsync("gankz");
         await SeedUserAsync("unrelated");
 
         using var client = _factory!.CreateClient();
@@ -238,7 +241,7 @@ public class SearchEndpointsTests : IAsyncLifetime
         var usernames = body.GetProperty("users").EnumerateArray()
             .Select(u => u.GetProperty("username").GetString()).ToList();
         // Prefix match first, substring match second, non-match absent.
-        usernames.Should().Equal("gank-lord", "thegankster");
+        usernames.Should().Equal("gankz", "agankster");
     }
 
     [Fact]

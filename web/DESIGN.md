@@ -77,7 +77,7 @@ Scale highlights: wordmark 18px/900 caps; page title `clamp(30px,3.6vw,42px)` 90
 
 ## 5 — Layout rhythm
 
-- **Nav** ([AppNav.vue](src/components/AppNav.vue)): 56px sticky (`h-14`), `bg-surface-raised/90 backdrop-blur-md`, hairline bottom border. Logo + links (active = mint pill highlight `bg-accent-bg`), centered search (max 300px, `⌘K` chip, global ⌘K/Ctrl+K focuses it), mint Upload CTA, bell + mint badge, 30px avatar with mint border.
+- **Nav** ([AppNav.vue](src/components/AppNav.vue)): 56px sticky (`h-14`), `bg-surface-raised/90 backdrop-blur-md`, hairline bottom border. Logo + links (active = mint pill highlight `bg-accent-bg`), centered search (max 300px, `⌘K` chip, global ⌘K/Ctrl+K focuses it), live online count (7px mint dot + `text-[11px]` secondary label; hidden while the presence endpoint is absent/erroring), mint Upload CTA, bell + mint badge, 30px avatar with mint border.
 - **Page shell:** `mx-auto max-w-300 px-7 pt-7 pb-16 max-tablet:px-4`.
 - **Band separation:** `mt-8 border-t border-border pt-7` on each section after the first.
 - **Section header** ([SectionHeader.vue](src/components/SectionHeader.vue)): `{ kicker, title, moreTo?, moreLabel? }` → mint kicker + condensed title on one baseline + `ml-auto` "See all →".
@@ -119,13 +119,11 @@ Scale highlights: wordmark 18px/900 caps; page title `clamp(30px,3.6vw,42px)` 90
 
 What the API doesn't serve is **not rendered** — no mock numbers:
 
-- No "players online" count (nav) and no "follows online" panel (hero) until a presence endpoint exists.
+- The nav "N online" count and hero "Live now" follows panel render **only** while `GET /presence/summary` answers 2xx — any failure hides them entirely (no zero, no placeholder). The "+N" overflow uses the server's uncapped `followsOnlineCount`, never a guess.
 - Home "Top Rated" tab renders disabled until a likes-weighted feed sort exists.
-- "For You" maps to the latest feed until personalization exists.
-- Home game filter pills deep-link to `/game/:slug` until the feed API grows a `gameId` param.
 - No rank-movement copy ("up 38 spots") — the API has no rank history.
 
-Backend follow-ups are tracked as GitHub issues (online presence, top-rated sort, for-you feed, feed game filter).
+Backend follow-ups are tracked as GitHub issues (top-rated sort).
 
 ---
 

@@ -4,6 +4,8 @@ import type { UserSummary } from './follows'
 export interface PresenceSummary {
   online: number
   followsOnline: UserSummary[]
+  // Uncapped total (followsOnline is capped server-side) so "+N more" stays honest.
+  followsOnlineCount: number
 }
 
 const CID_KEY = 'presence_cid'

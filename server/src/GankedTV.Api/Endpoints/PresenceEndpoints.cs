@@ -43,15 +43,17 @@ public static class PresenceEndpoints
         var online = await tracker.CountOnlineAsync(ct);
 
         IReadOnlyList<UserSummary> followsOnline = [];
+        var followsOnlineCount = 0;
         if (principal.TryGetUserId(out var me))
         {
-            followsOnline = await GetFollowsOnlineAsync(db, tracker, me, options.Value.FollowsOnlineCap, ct);
+            (followsOnline, followsOnlineCount) =
+                await GetFollowsOnlineAsync(db, tracker, me, options.Value.FollowsOnlineCap, ct);
         }
 
-        return Results.Ok(new PresenceSummaryResponse(online, followsOnline));
+        return Results.Ok(new PresenceSummaryResponse(online, followsOnline, followsOnlineCount));
     }
 
-    private static async Task<IReadOnlyList<UserSummary>> GetFollowsOnlineAsync(
+    private static async Task<(IReadOnlyList<UserSummary> Page, int Total)> GetFollowsOnlineAsync(
         GankedTvDbContext db, PresenceTracker tracker, Guid me, int cap, CancellationToken ct)
     {
         var followeeIds = await db.Follows
@@ -60,25 +62,27 @@ public static class PresenceEndpoints
             .ToListAsync(ct);
         if (followeeIds.Count == 0)
         {
-            return [];
+            return ([], 0);
         }
 
         var keys = followeeIds.Select(UserKey).ToList();
         var onlineKeys = await tracker.GetOnlineSubsetAsync(keys, ct);
         if (onlineKeys.Count == 0)
         {
-            return [];
+            return ([], 0);
         }
 
+        // Total before the cap so clients can render an honest "+N more" overflow.
         var onlineIds = followeeIds
             .Where(id => onlineKeys.Contains(UserKey(id)))
-            .Take(cap)
             .ToList();
+        var pageIds = onlineIds.Take(cap).ToList();
 
-        return await db.Users
-            .Where(u => onlineIds.Contains(u.Id))
+        var page = await db.Users
+            .Where(u => pageIds.Contains(u.Id))
             .Select(u => new UserSummary(u.Id, u.Username, u.AvatarUrl))
             .ToListAsync(ct);
+        return (page, onlineIds.Count);
     }
 
     private static string ResolveViewerKey(ClaimsPrincipal principal, HttpContext http)

@@ -22,7 +22,7 @@ afterEach(() => {
 
 describe('stores/presence', () => {
   it('startPolling fetches immediately and then every 45s', async () => {
-    summaryMock.mockResolvedValue({ online: 7, followsOnline: [] })
+    summaryMock.mockResolvedValue({ online: 7, followsOnline: [], followsOnlineCount: 0 })
     const store = usePresenceStore()
 
     store.startPolling()
@@ -36,7 +36,7 @@ describe('stores/presence', () => {
   })
 
   it('startPolling is idempotent', async () => {
-    summaryMock.mockResolvedValue({ online: 1, followsOnline: [] })
+    summaryMock.mockResolvedValue({ online: 1, followsOnline: [], followsOnlineCount: 0 })
     const store = usePresenceStore()
 
     store.startPolling()
@@ -47,7 +47,7 @@ describe('stores/presence', () => {
   })
 
   it('stopPolling clears the interval', async () => {
-    summaryMock.mockResolvedValue({ online: 1, followsOnline: [] })
+    summaryMock.mockResolvedValue({ online: 1, followsOnline: [], followsOnlineCount: 0 })
     const store = usePresenceStore()
 
     store.startPolling()
@@ -61,18 +61,20 @@ describe('stores/presence', () => {
 
   it('a failed poll resets to unknown so the UI renders nothing', async () => {
     const follows = [{ id: 'u1', username: 'gankster', avatarUrl: null }]
-    summaryMock.mockResolvedValueOnce({ online: 5, followsOnline: follows })
+    summaryMock.mockResolvedValueOnce({ online: 5, followsOnline: follows, followsOnlineCount: 9 })
     const store = usePresenceStore()
 
     store.startPolling()
     await vi.advanceTimersByTimeAsync(0)
     expect(store.online).toBe(5)
     expect(store.followsOnline).toEqual(follows)
+    expect(store.followsOnlineCount).toBe(9)
 
     summaryMock.mockRejectedValueOnce(new Error('503'))
     await vi.advanceTimersByTimeAsync(45_000)
 
     expect(store.online).toBeNull()
     expect(store.followsOnline).toEqual([])
+    expect(store.followsOnlineCount).toBe(0)
   })
 })

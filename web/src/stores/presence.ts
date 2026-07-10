@@ -11,6 +11,7 @@ interface State {
   // policy the UI renders nothing in that state — never a zero or a placeholder.
   online: number | null
   followsOnline: PresenceSummary['followsOnline']
+  followsOnlineCount: number
   pollTimer: ReturnType<typeof setInterval> | null
 }
 
@@ -18,6 +19,7 @@ export const usePresenceStore = defineStore('presence', {
   state: (): State => ({
     online: null,
     followsOnline: [],
+    followsOnlineCount: 0,
     pollTimer: null,
   }),
 
@@ -42,11 +44,13 @@ export const usePresenceStore = defineStore('presence', {
         const summary = await api.summary()
         this.online = summary.online
         this.followsOnline = summary.followsOnline
+        this.followsOnlineCount = summary.followsOnlineCount
       } catch {
         // Any failure (disabled endpoint → 503, network blip) hides the indicator
         // until a later poll succeeds — silent by design.
         this.online = null
         this.followsOnline = []
+        this.followsOnlineCount = 0
       }
     },
   },

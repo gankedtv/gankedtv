@@ -48,7 +48,7 @@ describe('api/presence', () => {
   it('GETs /presence/summary with the stable cid attached', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => jsonResponse({ online: 12, followsOnline: [] })),
+      vi.fn(async () => jsonResponse({ online: 12, followsOnline: [], followsOnlineCount: 0 })),
     )
 
     await presence.summary()
@@ -63,7 +63,7 @@ describe('api/presence', () => {
     storage.__throwMode = true
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => jsonResponse({ online: 1, followsOnline: [] })),
+      vi.fn(async () => jsonResponse({ online: 1, followsOnline: [], followsOnlineCount: 0 })),
     )
 
     await presence.summary()
@@ -76,6 +76,7 @@ describe('api/presence', () => {
     const body = {
       online: 12847,
       followsOnline: [{ id: 'u1', username: 'gankster', avatarUrl: null }],
+      followsOnlineCount: 18,
     }
     vi.stubGlobal(
       'fetch',

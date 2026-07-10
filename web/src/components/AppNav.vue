@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import { usePresenceStore } from '@/stores/presence'
+import { formatNum } from '@/lib/format'
 import { search, type SearchResponse } from '@/api/search'
 import ThemeModeToggle from './ThemeModeToggle.vue'
 import UserAvatar from './UserAvatar.vue'
@@ -32,7 +33,7 @@ watch(
 )
 
 const onlineLabel = computed(() =>
-  presenceStore.online === null ? null : presenceStore.online.toLocaleString('en-US'),
+  presenceStore.online === null ? null : formatNum(presenceStore.online),
 )
 
 // Start/stop polling whenever the auth state flips. Wiring it here (vs App.vue) keeps the
@@ -407,10 +408,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onGlobalKeydown))
             class="fixed z-60 overflow-hidden rounded-lg border border-border-strong bg-surface-base"
             @mousedown.prevent
           >
-            <div
-              v-if="loading && !hasDropdownResults"
-              class="flex items-center gap-3 px-3.5 py-3"
-            >
+            <div v-if="loading && !hasDropdownResults" class="flex items-center gap-3 px-3.5 py-3">
               <span class="block h-1.5 w-5.5 overflow-hidden rounded-full bg-surface-high">
                 <span
                   class="block h-full w-full origin-left bg-accent animate-[tick_1.6s_ease-in-out_infinite]"
@@ -449,7 +447,9 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onGlobalKeydown))
                     role="option"
                     :aria-selected="false"
                     class="flex cursor-pointer items-center gap-3 px-3.5 py-2 transition-colors duration-150 hover:bg-surface-high"
-                    @mousedown.prevent="onResultClick({ name: 'user', params: { username: u.username } })"
+                    @mousedown.prevent="
+                      onResultClick({ name: 'user', params: { username: u.username } })
+                    "
                   >
                     <UserAvatar :user="u" :size="24" />
                     <span class="min-w-0 flex-1 truncate text-sm text-text-primary">
@@ -543,10 +543,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onGlobalKeydown))
         </RouterLink>
 
         <!-- Live online count — renders nothing while the endpoint is absent/erroring -->
-        <div
-          v-if="onlineLabel !== null"
-          class="flex items-center gap-1.5 pr-1 max-lg:hidden"
-        >
+        <div v-if="onlineLabel !== null" class="flex items-center gap-1.5 pr-1 max-lg:hidden">
           <span class="size-[7px] rounded-full bg-accent" aria-hidden="true"></span>
           <span class="text-[11px] font-semibold text-text-secondary">
             {{ onlineLabel }} online

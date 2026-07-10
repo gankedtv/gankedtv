@@ -31,7 +31,10 @@ const liveFollows = computed(() =>
   auth.isAuthenticated ? presenceStore.followsOnline.slice(0, LIVE_PANEL_AVATAR_CAP) : [],
 )
 const liveFollowsOverflow = computed(() =>
-  Math.max(0, (auth.isAuthenticated ? presenceStore.followsOnline.length : 0) - LIVE_PANEL_AVATAR_CAP),
+  Math.max(
+    0,
+    (auth.isAuthenticated ? presenceStore.followsOnlineCount : 0) - liveFollows.value.length,
+  ),
 )
 
 type FeedSource = 'following' | 'for-you'
