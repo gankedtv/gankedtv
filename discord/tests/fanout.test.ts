@@ -191,4 +191,48 @@ describe('createFanout', () => {
     expect(payload.files).toEqual([{ attachment: bytes, name: 'clip.jpg' }]);
     expect(payload.embeds[0]?.image?.url).toBe('attachment://clip.jpg');
   });
+
+  test('failed downloads are not memoized — the next post of the clip retries', async () => {
+    const { channel, send } = sendableChannel();
+    const bytes = Buffer.from('JPEGDATA');
+    let attempt = 0;
+    const d = deps({
+      channels: { fetch: async () => channel },
+      fetchThumbnail: async () => (++attempt === 1 ? null : bytes),
+    });
+    const fan = createFanout(d);
+    const c = clip({ shareCode: 'retry1' });
+
+    await fan(c, target);
+    await fan(c, { channelId: 'chan-2', pingRoleId: null });
+
+    expect(attempt).toBe(2);
+    const first = send.mock.calls[0]?.[0] as { files?: unknown[] };
+    const second = send.mock.calls[1]?.[0] as { files?: unknown[] };
+    expect(first.files).toBeUndefined();
+    expect(second.files).toEqual([{ attachment: bytes, name: 'clip.jpg' }]);
+  });
+
+  test('cache evicts oldest beyond the cap, so an early clip re-downloads', async () => {
+    const { channel } = sendableChannel();
+    let fetches = 0;
+    const d = deps({
+      channels: { fetch: async () => channel },
+      fetchThumbnail: async () => {
+        fetches++;
+        return Buffer.from('J');
+      },
+    });
+    const fan = createFanout(d);
+
+    const first = clip({});
+    await fan(first, target);
+    for (let i = 0; i < 50; i++) {
+      await fan(clip({}), target);
+    }
+    await fan(first, target);
+
+    // 1 (first) + 50 (fill past the cap) + 1 (first again after eviction).
+    expect(fetches).toBe(52);
+  });
 });

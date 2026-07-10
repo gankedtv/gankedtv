@@ -1,58 +1,68 @@
-import { afterEach, describe, expect, test } from 'bun:test';
-import { fetchThumbnail, THUMBNAIL_FILENAME } from '../../src/lib/thumbnail.ts';
+import { describe, expect, test } from 'bun:test';
+import { downloadThumbnail, THUMBNAIL_FILENAME } from '../../src/lib/thumbnail.ts';
 
-const realFetch = globalThis.fetch;
-
-afterEach(() => {
-  globalThis.fetch = realFetch;
-});
-
-function stubFetch(impl: () => Promise<Response>) {
-  globalThis.fetch = impl as unknown as typeof fetch;
+function fetchImpl(impl: () => Promise<Response>): typeof fetch {
+  return impl as unknown as typeof fetch;
 }
 
-describe('fetchThumbnail', () => {
+describe('downloadThumbnail', () => {
   test('null url → null without fetching', async () => {
-    stubFetch(async () => {
-      throw new Error('must not be called');
-    });
+    const result = await downloadThumbnail(
+      null,
+      fetchImpl(async () => {
+        throw new Error('must not be called');
+      }),
+    );
 
-    expect(await fetchThumbnail(null)).toBeNull();
+    expect(result).toBeNull();
   });
 
   test('ok response → bytes', async () => {
-    stubFetch(async () => new Response(Buffer.from('JPEGDATA')));
-
-    const bytes = await fetchThumbnail('https://minio.local/thumbs/x.jpg?sig=1');
+    const bytes = await downloadThumbnail(
+      'https://minio.local/thumbs/x.jpg?sig=1',
+      fetchImpl(async () => new Response(Buffer.from('JPEGDATA'))),
+    );
 
     expect(bytes).not.toBeNull();
     expect(bytes!.toString()).toBe('JPEGDATA');
   });
 
   test('non-ok response (expired presign → 403) → null', async () => {
-    stubFetch(async () => new Response('denied', { status: 403 }));
+    const bytes = await downloadThumbnail(
+      'https://minio.local/thumbs/x.jpg',
+      fetchImpl(async () => new Response('denied', { status: 403 })),
+    );
 
-    expect(await fetchThumbnail('https://minio.local/thumbs/x.jpg')).toBeNull();
+    expect(bytes).toBeNull();
   });
 
   test('network failure → null instead of throwing', async () => {
-    stubFetch(async () => {
-      throw new Error('ECONNREFUSED');
-    });
+    const bytes = await downloadThumbnail(
+      'http://localhost:9000/thumbs/x.jpg',
+      fetchImpl(async () => {
+        throw new Error('ECONNREFUSED');
+      }),
+    );
 
-    expect(await fetchThumbnail('http://localhost:9000/thumbs/x.jpg')).toBeNull();
+    expect(bytes).toBeNull();
   });
 
   test('empty body → null', async () => {
-    stubFetch(async () => new Response(Buffer.alloc(0)));
+    const bytes = await downloadThumbnail(
+      'https://minio.local/thumbs/x.jpg',
+      fetchImpl(async () => new Response(Buffer.alloc(0))),
+    );
 
-    expect(await fetchThumbnail('https://minio.local/thumbs/x.jpg')).toBeNull();
+    expect(bytes).toBeNull();
   });
 
   test('oversized body → null (Discord upload cap)', async () => {
-    stubFetch(async () => new Response(Buffer.alloc(8 * 1024 * 1024 + 1)));
+    const bytes = await downloadThumbnail(
+      'https://minio.local/thumbs/x.jpg',
+      fetchImpl(async () => new Response(Buffer.alloc(8 * 1024 * 1024 + 1))),
+    );
 
-    expect(await fetchThumbnail('https://minio.local/thumbs/x.jpg')).toBeNull();
+    expect(bytes).toBeNull();
   });
 
   test('attachment filename is a stable jpg name', () => {

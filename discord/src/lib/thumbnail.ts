@@ -14,10 +14,16 @@ export type ThumbnailFetcher = (url: string | null) => Promise<Buffer | null>;
 
 // Best-effort by design: any failure (expired URL, timeout, oversized body) returns
 // null and the embed falls back to the raw URL — same behavior as before this helper.
-export const fetchThumbnail: ThumbnailFetcher = async (url) => {
+// fetchImpl is injectable for tests, mirroring createApi's convention.
+export const fetchThumbnail: ThumbnailFetcher = (url) => downloadThumbnail(url);
+
+export async function downloadThumbnail(
+  url: string | null,
+  fetchImpl: typeof fetch = fetch,
+): Promise<Buffer | null> {
   if (!url) return null;
   try {
-    const resp = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    const resp = await fetchImpl(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!resp.ok) return null;
     const bytes = Buffer.from(await resp.arrayBuffer());
     if (bytes.byteLength === 0 || bytes.byteLength > MAX_BYTES) return null;
@@ -25,4 +31,4 @@ export const fetchThumbnail: ThumbnailFetcher = async (url) => {
   } catch {
     return null;
   }
-};
+}

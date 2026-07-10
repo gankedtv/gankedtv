@@ -34,15 +34,20 @@ function isRateLimit(err: unknown): boolean {
 // post-log row is written. Returning false means the poller isPosted()-checks
 // this pair again next round and retries.
 export function createFanout(deps: FanoutDeps): Fanout {
-  const thumbnails = new Map<string, Buffer | null>();
+  const thumbnails = new Map<string, Buffer>();
   async function thumbnailFor(clipId: string, url: string | null): Promise<Buffer | null> {
-    if (thumbnails.has(clipId)) return thumbnails.get(clipId) ?? null;
+    const cached = thumbnails.get(clipId);
+    if (cached !== undefined) return cached;
     const bytes = await deps.fetchThumbnail(url);
-    if (thumbnails.size >= THUMBNAIL_CACHE_MAX) {
-      const oldest = thumbnails.keys().next().value;
-      if (oldest !== undefined) thumbnails.delete(oldest);
+    // Only successes are memoized: a transient download failure must not pin every
+    // later post of this clip to the short-lived URL fallback.
+    if (bytes !== null) {
+      if (thumbnails.size >= THUMBNAIL_CACHE_MAX) {
+        const oldest = thumbnails.keys().next().value;
+        if (oldest !== undefined) thumbnails.delete(oldest);
+      }
+      thumbnails.set(clipId, bytes);
     }
-    thumbnails.set(clipId, bytes);
     return bytes;
   }
 
