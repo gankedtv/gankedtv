@@ -90,12 +90,10 @@ public static class ClipsReadEndpoints
         IClipStreamJobStore streamJobs,
         CancellationToken ct)
     {
-        // Same visibility rule as the detail endpoint: any ready clip is reachable by link,
-        // except private ones, which only resolve for their owner.
         var viewerId = principal.GetUserIdOrNull();
         var clip = await db.Clips.AsNoTracking()
-            .Where(c => c.Id == id && c.Status == ClipStatuses.Ready
-                && (c.Visibility != ClipVisibilities.Private || c.UserId == viewerId))
+            .Where(c => c.Id == id && c.Status == ClipStatuses.Ready)
+            .WhereVisibleTo(viewerId)
             .Select(c => new { c.VideoCodec })
             .SingleOrDefaultAsync(ct);
         if (clip is null)
@@ -734,9 +732,8 @@ public static class ClipsReadEndpoints
     {
         var viewerId = principal.GetUserIdOrNull();
         return ResolveClipByPredicateAsync(
-            c => c.Id == id && c.Status == ClipStatuses.Ready
-                && (c.Visibility != ClipVisibilities.Private || c.UserId == viewerId),
-            principal, db, storage, s3, ct);
+            c => c.Id == id && c.Status == ClipStatuses.Ready,
+            viewerId, principal, db, storage, s3, ct);
     }
 
     private static async Task<IResult> GetByShareCode(
@@ -749,13 +746,12 @@ public static class ClipsReadEndpoints
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
-        // Private clips resolve for the owner only — crawlers and anyone else holding the
-        // share link get the same 404 as a nonexistent code.
+        // Private and hidden clips resolve for the owner only — crawlers and anyone else
+        // holding the share link get the same 404 as a nonexistent code.
         var viewerId = principal.GetUserIdOrNull();
         var result = await LoadClipWithUrlsAsync(
-            c => c.ShareCode == code && c.Status == ClipStatuses.Ready
-                && (c.Visibility != ClipVisibilities.Private || c.UserId == viewerId),
-            db, storage, s3, ct);
+            c => c.ShareCode == code && c.Status == ClipStatuses.Ready,
+            viewerId, db, storage, s3, ct);
 
         if (result is null)
             return ProblemResults.NotFound("not_found");
@@ -794,10 +790,11 @@ public static class ClipsReadEndpoints
     }
 
     // Unlisted clips are accessible to anyone with the link or share code — only the
-    // feed is gated to public-only. Private clips are the exception: callers must fold
-    // the owner check into the predicate, since this loader takes no viewer identity.
+    // feed is gated to public-only. Private and hidden clips resolve for their owner
+    // only; that rule is applied here (WhereVisibleTo) so no caller can forget it.
     private static async Task<(Clip clip, string videoUrl, string thumbnailUrl)?> LoadClipWithUrlsAsync(
         Expression<Func<Clip, bool>> predicate,
+        Guid? viewerId,
         GankedTvDbContext db,
         IObjectStorageService storage,
         IOptions<S3Options> s3,
@@ -805,6 +802,7 @@ public static class ClipsReadEndpoints
     {
         var clip = await db.Clips.AsNoTracking()
             .IncludeFeedRelations()
+            .WhereVisibleTo(viewerId)
             .FirstOrDefaultAsync(predicate, ct);
 
         if (clip is null)
@@ -820,13 +818,14 @@ public static class ClipsReadEndpoints
 
     private static async Task<IResult> ResolveClipByPredicateAsync(
         Expression<Func<Clip, bool>> predicate,
+        Guid? viewerId,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
         IObjectStorageService storage,
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
-        var result = await LoadClipWithUrlsAsync(predicate, db, storage, s3, ct);
+        var result = await LoadClipWithUrlsAsync(predicate, viewerId, db, storage, s3, ct);
 
         if (result is null)
         {

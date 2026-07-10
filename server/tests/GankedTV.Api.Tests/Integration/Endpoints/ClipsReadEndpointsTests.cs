@@ -1504,6 +1504,51 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Detail_Hidden_OwnerReturns200()
+    {
+        // Hidden mirrors private on the owner-scoped read paths: the owner can still
+        // inspect their own moderated clip.
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync("hiddenowner");
+        var (clipId, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, visibility: "hidden");
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.GetAsync($"/clips/{clipId}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("visibility").GetString().Should().Be("hidden");
+    }
+
+    [Fact]
+    public async Task Detail_Hidden_OtherUserReturns404()
+    {
+        await _fx.ResetAsync();
+        var (ownerId, _) = await SeedUserAndIssueTokenAsync("hiddenowner");
+        var (_, strangerToken) = await SeedUserAndIssueTokenAsync("stranger");
+        var (clipId, _) = await SeedClipAsync(ownerId, DateTimeOffset.UtcNow, visibility: "hidden");
+
+        using var client = ClientWithBearer(strangerToken);
+        var resp = await client.GetAsync($"/clips/{clipId}");
+
+        // Moderator-hidden content must actually be down for link-holders, not just feeds.
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Detail_Hidden_AnonymousReturns404()
+    {
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync("hiddenowner");
+        var (clipId, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, visibility: "hidden");
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync($"/clips/{clipId}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
     public async Task Detail_Found_ReturnsPresignedUrlAndMetadata()
     {
         await _fx.ResetAsync();
@@ -1690,6 +1735,38 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         var (ownerId, _) = await SeedUserAndIssueTokenAsync("privstreamer");
         var (_, strangerToken) = await SeedUserAndIssueTokenAsync("stranger");
         var (clipId, _) = await SeedClipAsync(ownerId, DateTimeOffset.UtcNow, visibility: "private");
+
+        using var anonymous = _factory!.CreateClient();
+        using var stranger = ClientWithBearer(strangerToken);
+        var anonResp = await anonymous.GetAsync($"/clips/{clipId}/stream");
+        var strangerResp = await stranger.GetAsync($"/clips/{clipId}/stream");
+
+        anonResp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        strangerResp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        await using var db = _fx.CreateContext();
+        (await db.ClipStreamJobs.AsNoTracking().AnyAsync(j => j.ClipId == clipId)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Stream_Hidden_OwnerReturns202()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync("hiddenstreamer");
+        var (clipId, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, visibility: "hidden");
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.GetAsync($"/clips/{clipId}/stream");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
+    }
+
+    [Fact]
+    public async Task Stream_Hidden_NonOwnerReturns404_NoJobEnqueued()
+    {
+        await _fx.ResetAsync();
+        var (ownerId, _) = await SeedUserAndIssueTokenAsync("hiddenstreamer");
+        var (_, strangerToken) = await SeedUserAndIssueTokenAsync("stranger");
+        var (clipId, _) = await SeedClipAsync(ownerId, DateTimeOffset.UtcNow, visibility: "hidden");
 
         using var anonymous = _factory!.CreateClient();
         using var stranger = ClientWithBearer(strangerToken);
@@ -1973,6 +2050,53 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
         var body = await resp.Content.ReadAsStringAsync();
         body.Should().NotContain("Secret Clip");
+    }
+
+    [Fact]
+    public async Task ShareCodeResolve_Hidden_OwnerReturns200()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync("hiddenowner");
+        var (_, shareCode) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, visibility: "hidden");
+
+        using var client = ClientWithBearer(token);
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+        var resp = await client.GetAsync($"/c/{shareCode}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task ShareCodeResolve_Hidden_AnonymousReturns404()
+    {
+        // Hiding abusive content must take it down for share-link holders too.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync("hiddenowner");
+        var (_, shareCode) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, visibility: "hidden");
+
+        using var client = _factory!.CreateClient();
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+        var resp = await client.GetAsync($"/c/{shareCode}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task ShareCodeResolve_Hidden_CrawlerGets404NoOgHtml()
+    {
+        // A hidden clip must never leak OG metadata to link previews.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync("hiddenowner");
+        var (_, shareCode) = await SeedClipAsync(
+            userId, DateTimeOffset.UtcNow, visibility: "hidden", title: "Moderated Clip");
+
+        using var client = _factory!.CreateClient();
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Discordbot/2.0");
+        var resp = await client.GetAsync($"/c/{shareCode}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        var body = await resp.Content.ReadAsStringAsync();
+        body.Should().NotContain("Moderated Clip");
     }
 
     [Fact]

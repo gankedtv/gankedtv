@@ -146,6 +146,21 @@ public class CommentsEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Create_HiddenClip_NonOwnerReturns404()
+    {
+        // Moderator-hidden clips mirror private ones: nonexistent to everyone but the owner.
+        await _fx.ResetAsync();
+        var (ownerId, _) = await SeedUserAndIssueTokenAsync();
+        var (_, strangerToken) = await SeedUserAndIssueTokenAsync("stranger");
+        var clipId = await SeedClipAsync(ownerId, visibility: "hidden");
+
+        using var client = ClientWithBearer(strangerToken);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/comments", new { body = "hi" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
     public async Task Create_EmptyBody_Returns400()
     {
         await _fx.ResetAsync();
@@ -419,6 +434,47 @@ public class CommentsEndpointsTests : IAsyncLifetime
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         body.GetProperty("items").GetArrayLength().Should().Be(1);
+    }
+
+    [Fact]
+    public async Task List_HiddenClip_NonOwnerReturns200Empty()
+    {
+        // Same existence-oracle shape as private: comments on a moderator-hidden clip
+        // must not leak to strangers or anonymous viewers.
+        await _fx.ResetAsync();
+        var (ownerId, _) = await SeedUserAndIssueTokenAsync();
+        var (_, strangerToken) = await SeedUserAndIssueTokenAsync("stranger");
+        var clipId = await SeedClipAsync(ownerId, visibility: "hidden");
+        await SeedCommentAsync(clipId, ownerId, "hidden note");
+
+        using var anonymous = _factory!.CreateClient();
+        using var stranger = ClientWithBearer(strangerToken);
+        var anonResp = await anonymous.GetAsync($"/clips/{clipId}/comments");
+        var strangerResp = await stranger.GetAsync($"/clips/{clipId}/comments");
+
+        anonResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        strangerResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await anonResp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("items").GetArrayLength().Should().Be(0);
+        (await strangerResp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("items").GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ListReplies_HiddenClip_NonOwnerReturns200Empty()
+    {
+        await _fx.ResetAsync();
+        var (ownerId, _) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(ownerId, visibility: "hidden");
+        var top = await SeedCommentAsync(clipId, ownerId, "top");
+        await SeedCommentAsync(clipId, ownerId, "reply", parentId: top);
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync($"/comments/{top}/replies");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("items").GetArrayLength().Should().Be(0);
     }
 
     [Fact]

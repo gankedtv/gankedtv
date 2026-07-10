@@ -36,13 +36,14 @@ public static class LikesEndpoints
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
 
+        // Private and hidden clips look nonexistent to everyone but the owner.
         var clip = await db.Clips.AsNoTracking()
             .Where(c => c.Id == id)
-            .Select(c => new { c.UserId, c.Visibility })
+            .WhereVisibleTo(userId)
+            .Select(c => new { c.UserId })
             .FirstOrDefaultAsync(ct);
-        if (clip is null || (clip.Visibility == ClipVisibilities.Private && clip.UserId != userId))
+        if (clip is null)
         {
-            // Private clips look nonexistent to everyone but the owner.
             return ProblemResults.NotFound("not_found");
         }
         var clipOwnerId = clip.UserId;
@@ -92,11 +93,12 @@ public static class LikesEndpoints
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
 
-        // Mirrors LikeClip's gate: a stranger's stale like on a now-private clip stays put
-        // until the clip becomes visible to them again.
+        // Mirrors LikeClip's gate: a stranger's stale like on a now-private or now-hidden
+        // clip stays put until the clip becomes visible to them again.
         var clipVisible = await db.Clips.AsNoTracking()
-            .AnyAsync(c => c.Id == id
-                && (c.Visibility != ClipVisibilities.Private || c.UserId == userId), ct);
+            .Where(c => c.Id == id)
+            .WhereVisibleTo(userId)
+            .AnyAsync(ct);
         if (!clipVisible)
         {
             return ProblemResults.NotFound("not_found");
