@@ -1,8 +1,5 @@
-// The API's thumbnailUrl is a presigned URL with a bounded lifetime, and Discord's
-// media proxy re-fetches embed images from origin later — once the signature expires
-// the image breaks for everyone who scrolls back (in dev the host is localhost and
-// Discord can never fetch it at all). Downloading the bytes while the URL is fresh
-// and uploading them as a message attachment pins the image to Discord's CDN forever.
+// thumbnailUrl is presigned (expires; localhost in dev) and Discord's media proxy
+// re-fetches it later — attaching the bytes pins the image to Discord's CDN instead.
 
 export const THUMBNAIL_FILENAME = 'clip.jpg';
 
