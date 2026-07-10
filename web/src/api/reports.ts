@@ -3,13 +3,7 @@ import { api } from './client'
 export type ReportTargetType = 'clip' | 'comment' | 'user'
 
 export type ReportReason =
-  | 'spam'
-  | 'harassment'
-  | 'hate'
-  | 'nsfw'
-  | 'violence'
-  | 'wrong_game'
-  | 'other'
+  'spam' | 'harassment' | 'hate' | 'nsfw' | 'violence' | 'wrong_game' | 'other'
 
 const PATHS: Record<ReportTargetType, (id: string) => string> = {
   clip: (id) => `/clips/${id}/report`,
