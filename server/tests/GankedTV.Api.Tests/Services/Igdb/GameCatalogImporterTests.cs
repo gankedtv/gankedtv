@@ -232,6 +232,21 @@ public class GameCatalogImporterTests : IAsyncLifetime
         slugs.Should().Contain("twin-test").And.Contain("twin-test-7002");
     }
 
+    [Fact]
+    public async Task ImportAsync_ReservedRouteLiteral_GetsDisambiguatedSlug()
+    {
+        // A game literally named "Hot" must not claim /games/hot, which is a route literal.
+        var igdb = StubIgdb();
+        var storage = new InMemoryObjectStorage();
+
+        await using var db = _fx.CreateContext();
+        await Build(db, igdb, storage).ImportAsync([new IgdbGame(9100, "Hot", "imgHot")], CancellationToken.None);
+
+        await using var verify = _fx.CreateContext();
+        var hot = await verify.Games.SingleAsync(g => g.IgdbId == 9100);
+        hot.Slug.Should().Be("hot-9100");
+    }
+
     private static IIgdbMetadataService StubIgdb(params IgdbGame[] games)
     {
         var igdb = Substitute.For<IIgdbMetadataService>();

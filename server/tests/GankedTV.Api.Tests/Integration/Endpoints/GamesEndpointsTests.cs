@@ -372,12 +372,14 @@ public class GamesEndpointsTests : IAsyncLifetime
         var apexId = await GetGameIdBySlugAsync("apex-legends");
         var valorantId = await GetGameIdBySlugAsync("valorant");
 
-        // Apex: 1 like in window = 3 points. Valorant: 2 views in window = 2 points.
+        // Valorant: 1 like in window = 3 points. Apex: 2 views in window = 2 points.
+        // Expected order is anti-alphabetical on purpose, so a regression to the old
+        // alphabetical list fails this test on its own.
         var (apexClip, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, apexId);
         var (valorantClip, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, valorantId);
-        await SeedLikeAsync(apexClip, userId, DateTimeOffset.UtcNow.AddHours(-1));
-        await SeedViewAsync(valorantClip, DateTimeOffset.UtcNow.AddHours(-1));
-        await SeedViewAsync(valorantClip, DateTimeOffset.UtcNow.AddHours(-2));
+        await SeedLikeAsync(valorantClip, userId, DateTimeOffset.UtcNow.AddHours(-1));
+        await SeedViewAsync(apexClip, DateTimeOffset.UtcNow.AddHours(-1));
+        await SeedViewAsync(apexClip, DateTimeOffset.UtcNow.AddHours(-2));
 
         using var client = _factory!.CreateClient();
         var resp = await client.GetAsync("/games/hot?limit=2");
@@ -385,7 +387,7 @@ public class GamesEndpointsTests : IAsyncLifetime
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         var games = await resp.Content.ReadFromJsonAsync<JsonElement>();
         var slugs = games.EnumerateArray().Select(g => g.GetProperty("slug").GetString()).ToArray();
-        slugs.Should().Equal("apex-legends", "valorant");
+        slugs.Should().Equal("valorant", "apex-legends");
     }
 
     [Fact]
@@ -428,7 +430,7 @@ public class GamesEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GetGames_SearchMiss_RetriesAfterOnDemandImport()
+    public async Task GetGames_SearchMiss_AuthedCaller_RetriesAfterOnDemandImport()
     {
         await _fx.ResetAsync();
 
@@ -456,7 +458,9 @@ public class GamesEndpointsTests : IAsyncLifetime
             configureServices: s => s.AddSingleton(searchImport));
         try
         {
+            var (_, token) = await AuthTestHelpers.SeedUserAndIssueTokenAsync(_fx, factory, "games-importer");
             using var client = factory.CreateClient();
+            client.DefaultRequestHeaders.Authorization = new("Bearer", token);
             var resp = await client.GetAsync("/games?search=satisfactory");
 
             resp.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -471,6 +475,24 @@ public class GamesEndpointsTests : IAsyncLifetime
             await using var db = _fx.CreateContext();
             await SeededGames.ResetBaselineAsync(db);
         }
+    }
+
+    [Fact]
+    public async Task GetGames_SearchMiss_Anonymous_DoesNotImport()
+    {
+        await _fx.ResetAsync();
+        var searchImport = Substitute.For<GankedTV.Api.Services.Igdb.IGameSearchImportService>();
+
+        await using var factory = new AuthApiFactory(
+            _fx.ConnectionString, _storage,
+            configureServices: s => s.AddSingleton(searchImport));
+        using var client = factory.CreateClient();
+        var resp = await client.GetAsync("/games?search=satisfactory");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var games = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        games.GetArrayLength().Should().Be(0);
+        await searchImport.DidNotReceive().TryImportMatchesAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     // ---- helpers ----

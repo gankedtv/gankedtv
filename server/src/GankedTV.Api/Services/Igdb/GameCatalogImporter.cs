@@ -154,10 +154,14 @@ public sealed class GameCatalogImporter(
         return true;
     }
 
+    // Route literals under /games/ that a game slug must never claim: /games/hot would
+    // shadow the detail/clips routes for a game literally named "Hot".
+    private static readonly string[] ReservedSlugs = ["hot"];
+
     private static string UniqueSlug(string name, int igdbId, HashSet<string> used)
     {
         var baseSlug = GameNaming.Slug(name);
-        if (used.Add(baseSlug))
+        if (!ReservedSlugs.Contains(baseSlug, StringComparer.Ordinal) && used.Add(baseSlug))
         {
             return baseSlug;
         }

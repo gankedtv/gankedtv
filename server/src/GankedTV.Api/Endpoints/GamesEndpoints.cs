@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using GankedTV.Api.Auth;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Contracts.Games;
 using GankedTV.Api.Contracts.Leaderboards;
@@ -39,6 +40,7 @@ public static class GamesEndpoints
         string? search,
         int? limit,
         bool? hasClips,
+        ClaimsPrincipal principal,
         GankedTvDbContext db,
         IGamesCache gamesCache,
         IGameSearchImportService searchImport,
@@ -54,7 +56,13 @@ public static class GamesEndpoints
 
             // Local miss → pull matches from IGDB into the catalog and retry once, so
             // long-tail games outside the popularity import become pickable on first search.
-            if (results.Count == 0 && await searchImport.TryImportMatchesAsync(search, ct))
+            // Authenticated-only: the pickers behind it all require auth, and it keeps
+            // anonymous unique-term enumeration from minting catalog rows and IGDB calls.
+            // Skipped under hasClips (a just-imported game has no clips; the retry can't win).
+            if (results.Count == 0
+                && hasClips != true
+                && principal.TryGetUserId(out _)
+                && await searchImport.TryImportMatchesAsync(search, ct))
             {
                 results = await QueryGamesAsync(db, hasClips, search, clampedLimit, ct);
             }

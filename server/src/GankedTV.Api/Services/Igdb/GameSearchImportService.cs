@@ -56,7 +56,13 @@ public sealed class GameSearchImportService(
                     return result.Processed > 0;
                 }
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (OperationCanceledException)
+            {
+                // An aborted request must not negative-cache a term IGDB never answered for.
+                memo.Remove(memoKey);
+                throw;
+            }
+            catch (Exception ex)
             {
                 // The picker must never fail because IGDB is down — the (possibly empty)
                 // local result is still a valid answer.
