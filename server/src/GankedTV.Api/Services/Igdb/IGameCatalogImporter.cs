@@ -9,6 +9,13 @@ namespace GankedTV.Api.Services.Igdb;
 public interface IGameCatalogImporter
 {
     Task<GameCatalogImportResult> RunAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Reconciles an explicit set of IGDB games into the catalog using the same
+    /// adopt/insert/cover-mirror rules as <see cref="RunAsync"/>. Used by the on-demand
+    /// search import, which resolves its own candidates instead of the popularity window.
+    /// </summary>
+    Task<GameCatalogImportResult> ImportAsync(IReadOnlyList<IgdbGame> games, CancellationToken ct = default);
 }
 
 /// <summary>Counts from one import/sync pass, for logging and tests.</summary>

@@ -118,6 +118,42 @@ public class IgdbMetadataServiceTests
     }
 
     [Fact]
+    public async Task SearchGamesAsync_SendsSearchQuery_AndFiltersCoverlessRows()
+    {
+        const string gamesJson = """
+        [
+          {"id":100,"name":"Satisfactory","cover":{"id":10,"image_id":"sat1"}},
+          {"id":101,"name":"Satisfactorio","cover":null}
+        ]
+        """;
+        var handler = new TestHttpMessageHandler()
+            .OnPost(TokenUrl, HttpStatusCode.OK, TokenJson)
+            .OnPost(GamesUrl, HttpStatusCode.OK, gamesJson);
+
+        var games = await Build(handler).SearchGamesAsync("satisfactory", 5);
+
+        games.Should().ContainSingle().Which.Should().Be(new IgdbGame(100, "Satisfactory", "sat1"));
+        var query = handler.CapturedBodies.Single(b => b.Body.Contains("search", StringComparison.Ordinal)).Body;
+        query.Should().Contain("search \"satisfactory\";");
+        query.Should().Contain("where cover != null & game_type = 0 & version_parent = null;");
+        query.Should().Contain("limit 5;");
+        query.Should().NotContain("sort", "IGDB rejects sort combined with search");
+    }
+
+    [Fact]
+    public async Task SearchGamesAsync_EscapesQuotesAndBackslashes()
+    {
+        var handler = new TestHttpMessageHandler()
+            .OnPost(TokenUrl, HttpStatusCode.OK, TokenJson)
+            .OnPost(GamesUrl, HttpStatusCode.OK, "[]");
+
+        await Build(handler).SearchGamesAsync("say \"hi\" \\ bye", 3);
+
+        var query = handler.CapturedBodies.Single(b => b.Body.Contains("search", StringComparison.Ordinal)).Body;
+        query.Should().Contain("search \"say \\\"hi\\\" \\\\ bye\";");
+    }
+
+    [Fact]
     public async Task DownloadCoverAsync_ReturnsBytes()
     {
         var handler = new TestHttpMessageHandler()

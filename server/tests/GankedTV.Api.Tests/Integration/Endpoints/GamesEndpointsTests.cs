@@ -7,6 +7,7 @@ using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Tests.TestSupport;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 
 namespace GankedTV.Api.Tests.Integration.Endpoints;
@@ -363,7 +364,130 @@ public class GamesEndpointsTests : IAsyncLifetime
         body.GetProperty("items").GetArrayLength().Should().Be(1);
     }
 
+    [Fact]
+    public async Task HotGames_RanksByWindowedEngagement_LikesWeighted()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync();
+        var apexId = await GetGameIdBySlugAsync("apex-legends");
+        var valorantId = await GetGameIdBySlugAsync("valorant");
+
+        // Apex: 1 like in window = 3 points. Valorant: 2 views in window = 2 points.
+        var (apexClip, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, apexId);
+        var (valorantClip, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, valorantId);
+        await SeedLikeAsync(apexClip, userId, DateTimeOffset.UtcNow.AddHours(-1));
+        await SeedViewAsync(valorantClip, DateTimeOffset.UtcNow.AddHours(-1));
+        await SeedViewAsync(valorantClip, DateTimeOffset.UtcNow.AddHours(-2));
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/games/hot?limit=2");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var games = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var slugs = games.EnumerateArray().Select(g => g.GetProperty("slug").GetString()).ToArray();
+        slugs.Should().Equal("apex-legends", "valorant");
+    }
+
+    [Fact]
+    public async Task HotGames_EngagementOutsideWindow_Ignored_BackfillsByClipCount()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync();
+        var apexId = await GetGameIdBySlugAsync("apex-legends");
+        var valorantId = await GetGameIdBySlugAsync("valorant");
+
+        // Apex's only like is 8 days old — outside the 7-day window — so ranking falls back
+        // to the most-clipped backfill: Valorant (2 clips) before Apex (1 clip).
+        var (apexClip, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, apexId);
+        await SeedClipAsync(userId, DateTimeOffset.UtcNow, valorantId);
+        await SeedClipAsync(userId, DateTimeOffset.UtcNow, valorantId);
+        await SeedLikeAsync(apexClip, userId, DateTimeOffset.UtcNow.AddDays(-8));
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/games/hot?limit=3");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var games = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var slugs = games.EnumerateArray().Select(g => g.GetProperty("slug").GetString()).ToArray();
+        slugs.Should().Equal("valorant", "apex-legends");
+    }
+
+    [Fact]
+    public async Task HotGames_NoClipsAnywhere_ReturnsEmpty()
+    {
+        // Games without a single public+ready clip never rank — an all-quiet catalog yields
+        // an empty rail, not an alphabetical filler list.
+        await _fx.ResetAsync();
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/games/hot");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var games = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        games.GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task GetGames_SearchMiss_RetriesAfterOnDemandImport()
+    {
+        await _fx.ResetAsync();
+
+        // Stub the on-demand importer to add the game the way a real IGDB import would,
+        // then assert the endpoint's retry picks it up in the same request.
+        var searchImport = Substitute.For<GankedTV.Api.Services.Igdb.IGameSearchImportService>();
+        searchImport.TryImportMatchesAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(async _ =>
+            {
+                await using var db = _fx.CreateContext();
+                db.Games.Add(new Game
+                {
+                    Name = "Satisfactory",
+                    Slug = "satisfactory",
+                    Tag = "SAT",
+                    IgdbId = 100_001,
+                    IgdbManaged = true,
+                });
+                await db.SaveChangesAsync();
+                return true;
+            });
+
+        await using var factory = new AuthApiFactory(
+            _fx.ConnectionString, _storage,
+            configureServices: s => s.AddSingleton(searchImport));
+        try
+        {
+            using var client = factory.CreateClient();
+            var resp = await client.GetAsync("/games?search=satisfactory");
+
+            resp.StatusCode.Should().Be(HttpStatusCode.OK);
+            var games = await resp.Content.ReadFromJsonAsync<JsonElement>();
+            var slugs = games.EnumerateArray().Select(g => g.GetProperty("slug").GetString()).ToArray();
+            slugs.Should().Equal("satisfactory");
+            await searchImport.Received(1).TryImportMatchesAsync("satisfactory", Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            // The games table survives Respawn resets — scrub the imported row back out.
+            await using var db = _fx.CreateContext();
+            await SeededGames.ResetBaselineAsync(db);
+        }
+    }
+
     // ---- helpers ----
+
+    private async Task SeedLikeAsync(Guid clipId, Guid userId, DateTimeOffset createdAt)
+    {
+        await using var db = _fx.CreateContext();
+        db.Likes.Add(new Like { UserId = userId, ClipId = clipId, CreatedAt = createdAt });
+        await db.SaveChangesAsync();
+    }
+
+    private async Task SeedViewAsync(Guid clipId, DateTimeOffset createdAt)
+    {
+        await using var db = _fx.CreateContext();
+        db.ClipViews.Add(new ClipView { ClipId = clipId, CreatedAt = createdAt });
+        await db.SaveChangesAsync();
+    }
 
     private async Task<Guid> SeedUserAsync(string username = "games-test-user")
     {

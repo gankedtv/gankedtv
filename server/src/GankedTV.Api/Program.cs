@@ -471,6 +471,7 @@ builder.Services.AddHttpClient(IgdbMetadataService.ImageClientName, c =>
 });
 builder.Services.AddSingleton<IIgdbMetadataService, IgdbMetadataService>();
 builder.Services.AddScoped<IGameCatalogImporter, GameCatalogImporter>();
+builder.Services.AddScoped<IGameSearchImportService, GameSearchImportService>();
 builder.Services.AddScoped<ImportGamesCommand>();
 builder.Services.AddHostedService<IgdbSyncHostedService>();
 

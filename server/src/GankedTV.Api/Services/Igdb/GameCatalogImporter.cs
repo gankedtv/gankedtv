@@ -30,12 +30,17 @@ public sealed class GameCatalogImporter(
             return GameCatalogImportResult.Skipped;
         }
 
-        var s3 = s3Options.Value;
-        await storage.EnsureBucketsAsync(ct);
-
         logger.LogInformation("Fetching up to {Count} popular games from IGDB…", igdbOpts.PopularImportCount);
         var games = await igdb.GetPopularGamesAsync(igdbOpts.PopularImportCount, ct);
         logger.LogInformation("IGDB returned {Count} games with cover art.", games.Count);
+
+        return await ImportAsync(games, ct);
+    }
+
+    public async Task<GameCatalogImportResult> ImportAsync(IReadOnlyList<IgdbGame> games, CancellationToken ct = default)
+    {
+        var s3 = s3Options.Value;
+        await storage.EnsureBucketsAsync(ct);
 
         // Load existing catalog once. Reconcile by igdb_id, then by name so the original curated
         // seeds (whose Name matches IGDB's display name but whose slug/tag are hand-picked, e.g.

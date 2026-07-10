@@ -6,6 +6,7 @@ using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Data;
 using GankedTV.Api.Problems;
 using GankedTV.Api.Services.Caching;
+using GankedTV.Api.Services.Igdb;
 using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -16,11 +17,18 @@ public static class GamesEndpoints
 {
     private const int DefaultLimit = 20;
     private const int MaxLimit = 50;
+    private const int HotDefaultLimit = 8;
+    private const int HotMaxLimit = 20;
+
+    // Fixed 7-day window: hot games deliberately don't follow the trending page's window
+    // toggle — game hotness moves slower than clip hotness.
+    private static readonly TimeSpan HotWindow = TimeSpan.FromDays(7);
 
     public static IEndpointRouteBuilder MapGamesEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/games");
         group.MapGet("/", GetGames);
+        group.MapGet("/hot", GetHotGames);
         group.MapGet("/{slug}", GetBySlug);
         group.MapGet("/{slug}/clips", GetClipsForGame);
         group.MapGet("/{slug}/leaderboard", GetLeaderboardForGame);
@@ -33,6 +41,7 @@ public static class GamesEndpoints
         bool? hasClips,
         GankedTvDbContext db,
         IGamesCache gamesCache,
+        IGameSearchImportService searchImport,
         CancellationToken ct)
     {
         var clampedLimit = Math.Clamp(limit ?? DefaultLimit, 1, MaxLimit);
@@ -41,7 +50,16 @@ public static class GamesEndpoints
         // the upload picker's queries don't repeat, so caching them would just churn keys.
         if (!string.IsNullOrWhiteSpace(search))
         {
-            return Results.Ok(await QueryGamesAsync(db, hasClips, search, clampedLimit, ct));
+            var results = await QueryGamesAsync(db, hasClips, search, clampedLimit, ct);
+
+            // Local miss → pull matches from IGDB into the catalog and retry once, so
+            // long-tail games outside the popularity import become pickable on first search.
+            if (results.Count == 0 && await searchImport.TryImportMatchesAsync(search, ct))
+            {
+                results = await QueryGamesAsync(db, hasClips, search, clampedLimit, ct);
+            }
+
+            return Results.Ok(results);
         }
 
         var key = $"games:list:hasClips={hasClips == true}:{clampedLimit}";
@@ -85,6 +103,97 @@ public static class GamesEndpoints
             .Take(clampedLimit)
             .Select(g => new GameListItem(g.Id, g.Name, g.Slug, g.Tag, g.CoverUrl))
             .ToListAsync(ct);
+    }
+
+    private static async Task<IResult> GetHotGames(
+        int? limit,
+        GankedTvDbContext db,
+        IGamesCache gamesCache,
+        CancellationToken ct)
+    {
+        var clampedLimit = Math.Clamp(limit ?? HotDefaultLimit, 1, HotMaxLimit);
+        var items = await gamesCache.GetOrCreateListAsync(
+            $"games:hot:{clampedLimit}",
+            async c => await QueryHotGamesAsync(db, clampedLimit, c),
+            ct);
+        return Results.Ok(items);
+    }
+
+    private static async Task<IReadOnlyList<GameListItem>> QueryHotGamesAsync(
+        GankedTvDbContext db, int clampedLimit, CancellationToken ct)
+    {
+        var since = DateTimeOffset.UtcNow - HotWindow;
+
+        // Same signal and weighting as the trending feed (likes ×3 + views in window),
+        // aggregated up to the game. No per-clip age decay: the window already bounds
+        // recency, and a game aggregates many clips so decay adds little.
+        var likesByGame = await db.Likes.AsNoTracking()
+            .Where(l => l.CreatedAt >= since)
+            .Join(db.Clips.WherePublicReady().Where(c => c.GameId != null),
+                l => l.ClipId, c => c.Id, (l, c) => c.GameId!.Value)
+            .GroupBy(id => id)
+            .Select(g => new { GameId = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        var viewsByGame = await db.ClipViews.AsNoTracking()
+            .Where(v => v.CreatedAt >= since)
+            .Join(db.Clips.WherePublicReady().Where(c => c.GameId != null),
+                v => v.ClipId, c => c.Id, (v, c) => c.GameId!.Value)
+            .GroupBy(id => id)
+            .Select(g => new { GameId = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        var scores = new Dictionary<int, long>();
+        foreach (var l in likesByGame)
+        {
+            scores[l.GameId] = scores.GetValueOrDefault(l.GameId) + l.Count * 3L;
+        }
+        foreach (var v in viewsByGame)
+        {
+            scores[v.GameId] = scores.GetValueOrDefault(v.GameId) + v.Count;
+        }
+
+        var hotIds = scores
+            .OrderByDescending(kv => kv.Value)
+            .ThenBy(kv => kv.Key)
+            .Take(clampedLimit)
+            .Select(kv => kv.Key)
+            .ToList();
+
+        var hotById = await db.Games.AsNoTracking()
+            .Where(g => hotIds.Contains(g.Id))
+            .Select(g => new GameListItem(g.Id, g.Name, g.Slug, g.Tag, g.CoverUrl))
+            .ToDictionaryAsync(g => g.Id, ct);
+        var items = hotIds
+            .Where(hotById.ContainsKey)
+            .Select(id => hotById[id])
+            .ToList();
+
+        if (items.Count < clampedLimit)
+        {
+            // Backfill with the most-clipped games so the rail stays full on quiet weeks.
+            var chosen = items.Select(i => i.Id).ToHashSet();
+            var backfill = await db.Games.AsNoTracking()
+                .Where(g => !chosen.Contains(g.Id))
+                .Select(g => new
+                {
+                    g.Id,
+                    g.Name,
+                    g.Slug,
+                    g.Tag,
+                    g.CoverUrl,
+                    ClipCount = db.Clips.Count(c =>
+                        c.GameId == g.Id && c.Visibility == ClipVisibilities.Public && c.Status == ClipStatuses.Ready),
+                })
+                .Where(x => x.ClipCount > 0)
+                .OrderByDescending(x => x.ClipCount)
+                .ThenBy(x => x.Name)
+                .Take(clampedLimit - items.Count)
+                .ToListAsync(ct);
+            items.AddRange(backfill.Select(x => new GameListItem(x.Id, x.Name, x.Slug, x.Tag, x.CoverUrl)));
+        }
+
+        return items;
     }
 
     private static async Task<IResult> GetBySlug(
