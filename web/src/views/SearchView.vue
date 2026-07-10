@@ -7,11 +7,15 @@ import GameCoverTile from '@/components/GameCoverTile.vue'
 import SectionHeader from '@/components/SectionHeader.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
 import PageHeader from '@/components/PageHeader.vue'
+import UserAvatar from '@/components/UserAvatar.vue'
 
 const route = useRoute()
 const router = useRouter()
 
-const results = ref<SearchResponse>({ clips: [], games: [] })
+const emptyResults = (): SearchResponse => ({ clips: [], games: [], users: [] })
+const results = ref<SearchResponse>(emptyResults())
+const hasResults = () =>
+  results.value.clips.length > 0 || results.value.games.length > 0 || results.value.users.length > 0
 const loading = ref(false)
 const errored = ref(false)
 // Holds the query the *current* `results` were fetched for. The header reads this
@@ -38,7 +42,7 @@ async function load(q: string) {
   const seq = ++loadSeq
   const trimmed = q.trim()
   if (!trimmed) {
-    results.value = { clips: [], games: [] }
+    results.value = emptyResults()
     lastQuery.value = ''
     // Clear errored too: navigating from a failed `/search?q=foo` back to `/search`
     // shouldn't leave the error panel up over an empty-query state.
@@ -80,7 +84,8 @@ const hasQuery = () => typeof route.query.q === 'string' && route.query.q.trim()
     <PageHeader :title="hasQuery() ? `“${lastQuery || String(route.query.q)}”` : 'Search'">
       <template #caption>
         <template v-if="hasQuery()">
-          {{ results.clips.length }} clips · {{ results.games.length }} games
+          {{ results.clips.length }} clips · {{ results.games.length }} games ·
+          {{ results.users.length }} players
         </template>
         <template v-else>Clips, games, and players</template>
       </template>
@@ -104,16 +109,12 @@ const hasQuery = () => typeof route.query.q === 'string' && route.query.q.trim()
       </button>
     </StatusPanel>
 
-    <StatusPanel
-      v-else-if="loading && results.clips.length === 0 && results.games.length === 0"
-      kind="loading"
-      message="Searching"
-    />
+    <StatusPanel v-else-if="loading && !hasResults()" kind="loading" message="Searching" />
 
     <template v-else-if="hasQuery()">
-      <!-- No results across either section — one combined empty state. -->
+      <!-- No results across any section — one combined empty state. -->
       <StatusPanel
-        v-if="results.clips.length === 0 && results.games.length === 0"
+        v-if="!hasResults()"
         kind="empty"
         :message="`No results for “${lastQuery}” — try a different term.`"
       />
@@ -141,6 +142,26 @@ const hasQuery = () => typeof route.query.q === 'string' && route.query.q.trim()
         <div class="grid grid-cols-5 gap-3 max-lg:grid-cols-3 max-tablet:grid-cols-2">
           <GameCoverTile v-for="g in results.games" :key="g.id" :game="g" />
         </div>
+      </section>
+
+      <!-- Players — same avatar + handle rows as the follow lists. -->
+      <section
+        v-if="results.users.length"
+        class="mt-8"
+        :class="results.clips.length || results.games.length ? 'border-t border-border pt-7' : ''"
+      >
+        <SectionHeader kicker="Results" title="Players" />
+        <ul class="m-0 flex list-none flex-col gap-1 p-0">
+          <li v-for="u in results.users" :key="u.id">
+            <RouterLink
+              :to="{ name: 'user', params: { username: u.username } }"
+              class="flex items-center gap-3 rounded-lg px-2 py-2 text-sm font-semibold text-text-primary no-underline transition-colors duration-150 hover:bg-surface-high"
+            >
+              <UserAvatar :user="u" :size="32" />
+              <span class="truncate">{{ u.username }}</span>
+            </RouterLink>
+          </li>
+        </ul>
       </section>
     </template>
   </main>

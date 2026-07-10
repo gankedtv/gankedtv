@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Contracts.Games;
 using GankedTV.Api.Contracts.Search;
+using GankedTV.Api.Contracts.Users;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Problems;
@@ -74,15 +75,23 @@ public static class SearchEndpoints
         // Reject unknown types loudly rather than silently returning empty halves —
         // a client asking for `type=clip` (singular) would otherwise look like a "no
         // results" bug instead of a misuse of the contract.
-        if (type is not (null or "all" or "clips" or "games"))
+        if (type is not (null or "all" or "clips" or "games" or "users"))
         {
-            return ProblemResults.BadRequest("invalid_type", "type must be all, clips, or games");
+            return ProblemResults.BadRequest("invalid_type", "type must be all, clips, games, or users");
         }
 
         var tsQuery = BuildPrefixTsQuery(q);
         var clampedLimit = Math.Clamp(limit ?? DefaultLimit, 1, MaxLimit);
         var includeClips = type is null or "all" or "clips";
         var includeGames = type is null or "all" or "games";
+        var includeUsers = type is null or "all" or "users";
+
+        // Users match by ILIKE on the raw input, not the tsquery: usernames may consist
+        // entirely of characters the tokenizer drops (e.g. "__x__"), so the users leg
+        // must not be gated on tsQuery being non-null.
+        var users = includeUsers
+            ? (IReadOnlyList<UserSummary>)await SearchUsersAsync(q, clampedLimit, db, ct)
+            : Array.Empty<UserSummary>();
 
         // Sanitized-empty input (e.g. q="!&|" or q="...") behaves like "no matches"
         // rather than 400 — the caller passed a non-blank string, it just contained
@@ -91,7 +100,8 @@ public static class SearchEndpoints
         {
             return Results.Ok(new SearchResponse(
                 Array.Empty<ClipFeedItem>(),
-                Array.Empty<GameListItem>()));
+                Array.Empty<GameListItem>(),
+                users));
         }
 
         var clips = includeClips
@@ -102,7 +112,7 @@ public static class SearchEndpoints
             ? (IReadOnlyList<GameListItem>)await SearchGamesAsync(tsQuery, clampedLimit, db, ct)
             : Array.Empty<GameListItem>();
 
-        return Results.Ok(new SearchResponse(clips, games));
+        return Results.Ok(new SearchResponse(clips, games, users));
     }
 
     private static async Task<IReadOnlyList<ClipFeedItem>> SearchClipsAsync(
@@ -127,6 +137,31 @@ public static class SearchEndpoints
             .ToListAsync(ct);
 
         return await ClipsReadEndpoints.ProjectFeedItemsAsync(rows, principal, db, storage, s3, ct);
+    }
+
+    private static Task<List<UserSummary>> SearchUsersAsync(
+        string q,
+        int limit,
+        GankedTvDbContext db,
+        CancellationToken ct)
+    {
+        // Usernames are single short tokens, so substring ILIKE (prefix matches ranked
+        // first) beats full-text search here. LIKE metacharacters are escaped the same
+        // way as the games catalog search. Banned creators stay findable-by-nobody.
+        var trimmed = q.Trim()
+            .Replace(@"\", @"\\")
+            .Replace("%", @"\%")
+            .Replace("_", @"\_");
+        var prefix = $"{trimmed}%";
+        var contains = $"%{trimmed}%";
+
+        return db.Users.AsNoTracking()
+            .Where(u => u.BannedAt == null && EF.Functions.ILike(u.Username, contains, @"\"))
+            .OrderByDescending(u => EF.Functions.ILike(u.Username, prefix, @"\"))
+            .ThenBy(u => u.Username)
+            .Take(limit)
+            .Select(u => new UserSummary(u.Id, u.Username, u.AvatarUrl))
+            .ToListAsync(ct);
     }
 
     private static Task<List<GameListItem>> SearchGamesAsync(

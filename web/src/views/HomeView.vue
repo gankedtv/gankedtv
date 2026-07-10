@@ -4,8 +4,10 @@ import { useRoute, useRouter } from 'vue-router'
 import { clips, type ClipFeedItem } from '@/api/clips'
 import { games as gamesApi, type GameListItem } from '@/api/games'
 import { useAuthStore } from '@/stores/auth'
+import { usePresenceStore } from '@/stores/presence'
 import { formatNum, formatRelativeTime } from '@/lib/format'
 import ClipCard from '@/components/ClipCard.vue'
+import UserAvatar from '@/components/UserAvatar.vue'
 import GameTag from '@/components/GameTag.vue'
 import DurationBadge from '@/components/DurationBadge.vue'
 import AuthorHandle from '@/components/AuthorHandle.vue'
@@ -20,6 +22,17 @@ import IconPlay from '@/components/icons/IconPlay.vue'
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
+
+// Hero "Live now" panel — AppNav owns the presence poll lifetime; this view only
+// reads the store. Auth-only and v-if-gated: what the API doesn't serve isn't rendered.
+const presenceStore = usePresenceStore()
+const LIVE_PANEL_AVATAR_CAP = 6
+const liveFollows = computed(() =>
+  auth.isAuthenticated ? presenceStore.followsOnline.slice(0, LIVE_PANEL_AVATAR_CAP) : [],
+)
+const liveFollowsOverflow = computed(() =>
+  Math.max(0, (auth.isAuthenticated ? presenceStore.followsOnline.length : 0) - LIVE_PANEL_AVATAR_CAP),
+)
 
 type FeedSource = 'following' | 'for-you'
 type HomeTab = FeedSource | 'trending' | 'top-rated'
@@ -481,6 +494,34 @@ onMounted(() => {
                 </span>
               </li>
             </ol>
+
+            <!-- Live now — follows currently online (authenticated + non-empty only) -->
+            <div v-if="liveFollows.length" class="mt-4 border-t border-border pt-3.5">
+              <p
+                class="m-0 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-text-muted"
+              >
+                <span class="size-[7px] rounded-full bg-accent" aria-hidden="true"></span>
+                Live now
+              </p>
+              <div class="mt-2 flex items-center">
+                <RouterLink
+                  v-for="(u, i) in liveFollows"
+                  :key="u.id"
+                  :to="{ name: 'user', params: { username: u.username } }"
+                  :title="u.username"
+                  class="inline-flex rounded-full"
+                  :class="i > 0 ? '-ml-2' : ''"
+                >
+                  <UserAvatar :user="u" :size="28" class="border-2 border-surface-base" />
+                </RouterLink>
+                <span
+                  v-if="liveFollowsOverflow > 0"
+                  class="-ml-2 inline-flex size-7 items-center justify-center rounded-full border-2 border-surface-base bg-surface-high text-[10px] font-bold text-text-secondary"
+                >
+                  +{{ liveFollowsOverflow }}
+                </span>
+              </div>
+            </div>
           </aside>
         </div>
       </section>
