@@ -37,6 +37,14 @@ renaming importer-managed games (curated seeds are never renamed). It's **off by
 enable per-environment with `IGDB_SYNC_ENABLED=true` (interval via `IGDB_SYNC_INTERVAL_DAYS`,
 default 7). No-op without credentials.
 
+The catalog is also **self-healing on the request path**: when `GET /games?search=` misses locally
+for an *authenticated* caller, `GameSearchImportService` looks the term up on IGDB and reconciles
+matches through the same importer, so long-tail games (outside the popularity window) are pickable
+on first search. This means **prod makes outbound IGDB calls while serving a user request** — it's
+rate limited (`games-search`), memoized per term, bounded by an 8s budget, and degrades to the plain
+local result on any IGDB failure. Without `IGDB_CLIENT_ID` / `IGDB_CLIENT_SECRET` it's a no-op, and
+the picker is then limited to whatever `make import-games` last pulled in.
+
 ### Host requirements
 
 The dev workflow runs `dotnet watch` on the host, which means the API process — including the thumbnail-generation worker (issue #57) — runs on your host directly. Install these locally:

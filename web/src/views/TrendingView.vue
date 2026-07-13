@@ -38,7 +38,7 @@ const { data, loading, errored, run } = useLatestRequest<{
   async () => {
     const [feed, games] = await Promise.all([
       clips.feed({ sort: 'trending', window: timeWindow.value, limit: 25 }),
-      gamesApi.list(8),
+      gamesApi.hot(8),
     ])
     return { topClips: feed.items.slice(0, 25), hotGames: games }
   },

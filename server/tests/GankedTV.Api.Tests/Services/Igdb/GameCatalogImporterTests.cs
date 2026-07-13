@@ -217,6 +217,72 @@ public class GameCatalogImporterTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task CoverDownloadTimeout_KeepsGameRow_AndContinues()
+    {
+        // HttpClient.Timeout surfaces as TaskCanceledException with the caller's token alive.
+        // A hung cover CDN must not abort the whole import.
+        var igdb = Substitute.For<IIgdbMetadataService>();
+        igdb.GetPopularGamesAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new List<IgdbGame> { new(8101, "Hung Cover Test", "imgHang"), new(8102, "Fine Cover Test", "imgFine") });
+        igdb.DownloadCoverAsync("imgHang", Arg.Any<CancellationToken>())
+            .Returns<byte[]?>(_ => throw new TaskCanceledException("cover CDN timed out"));
+        igdb.DownloadCoverAsync("imgFine", Arg.Any<CancellationToken>()).Returns(_ => "JPEG"u8.ToArray());
+        var storage = new InMemoryObjectStorage();
+
+        await using var db = _fx.CreateContext();
+        var result = await Build(db, igdb, storage).RunAsync(CancellationToken.None);
+
+        result.Created.Should().Be(2);
+        result.CoversMirrored.Should().Be(1);
+        await using var verify = _fx.CreateContext();
+        (await verify.Games.SingleAsync(g => g.IgdbId == 8101)).CoverImageId.Should().BeNull();
+        (await verify.Games.SingleAsync(g => g.IgdbId == 8102)).CoverUrl
+            .Should().Be("http://minio:9000/game-covers/fine-cover-test.jpg");
+    }
+
+    [Fact]
+    public async Task CallerCancellation_AbortsTheImport()
+    {
+        var igdb = Substitute.For<IIgdbMetadataService>();
+        igdb.GetPopularGamesAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new List<IgdbGame> { new(8201, "Aborted Test", "imgAbort") });
+        using var cts = new CancellationTokenSource();
+        igdb.DownloadCoverAsync("imgAbort", Arg.Any<CancellationToken>())
+            .Returns<byte[]?>(_ =>
+            {
+                cts.Cancel();
+                throw new OperationCanceledException(cts.Token);
+            });
+
+        await using var db = _fx.CreateContext();
+        var act = () => Build(db, igdb, new InMemoryObjectStorage()).RunAsync(cts.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
+    public async Task ImportAsync_ExistingRow_ReportsNoCreations()
+    {
+        // The on-demand search import keys its retry off Created: re-importing a game the catalog
+        // already has must not claim the catalog changed.
+        var igdb = StubIgdb();
+        var storage = new InMemoryObjectStorage();
+        var game = new IgdbGame(9200, "Repeat Import Test", "imgRepeat");
+
+        await using (var first = _fx.CreateContext())
+        {
+            (await Build(first, igdb, storage).ImportAsync([game], CancellationToken.None))
+                .Created.Should().Be(1);
+        }
+
+        await using var second = _fx.CreateContext();
+        var again = await Build(second, igdb, storage).ImportAsync([game], CancellationToken.None);
+
+        again.Processed.Should().Be(1);
+        again.Created.Should().Be(0);
+    }
+
+    [Fact]
     public async Task DuplicateNames_GetDistinctSlugs()
     {
         var igdb = StubIgdb(new IgdbGame(7001, "Twin Test", "img1"), new IgdbGame(7002, "Twin Test", "img2"));
@@ -230,6 +296,21 @@ public class GameCatalogImporterTests : IAsyncLifetime
             .Select(g => g.Slug).ToListAsync();
         slugs.Should().HaveCount(2).And.OnlyHaveUniqueItems();
         slugs.Should().Contain("twin-test").And.Contain("twin-test-7002");
+    }
+
+    [Fact]
+    public async Task ImportAsync_ReservedRouteLiteral_GetsDisambiguatedSlug()
+    {
+        // A game literally named "Hot" must not claim /games/hot, which is a route literal.
+        var igdb = StubIgdb();
+        var storage = new InMemoryObjectStorage();
+
+        await using var db = _fx.CreateContext();
+        await Build(db, igdb, storage).ImportAsync([new IgdbGame(9100, "Hot", "imgHot")], CancellationToken.None);
+
+        await using var verify = _fx.CreateContext();
+        var hot = await verify.Games.SingleAsync(g => g.IgdbId == 9100);
+        hot.Slug.Should().Be("hot-9100");
     }
 
     private static IIgdbMetadataService StubIgdb(params IgdbGame[] games)

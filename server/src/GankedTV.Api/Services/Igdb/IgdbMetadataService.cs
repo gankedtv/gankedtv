@@ -88,6 +88,23 @@ public sealed class IgdbMetadataService : IIgdbMetadataService
         return results;
     }
 
+    public async Task<IReadOnlyList<IgdbGame>> SearchGamesAsync(string term, int limit, CancellationToken ct = default)
+    {
+        // IGDB's `search` clause cannot be combined with `sort`; results come back in IGDB's
+        // relevance order. Same filters as the popular import so an on-demand row matches what
+        // a bigger import would have produced.
+        var escaped = term.Replace(@"\", @"\\").Replace("\"", "\\\"");
+        var query =
+            $"search \"{escaped}\"; fields name, cover.image_id; " +
+            $"where cover != null & game_type = 0 & version_parent = null; limit {limit};";
+
+        var page = await PostGamesQueryAsync(query, ct);
+        return page
+            .Where(g => g.Name is { Length: > 0 } && g.Cover?.ImageId is { Length: > 0 })
+            .Select(g => new IgdbGame(g.Id, g.Name!, g.Cover!.ImageId))
+            .ToList();
+    }
+
     public async Task<byte[]?> DownloadCoverAsync(string imageId, CancellationToken ct = default)
     {
         var url = $"{_options.ImageBaseUrl}{_options.CoverSize}/{imageId}.jpg";

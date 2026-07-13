@@ -471,6 +471,8 @@ builder.Services.AddHttpClient(IgdbMetadataService.ImageClientName, c =>
 });
 builder.Services.AddSingleton<IIgdbMetadataService, IgdbMetadataService>();
 builder.Services.AddScoped<IGameCatalogImporter, GameCatalogImporter>();
+builder.Services.AddScoped<IGameSearchImportService, GameSearchImportService>();
+builder.Services.AddSingleton<GameSearchMemo>();
 builder.Services.AddScoped<ImportGamesCommand>();
 builder.Services.AddHostedService<IgdbSyncHostedService>();
 
@@ -518,6 +520,7 @@ builder.Services.AddRateLimiter(opts => opts
     .AddDevicePolicy()
     .AddClipsWritePolicy()
     .AddClipsViewPolicy()
+    .AddGamesSearchPolicy()
     .AddPresencePolicy());
 
 // Backs the view-dedup window in ClipsViewEndpoints. In-process for v1; per-pod state is

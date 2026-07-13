@@ -19,6 +19,11 @@ public sealed class GameCatalogImporter(
     // Persist incrementally so a crash mid-run keeps prior progress (resumable).
     private const int SaveEvery = 25;
 
+    // Route literals under /games/ that a game slug must never claim: /games/hot would
+    // shadow the detail/clips routes for a game literally named "Hot". Hand-synced with
+    // the route table in GamesEndpoints.MapGamesEndpoints.
+    private static readonly string[] ReservedSlugs = ["hot"];
+
     public async Task<GameCatalogImportResult> RunAsync(CancellationToken ct = default)
     {
         var igdbOpts = igdbOptions.Value;
@@ -30,25 +35,38 @@ public sealed class GameCatalogImporter(
             return GameCatalogImportResult.Skipped;
         }
 
-        var s3 = s3Options.Value;
-        await storage.EnsureBucketsAsync(ct);
-
         logger.LogInformation("Fetching up to {Count} popular games from IGDB…", igdbOpts.PopularImportCount);
         var games = await igdb.GetPopularGamesAsync(igdbOpts.PopularImportCount, ct);
         logger.LogInformation("IGDB returned {Count} games with cover art.", games.Count);
 
-        // Load existing catalog once. Reconcile by igdb_id, then by name so the original curated
-        // seeds (whose Name matches IGDB's display name but whose slug/tag are hand-picked, e.g.
-        // "cs2"/"CS2") get adopted in place rather than duplicated. usedSlugs keeps generated
-        // slugs unique against everything already present.
-        var existing = await db.Games.ToListAsync(ct);
+        return await ImportAsync(games, ct);
+    }
+
+    public async Task<GameCatalogImportResult> ImportAsync(IReadOnlyList<IgdbGame> games, CancellationToken ct = default)
+    {
+        var s3 = s3Options.Value;
+        await storage.EnsureBucketsAsync(ct);
+
+        // Reconcile by igdb_id, then by name so curated seeds (hand-picked slug/tag, e.g.
+        // "cs2"/"CS2") get adopted in place rather than duplicated. Track only the rows this
+        // batch can touch — the on-demand search import runs this on a request path. Slugs are
+        // still read from the whole table (untracked) so generated slugs stay globally unique.
+        var incomingIds = games.Select(g => g.Id).ToHashSet();
+        var incomingNames = games.Select(g => g.Name.ToLowerInvariant()).ToHashSet();
+        var existing = await db.Games
+            .Where(g => (g.IgdbId != null && incomingIds.Contains(g.IgdbId.Value))
+                || incomingNames.Contains(g.Name.ToLower()))
+            .ToListAsync(ct);
         var byIgdbId = existing.Where(g => g.IgdbId is not null).ToDictionary(g => g.IgdbId!.Value);
         var byName = existing
             .GroupBy(g => g.Name, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(grp => grp.Key, grp => grp.First(), StringComparer.OrdinalIgnoreCase);
-        var usedSlugs = new HashSet<string>(existing.Select(g => g.Slug), StringComparer.Ordinal);
+        var usedSlugs = await db.Games.AsNoTracking()
+            .Select(g => g.Slug)
+            .ToHashSetAsync(StringComparer.Ordinal, ct);
 
         var processed = 0;
+        var created = 0;
         var coversMirrored = 0;
         var renamed = 0;
         foreach (var meta in games)
@@ -79,6 +97,7 @@ public sealed class GameCatalogImporter(
                 };
                 db.Games.Add(game);
                 byIgdbId[meta.Id] = game;
+                created++;
             }
 
             // Display-name refresh: only for importer-managed rows, so curated seeds (incl.
@@ -93,7 +112,9 @@ public sealed class GameCatalogImporter(
             // Cover refresh keyed on the IGDB image_id we last mirrored: download only when it
             // changed (covers drift; placeholders have null ⇒ always replaced). A single flaky
             // download shouldn't abort the run — log and continue; cover_image_id stays as-is so
-            // a later run retries.
+            // a later run retries. The filter re-raises only *caller* cancellation: a download
+            // that trips HttpClient's timeout also throws OperationCanceledException, and that's
+            // a flaky download, not an abort.
             if (!string.Equals(game.CoverImageId, meta.CoverImageId, StringComparison.Ordinal))
             {
                 try
@@ -103,7 +124,7 @@ public sealed class GameCatalogImporter(
                         coversMirrored++;
                     }
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
+                catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
                 {
                     logger.LogWarning(ex, "Failed to mirror cover for {Name} (igdb {IgdbId}); continuing.",
                         meta.Name, meta.Id);
@@ -119,9 +140,9 @@ public sealed class GameCatalogImporter(
 
         await db.SaveChangesAsync(ct);
         logger.LogInformation(
-            "Import complete: {Processed} games processed, {Covers} cover(s) mirrored, {Renamed} renamed.",
-            processed, coversMirrored, renamed);
-        return new GameCatalogImportResult(processed, coversMirrored, renamed);
+            "Import complete: {Processed} games processed, {Created} created, {Covers} cover(s) mirrored, {Renamed} renamed.",
+            processed, created, coversMirrored, renamed);
+        return new GameCatalogImportResult(processed, created, coversMirrored, renamed);
     }
 
     /// <summary>
@@ -152,7 +173,7 @@ public sealed class GameCatalogImporter(
     private static string UniqueSlug(string name, int igdbId, HashSet<string> used)
     {
         var baseSlug = GameNaming.Slug(name);
-        if (used.Add(baseSlug))
+        if (!ReservedSlugs.Contains(baseSlug, StringComparer.Ordinal) && used.Add(baseSlug))
         {
             return baseSlug;
         }

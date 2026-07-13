@@ -29,6 +29,15 @@ export const games = {
     return api<GameListItem[]>(`/games${qs ? `?${qs}` : ''}`)
   },
 
+  // Engagement-ranked (likes/views over the past week) with most-clipped backfill,
+  // unlike list(), which is alphabetical catalog browse.
+  hot(limit?: number): Promise<GameListItem[]> {
+    const params = new URLSearchParams()
+    if (limit !== undefined) params.set('limit', String(limit))
+    const qs = params.toString()
+    return api<GameListItem[]>(`/games/hot${qs ? `?${qs}` : ''}`)
+  },
+
   search(query: string, limit?: number): Promise<GameListItem[]> {
     const params = new URLSearchParams({ search: query })
     if (limit !== undefined) params.set('limit', String(limit))

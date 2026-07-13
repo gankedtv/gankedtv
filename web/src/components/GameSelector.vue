@@ -109,6 +109,7 @@ const inputClass =
       <input
         v-model="gameSearch"
         placeholder="Search games…"
+        maxlength="100"
         :class="inputClass"
         @focus="showGameDropdown = gameResults.length > 0"
         @blur="onGameInputBlur"

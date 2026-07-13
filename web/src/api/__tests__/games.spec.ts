@@ -85,6 +85,34 @@ describe('api/games', () => {
     })
   })
 
+  describe('hot()', () => {
+    it('GETs /games/hot without query when no limit', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse([])),
+      )
+
+      await games.hot()
+
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+      expect(url).toBe(`${BASE_URL}/games/hot`)
+    })
+
+    it('appends ?limit= and returns the parsed list', async () => {
+      const body = [{ id: 1, name: 'Valorant', slug: 'valorant', tag: 'VALORANT', coverUrl: null }]
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse(body)),
+      )
+
+      const result = await games.hot(8)
+
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+      expect(url).toBe(`${BASE_URL}/games/hot?limit=8`)
+      expect(result).toEqual(body)
+    })
+  })
+
   describe('getBySlug()', () => {
     it('GETs /games/{slug} with the slug URL-encoded', async () => {
       vi.stubGlobal(

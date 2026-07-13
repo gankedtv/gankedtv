@@ -9,10 +9,21 @@ namespace GankedTV.Api.Services.Igdb;
 public interface IGameCatalogImporter
 {
     Task<GameCatalogImportResult> RunAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Reconciles an explicit set of IGDB games into the catalog using the same
+    /// adopt/insert/cover-mirror rules as <see cref="RunAsync"/>. Used by the on-demand
+    /// search import, which resolves its own candidates instead of the popularity window.
+    /// </summary>
+    Task<GameCatalogImportResult> ImportAsync(IReadOnlyList<IgdbGame> games, CancellationToken ct = default);
 }
 
-/// <summary>Counts from one import/sync pass, for logging and tests.</summary>
-public sealed record GameCatalogImportResult(int Processed, int CoversMirrored, int Renamed)
+/// <summary>
+/// Counts from one import/sync pass, for logging and tests. <paramref name="Processed"/> counts
+/// every input game (including ones already reconciled); <paramref name="Created"/> counts only
+/// the rows this pass added, which is what the on-demand search import keys its retry off.
+/// </summary>
+public sealed record GameCatalogImportResult(int Processed, int Created, int CoversMirrored, int Renamed)
 {
-    public static readonly GameCatalogImportResult Skipped = new(0, 0, 0);
+    public static readonly GameCatalogImportResult Skipped = new(0, 0, 0, 0);
 }
