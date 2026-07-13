@@ -134,6 +134,38 @@ public class LikesEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Like_HiddenClip_NonOwnerReturns404()
+    {
+        // Moderator-hidden clips mirror private ones: not likeable (or discoverable) by
+        // anyone but the owner.
+        await _fx.ResetAsync();
+        var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
+        var (_, token) = await SeedUserAndIssueTokenAsync("fan");
+        var clipId = await SeedClipAsync(authorId, visibility: "hidden");
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsync($"/clips/{clipId}/like", content: null);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        await using var db = _fx.CreateContext();
+        (await db.Likes.AnyAsync(l => l.ClipId == clipId)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Unlike_HiddenClip_NonOwnerReturns404()
+    {
+        await _fx.ResetAsync();
+        var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
+        var (_, token) = await SeedUserAndIssueTokenAsync("fan");
+        var clipId = await SeedClipAsync(authorId, visibility: "hidden");
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.DeleteAsync($"/clips/{clipId}/like");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
     public async Task Like_FirstTime_InsertsRowAndIncrementsCounter()
     {
         await _fx.ResetAsync();

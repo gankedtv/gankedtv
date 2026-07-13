@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using GankedTV.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -26,4 +27,34 @@ public static class ClipQueryExtensions
     /// </summary>
     public static IQueryable<Clip> WherePublicReady(this IQueryable<Clip> query) =>
         query.Where(c => c.Visibility == ClipVisibilities.Public && c.Status == ClipStatuses.Ready);
+
+    /// <summary>
+    /// The canonical link-reachability rule for every by-id/share-code read path (detail,
+    /// share, stream, comments, likes): public and unlisted clips resolve for anyone,
+    /// private and moderator-hidden ones only for their owner. Deliberately says nothing
+    /// about <see cref="Clip.Status"/> — call sites that require a ready clip keep that
+    /// check themselves.
+    /// </summary>
+    public static IQueryable<Clip> WhereVisibleTo(this IQueryable<Clip> query, Guid? viewerId) =>
+        query.Where(VisibleTo(viewerId));
+
+    /// <summary>
+    /// Expression form of <see cref="WhereVisibleTo"/> for queries that reach the clip
+    /// through a projection (e.g. <c>comment.Clip</c>) where an extension method cannot
+    /// be translated.
+    /// </summary>
+    public static Expression<Func<Clip, bool>> VisibleTo(Guid? viewerId) =>
+        c => (c.Visibility != ClipVisibilities.Private && c.Visibility != ClipVisibilities.Hidden)
+            || c.UserId == viewerId;
+
+    /// <summary>
+    /// Negation of <see cref="VisibleTo"/>, built from the same expression tree so the two
+    /// can never drift. Used by the comments endpoints' existence-oracle probes, which
+    /// answer "does this clip exist AND is it hidden from the viewer" in one query.
+    /// </summary>
+    public static Expression<Func<Clip, bool>> NotVisibleTo(Guid? viewerId)
+    {
+        var visible = VisibleTo(viewerId);
+        return Expression.Lambda<Func<Clip, bool>>(Expression.Not(visible.Body), visible.Parameters);
+    }
 }

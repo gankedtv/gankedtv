@@ -62,13 +62,15 @@ public static class CommentsEndpoints
 
         var body = req.Body.Trim();
 
+        // Private and hidden clips are indistinguishable from missing ones to everyone
+        // but the owner.
         var clip = await db.Clips.AsNoTracking()
             .Where(c => c.Id == clipId)
-            .Select(c => new { c.UserId, c.Visibility })
+            .WhereVisibleTo(userId)
+            .Select(c => new { c.UserId })
             .FirstOrDefaultAsync(ct);
-        if (clip is null || (clip.Visibility == ClipVisibilities.Private && clip.UserId != userId))
+        if (clip is null)
         {
-            // Private clips are indistinguishable from missing ones to everyone but the owner.
             return ProblemResults.NotFound("not_found");
         }
         var clipOwnerId = clip.UserId;
@@ -125,7 +127,7 @@ public static class CommentsEndpoints
         GankedTvDbContext db,
         CancellationToken ct)
     {
-        if (await IsPrivateToViewerAsync(db, clipId, principal, ct))
+        if (await IsHiddenFromViewerAsync(db, clipId, principal, ct))
         {
             // Return the same empty page a nonexistent clip yields, not a 404 — a 404 here
             // (while a missing clip 200s empty) would be an existence oracle letting a non-owner
@@ -184,13 +186,11 @@ public static class CommentsEndpoints
         GankedTvDbContext db,
         CancellationToken ct)
     {
-        // Same private gate as ListComments, reached through the parent comment's clip.
-        var viewerId = principal.GetUserIdOrNull();
-        var onPrivateClipOfOther = await db.Comments.AsNoTracking()
-            .AnyAsync(c => c.Id == id
-                && c.Clip.Visibility == ClipVisibilities.Private
-                && c.Clip.UserId != viewerId, ct);
-        if (onPrivateClipOfOther)
+        // Same visibility gate as ListComments, reached through the parent comment's clip.
+        var onClipHiddenFromViewer = await AnyHiddenFromViewerAsync(
+            db.Comments.AsNoTracking().Where(c => c.Id == id).Select(c => c.Clip),
+            principal, ct);
+        if (onClipHiddenFromViewer)
         {
             // Same existence-oracle avoidance as ListComments: match the empty page a missing
             // comment id yields rather than 404-ing and confirming the private clip exists.
@@ -258,21 +258,25 @@ public static class CommentsEndpoints
         return Results.NoContent();
     }
 
-    // True when the clip is private and the caller isn't its owner. A missing clip is NOT
-    // private-to-viewer, but both cases resolve to the same 200-with-empty-items response at
-    // the call site, so a stranger can't distinguish "exists but private" from "nonexistent".
-    private static async Task<bool> IsPrivateToViewerAsync(
+    // True when the clip is private or hidden and the caller isn't its owner. A missing clip
+    // is NOT hidden-from-viewer, but both cases resolve to the same 200-with-empty-items
+    // response at the call site, so a stranger can't distinguish "exists but private/hidden"
+    // from "nonexistent".
+    private static Task<bool> IsHiddenFromViewerAsync(
         GankedTvDbContext db,
         Guid clipId,
         ClaimsPrincipal principal,
-        CancellationToken ct)
-    {
-        var viewerId = principal.GetUserIdOrNull();
-        return await db.Clips.AsNoTracking()
-            .AnyAsync(c => c.Id == clipId
-                && c.Visibility == ClipVisibilities.Private
-                && c.UserId != viewerId, ct);
-    }
+        CancellationToken ct) =>
+        AnyHiddenFromViewerAsync(
+            db.Clips.AsNoTracking().Where(c => c.Id == clipId), principal, ct);
+
+    // Shared existence-oracle probe: both gates (clip id and comment.Clip) apply the same
+    // NotVisibleTo predicate, so the rule can't drift between the two query roots.
+    private static Task<bool> AnyHiddenFromViewerAsync(
+        IQueryable<Clip> clips,
+        ClaimsPrincipal principal,
+        CancellationToken ct) =>
+        clips.Where(ClipQueryExtensions.NotVisibleTo(principal.GetUserIdOrNull())).AnyAsync(ct);
 
     // For each top-level comment id, returns the total live-reply count plus the oldest few replies
     // for the inline preview — never the full reply set, which is unbounded for a popular comment.
