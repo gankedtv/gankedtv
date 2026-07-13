@@ -89,4 +89,10 @@ describe('buildClipEmbed', () => {
     const e = buildClipEmbed(c, 'https://gankedtv.com').toJSON();
     expect(e.image).toBeUndefined();
   });
+
+  test('attachedThumbnail points the image at the message attachment, not the URL', () => {
+    const c = clip({ thumbnailUrl: 'https://minio.local/thumbs/x.jpg?sig=1' });
+    const e = buildClipEmbed(c, 'https://gankedtv.com', { attachedThumbnail: true }).toJSON();
+    expect(e.image?.url).toBe('attachment://clip.jpg');
+  });
 });

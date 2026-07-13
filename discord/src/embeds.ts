@@ -1,6 +1,7 @@
 import { EmbedBuilder } from 'discord.js';
 import type { ClipFeedItem } from './api.ts';
 import { shareUrl } from './lib/shareUrl.ts';
+import { THUMBNAIL_FILENAME } from './lib/thumbnail.ts';
 
 // GankedTV brand purple — keep in sync with the web theme accent if it changes.
 export const BRAND_COLOR = 0x8b5cf6;
@@ -22,9 +23,14 @@ export function formatDuration(secs: number | null): string | null {
 
 // One embed shape for every clip surface (poller announcements and the /clip
 // commands), so a clip looks the same regardless of how it reached the channel.
-// The thumbnail is a presigned URL with a bounded lifetime — accepted: the image
-// renders when the message lands, which is when people look at it.
-export function buildClipEmbed(clip: ClipFeedItem, publicBase: string): EmbedBuilder {
+// With `attachedThumbnail` the image points at the message's own attachment
+// (uploaded to Discord's CDN, never expires); the raw thumbnailUrl is only the
+// fallback when the download failed — it's presigned and short-lived.
+export function buildClipEmbed(
+  clip: ClipFeedItem,
+  publicBase: string,
+  opts?: { attachedThumbnail?: boolean },
+): EmbedBuilder {
   const embed = new EmbedBuilder()
     .setTitle(truncate(clip.title, TITLE_MAX))
     .setURL(shareUrl(clip.shareCode, publicBase))
@@ -38,7 +44,9 @@ export function buildClipEmbed(clip: ClipFeedItem, publicBase: string): EmbedBui
   if (clip.description) {
     embed.setDescription(truncate(clip.description, DESCRIPTION_MAX));
   }
-  if (clip.thumbnailUrl) {
+  if (opts?.attachedThumbnail) {
+    embed.setImage(`attachment://${THUMBNAIL_FILENAME}`);
+  } else if (clip.thumbnailUrl) {
     embed.setImage(clip.thumbnailUrl);
   }
 

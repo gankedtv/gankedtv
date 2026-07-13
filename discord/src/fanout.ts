@@ -1,5 +1,6 @@
 import { DiscordAPIError, RateLimitError } from 'discord.js';
 import type { Db } from './db.ts';
+import type { ThumbnailFetcher } from './lib/thumbnail.ts';
 import { buildMessage, postToChannel, type Sendable } from './posting.ts';
 import type { Fanout, PollerLogger } from './poller.ts';
 
@@ -16,7 +17,13 @@ export type FanoutDeps = {
   db: Pick<Db, 'removeAllSubscriptionsForChannel'>;
   log: PollerLogger;
   publicBase: string;
+  fetchThumbnail: ThumbnailFetcher;
 };
+
+// One clip fans out to many channels; download its thumbnail once and reuse the
+// bytes for every (clip, channel) pair. FIFO-evicted on a byte budget so a run of
+// unusually large images can't pile up — a poll round only touches fresh clips.
+const THUMBNAIL_CACHE_MAX_BYTES = 32 * 1024 * 1024;
 
 function isRateLimit(err: unknown): boolean {
   return err instanceof RateLimitError || (err instanceof DiscordAPIError && err.status === 429);
@@ -27,6 +34,26 @@ function isRateLimit(err: unknown): boolean {
 // post-log row is written. Returning false means the poller isPosted()-checks
 // this pair again next round and retries.
 export function createFanout(deps: FanoutDeps): Fanout {
+  const thumbnails = new Map<string, Buffer>();
+  let thumbnailBytes = 0;
+  async function thumbnailFor(clipId: string, url: string | null): Promise<Buffer | null> {
+    const cached = thumbnails.get(clipId);
+    if (cached !== undefined) return cached;
+    const bytes = await deps.fetchThumbnail(url);
+    // Only successes are memoized: a transient download failure must not pin every
+    // later post of this clip to the short-lived URL fallback.
+    if (bytes !== null) {
+      while (thumbnails.size > 0 && thumbnailBytes + bytes.byteLength > THUMBNAIL_CACHE_MAX_BYTES) {
+        const oldest = thumbnails.keys().next().value!;
+        thumbnailBytes -= thumbnails.get(oldest)!.byteLength;
+        thumbnails.delete(oldest);
+      }
+      thumbnails.set(clipId, bytes);
+      thumbnailBytes += bytes.byteLength;
+    }
+    return bytes;
+  }
+
   return async (clip, target) => {
     // fetch() pulls from the cache when warm, REST when cold. discord.js v14
     // THROWS DiscordAPIError for missing/inaccessible resources; the `null`
@@ -67,7 +94,13 @@ export function createFanout(deps: FanoutDeps): Fanout {
       });
       return false;
     }
-    const message = buildMessage(clip, { pingRoleId: target.pingRoleId }, deps.publicBase);
+    const thumbnail = await thumbnailFor(clip.id, clip.thumbnailUrl);
+    const message = buildMessage(
+      clip,
+      { pingRoleId: target.pingRoleId },
+      deps.publicBase,
+      thumbnail,
+    );
     try {
       return await postToChannel(channel as Sendable, message);
     } catch (err) {

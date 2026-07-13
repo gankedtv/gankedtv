@@ -35,6 +35,7 @@ function deps(overrides: Partial<FanoutDeps> = {}): FanoutDeps & {
     },
     log: silentLog(),
     publicBase: PUBLIC_BASE,
+    fetchThumbnail: async () => null,
     removed,
     ...overrides,
   } as FanoutDeps & { log: ReturnType<typeof silentLog>; removed: string[] };
@@ -163,5 +164,76 @@ describe('createFanout', () => {
 
     const payload = send.mock.calls[0]![0] as { content?: string };
     expect(payload.content).toBe('<@&42>');
+  });
+
+  test('downloads the thumbnail once per clip and attaches it to every channel post', async () => {
+    const { channel, send } = sendableChannel();
+    let fetches = 0;
+    const bytes = Buffer.from('JPEGDATA');
+    const d = deps({
+      channels: { fetch: async () => channel },
+      fetchThumbnail: async () => {
+        fetches++;
+        return bytes;
+      },
+    });
+    const fan = createFanout(d);
+    const c = clip({ shareCode: 'thumb1' });
+
+    expect(await fan(c, target)).toBe(true);
+    expect(await fan(c, { channelId: 'chan-2', pingRoleId: null })).toBe(true);
+
+    expect(fetches).toBe(1);
+    const payload = send.mock.calls[0]?.[0] as {
+      files?: unknown[];
+      embeds: { image?: { url?: string } }[];
+    };
+    expect(payload.files).toEqual([{ attachment: bytes, name: 'clip.jpg' }]);
+    expect(payload.embeds[0]?.image?.url).toBe('attachment://clip.jpg');
+  });
+
+  test('failed downloads are not memoized — the next post of the clip retries', async () => {
+    const { channel, send } = sendableChannel();
+    const bytes = Buffer.from('JPEGDATA');
+    let attempt = 0;
+    const d = deps({
+      channels: { fetch: async () => channel },
+      fetchThumbnail: async () => (++attempt === 1 ? null : bytes),
+    });
+    const fan = createFanout(d);
+    const c = clip({ shareCode: 'retry1' });
+
+    await fan(c, target);
+    await fan(c, { channelId: 'chan-2', pingRoleId: null });
+
+    expect(attempt).toBe(2);
+    const first = send.mock.calls[0]?.[0] as { files?: unknown[] };
+    const second = send.mock.calls[1]?.[0] as { files?: unknown[] };
+    expect(first.files).toBeUndefined();
+    expect(second.files).toEqual([{ attachment: bytes, name: 'clip.jpg' }]);
+  });
+
+  test('cache evicts oldest past the byte budget, so an early clip re-downloads', async () => {
+    const { channel } = sendableChannel();
+    let fetches = 0;
+    // 7 × 5 MB = 35 MB > the 32 MB budget, so caching the 7th evicts the 1st.
+    const d = deps({
+      channels: { fetch: async () => channel },
+      fetchThumbnail: async () => {
+        fetches++;
+        return Buffer.alloc(5 * 1024 * 1024);
+      },
+    });
+    const fan = createFanout(d);
+
+    const first = clip({});
+    await fan(first, target);
+    for (let i = 0; i < 6; i++) {
+      await fan(clip({}), target);
+    }
+    await fan(first, target);
+
+    // 1 (first) + 6 (fill past the budget) + 1 (first again after eviction).
+    expect(fetches).toBe(8);
   });
 });

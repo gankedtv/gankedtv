@@ -5,6 +5,7 @@ import type {
 } from 'discord.js';
 import type { ApiClient } from '../api.ts';
 import type { Db } from '../db.ts';
+import type { ThumbnailFetcher } from '../lib/thumbnail.ts';
 import * as gankedtv from './gankedtv.ts';
 import * as clipCommand from './clip.ts';
 import { ephemeral } from './replies.ts';
@@ -13,6 +14,7 @@ export type CommandContext = {
   db: Db;
   api: ApiClient;
   publicBase: string;
+  fetchThumbnail: ThumbnailFetcher;
 };
 
 // SlashCommandBuilder + .addSubcommand() chains narrow to SlashCommandSubcommandsOnlyBuilder.

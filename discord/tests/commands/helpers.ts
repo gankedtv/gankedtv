@@ -147,5 +147,6 @@ export function ctx(over: Partial<CommandContext> = {}): CommandContext {
     db: over.db ?? fakeDb(),
     api: over.api ?? fakeApi(),
     publicBase: over.publicBase ?? 'https://gankedtv.com',
+    fetchThumbnail: over.fetchThumbnail ?? (async () => null),
   };
 }

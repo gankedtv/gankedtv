@@ -17,6 +17,7 @@ import {
 } from './commands/index.ts';
 import { ephemeral } from './commands/replies.ts';
 import { createFanout } from './fanout.ts';
+import { fetchThumbnail } from './lib/thumbnail.ts';
 import { startPoller, type PollerLogger } from './poller.ts';
 
 // Off-by-default contract mirrors IgdbSyncHostedService: if the bot token is
@@ -59,6 +60,7 @@ async function main(): Promise<void> {
     db,
     api,
     publicBase: config.GANKEDTV_PUBLIC_BASE,
+    fetchThumbnail,
   };
 
   const client = new Client({
@@ -145,6 +147,7 @@ async function main(): Promise<void> {
     db,
     log,
     publicBase: config.GANKEDTV_PUBLIC_BASE,
+    fetchThumbnail,
   });
 
   log.info('Starting poller', { intervalSeconds: config.DISCORD_POLL_INTERVAL_SECONDS });
