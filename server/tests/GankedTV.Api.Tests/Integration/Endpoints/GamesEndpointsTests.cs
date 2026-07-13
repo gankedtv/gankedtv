@@ -391,6 +391,33 @@ public class GamesEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task HotGames_RanksByWindowedEngagement_ViewsCount()
+    {
+        // Pins the views half of the formula: without `+ views` the scores collapse to 0 vs 3
+        // and Valorant would win. Apex's 4 views (4 points) must outrank Valorant's 1 like (3).
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync();
+        var apexId = await GetGameIdBySlugAsync("apex-legends");
+        var valorantId = await GetGameIdBySlugAsync("valorant");
+
+        var (apexClip, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, apexId);
+        var (valorantClip, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, valorantId);
+        await SeedLikeAsync(valorantClip, userId, DateTimeOffset.UtcNow.AddHours(-1));
+        for (var i = 1; i <= 4; i++)
+        {
+            await SeedViewAsync(apexClip, DateTimeOffset.UtcNow.AddHours(-i));
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/games/hot?limit=2");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var games = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var slugs = games.EnumerateArray().Select(g => g.GetProperty("slug").GetString()).ToArray();
+        slugs.Should().Equal("apex-legends", "valorant");
+    }
+
+    [Fact]
     public async Task HotGames_EngagementOutsideWindow_Ignored_BackfillsByClipCount()
     {
         await _fx.ResetAsync();
@@ -475,6 +502,25 @@ public class GamesEndpointsTests : IAsyncLifetime
             await using var db = _fx.CreateContext();
             await SeededGames.ResetBaselineAsync(db);
         }
+    }
+
+    [Fact]
+    public async Task GetGames_OverlongSearch_Returns400_WithoutImporting()
+    {
+        await _fx.ResetAsync();
+        var searchImport = Substitute.For<GankedTV.Api.Services.Igdb.IGameSearchImportService>();
+
+        await using var factory = new AuthApiFactory(
+            _fx.ConnectionString, _storage,
+            configureServices: s => s.AddSingleton(searchImport));
+        var (_, token) = await AuthTestHelpers.SeedUserAndIssueTokenAsync(_fx, factory, "games-long-search");
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new("Bearer", token);
+
+        var resp = await client.GetAsync($"/games?search={new string('a', 101)}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        await searchImport.DidNotReceive().TryImportMatchesAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

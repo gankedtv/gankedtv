@@ -19,7 +19,7 @@ public class ImportGamesCommandTests
     public async Task RunAsync_DelegatesToImporter()
     {
         var importer = Substitute.For<IGameCatalogImporter>();
-        importer.RunAsync(Arg.Any<CancellationToken>()).Returns(new GameCatalogImportResult(1, 1, 0));
+        importer.RunAsync(Arg.Any<CancellationToken>()).Returns(new GameCatalogImportResult(1, 1, 1, 0));
 
         await new ImportGamesCommand(importer).RunAsync(CancellationToken.None);
 

@@ -21,6 +21,10 @@ public static class GamesEndpoints
     private const int HotDefaultLimit = 8;
     private const int HotMaxLimit = 20;
 
+    // Longest game name in IGDB is well under this; the cap bounds what an unbounded search term
+    // can do downstream (memo keys, IGDB query size).
+    private const int MaxSearchLength = 100;
+
     // Fixed 7-day window: hot games deliberately don't follow the trending page's window
     // toggle — game hotness moves slower than clip hotness.
     private static readonly TimeSpan HotWindow = TimeSpan.FromDays(7);
@@ -28,7 +32,9 @@ public static class GamesEndpoints
     public static IEndpointRouteBuilder MapGamesEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/games");
-        group.MapGet("/", GetGames);
+        group.MapGet("/", GetGames).RequireRateLimiting(GamesRateLimiting.GamesSearchPolicy);
+        // Any literal added here must also go in GameCatalogImporter.ReservedSlugs, or an
+        // imported game whose slug matches it would shadow the route.
         group.MapGet("/hot", GetHotGames);
         group.MapGet("/{slug}", GetBySlug);
         group.MapGet("/{slug}/clips", GetClipsForGame);
@@ -47,6 +53,11 @@ public static class GamesEndpoints
         CancellationToken ct)
     {
         var clampedLimit = Math.Clamp(limit ?? DefaultLimit, 1, MaxLimit);
+
+        if (search is { Length: > MaxSearchLength })
+        {
+            return ProblemResults.BadRequest("invalid_search");
+        }
 
         // Only the browse list (no search) is cached — search strings are high-cardinality and
         // the upload picker's queries don't repeat, so caching them would just churn keys.
@@ -179,21 +190,23 @@ public static class GamesEndpoints
 
         if (items.Count < clampedLimit)
         {
-            // Backfill with the most-clipped games so the rail stays full on quiet weeks.
+            // Backfill with the most-clipped games so the rail stays full on quiet weeks. Grouped
+            // over clips rather than a correlated count per game: the catalog grows with on-demand
+            // imports, but only games that have clips can ever rank.
             var chosen = items.Select(i => i.Id).ToHashSet();
-            var backfill = await db.Games.AsNoTracking()
-                .Where(g => !chosen.Contains(g.Id))
-                .Select(g => new
+            var backfill = await db.Clips.AsNoTracking().WherePublicReady()
+                .Where(c => c.GameId != null && !chosen.Contains(c.GameId.Value))
+                .GroupBy(c => c.GameId!.Value)
+                .Select(g => new { GameId = g.Key, ClipCount = g.Count() })
+                .Join(db.Games.AsNoTracking(), x => x.GameId, g => g.Id, (x, g) => new
                 {
+                    x.ClipCount,
                     g.Id,
                     g.Name,
                     g.Slug,
                     g.Tag,
                     g.CoverUrl,
-                    ClipCount = db.Clips.Count(c =>
-                        c.GameId == g.Id && c.Visibility == ClipVisibilities.Public && c.Status == ClipStatuses.Ready),
                 })
-                .Where(x => x.ClipCount > 0)
                 .OrderByDescending(x => x.ClipCount)
                 .ThenBy(x => x.Name)
                 .Take(clampedLimit - items.Count)

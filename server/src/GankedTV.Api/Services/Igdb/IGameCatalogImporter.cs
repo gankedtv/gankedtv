@@ -18,8 +18,12 @@ public interface IGameCatalogImporter
     Task<GameCatalogImportResult> ImportAsync(IReadOnlyList<IgdbGame> games, CancellationToken ct = default);
 }
 
-/// <summary>Counts from one import/sync pass, for logging and tests.</summary>
-public sealed record GameCatalogImportResult(int Processed, int CoversMirrored, int Renamed)
+/// <summary>
+/// Counts from one import/sync pass, for logging and tests. <paramref name="Processed"/> counts
+/// every input game (including ones already reconciled); <paramref name="Created"/> counts only
+/// the rows this pass added, which is what the on-demand search import keys its retry off.
+/// </summary>
+public sealed record GameCatalogImportResult(int Processed, int Created, int CoversMirrored, int Renamed)
 {
-    public static readonly GameCatalogImportResult Skipped = new(0, 0, 0);
+    public static readonly GameCatalogImportResult Skipped = new(0, 0, 0, 0);
 }
