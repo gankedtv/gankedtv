@@ -1,12 +1,14 @@
 import { api } from './client'
 import type { ClipFeedItem } from './clips'
 import type { GameListItem } from './games'
+import type { UserSummary } from './follows'
 
-export type SearchType = 'clips' | 'games' | 'all'
+export type SearchType = 'clips' | 'games' | 'users' | 'all'
 
 export interface SearchResponse {
   clips: ClipFeedItem[]
   games: GameListItem[]
+  users: UserSummary[]
 }
 
 export const search = {

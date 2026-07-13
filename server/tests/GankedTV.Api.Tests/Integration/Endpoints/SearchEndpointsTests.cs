@@ -223,6 +223,91 @@ public class SearchEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Search_MatchesUsers_PrefixOutranksSubstring()
+    {
+        await _fx.ResetAsync();
+        // Alphabetical order would put the substring match first — the expectation is
+        // deliberately anti-alphabetical so this test fails on its own if prefix
+        // ranking regresses to a plain name sort.
+        await SeedUserAsync("agankster");
+        await SeedUserAsync("gankz");
+        await SeedUserAsync("unrelated");
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/search?q=gank");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var usernames = body.GetProperty("users").EnumerateArray()
+            .Select(u => u.GetProperty("username").GetString()).ToList();
+        // Prefix match first, substring match second, non-match absent.
+        usernames.Should().Equal("gankz", "agankster");
+    }
+
+    [Fact]
+    public async Task Search_TypeUsers_ReturnsOnlyUsers()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("valorantfan");
+        var valorantId = await GetGameIdBySlugAsync("valorant");
+        await SeedClipAsync(userId, DateTimeOffset.UtcNow, valorantId, title: "Valorant clip");
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/search?q=valorant&type=users");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("clips").GetArrayLength().Should().Be(0);
+        body.GetProperty("games").GetArrayLength().Should().Be(0);
+        var usernames = body.GetProperty("users").EnumerateArray()
+            .Select(u => u.GetProperty("username").GetString()).ToList();
+        usernames.Should().Equal("valorantfan");
+    }
+
+    [Fact]
+    public async Task Search_BannedUser_NeverReturned()
+    {
+        await _fx.ResetAsync();
+        var bannedId = await SeedUserAsync("gankedvillain");
+        await using (var db = _fx.CreateContext())
+        {
+            await db.Users.Where(u => u.Id == bannedId)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(u => u.BannedAt, DateTimeOffset.UtcNow)
+                    .SetProperty(u => u.BannedReason, "test"));
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/search?q=gankedvillain&type=users");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("users").GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Search_TokenlessQuery_StillMatchesUsersByLiteralCharacters()
+    {
+        // "_" tokenizes to nothing (tsQuery null → clips/games short-circuit to empty),
+        // but the users leg matches on the literal character, so underscore-heavy
+        // usernames stay findable.
+        await _fx.ResetAsync();
+        await SeedUserAsync("cool_user");
+        await SeedUserAsync("plainname");
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync("/search?q=_");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("clips").GetArrayLength().Should().Be(0);
+        body.GetProperty("games").GetArrayLength().Should().Be(0);
+        var usernames = body.GetProperty("users").EnumerateArray()
+            .Select(u => u.GetProperty("username").GetString()).ToList();
+        usernames.Should().Equal("cool_user");
+    }
+
+    [Fact]
     public async Task Search_TsqueryMetacharacters_DoNotCause500()
     {
         // BuildPrefixTsQuery's allowlist sanitization strips tsquery operators (!, &,

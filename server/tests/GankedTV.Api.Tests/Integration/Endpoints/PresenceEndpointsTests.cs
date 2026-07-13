@@ -28,7 +28,7 @@ public class PresenceEndpointsTests : IAsyncLifetime
 
     private sealed record UserDto(Guid Id, string Username, string? AvatarUrl);
 
-    private sealed record SummaryDto(int Online, List<UserDto> FollowsOnline);
+    private sealed record SummaryDto(int Online, List<UserDto> FollowsOnline, int FollowsOnlineCount);
 
     private Task<(Guid userId, string token)> SeedUserAsync(string username) =>
         AuthTestHelpers.SeedUserAndIssueTokenAsync(_fx, _factory, username);
@@ -79,6 +79,36 @@ public class PresenceEndpointsTests : IAsyncLifetime
 
         var body = await resp.Content.ReadFromJsonAsync<SummaryDto>();
         body!.FollowsOnline.Should().ContainSingle().Which.Id.Should().Be(bobId);
+        body.FollowsOnlineCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Summary_FollowsOnlineCount_IsUncappedTotal()
+    {
+        await _fx.ResetAsync();
+        // Cap the page at 2: the list is capped but the count stays the true total,
+        // so the client's "+N more" overflow is honest.
+        await using var factory = new AuthApiFactory(
+            _fx.ConnectionString,
+            Substitute.For<IObjectStorageService>(),
+            configureServices: s => s.Configure<PresenceOptions>(o => o.FollowsOnlineCap = 2));
+
+        var (aliceId, aliceToken) = await AuthTestHelpers.SeedUserAndIssueTokenAsync(_fx, factory, "alice");
+        for (var i = 0; i < 3; i++)
+        {
+            var (followeeId, followeeToken) =
+                await AuthTestHelpers.SeedUserAndIssueTokenAsync(_fx, factory, $"streamer{i}");
+            await FollowAsync(follower: aliceId, followee: followeeId);
+            using var followee = AuthTestHelpers.CreateBearerClient(factory, followeeToken);
+            await followee.GetAsync("/presence/summary");
+        }
+
+        using var alice = AuthTestHelpers.CreateBearerClient(factory, aliceToken);
+        var resp = await alice.GetAsync("/presence/summary");
+
+        var body = await resp.Content.ReadFromJsonAsync<SummaryDto>();
+        body!.FollowsOnline.Should().HaveCount(2);
+        body.FollowsOnlineCount.Should().Be(3);
     }
 
     [Fact]

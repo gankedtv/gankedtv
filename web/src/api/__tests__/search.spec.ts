@@ -26,7 +26,7 @@ describe('api/search', () => {
   it('GETs /search?q= with just the query', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => jsonResponse({ clips: [], games: [] })),
+      vi.fn(async () => jsonResponse({ clips: [], games: [], users: [] })),
     )
 
     await search.query('valorant')
@@ -38,7 +38,7 @@ describe('api/search', () => {
   it('URL-encodes the query', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => jsonResponse({ clips: [], games: [] })),
+      vi.fn(async () => jsonResponse({ clips: [], games: [], users: [] })),
     )
 
     await search.query('valor & rl')
@@ -51,7 +51,7 @@ describe('api/search', () => {
   it('appends type and limit when provided', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => jsonResponse({ clips: [], games: [] })),
+      vi.fn(async () => jsonResponse({ clips: [], games: [], users: [] })),
     )
 
     await search.query('val', { type: 'games', limit: 5 })
@@ -60,10 +60,22 @@ describe('api/search', () => {
     expect(url).toBe(`${BASE_URL}/search?q=val&type=games&limit=5`)
   })
 
+  it('supports the users type filter', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ clips: [], games: [], users: [] })),
+    )
+
+    await search.query('gank', { type: 'users' })
+
+    const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+    expect(url).toBe(`${BASE_URL}/search?q=gank&type=users`)
+  })
+
   it('omits limit when not provided', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => jsonResponse({ clips: [], games: [] })),
+      vi.fn(async () => jsonResponse({ clips: [], games: [], users: [] })),
     )
 
     await search.query('val', { type: 'all' })
@@ -91,6 +103,7 @@ describe('api/search', () => {
         },
       ],
       games: [{ id: 1, name: 'Valorant', slug: 'valorant', tag: 'VAL', coverUrl: null }],
+      users: [{ id: 'u2', username: 'gankster', avatarUrl: null }],
     }
     vi.stubGlobal(
       'fetch',

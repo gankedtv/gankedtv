@@ -3,6 +3,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, wa
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
+import { usePresenceStore } from '@/stores/presence'
+import { formatNum } from '@/lib/format'
 import { search, type SearchResponse } from '@/api/search'
 import ThemeModeToggle from './ThemeModeToggle.vue'
 import UserAvatar from './UserAvatar.vue'
@@ -16,6 +18,23 @@ import IconBell from './icons/IconBell.vue'
 const auth = useAuthStore()
 const router = useRouter()
 const notificationsStore = useNotificationsStore()
+const presenceStore = usePresenceStore()
+
+// Presence polls for everyone (anonymous visitors count too), so its lifetime is the
+// nav's mount, not the auth state. An auth flip changes what the server returns
+// (followsOnline), so refresh immediately instead of waiting out the interval.
+onMounted(() => presenceStore.startPolling())
+onBeforeUnmount(() => presenceStore.stopPolling())
+watch(
+  () => auth.isAuthenticated,
+  () => {
+    if (presenceStore.pollTimer !== null) void presenceStore.refresh()
+  },
+)
+
+const onlineLabel = computed(() =>
+  presenceStore.online === null ? null : formatNum(presenceStore.online),
+)
 
 // Start/stop polling whenever the auth state flips. Wiring it here (vs App.vue) keeps the
 // nav self-contained — every authenticated session is rendered through the nav, so the bell
@@ -45,11 +64,18 @@ const navLinkActive = 'text-accent bg-accent-bg'
 const SEARCH_DEBOUNCE_MS = 250
 const DROPDOWN_CLIP_LIMIT = 5
 const DROPDOWN_GAME_LIMIT = 3
+const DROPDOWN_USER_LIMIT = 3
 
 const query = ref('')
 const isFocused = ref(false)
-const results = ref<SearchResponse>({ clips: [], games: [] })
+const results = ref<SearchResponse>({ clips: [], games: [], users: [] })
 const loading = ref(false)
+const hasDropdownResults = computed(
+  () =>
+    results.value.clips.length > 0 ||
+    results.value.games.length > 0 ||
+    results.value.users.length > 0,
+)
 
 // The dropdown is teleported to <body> so it escapes the header's stacking
 // context and never gets clipped by it. Living in the root stacking context
@@ -99,19 +125,19 @@ let requestSeq = 0
 async function runSearch(raw: string) {
   const trimmed = raw.trim()
   if (!trimmed) {
-    results.value = { clips: [], games: [] }
+    results.value = { clips: [], games: [], users: [] }
     loading.value = false
     return
   }
   const seq = ++requestSeq
   loading.value = true
   try {
-    // Backend caps games to whatever the user gets via `limit`; we ask for the
-    // larger of the two visual caps and slice in the template. One request,
+    // Backend caps every section to whatever the user gets via `limit`; we ask for
+    // the largest of the visual caps and slice in the template. One request,
     // simplest contract.
     const resp = await search.query(trimmed, {
       type: 'all',
-      limit: Math.max(DROPDOWN_CLIP_LIMIT, DROPDOWN_GAME_LIMIT),
+      limit: Math.max(DROPDOWN_CLIP_LIMIT, DROPDOWN_GAME_LIMIT, DROPDOWN_USER_LIMIT),
     })
     if (seq !== requestSeq) return
     results.value = resp
@@ -119,7 +145,7 @@ async function runSearch(raw: string) {
     if (seq !== requestSeq) return
     // Silent failure in the dropdown is intentional: typing-on-every-keystroke
     // would otherwise turn a transient network blip into a flashing toast.
-    results.value = { clips: [], games: [] }
+    results.value = { clips: [], games: [], users: [] }
   } finally {
     if (seq === requestSeq) loading.value = false
   }
@@ -132,7 +158,7 @@ watch(query, (q) => {
   // results for the previous query.
   cancelInFlight()
   if (!q.trim()) {
-    results.value = { clips: [], games: [] }
+    results.value = { clips: [], games: [], users: [] }
     return
   }
   debounceTimer = setTimeout(() => runSearch(q), SEARCH_DEBOUNCE_MS)
@@ -382,10 +408,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onGlobalKeydown))
             class="fixed z-60 overflow-hidden rounded-lg border border-border-strong bg-surface-base"
             @mousedown.prevent
           >
-            <div
-              v-if="loading && results.clips.length === 0 && results.games.length === 0"
-              class="flex items-center gap-3 px-3.5 py-3"
-            >
+            <div v-if="loading && !hasDropdownResults" class="flex items-center gap-3 px-3.5 py-3">
               <span class="block h-1.5 w-5.5 overflow-hidden rounded-full bg-surface-high">
                 <span
                   class="block h-full w-full origin-left bg-accent animate-[tick_1.6s_ease-in-out_infinite]"
@@ -410,10 +433,37 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onGlobalKeydown))
                   />
                 </ul>
               </div>
-              <div v-if="results.clips.length > 0">
+              <div v-if="results.users.length > 0">
                 <div
                   class="px-3.5 pt-2.5 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-text-muted"
                   :class="{ 'border-t border-border': results.games.length > 0 }"
+                >
+                  Players
+                </div>
+                <ul role="listbox" class="m-0 list-none p-0">
+                  <li
+                    v-for="u in results.users.slice(0, DROPDOWN_USER_LIMIT)"
+                    :key="u.id"
+                    role="option"
+                    :aria-selected="false"
+                    class="flex cursor-pointer items-center gap-3 px-3.5 py-2 transition-colors duration-150 hover:bg-surface-high"
+                    @mousedown.prevent="
+                      onResultClick({ name: 'user', params: { username: u.username } })
+                    "
+                  >
+                    <UserAvatar :user="u" :size="24" />
+                    <span class="min-w-0 flex-1 truncate text-sm text-text-primary">
+                      {{ u.username }}
+                    </span>
+                  </li>
+                </ul>
+              </div>
+              <div v-if="results.clips.length > 0">
+                <div
+                  class="px-3.5 pt-2.5 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-text-muted"
+                  :class="{
+                    'border-t border-border': results.games.length > 0 || results.users.length > 0,
+                  }"
                 >
                   Clips
                 </div>
@@ -438,7 +488,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onGlobalKeydown))
                 </ul>
               </div>
               <div
-                v-if="!loading && results.clips.length === 0 && results.games.length === 0"
+                v-if="!loading && !hasDropdownResults"
                 class="px-3.5 py-3 text-[11px] text-text-muted"
               >
                 No matches
@@ -491,6 +541,14 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onGlobalKeydown))
         >
           Admin
         </RouterLink>
+
+        <!-- Live online count — renders nothing while the endpoint is absent/erroring -->
+        <div v-if="onlineLabel !== null" class="flex items-center gap-1.5 pr-1 max-lg:hidden">
+          <span class="size-[7px] rounded-full bg-accent" aria-hidden="true"></span>
+          <span class="text-[11px] font-semibold text-text-secondary">
+            {{ onlineLabel }} online
+          </span>
+        </div>
 
         <!-- Upload button — the tab bar carries upload below 1024px -->
         <RouterLink
