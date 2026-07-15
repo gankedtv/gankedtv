@@ -39,6 +39,52 @@ public class ClipBlobCleanupTests
     }
 
     [Fact]
+    public async Task PurgesStreamCachePrefix_KeyedByClipGuid()
+    {
+        var storage = Substitute.For<IObjectStorageService>();
+        var clip = MakeClip();
+
+        await ClipBlobCleanup.TryDeleteAsync(storage, Buckets, clip, NullLogger.Instance, CancellationToken.None);
+
+        await storage.Received(1).DeleteByPrefixAsync(
+            "stream-cache", $"{clip.Id:N}/", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task TryDeleteStreamCacheAsync_DeletesPrefixOnly()
+    {
+        var storage = Substitute.For<IObjectStorageService>();
+        var clipId = Guid.NewGuid();
+
+        await ClipBlobCleanup.TryDeleteStreamCacheAsync(
+            storage, Buckets, clipId, NullLogger.Instance, CancellationToken.None);
+
+        await storage.Received(1).DeleteByPrefixAsync(
+            "stream-cache", $"{clipId:N}/", Arg.Any<CancellationToken>());
+        await storage.DidNotReceive().DeleteObjectAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task TryDeleteStreamCacheAsync_Failure_LogsWarning()
+    {
+        var storage = Substitute.For<IObjectStorageService>();
+        storage.DeleteByPrefixAsync("stream-cache", Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns<Task>(_ => Task.FromException(new InvalidOperationException("s3 down")));
+        var logger = Substitute.For<ILogger>();
+
+        await ClipBlobCleanup.TryDeleteStreamCacheAsync(
+            storage, Buckets, Guid.NewGuid(), logger, CancellationToken.None);
+
+        logger.Received().Log(
+            LogLevel.Warning,
+            Arg.Any<EventId>(),
+            Arg.Any<object>(),
+            Arg.Any<InvalidOperationException>(),
+            Arg.Any<Func<object, Exception?, string>>());
+    }
+
+    [Fact]
     public async Task SkipsThumbnail_WhenKeyIsNull()
     {
         var storage = Substitute.For<IObjectStorageService>();

@@ -75,6 +75,13 @@ public static class ClipsMutateEndpoints
             return ProblemResults.Forbidden("forbidden");
         }
 
+        // A hidden clip is a moderation takedown; the owner must not edit it — least of all flip
+        // visibility back to public. Restoring is admin-only (/admin/clips/{id}/unhide).
+        if (clip.Visibility == ClipVisibilities.Hidden)
+        {
+            return ProblemResults.Forbidden("moderated");
+        }
+
         // Only Ready clips are PATCH-able. Non-Ready (draft/processing/failed) rows have
         // no thumbnail and ClipDetailResponse's contract requires a non-null ThumbnailUrl;
         // also matches GET /clips/{id} which already filters to Ready, so the response

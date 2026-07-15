@@ -323,6 +323,43 @@ public class AdminEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task HideClip_PurgesAnonymousJitStreamCache()
+    {
+        // A hidden clip's JIT HLS rendition lives in the anonymous-read stream-cache bucket at a
+        // GUID-derivable key, so hide must purge it — otherwise the takedown leaks until the
+        // bucket's TTL evicts it. Keyed by the clip GUID (see JitLadderService.BuildCachePrefix).
+        await _fx.ResetAsync();
+        var (_, modToken) = await SeedUserAsync("mod", UserRoles.Moderator);
+        var (ownerId, _) = await SeedUserAsync("owner");
+        var clipId = await SeedClipAsync(ownerId);
+
+        using var client = AuthTestHelpers.CreateBearerClient(_factory!, modToken);
+        var resp = await client.PostAsJsonAsync($"/admin/clips/{clipId}/hide", new { });
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        await _storage.Received(1).DeleteByPrefixAsync(
+            Arg.Any<string>(), $"{clipId:N}/", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task HideClip_AlreadyHidden_StillPurgesStreamCache()
+    {
+        // Re-hiding an already-hidden clip is a no-op on the row, but must still purge — this is
+        // the recovery path when a prior hide's best-effort purge failed.
+        await _fx.ResetAsync();
+        var (_, modToken) = await SeedUserAsync("mod", UserRoles.Moderator);
+        var (ownerId, _) = await SeedUserAsync("owner");
+        var clipId = await SeedClipAsync(ownerId, visibility: ClipVisibilities.Hidden);
+
+        using var client = AuthTestHelpers.CreateBearerClient(_factory!, modToken);
+        var resp = await client.PostAsJsonAsync($"/admin/clips/{clipId}/hide", new { });
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        await _storage.Received(1).DeleteByPrefixAsync(
+            Arg.Any<string>(), $"{clipId:N}/", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task UnhideClip_RestoresVisibilityPublic()
     {
         await _fx.ResetAsync();

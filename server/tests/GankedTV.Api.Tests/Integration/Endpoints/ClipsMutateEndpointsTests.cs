@@ -285,6 +285,44 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Patch_HiddenClip_Returns403Moderated_AndDoesNotResurrect()
+    {
+        // A hidden clip is a moderation takedown. The owner PATCHing visibility=public must not
+        // undo it — the endpoint refuses the whole mutation and the row stays hidden.
+        await _fx.ResetAsync();
+        var (ownerId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(ownerId, visibility: "hidden");
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PatchAsJsonAsync($"/clips/{clipId}", new { visibility = "public" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("code").GetString().Should().Be("moderated");
+
+        await using var db = _fx.CreateContext();
+        var persisted = await db.Clips.AsNoTracking().FirstAsync(c => c.Id == clipId);
+        persisted.Visibility.Should().Be("hidden");
+    }
+
+    [Fact]
+    public async Task Patch_HiddenClip_RefusesMetadataEdits()
+    {
+        // The block covers every field, not just visibility — the owner can't edit title/desc
+        // of a taken-down clip either.
+        await _fx.ResetAsync();
+        var (ownerId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(ownerId, title: "before", visibility: "hidden");
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PatchAsJsonAsync($"/clips/{clipId}", new { title = "renamed" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        await using var db = _fx.CreateContext();
+        (await db.Clips.AsNoTracking().FirstAsync(c => c.Id == clipId)).Title.Should().Be("before");
+    }
+
+    [Fact]
     public async Task Patch_TitleTooLong_Returns400()
     {
         await _fx.ResetAsync();

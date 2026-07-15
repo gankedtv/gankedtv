@@ -4,11 +4,14 @@ using GankedTV.Api.Contracts.Moderation;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Problems;
+using GankedTV.Api.Services.Maintenance;
 using GankedTV.Api.Services.Media;
 using GankedTV.Api.Services.Moderation;
+using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Validation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace GankedTV.Api.Endpoints;
 
@@ -19,6 +22,7 @@ public static class AdminEndpoints
 {
     private const int DefaultPageSize = 20;
     private const int MaxPageSize = 100;
+    private static readonly string LogCategory = typeof(AdminEndpoints).FullName!;
 
     public static IEndpointRouteBuilder MapAdminEndpoints(this IEndpointRouteBuilder app)
     {
@@ -166,6 +170,9 @@ public static class AdminEndpoints
         ClaimsPrincipal principal,
         GankedTvDbContext db,
         IReportService reports,
+        IObjectStorageService storage,
+        IOptions<S3Options> s3,
+        ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
         if (!principal.TryGetUserId(out var modId))
@@ -185,6 +192,13 @@ public static class AdminEndpoints
         // Wrap the mutation + report auto-resolve in one transaction so a partial failure
         // can't leave the queue out of sync with the entity state.
         await SaveAndResolveAsync(db, reports, ReportTargetTypes.Clip, id, modId, ct);
+
+        // The stream-cache bucket is anonymous-read with a multi-day TTL, so a hidden clip's JIT
+        // HLS stays fetchable by GUID until eviction. Purge now — unconditionally so a prior failed
+        // purge self-heals; best-effort post-commit so a cleanup failure can't fail a committed hide.
+        await ClipBlobCleanup.TryDeleteStreamCacheAsync(
+            storage, s3.Value, id, loggerFactory.CreateLogger(LogCategory), ct);
+
         return Results.Ok(new { id, visibility = clip.Visibility });
     }
 
