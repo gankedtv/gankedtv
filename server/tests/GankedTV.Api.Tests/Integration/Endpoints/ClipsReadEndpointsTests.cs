@@ -1750,10 +1750,8 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task Stream_Hidden_OwnerReturns404_NoJobEnqueued()
     {
-        // A JIT build writes an anonymously-fetchable HLS artifact into the public stream-cache
-        // bucket. Letting even the owner stream a hidden clip would recreate exactly the leak a
-        // moderation takedown purges, so /stream refuses hidden clips for everyone — the owner
-        // still has the presigned master via GET /clips/{id}. This makes the hide-time purge durable.
+        // /stream refuses hidden clips for everyone — an owner re-watch would recreate the
+        // anonymous HLS a takedown purged, so the hide-time purge stays durable.
         await _fx.ResetAsync();
         var (userId, token) = await SeedUserAndIssueTokenAsync("hiddenstreamer");
         var (clipId, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, visibility: "hidden");

@@ -193,11 +193,11 @@ public static class AdminEndpoints
         // can't leave the queue out of sync with the entity state.
         await SaveAndResolveAsync(db, reports, ReportTargetTypes.Clip, id, modId, ct);
 
-        // The stream-cache bucket is anonymous-read with a multi-day TTL, so a hidden clip's JIT
-        // HLS stays fetchable by GUID until eviction. Purge now — unconditionally so a prior failed
-        // purge self-heals; best-effort post-commit so a cleanup failure can't fail a committed hide.
+        // Anonymous-read stream-cache has a multi-day TTL, so a hidden clip's JIT HLS stays
+        // fetchable by GUID until eviction — purge now (unconditional so a re-hide self-heals a
+        // prior failure). None, not ct: the hide already committed, so a disconnect can't abort it.
         await ClipBlobCleanup.TryDeleteStreamCacheAsync(
-            storage, s3.Value, id, loggerFactory.CreateLogger(LogCategory), ct);
+            storage, s3.Value, id, loggerFactory.CreateLogger(LogCategory), CancellationToken.None);
 
         return Results.Ok(new { id, visibility = clip.Visibility });
     }
