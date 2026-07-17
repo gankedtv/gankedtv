@@ -75,6 +75,13 @@ public static class ClipsMutateEndpoints
             return ProblemResults.Forbidden("forbidden");
         }
 
+        // A hidden clip is a moderation takedown; the owner must not edit it — least of all flip
+        // visibility back to public. Restoring is admin-only (/admin/clips/{id}/unhide).
+        if (clip.Visibility == ClipVisibilities.Hidden)
+        {
+            return ProblemResults.Forbidden("moderated");
+        }
+
         // Only Ready clips are PATCH-able. Non-Ready (draft/processing/failed) rows have
         // no thumbnail and ClipDetailResponse's contract requires a non-null ThumbnailUrl;
         // also matches GET /clips/{id} which already filters to Ready, so the response
@@ -194,12 +201,14 @@ public static class ClipsMutateEndpoints
 
         // S3 cleanup is best-effort: the DB row is already gone, so a cleanup failure must not
         // surface as 500 (that would mislead the client into retrying a non-existent row).
+        // None, not ct: a client disconnect after the commit must not abort the cleanup either —
+        // there's no row left to retry against (same contract as the hide purge).
         await ClipBlobCleanup.TryDeleteAsync(
             storage,
             s3.Value,
             clip,
             loggerFactory.CreateLogger(LogCategory),
-            ct);
+            CancellationToken.None);
 
         return Results.NoContent();
     }

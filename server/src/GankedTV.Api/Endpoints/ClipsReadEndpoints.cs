@@ -92,7 +92,10 @@ public static class ClipsReadEndpoints
     {
         var viewerId = principal.GetUserIdOrNull();
         var clip = await db.Clips.AsNoTracking()
-            .Where(c => c.Id == id && c.Status == ClipStatuses.Ready)
+            // Exclude hidden even for the owner (WhereVisibleTo admits them): a JIT build would
+            // re-create the anonymously-fetchable HLS a takedown purged. Owner keeps presigned master.
+            .Where(c => c.Id == id && c.Status == ClipStatuses.Ready
+                && c.Visibility != ClipVisibilities.Hidden)
             .WhereVisibleTo(viewerId)
             .Select(c => new { c.VideoCodec })
             .SingleOrDefaultAsync(ct);

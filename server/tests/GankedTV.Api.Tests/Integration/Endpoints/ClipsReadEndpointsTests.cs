@@ -1748,8 +1748,10 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Stream_Hidden_OwnerReturns202()
+    public async Task Stream_Hidden_OwnerReturns404_NoJobEnqueued()
     {
+        // /stream refuses hidden clips for everyone — an owner re-watch would recreate the
+        // anonymous HLS a takedown purged, so the hide-time purge stays durable.
         await _fx.ResetAsync();
         var (userId, token) = await SeedUserAndIssueTokenAsync("hiddenstreamer");
         var (clipId, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, visibility: "hidden");
@@ -1757,7 +1759,9 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         using var client = ClientWithBearer(token);
         var resp = await client.GetAsync($"/clips/{clipId}/stream");
 
-        resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        await using var db = _fx.CreateContext();
+        (await db.ClipStreamJobs.AsNoTracking().AnyAsync(j => j.ClipId == clipId)).Should().BeFalse();
     }
 
     [Fact]

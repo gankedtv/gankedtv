@@ -285,6 +285,44 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Patch_HiddenClip_Returns403Moderated_AndDoesNotResurrect()
+    {
+        // A hidden clip is a moderation takedown. The owner PATCHing visibility=public must not
+        // undo it — the endpoint refuses the whole mutation and the row stays hidden.
+        await _fx.ResetAsync();
+        var (ownerId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(ownerId, visibility: "hidden");
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PatchAsJsonAsync($"/clips/{clipId}", new { visibility = "public" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("code").GetString().Should().Be("moderated");
+
+        await using var db = _fx.CreateContext();
+        var persisted = await db.Clips.AsNoTracking().FirstAsync(c => c.Id == clipId);
+        persisted.Visibility.Should().Be("hidden");
+    }
+
+    [Fact]
+    public async Task Patch_HiddenClip_RefusesMetadataEdits()
+    {
+        // The block covers every field, not just visibility — the owner can't edit title/desc
+        // of a taken-down clip either.
+        await _fx.ResetAsync();
+        var (ownerId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(ownerId, title: "before", visibility: "hidden");
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PatchAsJsonAsync($"/clips/{clipId}", new { title = "renamed" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        await using var db = _fx.CreateContext();
+        (await db.Clips.AsNoTracking().FirstAsync(c => c.Id == clipId)).Title.Should().Be("before");
+    }
+
+    [Fact]
     public async Task Patch_TitleTooLong_Returns400()
     {
         await _fx.ResetAsync();
@@ -539,14 +577,16 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
 
         // Video goes to ClipsBucket, thumbnail goes to ThumbnailsBucket — a swap would leak the
         // video key into the thumbnails bucket (and vice versa), silently breaking cleanup.
+        // Non-cancellable token: the row is already gone, so a client disconnect must not
+        // abort the cleanup (same contract as the hide purge).
         await _storage.Received(1).DeleteObjectAsync(
             s3.ClipsBucket,
             $"clips/{ownerId}/{clipId}.mp4",
-            Arg.Any<CancellationToken>());
+            Arg.Is<CancellationToken>(t => !t.CanBeCanceled));
         await _storage.Received(1).DeleteObjectAsync(
             s3.ThumbnailsBucket,
             "thumbs/x.jpg",
-            Arg.Any<CancellationToken>());
+            Arg.Is<CancellationToken>(t => !t.CanBeCanceled));
     }
 
     [Fact]

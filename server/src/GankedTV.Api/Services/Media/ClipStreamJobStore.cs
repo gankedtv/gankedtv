@@ -80,12 +80,13 @@ public sealed class ClipStreamJobStore : IClipStreamJobStore
         var clip = await _db.Clips
             .AsNoTracking()
             .Where(c => c.Id == job.ClipId)
-            .Select(c => new { c.VideoKey, c.Height, c.Status })
+            .Select(c => new { c.VideoKey, c.Height, c.Status, c.Visibility })
             .FirstOrDefaultAsync(ct);
 
-        if (clip is null || clip.Status != ClipStatuses.Ready)
+        if (clip is null || clip.Status != ClipStatuses.Ready || clip.Visibility == ClipVisibilities.Hidden)
         {
-            // Source gone / not ready — drop the stale job so it doesn't churn the queue.
+            // Source gone / not ready / moderated — drop the job. The hidden check keeps a job
+            // enqueued pre-hide from re-creating the anonymous rendition the hide just purged.
             await _db.ClipStreamJobs.Where(j => j.ClipId == job.ClipId).ExecuteDeleteAsync(ct);
             await tx.CommitAsync(ct);
             return null;

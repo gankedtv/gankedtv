@@ -33,24 +33,7 @@ public static class ClipBlobCleanup
                 clip.Id, clip.VideoKey);
         }
 
-        // Drop any cached JIT HLS rendition. The stream-cache bucket is public-read with a
-        // 14-day lifecycle TTL, so without this a deleted clip's HLS stays publicly fetchable
-        // (by clip GUID) until the TTL elapses. Keyed by the clip GUID — see JitLadderService.
-        try
-        {
-            await storage.DeleteByPrefixAsync(buckets.StreamCacheBucket, $"{clip.Id:N}/", ct);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(
-                ex,
-                "Failed to delete cached HLS rendition for clip {ClipId}",
-                clip.Id);
-        }
+        await TryDeleteStreamCacheAsync(storage, buckets, clip.Id, logger, ct);
 
         if (string.IsNullOrEmpty(clip.ThumbnailKey))
         {
@@ -71,6 +54,32 @@ public static class ClipBlobCleanup
                 ex,
                 "Failed to delete S3 thumbnail object for clip {ClipId} (thumb={ThumbKey})",
                 clip.Id, clip.ThumbnailKey);
+        }
+    }
+
+    // Best-effort purge of a clip's cached JIT HLS from the anonymous-read stream-cache bucket
+    // (keyed by clip GUID — see JitLadderService). Split out so hide can drop it without the master.
+    public static async Task TryDeleteStreamCacheAsync(
+        IObjectStorageService storage,
+        S3Options buckets,
+        Guid clipId,
+        ILogger logger,
+        CancellationToken ct)
+    {
+        try
+        {
+            await storage.DeleteByPrefixAsync(buckets.StreamCacheBucket, $"{clipId:N}/", ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(
+                ex,
+                "Failed to delete cached HLS rendition for clip {ClipId}",
+                clipId);
         }
     }
 }
