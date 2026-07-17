@@ -201,12 +201,14 @@ public static class ClipsMutateEndpoints
 
         // S3 cleanup is best-effort: the DB row is already gone, so a cleanup failure must not
         // surface as 500 (that would mislead the client into retrying a non-existent row).
+        // None, not ct: a client disconnect after the commit must not abort the cleanup either —
+        // there's no row left to retry against (same contract as the hide purge).
         await ClipBlobCleanup.TryDeleteAsync(
             storage,
             s3.Value,
             clip,
             loggerFactory.CreateLogger(LogCategory),
-            ct);
+            CancellationToken.None);
 
         return Results.NoContent();
     }

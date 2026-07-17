@@ -577,14 +577,16 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
 
         // Video goes to ClipsBucket, thumbnail goes to ThumbnailsBucket — a swap would leak the
         // video key into the thumbnails bucket (and vice versa), silently breaking cleanup.
+        // Non-cancellable token: the row is already gone, so a client disconnect must not
+        // abort the cleanup (same contract as the hide purge).
         await _storage.Received(1).DeleteObjectAsync(
             s3.ClipsBucket,
             $"clips/{ownerId}/{clipId}.mp4",
-            Arg.Any<CancellationToken>());
+            Arg.Is<CancellationToken>(t => !t.CanBeCanceled));
         await _storage.Received(1).DeleteObjectAsync(
             s3.ThumbnailsBucket,
             "thumbs/x.jpg",
-            Arg.Any<CancellationToken>());
+            Arg.Is<CancellationToken>(t => !t.CanBeCanceled));
     }
 
     [Fact]

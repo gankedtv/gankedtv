@@ -33,7 +33,8 @@ public class ClipStreamJobStoreIntegrationTests
         return u.Id;
     }
 
-    private async Task<Guid> SeedClipAsync(Guid userId, string status, short? height = 720)
+    private async Task<Guid> SeedClipAsync(
+        Guid userId, string status, short? height = 720, string visibility = ClipVisibilities.Public)
     {
         await using var db = NewContext();
         var clip = new Clip
@@ -45,6 +46,7 @@ public class ClipStreamJobStoreIntegrationTests
             ShareCode = ShareCodeGenerator.Next(),
             Status = status,
             Height = height,
+            Visibility = visibility,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         };
@@ -164,6 +166,30 @@ public class ClipStreamJobStoreIntegrationTests
         await _fx.ResetAsync();
         var userId = await SeedUserAsync("dan");
         var clipId = await SeedClipAsync(userId, ClipStatuses.Failed);
+        var now = DateTimeOffset.UtcNow;
+        await using (var seed = NewContext())
+        {
+            await NewStore(now, seed).EnqueueAsync(clipId, CancellationToken.None);
+        }
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+
+        var claimed = await store.ClaimNextAsync(TimeSpan.FromMinutes(5), 3, CancellationToken.None);
+
+        claimed.Should().BeNull();
+        await using var verify = NewContext();
+        (await verify.ClipStreamJobs.AsNoTracking().AnyAsync(j => j.ClipId == clipId)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ClaimNextAsync_HiddenClip_DropsStaleJob_ReturnsNull()
+    {
+        // A job enqueued before a moderator hide would otherwise be claimed after it and
+        // re-create the anonymous stream-cache rendition the hide's purge just deleted.
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("hank");
+        var clipId = await SeedClipAsync(userId, ClipStatuses.Ready, visibility: ClipVisibilities.Hidden);
         var now = DateTimeOffset.UtcNow;
         await using (var seed = NewContext())
         {

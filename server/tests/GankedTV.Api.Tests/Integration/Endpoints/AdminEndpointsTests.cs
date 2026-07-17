@@ -338,7 +338,7 @@ public class AdminEndpointsTests : IAsyncLifetime
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
 
         await _storage.Received(1).DeleteByPrefixAsync(
-            Arg.Any<string>(), $"{clipId:N}/", Arg.Any<CancellationToken>());
+            "stream-cache", $"{clipId:N}/", Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -356,7 +356,7 @@ public class AdminEndpointsTests : IAsyncLifetime
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
 
         await _storage.Received(1).DeleteByPrefixAsync(
-            Arg.Any<string>(), $"{clipId:N}/", Arg.Any<CancellationToken>());
+            "stream-cache", $"{clipId:N}/", Arg.Any<CancellationToken>());
     }
 
     [Fact]
