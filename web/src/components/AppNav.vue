@@ -9,6 +9,7 @@ import { search, type SearchResponse } from '@/api/search'
 import ThemeModeToggle from './ThemeModeToggle.vue'
 import UserAvatar from './UserAvatar.vue'
 import LogoMark from './LogoMark.vue'
+import RewyndLogo from './RewyndLogo.vue'
 import GameSearchResult from './GameSearchResult.vue'
 import NotificationsDropdown from './notifications/NotificationsDropdown.vue'
 import IconSearch from './icons/IconSearch.vue'
@@ -500,6 +501,19 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onGlobalKeydown))
 
       <!-- Actions -->
       <div class="ml-auto flex items-center gap-2">
+        <!-- Rewynd — our companion clip recorder (separate product, opens off-site). -->
+        <a
+          href="https://rewynd.dev"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Rewynd — instant-replay clip recorder"
+          aria-label="Rewynd, our instant-replay clip recorder (opens in a new tab)"
+          class="inline-flex h-8.5 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-transparent px-2.5 text-xs font-semibold text-text-secondary no-underline transition-colors duration-150 hover:border-accent hover:text-accent max-lg:hidden"
+        >
+          <RewyndLogo :size="16" />
+          <span>rewynd</span>
+        </a>
+
         <!-- Mobile search trigger (inline bar is ≥1281px only). -->
         <button
           ref="mobileSearchTriggerRef"

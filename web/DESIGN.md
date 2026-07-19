@@ -29,7 +29,7 @@ Dropping any of these lets the system drift back toward generic:
 4. **Plain section names.** "Top Games", "Trending", "Recent Clips". No editorial kicker copy, no roman numerals, no issue framing.
 5. **No issue numbers anywhere.** Ranking is plain numerals (`01`, `02`, …) in condensed type — not a publishing metaphor.
 6. **8px card radius.** Cards/nav/popovers/buttons are `rounded-lg` (8px). Inputs `rounded-md` (6px). Tiny badges `rounded-sm` (4px). Avatars/pills/dots `rounded-full`. Nothing sharp, nothing above `rounded-lg`.
-7. **No UI gradients.** The sanctioned exceptions: the legibility overlay on video thumbnails/reels (`bg-[linear-gradient(transparent,rgba(0,0,0,0.85–0.88))]`) and the logo mark's internal SVG gradients + glow (`LogoMark.vue` — brand art, not UI).
+7. **No UI gradients.** The sanctioned exceptions: the legibility overlay on video thumbnails/reels (`bg-[linear-gradient(transparent,rgba(0,0,0,0.85–0.88))]`) and logo-mark internal SVG gradients + glow (`LogoMark.vue`, plus `RewyndLogo.vue` — the sibling product's mark — both brand art, not UI).
 8. **Backdrop blur on the nav only.** `backdrop-blur-md` lives in `AppNav.vue` and nowhere else.
 9. **Tabs as underlines, not pills.** Feed/window tabs use a 2px mint bottom border on active (`UnderlineTabs.vue`). Filter pills (game filters, tag chips) are the only pill shapes.
 10. **Mint deepens in light mode.** Light accent is `#00b87d` (WCAG AA on cream) — the token handles it; never hardcode `#00e5a0` on light surfaces.
@@ -101,6 +101,7 @@ Scale highlights: wordmark 18px/900 caps; page title `clamp(30px,3.6vw,42px)` 90
 - **Toasts:** `rounded-lg border border-border-strong bg-surface-raised`, `slideUp`/`slideDown` keyframes (250ms).
 - **Status states** ([StatusPanel.vue](src/components/StatusPanel.vue)): loading = mint tick bar; empty/error = raised card with kicker + copy.
 - **Logo** ([LogoMark.vue](src/components/LogoMark.vue)): mint HUD-frame SVG mark; wordmark `GANKED.TV` condensed 900 caps, `.TV` mint. Nav usage: `:size="23" glow`.
+- **Rewynd mark** ([RewyndLogo.vue](src/components/RewyndLogo.vue)): the sibling clip-recorder's mint HUD-frame rewind mark (`◄◄`), same brand language as `LogoMark`. Used only for the nav's off-site link to `rewynd.dev` (secondary-button chip). Not a GankedTV destination — always `target="_blank"`.
 
 ---
 
@@ -143,7 +144,7 @@ grep -rnE "font-display|font-mono|font-heading|Rajdhani|DM Mono|DM Sans" . --inc
 grep -rnE "text-ink|bg-ink|border-ink|-signal|surface-sunken" . --include="*.vue" --include="*.ts"  # zero
 ```
 
-Sanctioned exceptions (the only allowed hits): nav backdrop-blur, game-tile lift, thumbnail/reels legibility gradients, LogoMark SVG gradients + glow, and the Plyr menu `box-shadow: none` override in base.css (it *removes* a vendor shadow).
+Sanctioned exceptions (the only allowed hits): nav backdrop-blur, game-tile lift, thumbnail/reels legibility gradients, LogoMark + RewyndLogo SVG gradients (brand art), and the Plyr menu `box-shadow: none` override in base.css (it *removes* a vendor shadow).
 
 ---
 
