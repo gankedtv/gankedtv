@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import type { CommentItem } from '@/api/comments'
 import { formatRelativeTime } from '@/lib/format'
 import UserAvatar from '@/components/UserAvatar.vue'
+import AuthorHandle from '@/components/AuthorHandle.vue'
 
 const props = defineProps<{
   comment: CommentItem
@@ -24,10 +25,19 @@ const isOwn = computed(
 
 <template>
   <div class="flex gap-3">
-    <UserAvatar :user="comment.author" :size="32" class="mt-0.5" />
+    <RouterLink
+      :to="{ name: 'user', params: { username: comment.author.username } }"
+      class="mt-0.5 shrink-0 transition-opacity hover:opacity-80"
+    >
+      <UserAvatar :user="comment.author" :size="32" />
+    </RouterLink>
     <div class="min-w-0 flex-1">
       <div class="flex items-baseline gap-2">
-        <span class="text-xs font-semibold text-accent">@{{ comment.author.username }}</span>
+        <AuthorHandle
+          :username="comment.author.username"
+          as="link"
+          class="text-xs font-semibold text-accent"
+        />
         <span class="text-[10.5px] text-text-muted">{{
           formatRelativeTime(comment.createdAt)
         }}</span>
