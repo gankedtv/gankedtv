@@ -70,8 +70,6 @@ function openClip(id: string) {
 <template>
   <main class="mx-auto max-w-300 px-7 pt-7 pb-16 max-tablet:px-4">
     <PageHeader title="Trending">
-      <template #caption>Likes × 3 + views, decayed by age</template>
-
       <p class="sr-only">
         24-hour and 7-day windows are available; the other ranges are coming soon.
       </p>

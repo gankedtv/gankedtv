@@ -15,6 +15,7 @@ defineProps<{
 <template>
   <header>
     <div
+      v-if="live || $slots.caption"
       class="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase leading-none tracking-[0.14em] text-text-secondary"
     >
       <span
