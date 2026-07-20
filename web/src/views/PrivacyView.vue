@@ -15,51 +15,50 @@ import LegalPage from '@/components/LegalPage.vue'
     <h2>1. Data we process</h2>
     <ul>
       <li>
-        <strong>Account data</strong> — username, e-mail address, and (for password accounts) a
+        <strong>Account data</strong>: username, e-mail address, and (for password accounts) a
         salted password hash. We never store your plaintext password.
       </li>
       <li>
-        <strong>Sign-in provider data</strong> — if you sign in with Discord or Google, we receive
+        <strong>Sign-in provider data</strong>: if you sign in with Discord or Google, we receive
         your provider account ID, username, verified e-mail address, and avatar.
       </li>
       <li>
-        <strong>Content you post</strong> — clips, thumbnails, comments, likes, follows, profile
+        <strong>Content you post</strong>: clips, thumbnails, comments, likes, follows, profile
         details (bio, avatar, banner, social links), and reports you submit.
       </li>
       <li>
-        <strong>Usage and technical data</strong> — IP address, request logs, approximate online
+        <strong>Usage and technical data</strong>: IP address, request logs, approximate online
         presence (whether you were recently active), view counts, and technical identifiers used for
         rate limiting and abuse prevention.
       </li>
       <li>
-        <strong>Error data</strong> — when something breaks, our self-hosted error monitoring
+        <strong>Error data</strong>: when something breaks, our self-hosted error monitoring
         receives the technical error report; we configure it not to include personal data beyond
         what is necessary to diagnose the failure.
       </li>
       <li>
-        <strong>Analytics</strong> — in production we may use Google Analytics to measure page
-        views. Sensitive URL parameters (such as sign-in tokens) are stripped before anything is
-        sent.
+        <strong>Analytics</strong>: in production we may use Google Analytics to measure page views.
+        Sensitive URL parameters (such as sign-in tokens) are stripped before anything is sent.
       </li>
     </ul>
 
     <h2>2. Why we process it (legal bases)</h2>
     <ul>
       <li>
-        <strong>Running the Service</strong> — accounts, hosting and playing clips, feeds, comments,
+        <strong>Running the Service</strong>: accounts, hosting and playing clips, feeds, comments,
         notifications (performance of our contract with you, Art. 6(1)(b) GDPR).
       </li>
       <li>
-        <strong>Safety and abuse prevention</strong> — moderation, content reports, rate limiting,
+        <strong>Safety and abuse prevention</strong>: moderation, content reports, rate limiting,
         ban enforcement, security logging (legitimate interest, Art. 6(1)(f)).
       </li>
       <li>
-        <strong>Service quality</strong> — error monitoring and aggregate usage statistics
+        <strong>Service quality</strong>: error monitoring and aggregate usage statistics
         (legitimate interest, Art. 6(1)(f)).
       </li>
       <li>
-        <strong>Legal obligations</strong> — responding to lawful requests from competent
-        authorities (Art. 6(1)(c)).
+        <strong>Legal obligations</strong>: responding to lawful requests from competent authorities
+        (Art. 6(1)(c)).
       </li>
     </ul>
 
@@ -74,7 +73,7 @@ import LegalPage from '@/components/LegalPage.vue'
     <p>
       We do not sell personal data. Data is shared only with the infrastructure needed to run the
       Service: our hosting and object-storage providers (which store uploaded media and the
-      database), our self-hosted error-monitoring instance, and — if you use them — the sign-in
+      database), our self-hosted error-monitoring instance, and, if you use them, the sign-in
       providers (Discord, Google) and analytics provider named above. Content you post publicly
       (clips, comments, your profile) is, by design, visible to anyone.
     </p>

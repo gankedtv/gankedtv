@@ -5,7 +5,7 @@ import LegalPage from '@/components/LegalPage.vue'
 <template>
   <LegalPage title="Terms of Service" updated="20 July 2026">
     <p>
-      These Terms of Service ("<strong>Terms</strong>") govern your access to and use of GankedTV —
+      These Terms of Service ("<strong>Terms</strong>") govern your access to and use of GankedTV:
       the website at ganked.tv, its API, and any related services (together, the
       "<strong>Service</strong>"). The Service is operated by [operator legal name]
       ("<strong>GankedTV</strong>", "we", "us"). By creating an account, signing in, or otherwise
@@ -53,7 +53,7 @@ import LegalPage from '@/components/LegalPage.vue'
     <ul>
       <li>is illegal, or promotes, facilitates, or provides instructions for illegal activity;</li>
       <li>
-        infringes any copyright, trade mark, or other intellectual-property right — including
+        infringes any copyright, trade mark, or other intellectual-property right, including
         uploading footage, streams, music, or clips you have no right to use;
       </li>
       <li>
@@ -87,7 +87,7 @@ import LegalPage from '@/components/LegalPage.vue'
 
     <h2>5. Moderation and enforcement</h2>
     <p>
-      We may — but are not obliged to — review, hide, remove, or refuse any User Content, and may
+      We may, but are not obliged to, review, hide, remove, or refuse any User Content, and may
       restrict, suspend, or terminate accounts, at any time and at our discretion, in particular
       where we believe these Terms or the law are violated. We may preserve and disclose content or
       account information where required by law or a competent authority. Accounts that repeatedly
@@ -99,7 +99,7 @@ import LegalPage from '@/components/LegalPage.vue'
       If you believe content on the Service is illegal or violates these Terms, report it via the
       in-app <strong>Report</strong> action available on clips, comments, and profiles, or e-mail us
       at [contact e-mail]. Include the URL of the content, the reason you believe it is unlawful or
-      in breach, and — for intellectual-property complaints — identification of the protected work,
+      in breach, and, for intellectual-property complaints, identification of the protected work,
       your contact details, and a statement that you are the rightsholder or authorised to act for
       them. We review reports and remove or disable access to content expeditiously when we
       determine it is illegal or violates these Terms. Where appropriate we will notify the uploader
@@ -126,7 +126,7 @@ import LegalPage from '@/components/LegalPage.vue'
     <p>
       To the maximum extent permitted by law, GankedTV is not liable for any indirect, incidental,
       special, or consequential damages, loss of data, loss of profits, or reputational harm arising
-      from your use of the Service or from any User Content — including content posted by other
+      from your use of the Service or from any User Content, including content posted by other
       users. To the extent liability cannot be excluded, our total liability is limited to €100 or
       the amount you paid us for the Service in the 12 months before the claim, whichever is
       greater. Nothing in these Terms excludes liability that cannot be excluded under Dutch law,
@@ -137,7 +137,7 @@ import LegalPage from '@/components/LegalPage.vue'
     <p>
       You will indemnify and hold GankedTV harmless from any claims, damages, and costs (including
       reasonable legal fees) arising from your User Content, your use of the Service, or your breach
-      of these Terms — including third-party claims that your User Content infringes their rights.
+      of these Terms, including third-party claims that your User Content infringes their rights.
     </p>
 
     <h2>11. Termination</h2>
