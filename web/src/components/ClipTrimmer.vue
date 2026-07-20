@@ -248,8 +248,10 @@ function reset() {
 }
 
 function fmtClock(secs: number): string {
-  const m = Math.floor(secs / 60)
-  const s = secs - m * 60
+  // Round before splitting so 119.96s renders 2:00.0, not 1:60.0.
+  const rounded = Math.round(secs * 10) / 10
+  const m = Math.floor(rounded / 60)
+  const s = rounded - m * 60
   return `${m}:${s < 10 ? '0' : ''}${s.toFixed(1)}`
 }
 

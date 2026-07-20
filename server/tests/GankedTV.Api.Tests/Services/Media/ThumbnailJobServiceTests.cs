@@ -297,8 +297,9 @@ public class ThumbnailJobServiceTests
         var result = await svc.ExtractAsync(job, null, CancellationToken.None);
 
         // Poster comes from inside the kept range: trim start + the 1s frame offset.
+        capturedArgs.Should().NotBeNull();
         var ssIdx = capturedArgs!.ToList().IndexOf("-ss");
-        capturedArgs[ssIdx + 1].Should().Be("11.000");
+        capturedArgs![ssIdx + 1].Should().Be("11.000");
         result.DurationSecs.Should().Be(8);
         result.TrimStartSecs.Should().Be(10);
         result.TrimEndSecs.Should().Be(18);
