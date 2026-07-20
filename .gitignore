@@ -67,3 +67,5 @@ graphify-out/
 # Misc
 tmp/
 .superpowers/
+# Local AI working docs (design specs / implementation plans) — kept out of the repo
+docs/superpowers/

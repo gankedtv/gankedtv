@@ -1,7 +1,6 @@
 # GankedTV Design System — Arena
 
 **Status:** Shipped. This file is the source of truth for all frontend work.
-**Spec:** [docs/superpowers/specs/2026-06-29-arena-design-system-design.md](../docs/superpowers/specs/2026-06-29-arena-design-system-design.md)
 **Replaces:** Newsprint ("Broadcast Almanac") v2.
 
 ---
