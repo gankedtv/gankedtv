@@ -35,6 +35,9 @@ const decodeFailed = ref(false)
 
 let frameRequestId = 0
 
+// Resets internal state only — the parent owns clearing the model on a new pick, so a
+// remount (navigating back to the trim step) keeps the earlier range via the model seed
+// in onLoadedMetadata.
 watch(
   () => props.file,
   (f) => {
@@ -47,7 +50,6 @@ watch(
     playing.value = false
     frames.value = []
     decodeFailed.value = false
-    model.value = null
     frameRequestId++
   },
   { immediate: true },
@@ -70,7 +72,15 @@ function onLoadedMetadata() {
   const v = videoEl.value
   if (!v || !Number.isFinite(v.duration) || v.duration <= 0) return
   duration.value = v.duration
-  end.value = v.duration
+  const m = model.value
+  if (m && m.start >= 0 && m.end - m.start >= MIN_GAP && m.end <= v.duration + CHANGED_EPS) {
+    start.value = m.start
+    end.value = Math.min(m.end, v.duration)
+  } else {
+    start.value = 0
+    end.value = v.duration
+  }
+  playhead.value = start.value
   void captureFrames(++frameRequestId)
 }
 
@@ -160,7 +170,8 @@ function seekTo(t: number) {
 // --- trim bar interaction ------------------------------------------------
 
 type Handle = 'start' | 'end' | 'seek'
-let dragging: Handle | null = null
+// Reactive so the bar can swap its cursor to ew-resize while a handle is held.
+const dragState = ref<Handle | null>(null)
 
 function timeAtX(clientX: number): number {
   const rect = barEl.value!.getBoundingClientRect()
@@ -178,29 +189,29 @@ function onPointerDown(e: PointerEvent) {
   barEl.value.focus()
   const distStart = Math.abs(e.clientX - pixelOf(start.value))
   const distEnd = Math.abs(e.clientX - pixelOf(end.value))
-  if (distStart <= GRAB && distStart <= distEnd) dragging = 'start'
-  else if (distEnd <= GRAB) dragging = 'end'
-  else dragging = 'seek'
+  if (distStart <= GRAB && distStart <= distEnd) dragState.value = 'start'
+  else if (distEnd <= GRAB) dragState.value = 'end'
+  else dragState.value = 'seek'
   barEl.value.setPointerCapture(e.pointerId)
   applyDrag(timeAtX(e.clientX))
 }
 
 function onPointerMove(e: PointerEvent) {
-  if (dragging) applyDrag(timeAtX(e.clientX))
+  if (dragState.value) applyDrag(timeAtX(e.clientX))
 }
 
 function onPointerUp() {
-  dragging = null
+  dragState.value = null
 }
 
 function applyDrag(t: number) {
-  if (dragging === 'start') {
+  if (dragState.value === 'start') {
     start.value = Math.min(Math.max(t, 0), end.value - MIN_GAP)
     seekTo(start.value)
-  } else if (dragging === 'end') {
+  } else if (dragState.value === 'end') {
     end.value = Math.max(Math.min(t, duration.value), start.value + MIN_GAP)
     seekTo(end.value)
-  } else if (dragging === 'seek') {
+  } else if (dragState.value === 'seek') {
     seekTo(t)
   }
 }
@@ -307,7 +318,10 @@ const kbdClass =
         :aria-valuemax="duration"
         :aria-valuenow="playhead"
         :aria-valuetext="`Playhead ${fmtClock(playhead)}, keeping ${fmtClock(start)} to ${fmtClock(end)}`"
-        class="relative h-14 cursor-pointer touch-none overflow-hidden rounded-lg border border-border bg-surface-high outline-none select-none focus:border-accent"
+        :class="[
+          'relative h-14 touch-none overflow-hidden rounded-lg border border-border bg-surface-high outline-none select-none focus:border-accent',
+          dragState === 'start' || dragState === 'end' ? 'cursor-ew-resize' : 'cursor-pointer',
+        ]"
         @pointerdown="onPointerDown"
         @pointermove="onPointerMove"
         @pointerup="onPointerUp"
@@ -341,15 +355,20 @@ const kbdClass =
           class="pointer-events-none absolute inset-y-0 w-px bg-white/80"
           :style="{ left: playheadPct + '%' }"
         ></div>
-        <!-- handles -->
+        <!-- handles: rewynd-style — thin full-height bar with a fatter centered grip, so
+             the edges read as draggable. Wrappers give a wide ew-resize hover zone;
+             events still bubble to the bar's own pointer logic. -->
         <div
-          class="pointer-events-none absolute inset-y-0 w-1 -translate-x-1/2 rounded-full bg-accent"
-          :style="{ left: startPct + '%' }"
-        ></div>
-        <div
-          class="pointer-events-none absolute inset-y-0 w-1 -translate-x-1/2 rounded-full bg-accent"
-          :style="{ left: endPct + '%' }"
-        ></div>
+          v-for="pct in [startPct, endPct]"
+          :key="pct"
+          class="absolute inset-y-0 w-5 -translate-x-1/2 cursor-ew-resize"
+          :style="{ left: pct + '%' }"
+        >
+          <div class="absolute inset-y-0 left-1/2 w-0.75 -translate-x-1/2 bg-accent"></div>
+          <div
+            class="absolute top-1/2 left-1/2 h-2/5 max-h-6 w-2 -translate-x-1/2 -translate-y-1/2 rounded-sm bg-accent"
+          ></div>
+        </div>
       </div>
 
       <div class="flex flex-wrap items-center justify-between gap-2">

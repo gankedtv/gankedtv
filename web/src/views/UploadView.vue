@@ -16,6 +16,7 @@ import IconFileText from '@/components/icons/IconFileText.vue'
 import IconArrowRight from '@/components/icons/IconArrowRight.vue'
 import IconArrowLeft from '@/components/icons/IconArrowLeft.vue'
 import IconGlobe from '@/components/icons/IconGlobe.vue'
+import IconPlay from '@/components/icons/IconPlay.vue'
 import IconLink from '@/components/icons/IconLink.vue'
 import IconLock from '@/components/icons/IconLock.vue'
 import { VISIBILITY_OPTIONS } from '@/lib/visibility'
@@ -36,8 +37,10 @@ const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 type IngestMode = 'upload' | 'import'
 const mode = ref<IngestMode>('upload')
 
-type Step = 1 | 2 | 3
-const step = ref<Step>(1)
+// Upload flow: pick → trim → describe → progress. Import flow skips 'trim' (nothing
+// local to cut — the server fetches the source).
+type Step = 'pick' | 'trim' | 'describe' | 'progress'
+const step = ref<Step>('pick')
 const file = ref<File | null>(null)
 // URL the user pasted in import mode. Client-side allow-list mirrors the server's
 // MediaJobs:Import:AllowedHosts default — the server is still the source of truth (it
@@ -95,17 +98,49 @@ const previewLoading = ref(false)
 const previewError = ref<string | null>(null)
 const previewData = ref<import('@/api/clips').ImportClipPreview | null>(null)
 
-// Client-side poster (data URL) captured from the picked file so the Preview card shows a real
-// frame while the user fills in title/game/tags — no server round-trip. Best-effort: stays null
-// if the browser can't decode the source.
+// Import-mode poster (YouTube-derived guess or the probe's platform thumbnail). Upload
+// mode previews the local file as a playable video instead.
 const posterUrl = ref<string | null>(null)
-// Monotonic token so a slow capture from an earlier pick can't overwrite a newer one's poster.
-let posterRequestId = 0
-// Cap the preview canvas so a 4K/8K source doesn't allocate a huge bitmap for a small thumbnail.
-const MAX_PREVIEW_DIM = 1280
 // Null while the trimmer covers the whole clip — only an actual cut rides along
 // to POST /clips/{id}/complete.
 const trimRange = ref<TrimRange | null>(null)
+
+// Playable preview of the picked file in the describe step, looping the kept range so
+// the user sees exactly what will be published.
+const describePreviewUrl = ref('')
+const previewVideoEl = ref<HTMLVideoElement | null>(null)
+const previewPlaying = ref(false)
+
+watch(file, (f) => {
+  if (describePreviewUrl.value) URL.revokeObjectURL(describePreviewUrl.value)
+  describePreviewUrl.value = f ? URL.createObjectURL(f) : ''
+})
+
+// The preview <video> unmounts when leaving the describe step without firing 'pause' —
+// reset so the play overlay shows again on re-entry.
+watch(step, (s) => {
+  if (s === 'describe') previewPlaying.value = false
+})
+
+function togglePreview() {
+  const v = previewVideoEl.value
+  if (!v) return
+  if (!v.paused) {
+    v.pause()
+    return
+  }
+  const start = trimRange.value?.start ?? 0
+  const end = trimRange.value?.end ?? v.duration
+  if (v.currentTime < start || v.currentTime >= end - 0.05) v.currentTime = start
+  void v.play()
+}
+
+function onPreviewTimeUpdate() {
+  const v = previewVideoEl.value
+  const range = trimRange.value
+  if (!v || !range) return
+  if (v.currentTime >= range.end) v.currentTime = range.start
+}
 const title = ref('')
 const desc = ref('')
 const visibility = ref<ClipVisibility>('public')
@@ -138,6 +173,7 @@ let pollTimer: ReturnType<typeof setTimeout> | null = null
 onUnmounted(() => {
   if (activeXhr) activeXhr.abort()
   if (pollTimer) clearTimeout(pollTimer)
+  if (describePreviewUrl.value) URL.revokeObjectURL(describePreviewUrl.value)
 })
 
 // Toggling between upload / import mid-flow must not carry stale state from the other
@@ -146,7 +182,7 @@ onUnmounted(() => {
 watch(mode, (next) => {
   errorMsg.value = null
   if (next === 'import') {
-    // Drop the local file + its derived poster + any in-flight XHR.
+    // Drop the local file + its preview + any in-flight XHR.
     if (activeXhr) {
       activeXhr.abort()
       activeXhr = null
@@ -154,7 +190,6 @@ watch(mode, (next) => {
     file.value = null
     posterUrl.value = null
     trimRange.value = null
-    posterRequestId++ // invalidate any pending capture
   } else {
     importUrl.value = ''
     posterUrl.value = null
@@ -182,85 +217,24 @@ watch(importUrl, (next) => {
 
 function pickFile(f: File | null) {
   if (!f) return
-  // Bump on every pick (valid or not) so any in-flight capture from a prior pick is ignored.
-  const requestId = ++posterRequestId
   if (!f.type.startsWith('video/')) {
     // Clear any prior valid selection — leaving the old file as the "current"
     // pick alongside an error about a different file is confusing.
     file.value = null
-    posterUrl.value = null
     trimRange.value = null
     errorMsg.value = `Unsupported file type "${f.type || 'unknown'}" — pick a video.`
     return
   }
   if (f.size > MAX_UPLOAD_BYTES) {
     file.value = null
-    posterUrl.value = null
     trimRange.value = null
     errorMsg.value = `File is ${formatSize(f.size)} — limit is ${MAX_UPLOAD_MB} MB.`
     return
   }
   errorMsg.value = null
   file.value = f
-  void generatePoster(f, requestId)
-}
-
-// Capture a representative frame from the picked file via an offscreen <video> + <canvas>.
-// Resolves to a JPEG data URL, or null if the browser can't decode/draw the source. Only
-// assigns posterUrl if this is still the latest pick (requestId guard).
-async function generatePoster(f: File, requestId: number): Promise<void> {
-  posterUrl.value = null
-  const objectUrl = URL.createObjectURL(f)
-  try {
-    const url = await capturePosterFrame(objectUrl)
-    if (requestId === posterRequestId) posterUrl.value = url
-  } catch {
-    // best-effort — the preview just falls back to the filename
-  } finally {
-    URL.revokeObjectURL(objectUrl)
-  }
-}
-
-function capturePosterFrame(src: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const video = document.createElement('video')
-    video.muted = true
-    video.preload = 'auto'
-    video.src = src
-
-    const cleanup = () => {
-      video.removeAttribute('src')
-      video.load()
-    }
-
-    video.onloadeddata = () => {
-      // Seek a little in (or the midpoint of a very short clip) for a non-black frame.
-      const target = Math.min(1, (Number.isFinite(video.duration) ? video.duration : 2) / 2)
-      video.currentTime = Number.isFinite(target) ? target : 0
-    }
-    video.onseeked = () => {
-      try {
-        if (!video.videoWidth || !video.videoHeight) throw new Error('no video frame')
-        // Downscale so a 4K/8K source doesn't allocate a giant bitmap for a small preview.
-        const scale = Math.min(1, MAX_PREVIEW_DIM / Math.max(video.videoWidth, video.videoHeight))
-        const canvas = document.createElement('canvas')
-        canvas.width = Math.round(video.videoWidth * scale)
-        canvas.height = Math.round(video.videoHeight * scale)
-        const ctx = canvas.getContext('2d')
-        if (!ctx) throw new Error('no 2d context')
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-        resolve(canvas.toDataURL('image/jpeg', 0.7))
-      } catch (err) {
-        reject(err instanceof Error ? err : new Error('poster capture failed'))
-      } finally {
-        cleanup()
-      }
-    }
-    video.onerror = () => {
-      cleanup()
-      reject(new Error('video decode failed'))
-    }
-  })
+  trimRange.value = null
+  step.value = 'trim'
 }
 
 function handleFileSelect(e: Event) {
@@ -319,7 +293,7 @@ function putWithProgress(url: string, body: File, contentType: string): Promise<
 
 async function startUpload() {
   if (!file.value || !title.value.trim()) return
-  step.value = 3
+  step.value = 'progress'
   stage.value = 'creating'
   uploadPct.value = 0
   errorMsg.value = null
@@ -558,7 +532,7 @@ async function runImportPreview(): Promise<boolean> {
 
 async function continueFromImportStep1() {
   const ok = await runImportPreview()
-  if (ok) step.value = 2
+  if (ok) step.value = 'describe'
 }
 
 // Maps the structured failureReason set by the pipeline (any stage — import, thumbnail,
@@ -592,7 +566,7 @@ function describePipelineFailure(status: ClipStatus): string {
 
 async function startImport() {
   if (!isImportUrlValid.value) return
-  step.value = 3
+  step.value = 'progress'
   stage.value = 'submitting'
   uploadPct.value = 5
   errorMsg.value = null
@@ -636,18 +610,29 @@ function goBackToDetails() {
     pollTimer = null
   }
   stage.value = 'idle'
-  step.value = 2
+  step.value = 'describe'
   createdClipId.value = null
   createdShareCode.value = null
   uploadPct.value = 0
   errorMsg.value = null
 }
 
-const STEPS = [
-  { num: '1', label: 'Select file' },
-  { num: '2', label: 'Describe' },
-  { num: '3', label: 'Upload' },
-]
+// Indicator entries per mode; import has no trim step.
+const wizardSteps = computed<{ key: Step; label: string }[]>(() =>
+  mode.value === 'upload'
+    ? [
+        { key: 'pick', label: 'Select file' },
+        { key: 'trim', label: 'Trim' },
+        { key: 'describe', label: 'Describe' },
+        { key: 'progress', label: 'Upload' },
+      ]
+    : [
+        { key: 'pick', label: 'Paste URL' },
+        { key: 'describe', label: 'Describe' },
+        { key: 'progress', label: 'Upload' },
+      ],
+)
+const stepIndex = computed(() => wizardSteps.value.findIndex((s) => s.key === step.value))
 const SOURCES = ['OBS', 'ShadowPlay', 'Medal', 'Xbox', 'PS5', 'Switch']
 
 const inputClass =
@@ -671,33 +656,30 @@ const IMPORT_HOSTS_HINT = IMPORT_ALLOWED_HOSTS.filter(
 
       <!-- Step indicator -->
       <div class="mb-8 flex items-center gap-3">
-        <template v-for="(s, i) in STEPS" :key="s.num">
+        <template v-for="(s, i) in wizardSteps" :key="s.key">
           <div class="flex items-center gap-2">
             <div
               :class="[
                 'flex size-5.5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold',
-                step >= Number(s.num)
+                stepIndex >= i
                   ? 'bg-accent text-[#080f0d]'
                   : 'border border-border-strong text-text-muted',
               ]"
             >
-              {{ s.num }}
+              {{ i + 1 }}
             </div>
             <span
-              :class="[
-                'text-xs font-bold',
-                step >= Number(s.num) ? 'text-accent' : 'text-text-muted',
-              ]"
+              :class="['text-xs font-bold', stepIndex >= i ? 'text-accent' : 'text-text-muted']"
             >
               {{ s.label }}
             </span>
           </div>
-          <div v-if="i < STEPS.length - 1" class="h-px w-8 bg-border-strong"></div>
+          <div v-if="i < wizardSteps.length - 1" class="h-px w-8 bg-border-strong"></div>
         </template>
       </div>
 
       <!-- Step 1: File picker OR URL import -->
-      <div v-if="step === 1">
+      <div v-if="step === 'pick'">
         <!-- Mode toggle: upload existing file vs. import from a supported URL host. -->
         <div class="mb-6 flex border-b border-border">
           <button
@@ -779,46 +761,6 @@ const IMPORT_HOSTS_HINT = IMPORT_ALLOWED_HOSTS.filter(
           >
             {{ errorMsg }}
           </p>
-
-          <!-- Preview + trimmer: cut the clip before it ever uploads (like rewynd). -->
-          <div v-if="file" class="mt-5">
-            <div class="mb-3 flex items-baseline justify-between">
-              <span class="text-[10px] font-bold uppercase tracking-widest text-text-secondary">
-                Trim
-                <span class="text-[9px] font-normal normal-case tracking-normal text-text-muted"
-                  >(optional)</span
-                >
-              </span>
-              <span v-if="trimRange" class="text-[10px] font-bold text-accent">
-                Only the selected range is published
-              </span>
-            </div>
-            <ClipTrimmer :file="file" v-model="trimRange" />
-          </div>
-
-          <div
-            v-if="file"
-            class="mt-5 flex items-center gap-4 rounded-lg border border-accent bg-accent-bg px-5 py-4"
-          >
-            <IconFileText :size="20" class="shrink-0 text-accent" />
-            <div class="min-w-0 flex-1">
-              <div
-                class="overflow-hidden text-sm whitespace-nowrap text-ellipsis text-text-primary"
-              >
-                {{ file.name }}
-              </div>
-              <div class="mt-0.5 text-[11px] text-text-muted">
-                {{ formatSize(file.size) }}
-              </div>
-            </div>
-            <button
-              @click="step = 2"
-              class="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-xs font-bold whitespace-nowrap text-[#080f0d] transition-[filter] duration-150 hover:brightness-105"
-            >
-              Continue
-              <IconArrowRight :size="14" :stroke-width="2.5" />
-            </button>
-          </div>
         </div>
 
         <!-- URL input (import mode) -->
@@ -889,8 +831,65 @@ const IMPORT_HOSTS_HINT = IMPORT_ALLOWED_HOSTS.filter(
         </div>
       </div>
 
-      <!-- Step 2: Metadata -->
-      <div v-else-if="step === 2">
+      <!-- Step 2 (upload only): trim the picked file before anything uploads. -->
+      <div v-else-if="step === 'trim'">
+        <div v-if="file" class="flex flex-col gap-5">
+          <div
+            class="flex items-center gap-4 rounded-lg border border-border bg-surface-raised px-5 py-3.5"
+          >
+            <IconFileText :size="20" class="shrink-0 text-accent" />
+            <div class="min-w-0 flex-1">
+              <div
+                class="overflow-hidden text-sm whitespace-nowrap text-ellipsis text-text-primary"
+              >
+                {{ file.name }}
+              </div>
+              <div class="mt-0.5 text-[11px] text-text-muted">{{ formatSize(file.size) }}</div>
+            </div>
+            <button
+              @click="step = 'pick'"
+              class="shrink-0 cursor-pointer rounded-lg border border-border-strong px-3 py-1.5 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
+            >
+              Change file
+            </button>
+          </div>
+
+          <div>
+            <div class="mb-3 flex items-baseline justify-between">
+              <span class="text-[10px] font-bold uppercase tracking-widest text-text-secondary">
+                Trim
+                <span class="text-[9px] font-normal normal-case tracking-normal text-text-muted"
+                  >(optional)</span
+                >
+              </span>
+              <span v-if="trimRange" class="text-[10px] font-bold text-accent">
+                Only the selected range is published
+              </span>
+            </div>
+            <ClipTrimmer :file="file" v-model="trimRange" />
+          </div>
+
+          <div class="flex gap-3">
+            <button
+              @click="step = 'pick'"
+              class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border-strong px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
+            >
+              <IconArrowLeft :size="14" :stroke-width="2.5" />
+              Back
+            </button>
+            <button
+              @click="step = 'describe'"
+              class="inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-xs font-bold text-[#080f0d] transition-[filter] duration-150 hover:brightness-105"
+            >
+              Continue
+              <IconArrowRight :size="14" :stroke-width="2.5" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Describe: metadata -->
+      <div v-else-if="step === 'describe'">
         <div class="grid gap-8 grid-cols-1 min-[761px]:grid-cols-[1fr_320px]">
           <div class="flex flex-col gap-6">
             <!-- Game picker -->
@@ -978,7 +977,7 @@ const IMPORT_HOSTS_HINT = IMPORT_ALLOWED_HOSTS.filter(
 
             <div class="flex gap-3 pt-2">
               <button
-                @click="step = 1"
+                @click="step = mode === 'upload' ? 'trim' : 'pick'"
                 class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border-strong px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
               >
                 <IconArrowLeft :size="14" :stroke-width="2.5" />
@@ -1001,8 +1000,22 @@ const IMPORT_HOSTS_HINT = IMPORT_ALLOWED_HOSTS.filter(
             </div>
             <div class="overflow-hidden rounded-lg border border-border bg-surface-raised">
               <div class="relative aspect-video bg-black">
+                <!-- Upload mode: play the local file, looping the kept trim range so the
+                     preview matches what will actually be published. -->
+                <video
+                  v-if="mode === 'upload' && describePreviewUrl"
+                  ref="previewVideoEl"
+                  :src="describePreviewUrl"
+                  playsinline
+                  :loop="!trimRange"
+                  class="absolute inset-0 h-full w-full object-contain"
+                  @click="togglePreview"
+                  @timeupdate="onPreviewTimeUpdate"
+                  @play="previewPlaying = true"
+                  @pause="previewPlaying = false"
+                ></video>
                 <img
-                  v-if="posterUrl"
+                  v-else-if="posterUrl"
                   :src="posterUrl"
                   alt="Clip preview"
                   class="absolute inset-0 h-full w-full object-cover"
@@ -1013,10 +1026,26 @@ const IMPORT_HOSTS_HINT = IMPORT_ALLOWED_HOSTS.filter(
                 >
                   {{ file?.name ?? 'No file' }}
                 </div>
+                <button
+                  v-if="mode === 'upload' && describePreviewUrl && !previewPlaying"
+                  type="button"
+                  aria-label="Play trimmed preview"
+                  class="absolute inset-0 m-auto flex size-12 cursor-pointer items-center justify-center rounded-full border border-white/30 bg-black/55 text-[#f4f1e8] transition-colors duration-150 hover:border-white/60"
+                  @click="togglePreview"
+                >
+                  <IconPlay :size="18" />
+                </button>
                 <div
                   class="absolute top-2 right-2 rounded-md bg-black/70 px-2 py-0.75 text-[10px] font-bold uppercase tracking-widest text-white"
                 >
                   {{ visibility }}
+                </div>
+                <div
+                  v-if="mode === 'upload' && trimRange"
+                  class="absolute bottom-2 left-2 rounded-md bg-black/70 px-2 py-0.75 text-[10px] font-bold text-[#f4f1e8]"
+                >
+                  Trimmed ·
+                  {{ fmtSeconds(Math.max(1, Math.round(trimRange.end - trimRange.start))) }}
                 </div>
               </div>
 
@@ -1035,8 +1064,8 @@ const IMPORT_HOSTS_HINT = IMPORT_ALLOWED_HOSTS.filter(
         </div>
       </div>
 
-      <!-- Step 3: processing — plain preview panel with status copy while the pipeline runs. -->
-      <div v-else-if="step === 3">
+      <!-- Progress: status copy while the pipeline runs. -->
+      <div v-else-if="step === 'progress'">
         <div class="mx-auto max-w-140">
           <div class="mb-2.5 flex items-center justify-between">
             <span class="text-[10px] font-bold uppercase tracking-widest text-text-secondary">
