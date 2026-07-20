@@ -94,6 +94,7 @@ async function captureFrames(requestId: number): Promise<void> {
       video.onloadeddata = () => resolve()
       video.onerror = () => reject(new Error('decode failed'))
     })
+    if (requestId !== frameRequestId) return
     const height = 96
     const scale = height / (video.videoHeight || height)
     const canvas = document.createElement('canvas')
@@ -303,6 +304,7 @@ const kbdClass =
         :aria-valuemin="0"
         :aria-valuemax="duration"
         :aria-valuenow="playhead"
+        :aria-valuetext="`Playhead ${fmtClock(playhead)}, keeping ${fmtClock(start)} to ${fmtClock(end)}`"
         class="relative h-14 cursor-pointer touch-none overflow-hidden rounded-lg border border-border bg-surface-high outline-none select-none focus:border-accent"
         @pointerdown="onPointerDown"
         @pointermove="onPointerMove"

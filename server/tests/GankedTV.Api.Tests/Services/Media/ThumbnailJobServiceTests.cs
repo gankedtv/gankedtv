@@ -340,6 +340,21 @@ public class ThumbnailJobServiceTests
     }
 
     [Fact]
+    public async Task ExtractAsync_TrimWithUnknownDuration_Throws()
+    {
+        // An unverifiable cut must fail the stage — encoding it could publish garbage,
+        // dropping it would publish footage the user cut away.
+        var (svc, ffmpeg, _) = Build();
+        StubFfprobe(ffmpeg, """{"streams":[{"width":1,"height":1}]}""");
+        StubFfmpegFrame(ffmpeg, new byte[] { 1 });
+
+        var job = NewJob() with { TrimStartSecs = 3, TrimEndSecs = 7 };
+        var act = async () => await svc.ExtractAsync(job, null, CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*trim*duration*");
+    }
+
+    [Fact]
     public void SanitizeTrim_UnknownDuration_KeepsRequestedRange()
     {
         // Dropping the trim would publish footage the user cut; keep it and let a bad

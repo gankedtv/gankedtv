@@ -48,6 +48,15 @@ public sealed class ThumbnailJobService : IThumbnailJobService
         // but the columns are already there and the worker has the data — populate them).
         var probe = await ProbeAsync(videoUrl, opts, ct);
 
+        // A trim we can't validate must not proceed: silently dropping it would publish
+        // footage the user cut away, and an out-of-range -ss can slip through ffmpeg with
+        // exit 0 and a header-only file. Fail the stage instead.
+        if (job.TrimStartSecs is not null && job.TrimEndSecs is not null && probe.DurationSecs is null)
+        {
+            throw new InvalidOperationException(
+                "Clip has a trim range but ffprobe could not determine the source duration; failing rather than encoding an unverifiable cut.");
+        }
+
         var trim = SanitizeTrim(job.TrimStartSecs, job.TrimEndSecs, probe.DurationSecs);
         var playableStart = trim?.Start ?? 0;
         var playableSecs = trim is { } span ? span.End - span.Start : probe.DurationSecs;
@@ -91,8 +100,8 @@ public sealed class ThumbnailJobService : IThumbnailJobService
 
     // Clamps a requested trim to the probed duration. Returns null for no trim, a
     // degenerate range (source shorter than the minimum cut), or a whole-clip range.
-    // With an unknown duration the request is kept as-is: dropping it would silently
-    // publish footage the user cut away, so a bad range fails the encode loudly instead.
+    // With an unknown duration the request is kept as-is (ExtractAsync fails that case
+    // before calling this — never silently drop a user's cut).
     internal static (double Start, double End)? SanitizeTrim(
         double? trimStart, double? trimEnd, double? durationSecs)
     {
