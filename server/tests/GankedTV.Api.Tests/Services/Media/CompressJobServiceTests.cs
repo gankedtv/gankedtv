@@ -36,6 +36,63 @@ public class CompressJobServiceTests
     }
 
     [Fact]
+    public void BuildCompressArgs_WithTrim_SeeksBeforeInputAndBoundsSpan()
+    {
+        var opts = new MediaJobOptions { VideoEncoder = "libx264" };
+
+        var args = CompressJobService.BuildCompressArgs(
+            "in", "o.mp4", 720, opts, trimStartSecs: 1.5, trimEndSecs: 9.75);
+
+        // -ss must precede -i (input seek); -t carries the span, not the end time.
+        args.IndexOf("-ss").Should().BeLessThan(args.IndexOf("-i"));
+        args[args.IndexOf("-ss") + 1].Should().Be("1.500");
+        args.IndexOf("-t").Should().BeGreaterThan(args.IndexOf("-i"));
+        args[args.IndexOf("-t") + 1].Should().Be("8.250");
+    }
+
+    [Fact]
+    public void BuildCompressArgs_NoOrDegenerateTrim_OmitsSeekArgs()
+    {
+        var opts = new MediaJobOptions();
+
+        CompressJobService.BuildCompressArgs("in", "o.mp4", 720, opts)
+            .Should().NotContain("-ss").And.NotContain("-t");
+
+        CompressJobService.BuildCompressArgs("in", "o.mp4", 720, opts, trimStartSecs: 5, trimEndSecs: 5)
+            .Should().NotContain("-ss").And.NotContain("-t");
+
+        CompressJobService.BuildCompressArgs("in", "o.mp4", 720, opts, trimStartSecs: 5, trimEndSecs: null)
+            .Should().NotContain("-ss").And.NotContain("-t");
+    }
+
+    [Fact]
+    public async Task CompressAsync_PassesJobTrimToFfmpeg()
+    {
+        var storage = Substitute.For<IObjectStorageService>();
+        storage.GetPresignedGetUrlForWorker(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan?>())
+            .Returns("http://minio/clips/orig.mp4?sig=x");
+
+        IReadOnlyList<string>? seenArgs = null;
+        var ffmpeg = Substitute.For<IFfmpegRunner>();
+        ffmpeg.RunAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                seenArgs = (IReadOnlyList<string>)call[1];
+                File.WriteAllText(seenArgs[^1], "compressed-bytes");
+                return new FfmpegResult(0, "", "");
+            });
+
+        var svc = Build(storage, ffmpeg, new MediaJobOptions());
+        var job = new ClaimedMediaJob(Guid.NewGuid(), Guid.NewGuid(), null, "user/clip.mp4", 720, 1,
+            TrimStartSecs: 2, TrimEndSecs: 6.5);
+
+        await svc.CompressAsync(job, CancellationToken.None);
+
+        seenArgs.Should().ContainInOrder("-ss", "2.000");
+        seenArgs.Should().ContainInOrder("-t", "4.500");
+    }
+
+    [Fact]
     public void BuildCompressArgs_UsesCrfForSoftwareAndCqForNvenc()
     {
         var sw = CompressJobService.BuildCompressArgs("in", "o.mp4", 720, new MediaJobOptions { VideoEncoder = "libsvtav1", Crf = 30 });

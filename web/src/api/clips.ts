@@ -161,6 +161,13 @@ export interface CompleteClipResult {
   fileSizeBytes: number
 }
 
+// Optional trim range (seconds into the uploaded file) picked in the upload wizard's
+// trimmer. Sent with complete(); the server cuts the clip during compression.
+export interface ClipTrimRange {
+  trimStartSeconds: number
+  trimEndSeconds: number
+}
+
 export interface LikeResult {
   likeCount: number
   liked: boolean
@@ -260,8 +267,11 @@ export const clips = {
     return api<UploadUrl>(`/clips/${encodeURIComponent(id)}/upload-url`, { method: 'POST' })
   },
 
-  complete(id: string): Promise<CompleteClipResult> {
-    return api<CompleteClipResult>(`/clips/${encodeURIComponent(id)}/complete`, { method: 'POST' })
+  complete(id: string, trim?: ClipTrimRange): Promise<CompleteClipResult> {
+    return api<CompleteClipResult>(`/clips/${encodeURIComponent(id)}/complete`, {
+      method: 'POST',
+      ...(trim ? { body: trim } : {}),
+    })
   },
 
   update(id: string, body: UpdateClipBody): Promise<ClipDetail> {

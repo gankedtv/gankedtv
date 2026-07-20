@@ -68,7 +68,9 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
 
         await tx.CommitAsync(ct);
 
-        return new ClaimedMediaJob(clip.Id, clip.UserId, clip.GameId, clip.VideoKey, clip.Height, nextAttempt);
+        return new ClaimedMediaJob(
+            clip.Id, clip.UserId, clip.GameId, clip.VideoKey, clip.Height, nextAttempt,
+            clip.TrimStartSecs, clip.TrimEndSecs);
     }
 
     public async Task<string?> GetGameSlugAsync(int? gameId, CancellationToken ct)
@@ -99,6 +101,8 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
                 .SetProperty(c => c.DurationSecs, result.DurationSecs)
                 .SetProperty(c => c.Width, result.Width)
                 .SetProperty(c => c.Height, result.Height)
+                .SetProperty(c => c.TrimStartSecs, result.TrimStartSecs)
+                .SetProperty(c => c.TrimEndSecs, result.TrimEndSecs)
                 .SetProperty(c => c.ProcessingStartedAt, (DateTimeOffset?)null)
                 // Reset the attempt counter so the next stage (compress) gets its own full
                 // MaxAttempts budget rather than inheriting the thumbnail stage's count.

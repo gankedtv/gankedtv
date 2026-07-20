@@ -47,7 +47,9 @@ public class ClipMediaJobStoreIntegrationTests
         short? height = null,
         string? failureReason = null,
         string? importSourceUrl = null,
-        long? fileSizeBytes = null)
+        long? fileSizeBytes = null,
+        double? trimStartSecs = null,
+        double? trimEndSecs = null)
     {
         await using var db = NewContext();
         var clip = new Clip
@@ -68,6 +70,8 @@ public class ClipMediaJobStoreIntegrationTests
             FailureReason = failureReason,
             ImportSourceUrl = importSourceUrl,
             FileSizeBytes = fileSizeBytes,
+            TrimStartSecs = trimStartSecs,
+            TrimEndSecs = trimEndSecs,
         };
         db.Clips.Add(clip);
         await db.SaveChangesAsync();
@@ -166,6 +170,24 @@ public class ClipMediaJobStoreIntegrationTests
 
         result.Should().NotBeNull();
         result!.SourceHeight.Should().Be(720);
+    }
+
+    [Fact]
+    public async Task ClaimNextAsync_CarriesTrimRange()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("trina");
+        var now = DateTimeOffset.UtcNow;
+        await SeedClipAsync(userId, ClipStatuses.Transcoding, now, trimStartSecs: 2.5, trimEndSecs: 11.0);
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+
+        var result = await store.ClaimNextAsync(ClipStatuses.Transcoding, TimeSpan.FromMinutes(5), 3, CancellationToken.None);
+
+        result.Should().NotBeNull();
+        result!.TrimStartSecs.Should().Be(2.5);
+        result.TrimEndSecs.Should().Be(11.0);
     }
 
     [Fact]
@@ -305,6 +327,55 @@ public class ClipMediaJobStoreIntegrationTests
         clip.ProcessingStartedAt.Should().BeNull();
         // Attempts reset so the compress stage starts with a fresh MaxAttempts budget.
         clip.ProcessingAttempts.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task AdvanceThumbnailAsync_WritesSanitizedTrim()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("harriet");
+        var now = DateTimeOffset.UtcNow;
+        // Requested end (99) exceeds the source; the thumbnail stage clamps and writes back.
+        var clipId = await SeedClipAsync(userId, ClipStatuses.Processing, now,
+            processingAttempts: 1, trimStartSecs: 4.0, trimEndSecs: 99.0);
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+
+        await store.AdvanceThumbnailAsync(clipId,
+            expectedAttempt: 1,
+            new FinalizedMediaJob("k.jpg", 6, 1920, 1080, TrimStartSecs: 4.0, TrimEndSecs: 10.0),
+            ClipStatuses.Transcoding,
+            CancellationToken.None);
+
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.TrimStartSecs.Should().Be(4.0);
+        clip.TrimEndSecs.Should().Be(10.0);
+    }
+
+    [Fact]
+    public async Task AdvanceThumbnailAsync_DegenerateTrim_ClearsColumns()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("hollis");
+        var now = DateTimeOffset.UtcNow;
+        var clipId = await SeedClipAsync(userId, ClipStatuses.Processing, now,
+            processingAttempts: 1, trimStartSecs: 0.0, trimEndSecs: 0.1);
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+
+        await store.AdvanceThumbnailAsync(clipId,
+            expectedAttempt: 1,
+            new FinalizedMediaJob("k.jpg", 5, 1280, 720),
+            ClipStatuses.Transcoding,
+            CancellationToken.None);
+
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.TrimStartSecs.Should().BeNull();
+        clip.TrimEndSecs.Should().BeNull();
     }
 
     [Fact]

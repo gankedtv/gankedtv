@@ -2,6 +2,7 @@ using System.Diagnostics;
 using GankedTV.Api.Clips;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
+using GankedTV.Api.Services.Media;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Services.Tags;
 using GankedTV.Api.Validation;
@@ -19,6 +20,7 @@ public sealed class ClipUploadService : IClipUploadService
     private readonly ITagsResolver _tagsResolver;
     private readonly ClipValidationOptions _validation;
     private readonly S3Options _s3;
+    private readonly IOptionsMonitor<MediaJobOptions> _mediaJobs;
     private readonly TimeProvider _clock;
 
     public ClipUploadService(
@@ -27,6 +29,7 @@ public sealed class ClipUploadService : IClipUploadService
         ITagsResolver tagsResolver,
         IOptions<ClipValidationOptions> validation,
         IOptions<S3Options> s3,
+        IOptionsMonitor<MediaJobOptions> mediaJobs,
         TimeProvider clock)
     {
         _db = db;
@@ -34,6 +37,7 @@ public sealed class ClipUploadService : IClipUploadService
         _tagsResolver = tagsResolver;
         _validation = validation.Value;
         _s3 = s3.Value;
+        _mediaJobs = mediaJobs;
         _clock = clock;
     }
 
@@ -161,11 +165,28 @@ public sealed class ClipUploadService : IClipUploadService
         return ClipResult<UploadUrlResult>.Ok(new UploadUrlResult(url, expiresAt, contentType));
     }
 
+    // Floor for a trimmed clip; mirrors the rewynd trimmer's minimum handle gap.
+    internal const double MinTrimSpanSecs = 0.2;
+
     public async Task<ClipResult<CompleteClipResult>> CompleteAsync(
         Guid userId,
         Guid clipId,
+        ClipTrimInput? trim,
         CancellationToken ct)
     {
+        if (trim is not null)
+        {
+            if (!_mediaJobs.CurrentValue.TranscodeEnabled)
+            {
+                return ClipResult<CompleteClipResult>.Fail(ClipUploadError.TrimUnavailable);
+            }
+            if (!double.IsFinite(trim.StartSecs) || !double.IsFinite(trim.EndSecs)
+                || trim.StartSecs < 0 || trim.EndSecs - trim.StartSecs < MinTrimSpanSecs)
+            {
+                return ClipResult<CompleteClipResult>.Fail(ClipUploadError.InvalidTrim);
+            }
+        }
+
         // AsNoTracking: the final mutation goes through ExecuteUpdateAsync, which bypasses
         // the change tracker. Keeping the entity untracked avoids a wasted tracker entry.
         var clip = await _db.Clips
@@ -211,6 +232,8 @@ public sealed class ClipUploadService : IClipUploadService
                 setters => setters
                     .SetProperty(c => c.Status, ClipStatuses.Processing)
                     .SetProperty(c => c.FileSizeBytes, meta.SizeBytes)
+                    .SetProperty(c => c.TrimStartSecs, trim == null ? null : (double?)trim.StartSecs)
+                    .SetProperty(c => c.TrimEndSecs, trim == null ? null : (double?)trim.EndSecs)
                     .SetProperty(c => c.UpdatedAt, now),
                 ct);
 

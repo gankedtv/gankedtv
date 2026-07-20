@@ -5,6 +5,8 @@ import { ApiError } from '@/api/client'
 import { config } from '@/config'
 import { clips } from '@/api/clips'
 import type { ClipStatus, ClipVisibility, GameSummary } from '@/api/clips'
+import ClipTrimmer from '@/components/ClipTrimmer.vue'
+import type { TrimRange } from '@/components/ClipTrimmer.vue'
 import GameSelector from '@/components/GameSelector.vue'
 import TagInput from '@/components/TagInput.vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -101,6 +103,9 @@ const posterUrl = ref<string | null>(null)
 let posterRequestId = 0
 // Cap the preview canvas so a 4K/8K source doesn't allocate a huge bitmap for a small thumbnail.
 const MAX_PREVIEW_DIM = 1280
+// Null while the trimmer covers the whole clip — only an actual cut rides along
+// to POST /clips/{id}/complete.
+const trimRange = ref<TrimRange | null>(null)
 const title = ref('')
 const desc = ref('')
 const visibility = ref<ClipVisibility>('public')
@@ -148,6 +153,7 @@ watch(mode, (next) => {
     }
     file.value = null
     posterUrl.value = null
+    trimRange.value = null
     posterRequestId++ // invalidate any pending capture
   } else {
     importUrl.value = ''
@@ -183,12 +189,14 @@ function pickFile(f: File | null) {
     // pick alongside an error about a different file is confusing.
     file.value = null
     posterUrl.value = null
+    trimRange.value = null
     errorMsg.value = `Unsupported file type "${f.type || 'unknown'}" — pick a video.`
     return
   }
   if (f.size > MAX_UPLOAD_BYTES) {
     file.value = null
     posterUrl.value = null
+    trimRange.value = null
     errorMsg.value = `File is ${formatSize(f.size)} — limit is ${MAX_UPLOAD_MB} MB.`
     return
   }
@@ -332,7 +340,15 @@ async function startUpload() {
     await putWithProgress(presigned.url, file.value, presigned.contentType)
 
     stage.value = 'completing'
-    await clips.complete(created.id)
+    await clips.complete(
+      created.id,
+      trimRange.value
+        ? {
+            trimStartSeconds: Math.round(trimRange.value.start * 1000) / 1000,
+            trimEndSeconds: Math.round(trimRange.value.end * 1000) / 1000,
+          }
+        : undefined,
+    )
 
     stage.value = 'done'
     uploadPct.value = 100
@@ -763,6 +779,22 @@ const IMPORT_HOSTS_HINT = IMPORT_ALLOWED_HOSTS.filter(
           >
             {{ errorMsg }}
           </p>
+
+          <!-- Preview + trimmer: cut the clip before it ever uploads (like rewynd). -->
+          <div v-if="file" class="mt-5">
+            <div class="mb-3 flex items-baseline justify-between">
+              <span class="text-[10px] font-bold uppercase tracking-widest text-text-secondary">
+                Trim
+                <span class="text-[9px] font-normal normal-case tracking-normal text-text-muted"
+                  >(optional)</span
+                >
+              </span>
+              <span v-if="trimRange" class="text-[10px] font-bold text-accent">
+                Only the selected range is published
+              </span>
+            </div>
+            <ClipTrimmer :file="file" v-model="trimRange" />
+          </div>
 
           <div
             v-if="file"

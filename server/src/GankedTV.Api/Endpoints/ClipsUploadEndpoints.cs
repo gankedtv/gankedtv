@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using GankedTV.Api.Auth;
+using GankedTV.Api.Auth.ApiKeys;
 using GankedTV.Api.Clips;
 using GankedTV.Api.Contracts.Clips;
 using GankedTV.Api.Problems;
@@ -7,6 +8,7 @@ using GankedTV.Api.Services.Clips;
 using GankedTV.Api.Services.Tags;
 using GankedTV.Api.Validation;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.Extensions.Logging;
 
 namespace GankedTV.Api.Endpoints;
@@ -79,6 +81,9 @@ public static class ClipsUploadEndpoints
 
     private static async Task<IResult> CompleteClip(
         Guid id,
+        // EmptyBodyBehavior.Allow keeps the pre-trimmer contract: rewynd and API scripts
+        // POST with no body at all.
+        [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] CompleteClipRequest? req,
         ClaimsPrincipal principal,
         IClipUploadService clips,
         ILoggerFactory loggerFactory,
@@ -89,7 +94,23 @@ public static class ClipsUploadEndpoints
             return ProblemResults.Unauthorized("unauthorized");
         }
 
-        var result = await clips.CompleteAsync(userId, id, ct);
+        ClipTrimInput? trim = null;
+        if (req is { TrimStartSeconds: not null } or { TrimEndSeconds: not null })
+        {
+            // The trimmer is a web-upload feature; API-key uploads are excluded (rewynd
+            // trims locally before uploading).
+            if (principal.Identity?.AuthenticationType == ApiKeyDefaults.Scheme)
+            {
+                return ProblemResults.BadRequest("trim_not_supported");
+            }
+            if (req.TrimStartSeconds is not { } start || req.TrimEndSeconds is not { } end)
+            {
+                return ProblemResults.BadRequest("invalid_trim");
+            }
+            trim = new ClipTrimInput(start, end);
+        }
+
+        var result = await clips.CompleteAsync(userId, id, trim, ct);
         return result.IsSuccess
             ? Results.Ok(result.Value!.ToCompleteClipResponse())
             : MapError(result.Error!.Value, loggerFactory);
@@ -108,6 +129,8 @@ public static class ClipsUploadEndpoints
         ClipUploadError.UnsupportedContentType => ProblemResults.BadRequest("unsupported_content_type"),
         ClipUploadError.TooManyTags => ProblemResults.BadRequest(TagsResolveProblemCodes.TooManyTags),
         ClipUploadError.InvalidTag => ProblemResults.BadRequest(TagsResolveProblemCodes.InvalidTag),
+        ClipUploadError.InvalidTrim => ProblemResults.BadRequest("invalid_trim"),
+        ClipUploadError.TrimUnavailable => ProblemResults.BadRequest("trim_unavailable"),
         _ => UnmappedError(error, loggerFactory),
     };
 

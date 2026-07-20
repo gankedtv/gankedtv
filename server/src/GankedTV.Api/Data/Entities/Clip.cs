@@ -36,6 +36,13 @@ public class Clip
     public DateTimeOffset? ProcessingStartedAt { get; set; }
     public int ProcessingAttempts { get; set; }
 
+    // Optional trim range (seconds into the raw upload) requested at complete time by the
+    // web trimmer. The thumbnail stage clamps both against the probed duration; the compress
+    // stage then cuts the master to [start, end]. Null = keep the whole clip. Kept after the
+    // clip reaches 'ready' so a failed-compress requeue re-applies the same cut.
+    public double? TrimStartSecs { get; set; }
+    public double? TrimEndSecs { get; set; }
+
     // Set on rows ingested via POST /clips/import — preserves the original Medal.tv /
     // YouTube URL the fetcher pulled from. Stays populated after the clip reaches 'ready'
     // (cheap audit trail + lets us short-circuit a re-import of the same URL).

@@ -279,6 +279,74 @@ public class ThumbnailJobServiceTests
         result.Height.Should().Be(short.MaxValue);
     }
 
+    [Fact]
+    public async Task ExtractAsync_WithTrim_SeeksInsideRangeAndReturnsTrimmedDuration()
+    {
+        var (svc, ffmpeg, _) = Build();
+        StubFfprobe(ffmpeg, """{"streams":[{"width":1920,"height":1080,"duration":"30.0"}]}""");
+        IReadOnlyList<string>? capturedArgs = null;
+        ffmpeg.RunAsync(Arg.Is("ffmpeg"), Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                capturedArgs = call.Arg<IReadOnlyList<string>>();
+                File.WriteAllBytes(capturedArgs[^1], new byte[] { 0xFF });
+                return new FfmpegResult(0, "", "");
+            });
+
+        var job = NewJob() with { TrimStartSecs = 10, TrimEndSecs = 18 };
+        var result = await svc.ExtractAsync(job, null, CancellationToken.None);
+
+        // Poster comes from inside the kept range: trim start + the 1s frame offset.
+        var ssIdx = capturedArgs!.ToList().IndexOf("-ss");
+        capturedArgs[ssIdx + 1].Should().Be("11.000");
+        result.DurationSecs.Should().Be(8);
+        result.TrimStartSecs.Should().Be(10);
+        result.TrimEndSecs.Should().Be(18);
+    }
+
+    [Fact]
+    public async Task ExtractAsync_TrimEndPastDuration_IsClampedToSource()
+    {
+        var (svc, ffmpeg, _) = Build();
+        StubFfprobe(ffmpeg, """{"streams":[{"width":1,"height":1,"duration":"10.0"}]}""");
+        StubFfmpegFrame(ffmpeg, new byte[] { 1 });
+
+        var job = NewJob() with { TrimStartSecs = 4, TrimEndSecs = 99 };
+        var result = await svc.ExtractAsync(job, null, CancellationToken.None);
+
+        result.TrimStartSecs.Should().Be(4);
+        result.TrimEndSecs.Should().Be(10);
+        result.DurationSecs.Should().Be(6);
+    }
+
+    [Theory]
+    [InlineData(null, null, 10.0)] // no trim requested
+    [InlineData(0.0, 0.1, 10.0)] // span under the minimum
+    [InlineData(0.0, 10.0, 10.0)] // whole-clip range collapses to no trim
+    [InlineData(0.04, 9.96, 10.0)] // effectively whole clip
+    public void SanitizeTrim_DegenerateRanges_ReturnNull(double? start, double? end, double? dur)
+    {
+        ThumbnailJobService.SanitizeTrim(start, end, dur).Should().BeNull();
+    }
+
+    [Fact]
+    public void SanitizeTrim_StartPastEnd_ClampsToTailCut()
+    {
+        // End clamps to the 10s source, start follows it down to keep the minimum span.
+        var trim = ThumbnailJobService.SanitizeTrim(50, 60, 10.0);
+        trim.Should().NotBeNull();
+        trim!.Value.End.Should().Be(10.0);
+        trim.Value.Start.Should().BeApproximately(9.8, 0.001);
+    }
+
+    [Fact]
+    public void SanitizeTrim_UnknownDuration_KeepsRequestedRange()
+    {
+        // Dropping the trim would publish footage the user cut; keep it and let a bad
+        // range fail the encode instead.
+        ThumbnailJobService.SanitizeTrim(3, 7, null).Should().Be((3.0, 7.0));
+    }
+
     private static ClaimedMediaJob NewJob() =>
         new(Guid.NewGuid(), Guid.NewGuid(), GameId: null, VideoKey: "k.mp4", SourceHeight: null, AttemptNumber: 1);
 }

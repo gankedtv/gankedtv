@@ -6,7 +6,11 @@ public sealed record ClaimedMediaJob(
     int? GameId,
     string VideoKey,
     short? SourceHeight,
-    int AttemptNumber);
+    int AttemptNumber,
+    // Requested cut (seconds into the source). Thumbnail stage clamps them to the probed
+    // duration; compress stage applies them. Null = whole clip.
+    double? TrimStartSecs = null,
+    double? TrimEndSecs = null);
 
 // Import-stage variant — extends ClaimedMediaJob with the source URL the fetcher needs.
 // Kept as a record-with-extra-property rather than a brand-new shape so the import worker
@@ -24,7 +28,11 @@ public sealed record FinalizedMediaJob(
     string ThumbnailKey,
     short? DurationSecs,
     short? Width,
-    short? Height);
+    short? Height,
+    // Trim clamped against the probed duration (null when no/degenerate trim). Written
+    // back to the row so the compress stage can trust the range.
+    double? TrimStartSecs = null,
+    double? TrimEndSecs = null);
 
 public interface IClipMediaJobStore
 {
