@@ -63,7 +63,7 @@ function mapRegisterError(err: unknown): string {
       return 'Too many registration attempts. Wait a minute and try again.'
     }
     if (err.status === 400) {
-      const detail = errorDetail(err)
+      const detail = errorDetail(err) ?? validationError(err)
       if (detail) return detail
       return 'Check the email and password requirements (min 12 characters) and try again.'
     }
@@ -74,6 +74,14 @@ function mapRegisterError(err: unknown): string {
 function errorDetail(err: ApiError): string | null {
   const body = err.body as { detail?: string } | null
   return body && typeof body.detail === 'string' && body.detail.length > 0 ? body.detail : null
+}
+
+// DataAnnotations failures come back as ValidationProblemDetails (`errors` dict keyed by
+// field), not `detail` — surface the first message instead of the generic fallback.
+function validationError(err: ApiError): string | null {
+  const body = err.body as { errors?: Record<string, string[]> } | null
+  const first = body?.errors ? Object.values(body.errors).flat()[0] : undefined
+  return typeof first === 'string' && first.length > 0 ? first : null
 }
 </script>
 
@@ -159,6 +167,7 @@ function errorDetail(err: ApiError): string | null {
             <RouterLink
               to="/terms"
               target="_blank"
+              rel="noopener"
               class="font-semibold text-accent no-underline hover:underline"
               >Terms of Service</RouterLink
             >
@@ -166,6 +175,7 @@ function errorDetail(err: ApiError): string | null {
             <RouterLink
               to="/privacy"
               target="_blank"
+              rel="noopener"
               class="font-semibold text-accent no-underline hover:underline"
               >Privacy Policy</RouterLink
             >.

@@ -139,6 +139,20 @@ async function devSignIn(username = 'seeduser', role?: 'user' | 'moderator' | 'a
         </p>
       </div>
 
+      <!-- Agreement notice sits above the sign-in actions (not buried in the card
+           footer) so OAuth signups are conspicuously on notice — that placement is
+           what makes sign-in-wrap acceptance defensible. -->
+      <p class="m-0 mb-4 text-center text-[10px] text-text-muted">
+        By signing in you agree to our
+        <RouterLink to="/terms" class="text-text-secondary hover:text-accent hover:underline"
+          >Terms of Service</RouterLink
+        >
+        and
+        <RouterLink to="/privacy" class="text-text-secondary hover:text-accent hover:underline"
+          >Privacy Policy</RouterLink
+        >.
+      </p>
+
       <!-- OAuth buttons (top — modern convention: surface the fastest path first) -->
       <div class="flex flex-col gap-3">
         <a
@@ -252,18 +266,6 @@ async function devSignIn(username = 'seeduser', role?: 'user' | 'moderator' | 'a
           {{ devError }}
         </p>
       </div>
-
-      <!-- Footer -->
-      <p class="m-0 mt-5 text-center text-[10px] text-text-muted">
-        By signing in you agree to our
-        <RouterLink to="/terms" class="text-text-secondary hover:text-accent hover:underline"
-          >Terms of Service</RouterLink
-        >
-        and
-        <RouterLink to="/privacy" class="text-text-secondary hover:text-accent hover:underline"
-          >Privacy Policy</RouterLink
-        >.
-      </p>
     </div>
   </div>
 </template>
