@@ -13,4 +13,8 @@ public sealed record RegisterRequest(
     // sliding through to the policy check. PasswordPolicy is still the source of
     // truth for everything beyond raw length (common-list, equality with email/username).
     [property: Required, StringLength(128, MinimumLength = PasswordPolicy.MinLength)]
-    string Password);
+    string Password,
+    // Clickwrap gate: registration is refused unless the caller explicitly affirms the
+    // Terms of Service. No default value, so API clients must send the field.
+    [property: AllowedValues(true, ErrorMessage = "You must accept the Terms of Service to create an account.")]
+    bool AcceptedTerms);

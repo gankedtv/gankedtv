@@ -90,6 +90,8 @@ public sealed class CredentialAuthService
                 Email = normalisedEmail,
                 PasswordHash = hash,
                 PasswordAlgo = algo,
+                // The register endpoint validates AcceptedTerms=true before reaching here.
+                TermsAcceptedAt = now,
                 CreatedAt = now,
                 UpdatedAt = now,
             };

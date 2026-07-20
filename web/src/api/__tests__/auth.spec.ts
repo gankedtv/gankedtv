@@ -83,6 +83,7 @@ describe('api/auth', () => {
         email: 'a@b.dev',
         username: 'a',
         password: 'long-strong-password',
+        acceptedTerms: true,
       })
 
       expect(result).toEqual(tokens)
@@ -95,6 +96,7 @@ describe('api/auth', () => {
         email: 'a@b.dev',
         username: 'a',
         password: 'long-strong-password',
+        acceptedTerms: true,
       })
     })
   })

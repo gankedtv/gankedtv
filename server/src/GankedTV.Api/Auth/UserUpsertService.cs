@@ -101,6 +101,9 @@ public sealed class UserUpsertService
                 AvatarSource = hasAvatar ? providerSource : null,
                 OAuthAvatarUrl = hasAvatar ? info.AvatarUrl : null,
                 OAuthAvatarSource = hasAvatar ? providerSource : null,
+                // Sign-in-wrap: the login screen states that signing in constitutes
+                // acceptance of the Terms, so first-time OAuth users are stamped here.
+                TermsAcceptedAt = now,
                 CreatedAt = now,
                 UpdatedAt = now,
             };

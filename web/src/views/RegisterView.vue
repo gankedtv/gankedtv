@@ -29,6 +29,7 @@ watchEffect(() => {
 const email = ref('')
 const username = ref('')
 const password = ref('')
+const acceptedTerms = ref(false)
 const submitting = ref(false)
 const formError = ref<string | null>(null)
 
@@ -41,6 +42,7 @@ async function submitRegister(event: Event) {
       email: email.value,
       username: username.value,
       password: password.value,
+      acceptedTerms: acceptedTerms.value,
     })
     auth.setSession(tokens.token, tokens.refresh)
     await auth.fetchMe()
@@ -61,7 +63,7 @@ function mapRegisterError(err: unknown): string {
       return 'Too many registration attempts. Wait a minute and try again.'
     }
     if (err.status === 400) {
-      const detail = errorDetail(err)
+      const detail = errorDetail(err) ?? validationError(err)
       if (detail) return detail
       return 'Check the email and password requirements (min 12 characters) and try again.'
     }
@@ -72,6 +74,14 @@ function mapRegisterError(err: unknown): string {
 function errorDetail(err: ApiError): string | null {
   const body = err.body as { detail?: string } | null
   return body && typeof body.detail === 'string' && body.detail.length > 0 ? body.detail : null
+}
+
+// DataAnnotations failures come back as ValidationProblemDetails (`errors` dict keyed by
+// field), not `detail` — surface the first message instead of the generic fallback.
+function validationError(err: ApiError): string | null {
+  const body = err.body as { errors?: Record<string, string[]> } | null
+  const first = body?.errors ? Object.values(body.errors).flat()[0] : undefined
+  return typeof first === 'string' && first.length > 0 ? first : null
 }
 </script>
 
@@ -143,6 +153,33 @@ function errorDetail(err: ApiError): string | null {
             maxlength="128"
             class="rounded-md border border-border bg-surface-high px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted transition-colors duration-150 focus:border-accent focus:outline-none"
           />
+        </label>
+        <label class="flex items-start gap-2.5 text-xs text-text-secondary">
+          <input
+            v-model="acceptedTerms"
+            type="checkbox"
+            required
+            class="mt-0.5 size-3.5 shrink-0 accent-accent"
+          />
+          <span>
+            I agree to the
+            <!-- New tab so ticking through the docs doesn't wipe the half-filled form. -->
+            <RouterLink
+              to="/terms"
+              target="_blank"
+              rel="noopener"
+              class="font-semibold text-accent no-underline hover:underline"
+              >Terms of Service</RouterLink
+            >
+            and
+            <RouterLink
+              to="/privacy"
+              target="_blank"
+              rel="noopener"
+              class="font-semibold text-accent no-underline hover:underline"
+              >Privacy Policy</RouterLink
+            >.
+          </span>
         </label>
         <button
           type="submit"
