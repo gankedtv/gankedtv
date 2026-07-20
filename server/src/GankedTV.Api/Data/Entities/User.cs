@@ -49,6 +49,11 @@ public class User
     public DateTimeOffset? BannedAt { get; set; }
     public string? BannedReason { get; set; }
 
+    // Moment the user affirmed the Terms of Service — at credential registration
+    // (clickwrap checkbox) or first OAuth sign-in (the login screen states the
+    // agreement). Null for rows that predate the terms.
+    public DateTimeOffset? TermsAcceptedAt { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 

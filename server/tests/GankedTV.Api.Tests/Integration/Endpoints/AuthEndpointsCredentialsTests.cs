@@ -38,7 +38,7 @@ public class AuthEndpointsCredentialsTests : IAsyncLifetime
     }
 
     private static RegisterRequest GoodRegister(string email = "alice@example.com", string username = "alice", string password = "correct-horse-battery") =>
-        new(email, username, password);
+        new(email, username, password, AcceptedTerms: true);
 
     [Fact]
     public async Task Register_HappyPath_ReturnsTokenAndPersistsUser()
@@ -60,6 +60,24 @@ public class AuthEndpointsCredentialsTests : IAsyncLifetime
         user.Username.Should().Be("alice");
         user.PasswordHash.Should().NotBeNullOrEmpty();
         user.PasswordAlgo.Should().Be("argon2id");
+        user.TermsAcceptedAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Register_WithoutAcceptedTerms_Returns400FromValidationFilter()
+    {
+        await _fx.ResetAsync();
+        using var client = BuildClient();
+
+        var resp = await client.PostAsJsonAsync(
+            "/auth/register",
+            new RegisterRequest("terms@example.com", "termless", "long-and-fine-password", AcceptedTerms: false));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("AcceptedTerms");
+
+        await using var db = _fx.CreateContext();
+        (await db.Users.AsNoTracking().CountAsync()).Should().Be(0);
     }
 
     [Fact]
@@ -98,7 +116,7 @@ public class AuthEndpointsCredentialsTests : IAsyncLifetime
 
         var resp = await client.PostAsJsonAsync(
             "/auth/register",
-            new RegisterRequest("oauthonly@example.com", "stealer", "long-and-fine-password"));
+            new RegisterRequest("oauthonly@example.com", "stealer", "long-and-fine-password", AcceptedTerms: true));
 
         resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
         (await resp.Content.ReadAsStringAsync()).Should().Contain("email_taken");
@@ -113,12 +131,12 @@ public class AuthEndpointsCredentialsTests : IAsyncLifetime
         // First user takes "bob".
         (await client.PostAsJsonAsync(
             "/auth/register",
-            new RegisterRequest("bob@example.com", "bob", "long-and-fine-password"))).EnsureSuccessStatusCode();
+            new RegisterRequest("bob@example.com", "bob", "long-and-fine-password", AcceptedTerms: true))).EnsureSuccessStatusCode();
 
         // Second registration with the same desired username + a different email — auto-suffix.
         var resp = await client.PostAsJsonAsync(
             "/auth/register",
-            new RegisterRequest("bob2@example.com", "bob", "another-fine-password"));
+            new RegisterRequest("bob2@example.com", "bob", "another-fine-password", AcceptedTerms: true));
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
 
@@ -145,7 +163,7 @@ public class AuthEndpointsCredentialsTests : IAsyncLifetime
         // arm rather than the validation-filter short-circuit.
         var resp = await client.PostAsJsonAsync(
             "/auth/register",
-            new RegisterRequest("c@example.com", "carol", "abc123abc123"));
+            new RegisterRequest("c@example.com", "carol", "abc123abc123", AcceptedTerms: true));
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await resp.Content.ReadAsStringAsync()).Should().Contain("weak_password");
@@ -159,7 +177,7 @@ public class AuthEndpointsCredentialsTests : IAsyncLifetime
 
         var resp = await client.PostAsJsonAsync(
             "/auth/register",
-            new RegisterRequest("not-an-email", "dave", "long-and-fine-password"));
+            new RegisterRequest("not-an-email", "dave", "long-and-fine-password", AcceptedTerms: true));
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }

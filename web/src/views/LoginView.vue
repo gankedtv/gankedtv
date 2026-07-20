@@ -255,7 +255,14 @@ async function devSignIn(username = 'seeduser', role?: 'user' | 'moderator' | 'a
 
       <!-- Footer -->
       <p class="m-0 mt-5 text-center text-[10px] text-text-muted">
-        By signing in you agree to our Terms of Service.
+        By signing in you agree to our
+        <RouterLink to="/terms" class="text-text-secondary hover:text-accent hover:underline"
+          >Terms of Service</RouterLink
+        >
+        and
+        <RouterLink to="/privacy" class="text-text-secondary hover:text-accent hover:underline"
+          >Privacy Policy</RouterLink
+        >.
       </p>
     </div>
   </div>

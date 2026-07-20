@@ -29,6 +29,7 @@ watchEffect(() => {
 const email = ref('')
 const username = ref('')
 const password = ref('')
+const acceptedTerms = ref(false)
 const submitting = ref(false)
 const formError = ref<string | null>(null)
 
@@ -41,6 +42,7 @@ async function submitRegister(event: Event) {
       email: email.value,
       username: username.value,
       password: password.value,
+      acceptedTerms: acceptedTerms.value,
     })
     auth.setSession(tokens.token, tokens.refresh)
     await auth.fetchMe()
@@ -143,6 +145,31 @@ function errorDetail(err: ApiError): string | null {
             maxlength="128"
             class="rounded-md border border-border bg-surface-high px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted transition-colors duration-150 focus:border-accent focus:outline-none"
           />
+        </label>
+        <label class="flex items-start gap-2.5 text-xs text-text-secondary">
+          <input
+            v-model="acceptedTerms"
+            type="checkbox"
+            required
+            class="mt-0.5 size-3.5 shrink-0 accent-accent"
+          />
+          <span>
+            I agree to the
+            <!-- New tab so ticking through the docs doesn't wipe the half-filled form. -->
+            <RouterLink
+              to="/terms"
+              target="_blank"
+              class="font-semibold text-accent no-underline hover:underline"
+              >Terms of Service</RouterLink
+            >
+            and
+            <RouterLink
+              to="/privacy"
+              target="_blank"
+              class="font-semibold text-accent no-underline hover:underline"
+              >Privacy Policy</RouterLink
+            >.
+          </span>
         </label>
         <button
           type="submit"

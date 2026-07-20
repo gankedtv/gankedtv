@@ -51,7 +51,7 @@ public class AuthRefreshCookieTests : IAsyncLifetime
     }
 
     private static RegisterRequest GoodRegister(string email = "cookie@example.com", string username = "cookieuser") =>
-        new(email, username, "correct-horse-battery");
+        new(email, username, "correct-horse-battery", AcceptedTerms: true);
 
     private static string? ExtractRefreshCookie(HttpResponseMessage resp)
     {

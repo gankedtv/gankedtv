@@ -30,7 +30,9 @@ public class CredentialAuthServiceTests
 
         var result = await svc.TryRegisterAsync("clock@example.com", "clockuser", "long-fine-password");
 
-        ((RegisterResult.SuccessResult)result).User.CreatedAt.Should().Be(clock.GetUtcNow());
+        var user = ((RegisterResult.SuccessResult)result).User;
+        user.CreatedAt.Should().Be(clock.GetUtcNow());
+        user.TermsAcceptedAt.Should().Be(clock.GetUtcNow());
     }
 
     [Fact]

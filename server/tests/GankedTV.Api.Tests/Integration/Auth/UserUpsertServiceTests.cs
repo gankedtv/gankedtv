@@ -31,6 +31,7 @@ public class UserUpsertServiceTests
         user.DiscordId.Should().Be("d-42");
         user.Username.Should().Be("zoe");
         user.Email.Should().Be("zoe@example.com");
+        user.TermsAcceptedAt.Should().NotBeNull();
 
         await using var verify = _fx.CreateContext();
         (await verify.Users.CountAsync()).Should().Be(1);
@@ -69,6 +70,8 @@ public class UserUpsertServiceTests
         var user = await verify.Users.SingleAsync(u => u.Id == id);
         user.Email.Should().Be("new@example.com");
         user.AvatarUrl.Should().Be("http://avatar.png");
+        // Existing accounts are never stamped retroactively — only first-time creation.
+        user.TermsAcceptedAt.Should().BeNull();
     }
 
     [Fact]

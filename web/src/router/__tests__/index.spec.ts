@@ -28,6 +28,8 @@ vi.mock('@/views/UserView.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/views/AuthCallbackView.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/views/NotFoundView.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/views/AdminView.vue', () => ({ default: { template: '<div />' } }))
+vi.mock('@/views/TermsView.vue', () => ({ default: { template: '<div />' } }))
+vi.mock('@/views/PrivacyView.vue', () => ({ default: { template: '<div />' } }))
 
 let router: Router
 
@@ -179,6 +181,18 @@ describe('analytics page-view hook', () => {
     expect(tracked).not.toContain('fake-refresh')
     // Non-sensitive params are preserved.
     expect(tracked).toContain('returnTo=%2Ffeed')
+  })
+})
+
+describe('legal routes', () => {
+  it('resolves /terms as a public route', async () => {
+    await router.push('/terms')
+    expect(router.currentRoute.value.name).toBe('terms')
+  })
+
+  it('resolves /privacy as a public route', async () => {
+    await router.push('/privacy')
+    expect(router.currentRoute.value.name).toBe('privacy')
   })
 })
 

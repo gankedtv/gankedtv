@@ -106,7 +106,15 @@ const siteLinks = [
       class="mx-auto flex max-w-300 flex-wrap justify-between gap-4 border-t border-border px-7 py-4 text-[11px] text-text-muted max-tablet:px-4"
     >
       <span>Made for players, by players.</span>
-      <span>© {{ currentYear }} GankedTV</span>
+      <span class="flex gap-4">
+        <RouterLink to="/terms" class="transition-colors duration-150 hover:text-accent">
+          Terms
+        </RouterLink>
+        <RouterLink to="/privacy" class="transition-colors duration-150 hover:text-accent">
+          Privacy
+        </RouterLink>
+        <span>© {{ currentYear }} GankedTV</span>
+      </span>
     </div>
   </footer>
 </template>
