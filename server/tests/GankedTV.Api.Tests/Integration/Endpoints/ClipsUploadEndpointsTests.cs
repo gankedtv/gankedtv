@@ -7,6 +7,7 @@ using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Tests.TestSupport;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 
 namespace GankedTV.Api.Tests.Integration.Endpoints;
@@ -560,6 +561,112 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
         clip.Status.Should().Be("processing");
         clip.FileSizeBytes.Should().Be(98765);
         clip.UpdatedAt.Should().BeAfter(originalUpdated);
+    }
+
+    [Fact]
+    public async Task Complete_WithTrim_PersistsTrimRange()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId);
+
+        _storage.GetObjectMetadataAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new ObjectMetadata(1024, "video/mp4"));
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/complete",
+            new { trimStartSeconds = 1.5, trimEndSeconds = 9.25 });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var db = _fx.CreateContext();
+        var clip = await db.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.TrimStartSecs.Should().Be(1.5);
+        clip.TrimEndSecs.Should().Be(9.25);
+    }
+
+    [Fact]
+    public async Task Complete_WithoutBody_LeavesTrimNull()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId);
+
+        _storage.GetObjectMetadataAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new ObjectMetadata(1024, "video/mp4"));
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsync($"/clips/{clipId}/complete", null);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var db = _fx.CreateContext();
+        var clip = await db.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.TrimStartSecs.Should().BeNull();
+        clip.TrimEndSecs.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(-1.0, 5.0)] // negative start
+    [InlineData(5.0, 5.1)] // span under the 0.2s minimum
+    [InlineData(9.0, 3.0)] // inverted range
+    [InlineData(2.0, null)] // half-specified (end missing)
+    [InlineData(null, 5.0)] // half-specified (start missing)
+    public async Task Complete_InvalidTrim_Returns400(double? start, double? end)
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId);
+
+        _storage.GetObjectMetadataAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new ObjectMetadata(1024, "video/mp4"));
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/complete",
+            new { trimStartSeconds = start, trimEndSeconds = end });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("invalid_trim");
+
+        await using var db = _fx.CreateContext();
+        (await db.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId)).Status.Should().Be("draft");
+    }
+
+    [Fact]
+    public async Task Complete_TrimAtExactMinimumSpan_IsAccepted()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId);
+
+        _storage.GetObjectMetadataAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new ObjectMetadata(1024, "video/mp4"));
+
+        using var client = ClientWithBearer(token);
+        // 1.7 - 1.5 is 0.19999… in doubles; the guard's epsilon must not reject an
+        // exact-minimum span over FP representation.
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/complete",
+            new { trimStartSeconds = 1.5, trimEndSeconds = 1.7 });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Complete_TrimWithTranscodeDisabled_Returns400TrimUnavailable()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId);
+
+        _storage.GetObjectMetadataAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new ObjectMetadata(1024, "video/mp4"));
+
+        await using var factory = new AuthApiFactory(_fx.ConnectionString, _storage, configureServices: services =>
+            services.Configure<GankedTV.Api.Services.Media.MediaJobOptions>(o => o.TranscodeEnabled = false));
+        using var client = AuthTestHelpers.CreateBearerClient(factory, token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/complete",
+            new { trimStartSeconds = 1.0, trimEndSeconds = 5.0 });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("trim_unavailable");
     }
 
     [Fact]

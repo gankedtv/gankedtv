@@ -107,7 +107,8 @@ public sealed class CompressJobService : ICompressJobService
         TimeSpan timeout,
         CancellationToken ct)
     {
-        var args = BuildCompressArgs(inputUrl, outPath, job.SourceHeight, opts, encoder);
+        var args = BuildCompressArgs(
+            inputUrl, outPath, job.SourceHeight, opts, encoder, job.TrimStartSecs, job.TrimEndSecs);
         var result = await _ffmpeg.RunAsync(opts.FfmpegPath, args, timeout, ct);
         if (result.ExitCode != 0 || !File.Exists(outPath) || new FileInfo(outPath).Length <= 0)
         {
@@ -130,17 +131,38 @@ public sealed class CompressJobService : ICompressJobService
         string outputPath,
         short? sourceHeight,
         MediaJobOptions opts,
-        string? encoder = null)
+        string? encoder = null,
+        double? trimStartSecs = null,
+        double? trimEndSecs = null)
     {
         var videoEncoder = encoder ?? opts.VideoEncoder;
         var ci = CultureInfo.InvariantCulture;
-        var args = new List<string>
+        var args = new List<string> { "-y" };
+
+        // -ss before -i is frame-accurate here because the output re-encodes (ffmpeg
+        // keyframe-seeks, then decodes and discards up to the exact point). Span goes
+        // through -t: with input seeking, timestamps reset to 0 so -to would misread.
+        var trim = trimStartSecs is { } ts && trimEndSecs is { } te && te > ts
+            ? (Start: ts, Span: te - ts)
+            : ((double Start, double Span)?)null;
+        if (trim is { } t)
         {
-            "-y",
+            args.Add("-ss");
+            args.Add(t.Start.ToString("F3", ci));
+        }
+
+        args.AddRange(new[]
+        {
             "-i", inputUrl,
             "-map", "0:v:0",
             "-map", "0:a:0?",
-        };
+        });
+
+        if (trim is { } t2)
+        {
+            args.Add("-t");
+            args.Add(t2.Span.ToString("F3", ci));
+        }
 
         // Only downscale (never upscale): scale to MaxHeight when the source is known to be
         // taller. -2 keeps width even and preserves aspect ratio.

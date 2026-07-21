@@ -79,6 +79,38 @@ public class ApiKeyUploadAuthTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Complete_WithTrim_ViaApiKey_Returns400TrimNotSupported()
+    {
+        await _fx.ResetAsync();
+        var (userId, rawKey, jwtClient) = await SeedUserAndMintKeyAsync();
+        jwtClient.Dispose();
+
+        _storage.GetObjectMetadataAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new ObjectMetadata(1024, "video/mp4"));
+
+        using var client = _factory!.CreateClient();
+        client.DefaultRequestHeaders.Add(ApiKeyDefaults.HeaderName, rawKey);
+        var create = await client.PostAsJsonAsync("/clips", new { title = "keyed clip" });
+        var clipId = (await create.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+
+        // The trimmer is web-only; API-key uploads must trim before uploading (rewynd does).
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/complete",
+            new { trimStartSeconds = 1.0, trimEndSeconds = 5.0 });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("trim_not_supported");
+
+        // Trim-free body still completes fine over the same key.
+        var ok = await client.PostAsJsonAsync($"/clips/{clipId}/complete", new { });
+        ok.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        await using var db = _fx.CreateContext();
+        var clip = await db.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.UserId.Should().Be(userId);
+        clip.TrimStartSecs.Should().BeNull();
+    }
+
+    [Fact]
     public async Task Create_WithBearerApiKey_ActsAsOwner()
     {
         await _fx.ResetAsync();

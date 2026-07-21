@@ -107,6 +107,28 @@ public class MediaStageWorkerTests
     }
 
     [Fact]
+    public async Task Thumbnail_UnverifiableTrim_FailsImmediatelyWithoutRetry()
+    {
+        // First attempt, budget of 3 left — the deterministic rejection must still fail the
+        // clip now (with the structured reason) instead of releasing the lease for retries.
+        var (svc, store, thumbnailer) = BuildThumbnail();
+        var job = ClipJob(attempt: 1);
+        store.ClaimNextAsync(ClipStatuses.Processing, Arg.Any<TimeSpan>(), Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(job);
+        thumbnailer.ExtractAsync(job, Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new TrimUnverifiableException("no duration"));
+
+        (await svc.TryProcessOneAsync(CancellationToken.None)).Should().BeTrue();
+
+        await store.Received(1).MarkFailedAsync(
+            job.ClipId, 1, ClipStatuses.Processing, Arg.Any<CancellationToken>(),
+            ClipFailureReasons.TrimUnverifiable);
+        await store.DidNotReceive().ReleaseLeaseAsync(
+            Arg.Any<Guid>(), Arg.Any<int>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await store.DidNotReceive().AdvanceThumbnailAsync(
+            Arg.Any<Guid>(), Arg.Any<int>(), Arg.Any<FinalizedMediaJob>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task Thumbnail_HappyPath_AdvancesToReadyWhenCompressionDisabled()
     {
         var (svc, store, thumbnailer) = BuildThumbnail(new MediaJobOptions { MaxAttempts = 3, TranscodeEnabled = false });

@@ -93,6 +93,8 @@ Both GPU stages (compress + JIT) are **location-independent** — the queues use
 
 In dev, all workers run **in-process** on the host (toggles default `true`), using host ffmpeg — no new container. The master encoder (`MEDIA_VIDEO_ENCODER`/`MEDIA_VIDEO_CODEC`), JIT encoder (`MEDIA_JIT_VIDEO_ENCODER`), resolution cap (`MEDIA_MAX_HEIGHT`), and quality (`MEDIA_CRF`) are all configurable, so moving the GPU box to AV1 is a config change, not code.
 
+**Pre-upload trimming:** the web upload wizard's trimmer (`ClipTrimmer.vue`) sends an optional `trimStartSeconds`/`trimEndSeconds` body on `POST /clips/{id}/complete`. The cut is applied by the **existing compress stage** (`-ss`/`-t` on the single re-encode — no extra encode); the thumbnail stage clamps the range to the probed duration, takes the poster inside the kept range, and records the trimmed duration. Trim requires `MEDIA_TRANSCODE_ENABLED=true` (400 `trim_unavailable` otherwise) and is **web-only**: API-key callers (rewynd trims locally) get 400 `trim_not_supported`; a body-less complete is unchanged.
+
 ### Online presence (`GET /presence/summary`)
 
 Powers the nav's live "N online" count (web wiring lands with the Arena design-system work). Returns `{ online, followsOnline: UserSummary[] }` — `followsOnline` (capped at `PRESENCE_FOLLOWS_ONLINE_CAP`) only for authenticated callers.

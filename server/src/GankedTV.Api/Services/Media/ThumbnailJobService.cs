@@ -48,13 +48,27 @@ public sealed class ThumbnailJobService : IThumbnailJobService
         // but the columns are already there and the worker has the data — populate them).
         var probe = await ProbeAsync(videoUrl, opts, ct);
 
-        // When ffprobe couldn't determine duration, fall back to seek=0 — seeking 1s
-        // into a sub-1s clip with unknown duration produces no frame, while seek=0 always
-        // yields the first decoded frame.
-        var seekOffset = probe.DurationSecs is null
-            || probe.DurationSecs.Value <= opts.ThumbnailFrameOffset.TotalSeconds
-            ? TimeSpan.Zero
-            : opts.ThumbnailFrameOffset;
+        // A trim we can't validate must not proceed: silently dropping it would publish
+        // footage the user cut away, and an out-of-range -ss can slip through ffmpeg with
+        // exit 0 and a header-only file. Fail the clip instead — deterministic per file,
+        // so the worker skips the retry budget (TrimUnverifiableException is fail-fast).
+        if (job.TrimStartSecs is not null && job.TrimEndSecs is not null && probe.DurationSecs is null)
+        {
+            throw new TrimUnverifiableException(
+                "Clip has a trim range but ffprobe could not determine the source duration; failing rather than encoding an unverifiable cut.");
+        }
+
+        var trim = SanitizeTrim(job.TrimStartSecs, job.TrimEndSecs, probe.DurationSecs);
+        var playableStart = trim?.Start ?? 0;
+        var playableSecs = trim is { } span ? span.End - span.Start : probe.DurationSecs;
+
+        // Poster must come from inside the kept range. When the playable span is unknown
+        // or shorter than the offset, seek to the range start (0 for untrimmed clips) —
+        // that always yields a decodable frame.
+        var seekOffset = playableSecs is null
+            || playableSecs.Value <= opts.ThumbnailFrameOffset.TotalSeconds
+            ? TimeSpan.FromSeconds(playableStart)
+            : TimeSpan.FromSeconds(playableStart) + opts.ThumbnailFrameOffset;
 
         // Include a per-attempt token so a re-claimed lease (e.g. after the original
         // worker hung past LeaseDuration) can't collide on the same temp path.
@@ -73,14 +87,40 @@ public sealed class ThumbnailJobService : IThumbnailJobService
 
             return new FinalizedMediaJob(
                 ThumbnailKey: thumbnailKey,
-                DurationSecs: ToShortSecs(probe.DurationSecs),
+                DurationSecs: ToShortSecs(playableSecs),
                 Width: ToShort(probe.Width),
-                Height: ToShort(probe.Height));
+                Height: ToShort(probe.Height),
+                TrimStartSecs: trim?.Start,
+                TrimEndSecs: trim?.End);
         }
         finally
         {
             TryDelete(thumbPath);
         }
+    }
+
+    // Clamps a requested trim to the probed duration. Returns null for no trim, a
+    // degenerate range (source shorter than the minimum cut), or a whole-clip range.
+    // With an unknown duration the request is kept as-is (ExtractAsync fails that case
+    // before calling this — never silently drop a user's cut).
+    internal static (double Start, double End)? SanitizeTrim(
+        double? trimStart, double? trimEnd, double? durationSecs)
+    {
+        if (trimStart is not { } start || trimEnd is not { } end)
+        {
+            return null;
+        }
+
+        const double minSpan = ClipUploadService.MinTrimSpanSecs;
+        if (durationSecs is { } dur)
+        {
+            end = Math.Min(end, dur);
+            start = Math.Max(0, Math.Min(start, end - minSpan));
+            if (end - start < minSpan - 1e-9) return null;
+            if (start <= 0.05 && end >= dur - 0.05) return null;
+        }
+
+        return (start, end);
     }
 
     private async Task<ProbeResult> ProbeAsync(string inputUrl, MediaJobOptions opts, CancellationToken ct)

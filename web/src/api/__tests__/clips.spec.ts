@@ -386,6 +386,23 @@ describe('api/clips', () => {
       const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
       expect(url).toBe(`${BASE_URL}/clips/clip-id/complete`)
       expect(init.method).toBe('POST')
+      expect(init.body).toBeUndefined()
+    })
+
+    it('sends the trim range as the JSON body when provided', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ id: 'clip-id', fileSizeBytes: 42 })),
+      )
+
+      await clips.complete('clip-id', { trimStartSeconds: 1.5, trimEndSeconds: 9.25 })
+
+      const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(init.method).toBe('POST')
+      expect(JSON.parse(init.body as string)).toEqual({
+        trimStartSeconds: 1.5,
+        trimEndSeconds: 9.25,
+      })
     })
   })
 
