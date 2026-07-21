@@ -6,7 +6,7 @@ import { config } from '@/config'
 import { clips } from '@/api/clips'
 import type { ClipStatus, ClipVisibility, GameSummary } from '@/api/clips'
 import ClipTrimmer from '@/components/ClipTrimmer.vue'
-import type { TrimRange } from '@/components/ClipTrimmer.vue'
+import type { TrimRange } from '@/lib/trim'
 import GameSelector from '@/components/GameSelector.vue'
 import TagInput from '@/components/TagInput.vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -110,10 +110,12 @@ const trimRange = ref<TrimRange | null>(null)
 const describePreviewUrl = ref('')
 const previewVideoEl = ref<HTMLVideoElement | null>(null)
 const previewPlaying = ref(false)
+const previewFailed = ref(false)
 
 watch(file, (f) => {
   if (describePreviewUrl.value) URL.revokeObjectURL(describePreviewUrl.value)
   describePreviewUrl.value = f ? URL.createObjectURL(f) : ''
+  previewFailed.value = false
 })
 
 // The preview <video> unmounts when leaving the describe step without firing 'pause' —
@@ -557,6 +559,8 @@ function describePipelineFailure(status: ClipStatus): string {
       return "We couldn't generate a thumbnail for this clip. Try again — if it persists, the source may be corrupted."
     case 'transcode_failed':
       return "We couldn't process this clip's video. Try again — if it persists, the source may be in an unsupported format."
+    case 'trim_unverifiable':
+      return "We couldn't verify the trim against this file (its duration is unreadable). Re-upload without trimming, or trim it locally first."
     default:
       // No structured code, or one this build doesn't recognise — neutral wording that
       // doesn't pretend to know whether it was an import or a direct upload.
@@ -1003,7 +1007,7 @@ const IMPORT_HOSTS_HINT = IMPORT_ALLOWED_HOSTS.filter(
                 <!-- Upload mode: play the local file, looping the kept trim range so the
                      preview matches what will actually be published. -->
                 <video
-                  v-if="mode === 'upload' && describePreviewUrl"
+                  v-if="mode === 'upload' && describePreviewUrl && !previewFailed"
                   ref="previewVideoEl"
                   :src="describePreviewUrl"
                   playsinline
@@ -1013,6 +1017,7 @@ const IMPORT_HOSTS_HINT = IMPORT_ALLOWED_HOSTS.filter(
                   @timeupdate="onPreviewTimeUpdate"
                   @play="previewPlaying = true"
                   @pause="previewPlaying = false"
+                  @error="previewFailed = true"
                 ></video>
                 <img
                   v-else-if="posterUrl"
@@ -1027,7 +1032,9 @@ const IMPORT_HOSTS_HINT = IMPORT_ALLOWED_HOSTS.filter(
                   {{ file?.name ?? 'No file' }}
                 </div>
                 <button
-                  v-if="mode === 'upload' && describePreviewUrl && !previewPlaying"
+                  v-if="
+                    mode === 'upload' && describePreviewUrl && !previewFailed && !previewPlaying
+                  "
                   type="button"
                   aria-label="Play trimmed preview"
                   class="absolute inset-0 m-auto flex size-12 cursor-pointer items-center justify-center rounded-full border border-white/30 bg-black/55 text-[#f4f1e8] transition-colors duration-150 hover:border-white/60"

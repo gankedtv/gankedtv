@@ -9,6 +9,8 @@ namespace GankedTV.Api.Services.Media;
 // compression is disabled pipeline-wide — store the raw upload as-is).
 public sealed class ThumbnailWorker : ClipStageWorker
 {
+    private readonly ILogger<ThumbnailWorker> _logger;
+
     public ThumbnailWorker(
         IServiceScopeFactory scopeFactory,
         IFfmpegRunner ffmpeg,
@@ -16,6 +18,7 @@ public sealed class ThumbnailWorker : ClipStageWorker
         ILogger<ThumbnailWorker> logger)
         : base(scopeFactory, ffmpeg, options, logger)
     {
+        _logger = logger;
     }
 
     protected override string ClaimStatus => ClipStatuses.Processing;
@@ -32,7 +35,24 @@ public sealed class ThumbnailWorker : ClipStageWorker
         var store = scope.GetRequiredService<IClipMediaJobStore>();
         var thumbnailer = scope.GetRequiredService<IThumbnailJobService>();
         var slug = await store.GetGameSlugAsync(job.GameId, ct);
-        var result = await thumbnailer.ExtractAsync(job, slug, ct);
+
+        FinalizedMediaJob result;
+        try
+        {
+            result = await thumbnailer.ExtractAsync(job, slug, ct);
+        }
+        catch (TrimUnverifiableException ex)
+        {
+            // Deterministic rejection — retrying re-probes the same bytes. Fail the clip now
+            // (mirrors ImportWorker's ImportSourceRejectedException path); the base loop's
+            // release/fail is a no-op afterwards because the row no longer matches 'processing'.
+            _logger.LogInformation(
+                "Thumbnail stage rejecting clip={ClipId}: {Message}", job.ClipId, ex.Message);
+            await store.MarkFailedAsync(
+                job.ClipId, job.AttemptNumber, ClipStatuses.Processing, ct,
+                reason: ClipFailureReasons.TrimUnverifiable);
+            return;
+        }
 
         // When compression is part of the pipeline, hand the clip to the compress stage;
         // otherwise the thumbnail is the last step and the clip is ready (stores the upload).

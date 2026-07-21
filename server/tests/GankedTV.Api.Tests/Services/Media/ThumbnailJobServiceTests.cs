@@ -352,7 +352,7 @@ public class ThumbnailJobServiceTests
         var job = NewJob() with { TrimStartSecs = 3, TrimEndSecs = 7 };
         var act = async () => await svc.ExtractAsync(job, null, CancellationToken.None);
 
-        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*trim*duration*");
+        await act.Should().ThrowAsync<TrimUnverifiableException>().WithMessage("*trim*duration*");
     }
 
     [Fact]

@@ -50,10 +50,11 @@ public sealed class ThumbnailJobService : IThumbnailJobService
 
         // A trim we can't validate must not proceed: silently dropping it would publish
         // footage the user cut away, and an out-of-range -ss can slip through ffmpeg with
-        // exit 0 and a header-only file. Fail the stage instead.
+        // exit 0 and a header-only file. Fail the clip instead — deterministic per file,
+        // so the worker skips the retry budget (TrimUnverifiableException is fail-fast).
         if (job.TrimStartSecs is not null && job.TrimEndSecs is not null && probe.DurationSecs is null)
         {
-            throw new InvalidOperationException(
+            throw new TrimUnverifiableException(
                 "Clip has a trim range but ffprobe could not determine the source duration; failing rather than encoding an unverifiable cut.");
         }
 

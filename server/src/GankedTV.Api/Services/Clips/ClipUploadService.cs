@@ -180,8 +180,10 @@ public sealed class ClipUploadService : IClipUploadService
             {
                 return ClipResult<CompleteClipResult>.Fail(ClipUploadError.TrimUnavailable);
             }
+            // Epsilon keeps an exact-minimum span from being rejected by FP representation
+            // (e.g. 1.7 - 1.5 == 0.19999…); SanitizeTrim uses the same tolerance.
             if (!double.IsFinite(trim.StartSecs) || !double.IsFinite(trim.EndSecs)
-                || trim.StartSecs < 0 || trim.EndSecs - trim.StartSecs < MinTrimSpanSecs)
+                || trim.StartSecs < 0 || trim.EndSecs - trim.StartSecs < MinTrimSpanSecs - 1e-9)
             {
                 return ClipResult<CompleteClipResult>.Fail(ClipUploadError.InvalidTrim);
             }

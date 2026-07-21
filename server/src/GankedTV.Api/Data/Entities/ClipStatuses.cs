@@ -8,6 +8,9 @@ public static class ClipFailureReasons
 {
     public const string SourceTooLong = "source_too_long";
     public const string SourceTooLarge = "source_too_large";
+    // A trim range was requested but ffprobe couldn't report the source duration, so the
+    // cut can't be validated. Deterministic per file — retrying re-probes the same bytes.
+    public const string TrimUnverifiable = "trim_unverifiable";
     public const string SourceUnavailable = "source_unavailable";
     public const string FetchFailed = "fetch_failed";
     public const string TranscodeFailed = "transcode_failed";
@@ -16,7 +19,7 @@ public static class ClipFailureReasons
     // Content rejections: the clip itself is unacceptable, so a retry can never fix it. Single
     // source of truth for both IsRetryable and the media-requeue query (ClipMediaJobStore), which
     // filters on this same set so the two can't drift.
-    public static readonly string[] NonRetryableReasons = { SourceTooLong, SourceTooLarge };
+    public static readonly string[] NonRetryableReasons = { SourceTooLong, SourceTooLarge, TrimUnverifiable };
 
     // Whether requeuing a failed clip is worth it. Content rejections are skipped; everything else
     // — infra/probe/fetch/transcode/thumbnail faults, or an unrecorded (null) reason — is retryable

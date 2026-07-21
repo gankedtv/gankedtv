@@ -1,25 +1,25 @@
 <script setup lang="ts">
 import { ref, computed, watch, onUnmounted } from 'vue'
 import IconPlay from '@/components/icons/IconPlay.vue'
+import {
+  clampTrimEnd,
+  clampTrimStart,
+  isTrimChanged,
+  seedTrimRange,
+  toTrimModel,
+  type TrimRange,
+} from '@/lib/trim'
 
 // Rewynd-style pre-upload trimmer: video preview + filmstrip with two draggable
 // handles. Emits null while the range covers the whole clip, so the caller only
-// sends a trim when the user actually cut something.
-export interface TrimRange {
-  start: number
-  end: number
-}
+// sends a trim when the user actually cut something. Range math lives in lib/trim.
 
 const props = defineProps<{ file: File }>()
 const model = defineModel<TrimRange | null>({ default: null })
 
-// Matches the server's minimum trimmed span (ClipUploadService.MinTrimSpanSecs).
-const MIN_GAP = 0.2
 // Handle grab distance in px; presses further away seek instead.
 const GRAB = 12
 const FRAME_COUNT = 12
-// Same "did a handle actually move" threshold rewynd uses.
-const CHANGED_EPS = 0.05
 
 const videoEl = ref<HTMLVideoElement | null>(null)
 const barEl = ref<HTMLElement | null>(null)
@@ -60,27 +60,20 @@ onUnmounted(() => {
   frameRequestId++
 })
 
-const changed = computed(
-  () => start.value > CHANGED_EPS || end.value < duration.value - CHANGED_EPS,
-)
+const changed = computed(() => isTrimChanged(start.value, end.value, duration.value))
 
 watch([start, end, duration], () => {
-  model.value = duration.value > 0 && changed.value ? { start: start.value, end: end.value } : null
+  model.value = toTrimModel(start.value, end.value, duration.value)
 })
 
 function onLoadedMetadata() {
   const v = videoEl.value
   if (!v || !Number.isFinite(v.duration) || v.duration <= 0) return
   duration.value = v.duration
-  const m = model.value
-  if (m && m.start >= 0 && m.end - m.start >= MIN_GAP && m.end <= v.duration + CHANGED_EPS) {
-    start.value = m.start
-    end.value = Math.min(m.end, v.duration)
-  } else {
-    start.value = 0
-    end.value = v.duration
-  }
-  playhead.value = start.value
+  const seeded = seedTrimRange(model.value, v.duration)
+  start.value = seeded.start
+  end.value = seeded.end
+  playhead.value = seeded.start
   void captureFrames(++frameRequestId)
 }
 
@@ -206,10 +199,10 @@ function onPointerUp() {
 
 function applyDrag(t: number) {
   if (dragState.value === 'start') {
-    start.value = Math.min(Math.max(t, 0), end.value - MIN_GAP)
+    start.value = clampTrimStart(t, end.value)
     seekTo(start.value)
   } else if (dragState.value === 'end') {
-    end.value = Math.max(Math.min(t, duration.value), start.value + MIN_GAP)
+    end.value = clampTrimEnd(t, start.value, duration.value)
     seekTo(end.value)
   } else if (dragState.value === 'seek') {
     seekTo(t)
@@ -228,11 +221,11 @@ function onKeyDown(e: KeyboardEvent) {
       break
     case 'i':
     case 'I':
-      start.value = Math.min(playhead.value, end.value - MIN_GAP)
+      start.value = clampTrimStart(playhead.value, end.value)
       break
     case 'o':
     case 'O':
-      end.value = Math.max(playhead.value, start.value + MIN_GAP)
+      end.value = clampTrimEnd(playhead.value, start.value, duration.value)
       break
     case 'Home':
       seekTo(start.value)

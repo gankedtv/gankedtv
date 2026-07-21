@@ -608,7 +608,8 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
     [InlineData(-1.0, 5.0)] // negative start
     [InlineData(5.0, 5.1)] // span under the 0.2s minimum
     [InlineData(9.0, 3.0)] // inverted range
-    [InlineData(2.0, null)] // half-specified
+    [InlineData(2.0, null)] // half-specified (end missing)
+    [InlineData(null, 5.0)] // half-specified (start missing)
     public async Task Complete_InvalidTrim_Returns400(double? start, double? end)
     {
         await _fx.ResetAsync();
@@ -627,6 +628,25 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
 
         await using var db = _fx.CreateContext();
         (await db.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId)).Status.Should().Be("draft");
+    }
+
+    [Fact]
+    public async Task Complete_TrimAtExactMinimumSpan_IsAccepted()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId);
+
+        _storage.GetObjectMetadataAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new ObjectMetadata(1024, "video/mp4"));
+
+        using var client = ClientWithBearer(token);
+        // 1.7 - 1.5 is 0.19999… in doubles; the guard's epsilon must not reject an
+        // exact-minimum span over FP representation.
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/complete",
+            new { trimStartSeconds = 1.5, trimEndSeconds = 1.7 });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     [Fact]

@@ -19,6 +19,7 @@ public class ClipFailureReasonsTests
     [Theory]
     [InlineData(ClipFailureReasons.SourceTooLong)]
     [InlineData(ClipFailureReasons.SourceTooLarge)]
+    [InlineData(ClipFailureReasons.TrimUnverifiable)]
     public void IsRetryable_ContentRejections_AreNotRetryable(string reason)
     {
         ClipFailureReasons.IsRetryable(reason).Should().BeFalse();
@@ -30,7 +31,12 @@ public class ClipFailureReasonsTests
         // The requeue query (ClipMediaJobStore) filters on this same set, so it must stay in lockstep
         // with IsRetryable: every listed reason is non-retryable, and nothing else is.
         ClipFailureReasons.NonRetryableReasons.Should().BeEquivalentTo(
-            new[] { ClipFailureReasons.SourceTooLong, ClipFailureReasons.SourceTooLarge });
+            new[]
+            {
+                ClipFailureReasons.SourceTooLong,
+                ClipFailureReasons.SourceTooLarge,
+                ClipFailureReasons.TrimUnverifiable,
+            });
         ClipFailureReasons.NonRetryableReasons.Should().OnlyContain(r => !ClipFailureReasons.IsRetryable(r));
     }
 }
