@@ -146,6 +146,8 @@ services:
       VITE_SENTRY_ENVIRONMENT: ${VITE_SENTRY_ENVIRONMENT:-Production}
       VITE_SENTRY_RELEASE: ${VITE_SENTRY_RELEASE:-}
       VITE_SENTRY_TRACES_SAMPLE_RATE: ${VITE_SENTRY_TRACES_SAMPLE_RATE:-0.01}
+      # Caddy's upstream for link-preview traffic (see web/Caddyfile); default = the api service.
+      SHARE_PREVIEW_UPSTREAM: ${SHARE_PREVIEW_UPSTREAM:-api:5000}
     ports:
       - "${WEB_HTTP_PORT:-8080}:80"
     restart: unless-stopped

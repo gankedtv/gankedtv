@@ -11,6 +11,16 @@
     <meta name="theme-color" content="#0b0b0f">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GankedTV</title>
+    <!-- Site-wide link-preview fallback for pages without a crawler-specific answer (home,
+         profiles, …). Clip share paths get richer server-rendered OG tags via the Caddyfile's
+         crawler routes. No og:image: it must be an absolute URL and this shell is
+         environment-agnostic (no baked origin); title/description cards render fine without. -->
+    <meta name="description" content="Watch and share the best gaming clips on GankedTV.">
+    <meta property="og:site_name" content="GankedTV">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="GankedTV">
+    <meta property="og:description" content="Watch and share the best gaming clips on GankedTV.">
+    <meta name="twitter:card" content="summary">
     <!-- Runtime config: the production image's entrypoint overwrites /config.js from container env
          before Caddy serves it, so the same bundle works in any environment. Blocking + ahead of the
          module script so window.__APP_CONFIG__ is set first. The committed default (public/config.js)

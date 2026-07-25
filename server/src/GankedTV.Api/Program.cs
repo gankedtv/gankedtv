@@ -715,6 +715,7 @@ app.MapProfileMediaEndpoints();
 app.MapClipsUploadEndpoints();
 app.MapClipsImportEndpoints();
 app.MapClipsReadEndpoints();
+app.MapSharePreviewEndpoints();
 app.MapClipsMutateEndpoints();
 app.MapLikesEndpoints();
 app.MapClipsViewEndpoints();
