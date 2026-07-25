@@ -5,8 +5,39 @@
 :80 {
 	root * /srv
 	encode gzip zstd
-	try_files {path} /index.html
-	file_server
+
+	# Link previews: social-media crawlers can't run the SPA's JS, so clip share paths are
+	# answered by the API's OG endpoints instead of the static shell. UA-scoped — humans still
+	# get the SPA. Keep the UA list in sync with CrawlerSubstrings in the API's
+	# SharePreviewEndpoints; the header below covers any drift (the API treats it as crawler
+	# traffic, so a mismatched UA degrades to OG HTML instead of a redirect loop).
+	@share_crawler {
+		path /c/* /clip/*
+		header_regexp User-Agent (?i)(discordbot|twitterbot|facebookexternalhit|whatsapp|slackbot|telegrambot|linkedinbot|redditbot)
+	}
+	# Embed helpers fetched by preview clients with ordinary UAs: the oEmbed document and the
+	# stable share-media URLs that 302 to a freshly presigned object URL. Path-scoped, always
+	# proxied — the SPA serves nothing on these paths.
+	@share_media {
+		path /oembed /c/*/poster.jpg /c/*/video.mp4
+	}
+	# Upstream is the API. The default reaches the compose-internal service; a split deployment
+	# sets SHARE_PREVIEW_UPSTREAM to the public API URL (e.g. https://api.example.com).
+	# handle blocks (not bare reverse_proxy): Caddy's default directive order runs try_files
+	# before reverse_proxy, which would rewrite /c/{code} to /index.html before the proxy
+	# matchers ever see it. handle blocks evaluate their matchers pre-rewrite, in order.
+	handle @share_crawler {
+		reverse_proxy {$SHARE_PREVIEW_UPSTREAM:api:5000} {
+			header_up X-GankedTV-Share-Preview 1
+		}
+	}
+	handle @share_media {
+		reverse_proxy {$SHARE_PREVIEW_UPSTREAM:api:5000}
+	}
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
 
 	# Hashed asset filenames are content-addressed, so cache them forever; the HTML shell and the
 	# runtime config must revalidate every load so a new deploy / config change is picked up.

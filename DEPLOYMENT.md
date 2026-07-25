@@ -396,6 +396,33 @@ these as **runtime env on the web container** (see [.env.prod.example](.env.prod
 > (the `VITE_*` from `.env` / Vaultwarden). **Cookie-consent gating for analytics is a known follow-up**
 > — GA currently loads whenever the measurement id is present.
 
+## Link previews (share embeds)
+
+Pasting a clip link (`https://<web-origin>/c/<code>` or `/clip/<id>`) into Discord, WhatsApp,
+Telegram, X, Slack, … renders a rich preview (title, uploader, thumbnail, playable video on
+platforms that support `og:video`). The SPA can't provide this itself — crawlers don't run JS — so
+the web container's Caddy answers crawler traffic from the API instead
+([web/Caddyfile](web/Caddyfile) → [SharePreviewEndpoints](server/src/GankedTV.Api/Endpoints/SharePreviewEndpoints.cs)):
+
+- **Crawler user-agents** on `/c/*` and `/clip/*` are proxied to the API, which returns
+  server-rendered OG/Twitter HTML (with an `X-GankedTV-Share-Preview` header set, so the API also
+  treats UAs missing from its own list as preview traffic — no redirect loops on list drift).
+  Human visitors are untouched and get the SPA.
+- `/oembed` and the stable share-media paths (`/c/{code}/poster.jpg`, `/c/{code}/video.mp4`) are
+  **always** proxied — embed clients fetch these with ordinary UAs. The media paths `302` to a
+  freshly presigned object URL per fetch, so embeds keep playing long after the 1-hour presign in
+  a direct URL would have expired.
+
+Configuration:
+
+| Var | Purpose |
+|---|---|
+| `SHARE_PREVIEW_UPSTREAM` | Caddy's upstream for the routes above. Default `api:5000` (the compose-internal api service). On a split deployment where the web container can't reach the api service directly, set the public API URL (e.g. `https://api.example.com`). |
+| `WEB_ORIGIN` (api) | Already required — the OG HTML, oEmbed payload, and share-media URLs are built from it, so it must be the real public web origin. |
+
+Visibility rules are unchanged: private/hidden clips resolve for their owner only, so crawlers
+(anonymous) get a plain 404 and no metadata ever leaks into previews.
+
 ## Error monitoring (Sentry → self-hosted GlitchTip)
 
 All three apps ship the official **Sentry SDK** pointed at the self-hosted **GlitchTip** instance
