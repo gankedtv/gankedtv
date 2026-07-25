@@ -342,6 +342,24 @@ public class SharePreviewEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ShareCode_AcceptJsonAnyCase_ReturnsJsonDetail()
+    {
+        // Media types are case-insensitive (RFC 9110); a client sending Application/JSON
+        // must get the detail payload, not the human redirect.
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync();
+        var (id, shareCode) = await SeedClipAsync(userId, title: "Case Insensitive Accept");
+
+        using var client = NoRedirectClient();
+        client.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "Application/JSON");
+        var resp = await client.GetAsync($"/c/{shareCode}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("id").GetGuid().Should().Be(id);
+    }
+
+    [Fact]
     public async Task ShareCode_ProxyHeader_TreatedAsCrawler()
     {
         // The web edge (Caddy) forwards crawler traffic with this header set. Trusting it —

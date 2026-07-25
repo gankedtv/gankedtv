@@ -69,7 +69,7 @@ public static class SharePreviewEndpoints
         if (IsPreviewFetch(request))
             return Results.Content(BuildOgHtml(clip, webOrigin), "text/html; charset=utf-8");
 
-        if (request.Headers.Accept.ToString().Contains("application/json"))
+        if (request.Headers.Accept.ToString().Contains("application/json", StringComparison.OrdinalIgnoreCase))
             return await ClipsReadEndpoints.BuildDetailResultAsync(clip, videoUrl, thumbnailUrl, principal, db, ct);
 
         return Results.Redirect($"{webOrigin}/c/{code}", permanent: false);
