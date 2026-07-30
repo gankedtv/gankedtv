@@ -1594,7 +1594,8 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         var (userId, _) = await SeedUserAndIssueTokenAsync("importer");
         var (clipId, _) = await SeedClipAsync(
             userId, DateTimeOffset.UtcNow,
-            importSourceUrl: "https://www.youtube.com/watch?v=abc123");
+            importSourceUrl: "https://www.youtube.com/watch?v=abc123",
+            uploadSource: "import");
 
         _storage.GetPresignedGetUrl(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan?>())
             .Returns("https://minio.local/x");
