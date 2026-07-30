@@ -47,6 +47,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         int? gameId = null,
         string? videoCodec = null,
         string? importSourceUrl = null,
+        string uploadSource = "web",
         int likeCount = 0,
         int viewCount = 0)
     {
@@ -70,6 +71,7 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
             Height = 1080,
             FileSizeBytes = 1_000_000,
             ImportSourceUrl = importSourceUrl,
+            UploadSource = uploadSource,
             LikeCount = likeCount,
             ViewCount = viewCount,
             CreatedAt = createdAt,
@@ -1626,6 +1628,28 @@ public class ClipsReadEndpointsTests : IAsyncLifetime
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         body.TryGetProperty("importSourceUrl", out var prop).Should().BeTrue();
         prop.ValueKind.Should().Be(JsonValueKind.Null);
+        // Direct web uploads carry the default provenance — no verified badge.
+        body.GetProperty("uploadSource").GetString().Should().Be("web");
+    }
+
+    [Fact]
+    public async Task Detail_ApiKeyUploadedClip_ReturnsUploadSourceApi()
+    {
+        // 'api' provenance drives the web's "rewynd verified upload" badge, so the detail
+        // endpoint must expose it to every viewer (not just the owner).
+        await _fx.ResetAsync();
+        var (userId, _) = await SeedUserAndIssueTokenAsync("rewynder");
+        var (clipId, _) = await SeedClipAsync(userId, DateTimeOffset.UtcNow, uploadSource: "api");
+
+        _storage.GetPresignedGetUrl(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan?>())
+            .Returns("https://minio.local/x");
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync($"/clips/{clipId}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("uploadSource").GetString().Should().Be("api");
     }
 
     [Fact]

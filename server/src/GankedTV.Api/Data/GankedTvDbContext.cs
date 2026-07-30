@@ -118,6 +118,7 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             e.Property(c => c.Title).HasMaxLength(255);
             e.Property(c => c.Status).HasMaxLength(20).HasDefaultValue(ClipStatuses.Processing);
             e.Property(c => c.Visibility).HasMaxLength(20).HasDefaultValue(ClipVisibilities.Public);
+            e.Property(c => c.UploadSource).HasMaxLength(20).HasDefaultValue(ClipUploadSources.Web);
             e.Property(c => c.ViewCount).HasDefaultValue(0);
             e.Property(c => c.LikeCount).HasDefaultValue(0);
             e.Property(c => c.ProcessingAttempts).HasDefaultValue(0);

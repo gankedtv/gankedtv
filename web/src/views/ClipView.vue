@@ -21,6 +21,7 @@ import ClipEditDialog from '@/components/ClipEditDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ReportDialog from '@/components/ReportDialog.vue'
 import CommentsSection from '@/components/CommentsSection.vue'
+import RewyndLogo from '@/components/RewyndLogo.vue'
 import IconHeart from '@/components/icons/IconHeart.vue'
 import IconShare from '@/components/icons/IconShare.vue'
 import IconLink from '@/components/icons/IconLink.vue'
@@ -574,6 +575,17 @@ async function onConfirmDelete() {
         >
           {{ clip.title }}
         </h1>
+
+        <!-- Verified provenance: 'api' uploads came straight from the author's device via
+             their device-approved API key (rewynd) — visible to every viewer. -->
+        <div
+          v-if="clip.uploadSource === 'api'"
+          class="mt-3 mr-2 inline-flex items-center gap-1.5 rounded-lg border border-accent-border bg-accent-bg px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-accent"
+          title="Uploaded straight from rewynd on the author's device, with an API key they approved"
+        >
+          <RewyndLogo :size="12" />
+          <span>rewynd verified</span>
+        </div>
 
         <!-- Owner-only visibility badge: reminds the uploader a clip isn't public. Other
              viewers never reach a private clip, and unlisted needs no callout for them. -->

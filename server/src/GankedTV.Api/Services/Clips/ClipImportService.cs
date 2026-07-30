@@ -170,6 +170,7 @@ public sealed class ClipImportService : IClipImportService
             ShareCode = shareCode,
             Status = ClipStatuses.Importing,
             Visibility = visibility,
+            UploadSource = ClipUploadSources.Import,
             ImportSourceUrl = normalisedUrl,
             CreatedAt = now,
             UpdatedAt = now,

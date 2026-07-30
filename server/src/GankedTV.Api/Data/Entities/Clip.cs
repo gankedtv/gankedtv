@@ -27,6 +27,8 @@ public class Clip
     public int LikeCount { get; set; }
     public string Status { get; set; } = ClipStatuses.Processing;
     public string Visibility { get; set; } = ClipVisibilities.Public;
+    // See ClipUploadSources — 'api' rows earn the web's rewynd verified-upload badge.
+    public string UploadSource { get; set; } = ClipUploadSources.Web;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 

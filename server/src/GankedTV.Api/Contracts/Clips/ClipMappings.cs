@@ -67,7 +67,8 @@ public static class ClipMappings
             clip.ToTagSummaries(),
             likedByMe,
             clip.Visibility,
-            clip.ImportSourceUrl);
+            clip.ImportSourceUrl,
+            clip.UploadSource);
 
     // Tag projection used by both ToFeedItem and ToDetail. Sorted by slug so cards
     // render deterministically regardless of clip_tags insertion order. Callers must

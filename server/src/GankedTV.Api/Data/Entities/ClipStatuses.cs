@@ -42,6 +42,18 @@ public static class ClipStatuses
     public const string Failed = "failed";
 }
 
+// How a clip entered the platform, stamped once at creation. 'api' means the create call
+// was authenticated with the user's own API key — keys are minted only through the
+// device-authorization flow, so this proves a device the user approved (rewynd) did the
+// upload; the web layer renders that as a verified-upload badge. Values are set by trusted
+// server paths only (never client-supplied), so there is no IsValid gate.
+public static class ClipUploadSources
+{
+    public const string Web = "web";
+    public const string Api = "api";
+    public const string Import = "import";
+}
+
 public static class ClipVisibilities
 {
     public const string Public = "public";

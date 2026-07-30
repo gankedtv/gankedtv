@@ -100,7 +100,7 @@ Scale highlights: wordmark 18px/900 caps; page title `clamp(30px,3.6vw,42px)` 90
 - **Toasts:** `rounded-lg border border-border-strong bg-surface-raised`, `slideUp`/`slideDown` keyframes (250ms).
 - **Status states** ([StatusPanel.vue](src/components/StatusPanel.vue)): loading = mint tick bar; empty/error = raised card with kicker + copy.
 - **Logo** ([LogoMark.vue](src/components/LogoMark.vue)): mint HUD-frame SVG mark; wordmark `GANKED.TV` condensed 900 caps, `.TV` mint. Nav usage: `:size="23" glow`.
-- **Rewynd mark** ([RewyndLogo.vue](src/components/RewyndLogo.vue)): the sibling clip-recorder's mint HUD-frame rewind mark (`◄◄`), same brand language as `LogoMark`. Used only for the nav's off-site link to `rewynd.dev` (secondary-button chip). Not a GankedTV destination — always `target="_blank"`.
+- **Rewynd mark** ([RewyndLogo.vue](src/components/RewyndLogo.vue)): the sibling clip-recorder's mint HUD-frame rewind mark (`◄◄`), same brand language as `LogoMark`. Two uses: the nav's off-site link to `rewynd.dev` (secondary-button chip; not a GankedTV destination — always `target="_blank"`), and the clip detail "rewynd verified" provenance chip (mint accent-bg chip, shown when `uploadSource === 'api'`).
 
 ---
 

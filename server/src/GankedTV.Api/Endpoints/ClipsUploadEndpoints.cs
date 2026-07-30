@@ -3,6 +3,7 @@ using GankedTV.Api.Auth;
 using GankedTV.Api.Auth.ApiKeys;
 using GankedTV.Api.Clips;
 using GankedTV.Api.Contracts.Clips;
+using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Problems;
 using GankedTV.Api.Services.Clips;
 using GankedTV.Api.Services.Tags;
@@ -51,9 +52,16 @@ public static class ClipsUploadEndpoints
             return ProblemResults.InvalidBody();
         }
 
+        // API keys exist only via the device-authorization flow, so an ApiKey-authenticated
+        // create proves a user-approved device client (rewynd) — recorded for the web's
+        // verified-upload badge. Derived from the auth scheme, never from the body.
+        var uploadSource = principal.Identity?.AuthenticationType == ApiKeyDefaults.Scheme
+            ? ClipUploadSources.Api
+            : ClipUploadSources.Web;
+
         var result = await clips.CreateAsync(
             userId,
-            new CreateClipInput(req.Title, req.Description, req.GameId, req.Visibility, req.Tags),
+            new CreateClipInput(req.Title, req.Description, req.GameId, req.Visibility, req.Tags, uploadSource),
             ct);
 
         return result.IsSuccess

@@ -32,4 +32,8 @@ public sealed record ClipDetailResponse(
     // Source URL when this clip was ingested via POST /clips/import (Medal.tv / YouTube).
     // Null for direct uploads. The web detail view renders a "From {host}" attribution
     // badge linking back to the original — credit + reduces friction over reuploads.
-    string? ImportSourceUrl);
+    string? ImportSourceUrl,
+    // How the clip entered the platform: 'web' | 'api' | 'import' (ClipUploadSources).
+    // 'api' proves the upload came through the user's own device-approved API key
+    // (rewynd) — the web renders it as a verified-upload badge.
+    string UploadSource);
