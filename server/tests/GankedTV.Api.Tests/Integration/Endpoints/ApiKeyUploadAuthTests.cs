@@ -76,6 +76,8 @@ public class ApiKeyUploadAuthTests : IAsyncLifetime
         var clip = await db.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
         clip.UserId.Should().Be(userId);
         clip.Status.Should().Be("processing");
+        // Key-authenticated create records the provenance the verified badge keys on.
+        clip.UploadSource.Should().Be("api");
     }
 
     [Fact]
@@ -127,7 +129,9 @@ public class ApiKeyUploadAuthTests : IAsyncLifetime
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         var clipId = (await resp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
         await using var db = _fx.CreateContext();
-        (await db.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId)).UserId.Should().Be(userId);
+        var clip = await db.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.UserId.Should().Be(userId);
+        clip.UploadSource.Should().Be("api");
     }
 
     [Fact]
@@ -164,6 +168,9 @@ public class ApiKeyUploadAuthTests : IAsyncLifetime
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         var clipId = (await resp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
         await using var db = _fx.CreateContext();
-        (await db.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId)).UserId.Should().Be(userId);
+        var clip = await db.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.UserId.Should().Be(userId);
+        // Browser-session uploads must never earn the API provenance marker.
+        clip.UploadSource.Should().Be("web");
     }
 }

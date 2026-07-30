@@ -78,6 +78,7 @@ public class ClipImportServiceTests
         clip.Status.Should().Be(ClipStatuses.Importing);
         clip.Title.Should().Be("epic");
         clip.ImportSourceUrl.Should().Be("https://medal.tv/clips/abc");
+        clip.UploadSource.Should().Be(ClipUploadSources.Import);
         clip.ShareCode.Should().NotBeNullOrEmpty();
         clip.VideoKey.Should().Be($"{userId}/{clip.Id}.mp4");
     }

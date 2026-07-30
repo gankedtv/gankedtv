@@ -1,3 +1,5 @@
+using GankedTV.Api.Data.Entities;
+
 namespace GankedTV.Api.Services.Clips;
 
 public interface IClipUploadService
@@ -12,12 +14,15 @@ public interface IClipUploadService
 // against the real probed duration.
 public sealed record ClipTrimInput(double StartSecs, double EndSecs);
 
+// UploadSource is decided by the endpoint from the request's auth scheme (ApiKey → 'api',
+// JWT → 'web') — never taken from the request body, so clients can't claim a badge.
 public sealed record CreateClipInput(
     string? Title,
     string? Description,
     int? GameId,
     string? Visibility,
-    IReadOnlyList<string>? Tags);
+    IReadOnlyList<string>? Tags,
+    string UploadSource = ClipUploadSources.Web);
 
 public sealed record CreateClipResult(Guid ClipId);
 public sealed record UploadUrlResult(string Url, DateTimeOffset ExpiresAt, string ContentType);

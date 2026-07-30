@@ -111,6 +111,7 @@ public sealed class ClipUploadService : IClipUploadService
             ShareCode = shareCode,
             Status = ClipStatuses.Draft,
             Visibility = visibility,
+            UploadSource = input.UploadSource,
             CreatedAt = now,
             UpdatedAt = now,
         };

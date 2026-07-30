@@ -63,6 +63,10 @@ export interface ClipDetail {
   // direct uploads. The detail page renders a "From {host}" attribution badge linking back
   // to the original.
   importSourceUrl: string | null
+  // How the clip entered the platform. 'api' means the create call was authenticated with
+  // the author's own device-approved API key (rewynd) — the detail page renders that as a
+  // "rewynd verified upload" badge. Server-derived from the auth scheme; never client-set.
+  uploadSource: 'web' | 'api' | 'import'
 }
 
 export interface UpdateClipBody {
