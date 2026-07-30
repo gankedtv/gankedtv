@@ -58,6 +58,7 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
         string status = "ready",
         int? gameId = null,
         string? thumbnailKey = DefaultThumbnailKey,
+        string uploadSource = "web",
         DateTimeOffset? createdAt = null)
     {
         var id = Guid.NewGuid();
@@ -81,6 +82,7 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
             ShareCode = ShareCodeGenerator.Next(),
             Status = status,
             Visibility = visibility,
+            UploadSource = uploadSource,
             CreatedAt = seeded,
             UpdatedAt = seeded,
         });
@@ -249,6 +251,31 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
         var persisted = await db.Clips.AsNoTracking().FirstAsync(c => c.Id == clipId);
         persisted.Title.Should().Be("renamed");
         persisted.Description.Should().Be("before");
+    }
+
+    [Fact]
+    public async Task Patch_NeverChangesUploadSource()
+    {
+        // Upload provenance is stamped once at create and drives the verified badge; it must
+        // survive every edit. Guards against UpdateClipRequest ever growing an uploadSource
+        // field — today it's immutable by construction, but nothing else would catch that.
+        await _fx.ResetAsync();
+        var (ownerId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(ownerId, title: "keyed", uploadSource: "api");
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PatchAsJsonAsync(
+            $"/clips/{clipId}",
+            new { title = "renamed", visibility = "unlisted", uploadSource = "web" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("uploadSource").GetString().Should().Be("api");
+
+        await using var db = _fx.CreateContext();
+        var persisted = await db.Clips.AsNoTracking().FirstAsync(c => c.Id == clipId);
+        persisted.UploadSource.Should().Be("api");
+        persisted.Title.Should().Be("renamed");
     }
 
     [Theory]
