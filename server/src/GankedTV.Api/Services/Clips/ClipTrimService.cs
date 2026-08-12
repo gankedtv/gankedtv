@@ -88,10 +88,15 @@ public sealed class ClipTrimService : IClipTrimService
         var now = _clock.GetUtcNow();
 
         // Conditional on status so two concurrent re-cuts can't both requeue the row (the second
-        // sees 'processing' and loses). Attempts + lease + failure reason reset so the fresh run
-        // gets the full retry budget, exactly like the admin requeue path.
+        // sees 'processing' and loses). The visibility guard is repeated here rather than trusted
+        // from the read above: a moderator hiding the clip in between would otherwise let a
+        // takedown be re-cut. Losing either race reports invalid_state, which is the honest
+        // answer — the row moved under the caller. Attempts + lease + failure reason reset so the
+        // fresh run gets the full retry budget, exactly like the admin requeue path.
         var rowsAffected = await _db.Clips
-            .Where(c => c.Id == clipId && c.Status == ClipStatuses.Ready)
+            .Where(c => c.Id == clipId
+                && c.Status == ClipStatuses.Ready
+                && c.Visibility != ClipVisibilities.Hidden)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(c => c.Status, ClipStatuses.Processing)
                 .SetProperty(c => c.TrimStartSecs, trim.StartSecs)
