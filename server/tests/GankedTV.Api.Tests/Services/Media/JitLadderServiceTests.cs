@@ -108,6 +108,17 @@ public class JitLadderServiceTests
         JitLadderService.BuildCachePrefix(id).Should().Be($"{id:N}");
     }
 
+    [Fact]
+    public void BuildCachePrefix_ScopesByReCutGeneration()
+    {
+        // A ladder built from a superseded master must be unreachable after the cut lands, and
+        // every generation has to stay under `{clipId:N}/` so the delete-by-prefix purges cover it.
+        var id = Guid.NewGuid();
+        JitLadderService.BuildCachePrefix(id, 2).Should().Be($"{id:N}/e2");
+        JitLadderService.BuildCachePrefix(id, 2).Should().NotBe(JitLadderService.BuildCachePrefix(id, 1));
+        JitLadderService.BuildCachePrefix(id, 2).Should().StartWith($"{id:N}/");
+    }
+
     // --- BuildAsync end-to-end (fake ffmpeg writes files) -----------------------------
 
     [Fact]

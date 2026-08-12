@@ -18,6 +18,7 @@ import TelemetryStrip, { type TelemetryCell } from '@/components/TelemetryStrip.
 import SectionHeader from '@/components/SectionHeader.vue'
 import ClipCard from '@/components/ClipCard.vue'
 import ClipEditDialog from '@/components/ClipEditDialog.vue'
+import ClipTrimDialog from '@/components/ClipTrimDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ReportDialog from '@/components/ReportDialog.vue'
 import CommentsSection from '@/components/CommentsSection.vue'
@@ -26,6 +27,7 @@ import IconHeart from '@/components/icons/IconHeart.vue'
 import IconShare from '@/components/icons/IconShare.vue'
 import IconLink from '@/components/icons/IconLink.vue'
 import IconLock from '@/components/icons/IconLock.vue'
+import IconScissors from '@/components/icons/IconScissors.vue'
 import KebabMenu, { type KebabMenuItem } from '@/components/KebabMenu.vue'
 
 const route = useRoute()
@@ -466,6 +468,7 @@ const authorColor = computed(() => {
 const authorAvatarUrl = computed(() => safeImageUrl(clip.value?.author.avatarUrl))
 
 const editOpen = ref(false)
+const trimOpen = ref(false)
 const deleteOpen = ref(false)
 const deleting = ref(false)
 
@@ -479,10 +482,11 @@ function onReportSubmitted() {
   fireToast('Report submitted')
 }
 
-// Owner-only kebab (Edit + Delete). KebabMenu owns open/close + outside-click + Esc; this
-// view just declares the items.
+// Owner-only kebab (Edit + Trim + Delete). KebabMenu owns open/close + outside-click + Esc;
+// this view just declares the items.
 const ownerMenuItems = computed<KebabMenuItem[]>(() => [
   { label: 'Edit', onClick: openEdit },
+  { label: 'Trim video', onClick: openTrim },
   { label: 'Delete', variant: 'danger', onClick: openDelete },
 ])
 
@@ -498,6 +502,17 @@ function onEditError(message: string) {
 function openEdit() {
   // KebabMenu closes itself on item-click, so the trigger doesn't need to do it.
   editOpen.value = true
+}
+
+function openTrim() {
+  trimOpen.value = true
+}
+
+// The clip has left 'ready', so the detail route 404s until the pipeline finishes. Reloading
+// drops straight into the existing processing state, which polls until the re-cut lands.
+function onTrimmed() {
+  fireToast('Re-cutting your clip…')
+  void loadClip()
 }
 
 function openDelete() {
@@ -585,6 +600,17 @@ async function onConfirmDelete() {
         >
           <RewyndLogo :size="12" />
           <span>rewynd verified</span>
+        </div>
+
+        <!-- Re-cut disclosure: the footage changed after publish, so every viewer sees it.
+             Metadata-only edits deliberately don't set editedAt. -->
+        <div
+          v-if="clip.editedAt"
+          class="mt-3 mr-2 inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-text-muted"
+          :title="`The author re-cut this clip on ${new Date(clip.editedAt).toLocaleString()}`"
+        >
+          <IconScissors :size="12" />
+          <span>Edited</span>
         </div>
 
         <!-- Owner-only visibility badge: reminds the uploader a clip isn't public. Other
@@ -725,6 +751,15 @@ async function onConfirmDelete() {
       :open="editOpen"
       @close="editOpen = false"
       @saved="onSaved"
+      @error="onEditError"
+    />
+
+    <ClipTrimDialog
+      v-if="clip"
+      :clip="clip"
+      :open="trimOpen"
+      @close="trimOpen = false"
+      @trimmed="onTrimmed"
       @error="onEditError"
     />
 

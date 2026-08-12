@@ -406,6 +406,38 @@ describe('api/clips', () => {
     })
   })
 
+  describe('trim()', () => {
+    it('POSTs the range to /clips/{id}/trim and returns the requeued status', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ id: 'clip-id', status: 'processing' })),
+      )
+
+      const result = await clips.trim('clip-id', { trimStartSeconds: 2.5, trimEndSeconds: 12.75 })
+
+      expect(result).toEqual({ id: 'clip-id', status: 'processing' })
+      const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(url).toBe(`${BASE_URL}/clips/clip-id/trim`)
+      expect(init.method).toBe('POST')
+      expect(JSON.parse(init.body as string)).toEqual({
+        trimStartSeconds: 2.5,
+        trimEndSeconds: 12.75,
+      })
+    })
+
+    it('percent-encodes the clip id', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ id: 'a/b', status: 'processing' })),
+      )
+
+      await clips.trim('a/b', { trimStartSeconds: 0, trimEndSeconds: 1 })
+
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(url).toBe(`${BASE_URL}/clips/a%2Fb/trim`)
+    })
+  })
+
   describe('update()', () => {
     const CLIP_ID = 'a4f1e2c0-0000-0000-0000-000000000001'
     const baseDetail = {

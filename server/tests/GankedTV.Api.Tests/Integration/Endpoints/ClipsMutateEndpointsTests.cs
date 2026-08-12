@@ -59,7 +59,8 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
         int? gameId = null,
         string? thumbnailKey = DefaultThumbnailKey,
         string uploadSource = "web",
-        DateTimeOffset? createdAt = null)
+        DateTimeOffset? createdAt = null,
+        short? durationSecs = null)
     {
         var id = Guid.NewGuid();
         var seeded = createdAt ?? DateTimeOffset.UtcNow;
@@ -83,6 +84,7 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
             Status = status,
             Visibility = visibility,
             UploadSource = uploadSource,
+            DurationSecs = durationSecs,
             CreatedAt = seeded,
             UpdatedAt = seeded,
         });
@@ -675,5 +677,250 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
         resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
         await using var db = _fx.CreateContext();
         (await db.Clips.AnyAsync(c => c.Id == clipId)).Should().BeFalse();
+    }
+
+    // ---- POST /clips/{id}/trim ----
+
+    private static object TrimBody(double start, double end) =>
+        new { trimStartSeconds = start, trimEndSeconds = end };
+
+    [Fact]
+    public async Task Trim_Owner_RequeuesClipWithNewRange()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, durationSecs: 30);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/trim", TrimBody(2.5, 12.75));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain(ClipStatuses.Processing);
+
+        await using var db = _fx.CreateContext();
+        var clip = await db.Clips.AsNoTracking().FirstAsync(c => c.Id == clipId);
+        // Back at the head of the pipeline so the poster is re-cut alongside the master.
+        clip.Status.Should().Be(ClipStatuses.Processing);
+        clip.TrimStartSecs.Should().Be(2.5);
+        clip.TrimEndSecs.Should().Be(12.75);
+        clip.EditedAt.Should().NotBeNull();
+        clip.EditCount.Should().Be(1);
+        clip.ProcessingAttempts.Should().Be(0);
+        clip.ProcessingStartedAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Trim_PurgesCachedHlsLadder()
+    {
+        // The JIT ladder is keyed by clip id alone, so a stale one would keep serving the
+        // pre-cut footage to devices that can't decode the master.
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, durationSecs: 30);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/trim", TrimBody(1, 5));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        await _storage.Received(1).DeleteByPrefixAsync(
+            Arg.Any<string>(), $"{clipId:N}/", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Trim_SecondCallWhileProcessing_Returns409()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, durationSecs: 30);
+
+        using var client = ClientWithBearer(token);
+        (await client.PostAsJsonAsync($"/clips/{clipId}/trim", TrimBody(1, 5)))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        var second = await client.PostAsJsonAsync($"/clips/{clipId}/trim", TrimBody(2, 6));
+
+        second.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await second.Content.ReadAsStringAsync()).Should().Contain("invalid_state");
+
+        await using var db = _fx.CreateContext();
+        // The losing call must not bump the generation counter — it would desync the
+        // compressed-master key from the row the worker is about to claim.
+        (await db.Clips.AsNoTracking().Where(c => c.Id == clipId).Select(c => c.EditCount).FirstAsync())
+            .Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Trim_NoBearer_Returns401()
+    {
+        await _fx.ResetAsync();
+        using var client = _factory!.CreateClient();
+
+        var resp = await client.PostAsJsonAsync($"/clips/{Guid.NewGuid()}/trim", TrimBody(1, 5));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Trim_ClipMissing_Returns404()
+    {
+        await _fx.ResetAsync();
+        var (_, token) = await SeedUserAndIssueTokenAsync();
+        using var client = ClientWithBearer(token);
+
+        var resp = await client.PostAsJsonAsync($"/clips/{Guid.NewGuid()}/trim", TrimBody(1, 5));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Trim_NonOwner_Returns403()
+    {
+        await _fx.ResetAsync();
+        var (ownerId, _) = await SeedUserAndIssueTokenAsync("owner");
+        var (_, otherToken) = await SeedUserAndIssueTokenAsync("other");
+        var clipId = await SeedClipAsync(ownerId, durationSecs: 30);
+
+        using var client = ClientWithBearer(otherToken);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/trim", TrimBody(1, 5));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        await using var db = _fx.CreateContext();
+        (await db.Clips.AsNoTracking().Where(c => c.Id == clipId).Select(c => c.Status).FirstAsync())
+            .Should().Be(ClipStatuses.Ready);
+    }
+
+    [Fact]
+    public async Task Trim_HiddenClip_Returns403Moderated()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, visibility: ClipVisibilities.Hidden, durationSecs: 30);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/trim", TrimBody(1, 5));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("moderated");
+    }
+
+    [Theory]
+    [InlineData(ClipStatuses.Processing)]
+    [InlineData(ClipStatuses.Transcoding)]
+    [InlineData(ClipStatuses.Failed)]
+    public async Task Trim_NotReady_Returns409(string status)
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, status: status, durationSecs: 30);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/trim", TrimBody(1, 5));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("invalid_state");
+    }
+
+    [Theory]
+    [InlineData(-1.0, 5.0)]      // negative start
+    [InlineData(1.0, 1.1)]       // span below the 0.2s minimum
+    [InlineData(5.0, 1.0)]       // inverted range
+    [InlineData(31.0, 40.0)]     // starts past the end of a 30s clip
+    public async Task Trim_InvalidRange_Returns400(double start, double end)
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, durationSecs: 30);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/trim", TrimBody(start, end));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("invalid_trim");
+    }
+
+    [Fact]
+    public async Task Trim_ExactMinimumSpan_IsAccepted()
+    {
+        // FP representation of 1.7 - 1.5 lands just under 0.2; the epsilon must absorb it.
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, durationSecs: 30);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/trim", TrimBody(1.5, 1.7));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Trim_MissingOffset_Returns400()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, durationSecs: 30);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/trim", new { trimStartSeconds = 1.0 });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Trim_WithTranscodeDisabled_Returns400TrimUnavailable()
+    {
+        // Without the compress stage there is nothing to apply the cut — accepting the request
+        // would silently publish the untrimmed clip back to 'ready'.
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, durationSecs: 30);
+
+        await using var factory = new AuthApiFactory(_fx.ConnectionString, _storage, configureServices: services =>
+            services.Configure<GankedTV.Api.Services.Media.MediaJobOptions>(o => o.TranscodeEnabled = false));
+        using var client = AuthTestHelpers.CreateBearerClient(factory, token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/trim", TrimBody(1, 5));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("trim_unavailable");
+    }
+
+    [Fact]
+    public async Task Trim_FeedCacheInvalidationThrows_StillReturns200()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, durationSecs: 30);
+
+        var throwingCache = Substitute.For<IFeedCache>();
+        throwingCache.When(c => c.InvalidateFeedsAsync(Arg.Any<CancellationToken>()))
+            .Do(_ => throw new InvalidOperationException("redis down"));
+        using var factory = _factory!.WithWebHostBuilder(b => b.ConfigureServices(s =>
+        {
+            s.RemoveAll<IFeedCache>();
+            s.AddSingleton(throwingCache);
+        }));
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/trim", TrimBody(1, 5));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var db = _fx.CreateContext();
+        (await db.Clips.AsNoTracking().Where(c => c.Id == clipId).Select(c => c.Status).FirstAsync())
+            .Should().Be(ClipStatuses.Processing);
+    }
+
+    [Fact]
+    public async Task Trim_StreamCachePurgeThrows_StillReturns200()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, durationSecs: 30);
+
+        _storage.DeleteByPrefixAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromException(new InvalidOperationException("minio down")));
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/trim", TrimBody(1, 5));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 }

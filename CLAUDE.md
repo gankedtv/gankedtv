@@ -95,6 +95,16 @@ In dev, all workers run **in-process** on the host (toggles default `true`), usi
 
 **Pre-upload trimming:** the web upload wizard's trimmer (`ClipTrimmer.vue`) sends an optional `trimStartSeconds`/`trimEndSeconds` body on `POST /clips/{id}/complete`. The cut is applied by the **existing compress stage** (`-ss`/`-t` on the single re-encode — no extra encode); the thumbnail stage clamps the range to the probed duration, takes the poster inside the kept range, and records the trimmed duration. Trim requires `MEDIA_TRANSCODE_ENABLED=true` (400 `trim_unavailable` otherwise) and is **web-only**: API-key callers (rewynd trims locally) get 400 `trim_not_supported`; a body-less complete is unchanged.
 
+**Post-publish re-cut (`POST /clips/{id}/trim`):** owners can re-trim a live clip from the clip page (`ClipTrimDialog.vue`, same trimmer over the clip's presigned master). Rather than add a second encode path, the endpoint walks the row **back to the head of the pipeline** — new range, lease/attempts/failure reason reset, `ready → processing` — so the thumbnail stage re-posters inside the kept span and the compress stage applies the cut. Consequences worth knowing:
+
+- Offsets are seconds into the **current master**, not the long-deleted raw upload, and each re-cut encodes from a lossy source (the same Tdarr-style trade-off as above).
+- The clip **leaves `ready` for the duration of the re-encode**, so its detail route 404s and it drops out of feeds; `ClipView` reuses its existing "still processing" poll to ride that out. Feed cache and the cached JIT HLS ladder (keyed by clip id alone) are both dropped on request.
+- `clips.edit_count` is the compressed master's **key generation** (`…{clipId}.cmp.mp4` → `.cmp1.mp4` → `.cmp2.mp4`), so an encode never writes over the master it replaces and the key doesn't grow a suffix per edit.
+- `edit_count` also scopes the JIT ladder's cache prefix (`{clipId:N}/` → `{clipId:N}/e2/`), so a ladder a `StreamRenditionWorker` was already building from the pre-cut master can't be served once the cut lands. All generations stay under `{clipId:N}/`, so the existing delete-by-prefix purges still cover them.
+- `clips.edited_at` is stamped on request and surfaces as `editedAt` on the clip detail → the web's **"Edited" badge**, visible to every viewer. Metadata-only edits (`PATCH /clips/{id}`) deliberately never set it.
+- **A failed re-cut never takes a live clip dark.** `MarkFailedAsync` detects a re-cut (`edited_at` is only ever stamped on a published clip) and rolls the row back to `ready` with the pending range cleared, instead of `failed` — the previous master is still in storage because compress deletes the old object only after a successful swap. First-publish failures are untouched.
+- Rejected with 409 `invalid_state` unless the clip is `ready` (which also serialises concurrent re-cuts), 403 `moderated` for hidden clips, and 400 `trim_unavailable` when `MEDIA_TRANSCODE_ENABLED=false`.
+
 ### Online presence (`GET /presence/summary`)
 
 Powers the nav's live "N online" count (web wiring lands with the Arena design-system work). Returns `{ online, followsOnline: UserSummary[] }` — `followsOnline` (capped at `PRESENCE_FOLLOWS_ONLINE_CAP`) only for authenticated callers.

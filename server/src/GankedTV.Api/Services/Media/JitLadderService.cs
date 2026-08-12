@@ -91,7 +91,7 @@ public sealed class JitLadderService : IJitLadderService
                 throw new InvalidOperationException("ffmpeg JIT transcode produced no master.m3u8");
             }
 
-            var keyPrefix = BuildCachePrefix(job.ClipId);
+            var keyPrefix = BuildCachePrefix(job.ClipId, job.EditCount);
             // Upload segments + variant playlists first and master.m3u8 LAST. The /stream
             // endpoint treats the presence of master.m3u8 as "ready", so publishing it before
             // its referenced files exist would briefly serve a playlist whose segments 404.
@@ -154,7 +154,12 @@ public sealed class JitLadderService : IJitLadderService
 
     // Object-key prefix for one clip's cached HLS output. Relative URIs inside the playlists
     // resolve against this prefix, so master + variant playlists + segments all live here.
-    internal static string BuildCachePrefix(Guid clipId) => $"{clipId:N}";
+    // Scoped by the clip's re-cut generation so a ladder built from a pre-cut master can never be
+    // served after the cut lands — including one uploaded by a worker that claimed its job just
+    // before the re-cut committed. Every generation still nests under `{clipId:N}/`, so the
+    // delete-by-prefix purges (hide, delete, re-cut) keep covering all of them.
+    internal static string BuildCachePrefix(Guid clipId, int editCount = 0) =>
+        editCount <= 0 ? $"{clipId:N}" : $"{clipId:N}/e{editCount}";
 
     // Source-cap the ladder: keep only rungs no taller than the source (never upscale). When
     // the source height is unknown or shorter than every rung, fall back to a single rung at

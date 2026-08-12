@@ -94,6 +94,7 @@ function makeDetail(id: string, overrides: Partial<ClipDetail> = {}): ClipDetail
     visibility: 'public',
     importSourceUrl: null,
     uploadSource: 'web',
+    editedAt: null,
     ...overrides,
   }
 }

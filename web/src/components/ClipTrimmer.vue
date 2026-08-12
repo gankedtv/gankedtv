@@ -10,11 +10,14 @@ import {
   type TrimRange,
 } from '@/lib/trim'
 
-// Rewynd-style pre-upload trimmer: video preview + filmstrip with two draggable
-// handles. Emits null while the range covers the whole clip, so the caller only
-// sends a trim when the user actually cut something. Range math lives in lib/trim.
+// Rewynd-style trimmer: video preview + filmstrip with two draggable handles. Emits null
+// while the range covers the whole clip, so the caller only sends a trim when the user
+// actually cut something. Range math lives in lib/trim.
+//
+// Source is either a local File (pre-upload wizard) or the URL of an already-published
+// master (post-upload re-cut). Exactly one is expected; `file` wins if both are passed.
 
-const props = defineProps<{ file: File }>()
+const props = defineProps<{ file?: File; src?: string }>()
 const model = defineModel<TrimRange | null>({ default: null })
 
 // Handle grab distance in px; presses further away seek instead.
@@ -35,14 +38,21 @@ const decodeFailed = ref(false)
 
 let frameRequestId = 0
 
+// Only a File needs an object URL; a remote master is already addressable.
+const mediaSrc = computed(() => (props.file ? objectUrl.value : (props.src ?? '')))
+const isRemote = computed(() => !props.file && !!props.src)
+
 // Resets internal state only — the parent owns clearing the model on a new pick, so a
 // remount (navigating back to the trim step) keeps the earlier range via the model seed
 // in onLoadedMetadata.
 watch(
-  () => props.file,
-  (f) => {
-    if (objectUrl.value) URL.revokeObjectURL(objectUrl.value)
-    objectUrl.value = URL.createObjectURL(f)
+  () => props.file ?? props.src,
+  () => {
+    if (objectUrl.value) {
+      URL.revokeObjectURL(objectUrl.value)
+      objectUrl.value = ''
+    }
+    if (props.file) objectUrl.value = URL.createObjectURL(props.file)
     duration.value = 0
     start.value = 0
     end.value = 0
@@ -83,14 +93,17 @@ function onDecodeError() {
 }
 
 // Filmstrip frames via an offscreen <video> + <canvas>, sequential seeks. Best-effort:
-// a failed capture leaves a blank strip, trimming still works.
+// a failed capture leaves a blank strip, trimming still works. That fallback carries the
+// remote case — canvas readback taints without CORS on the storage bucket, and requesting
+// it can itself fail the load, so neither outcome may block the trimmer.
 async function captureFrames(requestId: number): Promise<void> {
-  const src = objectUrl.value
+  const src = mediaSrc.value
   const dur = duration.value
   if (!src || dur <= 0) return
   const video = document.createElement('video')
   video.muted = true
   video.preload = 'auto'
+  if (isRemote.value) video.crossOrigin = 'anonymous'
   video.src = src
   try {
     await new Promise<void>((resolve, reject) => {
@@ -267,6 +280,12 @@ const playheadPct = computed(() =>
 
 const kbdClass =
   'rounded-sm border border-border px-1 py-px text-[9px] font-semibold text-text-secondary'
+
+const decodeFailedMessage = computed(() =>
+  props.file
+    ? "This browser can't preview this file — it will upload untrimmed."
+    : "This browser can't play this clip, so it can't be trimmed here.",
+)
 </script>
 
 <template>
@@ -274,7 +293,7 @@ const kbdClass =
     <div class="relative aspect-video overflow-hidden rounded-lg border border-border bg-black">
       <video
         ref="videoEl"
-        :src="objectUrl"
+        :src="mediaSrc"
         playsinline
         class="h-full w-full object-contain"
         @loadedmetadata="onLoadedMetadata"
@@ -297,7 +316,7 @@ const kbdClass =
         v-if="decodeFailed"
         class="absolute inset-0 flex items-center justify-center px-6 text-center text-[11px] text-[#f4f1e8]/80"
       >
-        This browser can't preview this file — it will upload untrimmed.
+        {{ decodeFailedMessage }}
       </div>
     </div>
 

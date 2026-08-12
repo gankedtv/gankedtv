@@ -96,7 +96,7 @@ public static class ClipsReadEndpoints
             .Where(c => c.Id == id && c.Status == ClipStatuses.Ready
                 && c.Visibility != ClipVisibilities.Hidden)
             .WhereVisibleTo(viewerId)
-            .Select(c => new { c.VideoCodec })
+            .Select(c => new { c.VideoCodec, c.EditCount })
             .SingleOrDefaultAsync(ct);
         if (clip is null)
             return ProblemResults.NotFound("not_found");
@@ -107,7 +107,7 @@ public static class ClipsReadEndpoints
         if (string.Equals(clip.VideoCodec, "h264", StringComparison.Ordinal))
             return ProblemResults.BadRequest("stream_not_required");
 
-        var masterKey = $"{JitLadderService.BuildCachePrefix(id)}/master.m3u8";
+        var masterKey = $"{JitLadderService.BuildCachePrefix(id, clip.EditCount)}/master.m3u8";
         var cached = await storage.GetObjectMetadataAsync(s3.Value.StreamCacheBucket, masterKey, ct);
         if (cached is not null)
         {

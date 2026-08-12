@@ -6,6 +6,7 @@ using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Problems;
 using GankedTV.Api.Services.Caching;
+using GankedTV.Api.Services.Clips;
 using GankedTV.Api.Services.Maintenance;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Services.Tags;
@@ -28,8 +29,55 @@ public static class ClipsMutateEndpoints
             .RequireAuthorization()
             .RequireRateLimiting(ClipsRateLimiting.ClipsWritePolicy);
         group.MapPatch("/{id:guid}", PatchClip).WithValidation<UpdateClipRequest>();
+        group.MapPost("/{id:guid}/trim", TrimClip).WithValidation<TrimClipRequest>();
         group.MapDelete("/{id:guid}", DeleteClip);
         return app;
+    }
+
+    private static async Task<IResult> TrimClip(
+        Guid id,
+        // Nullable for the same reason as PatchClip: a literal JSON `null` body must reach the
+        // ValidationEndpointFilter rather than surface as a framework-generated 400.
+        [FromBody] TrimClipRequest? req,
+        ClaimsPrincipal principal,
+        IClipTrimService trimmer,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        if (!principal.TryGetUserId(out var userId))
+        {
+            return ProblemResults.Unauthorized("unauthorized");
+        }
+
+        // Defensive: [Required] on both offsets means the filter has already rejected a null
+        // body or a missing field. Kept so removing the filter fails closed rather than NRE.
+        if (req?.TrimStartSeconds is not { } start || req.TrimEndSeconds is not { } end)
+        {
+            return ProblemResults.InvalidBody();
+        }
+
+        var error = await trimmer.TrimAsync(userId, id, new ClipTrimInput(start, end), ct);
+        return error is null
+            ? Results.Ok(new TrimClipResponse(id, ClipStatuses.Processing))
+            : MapTrimError(error.Value, loggerFactory);
+    }
+
+    private static IResult MapTrimError(ClipTrimError error, ILoggerFactory loggerFactory) => error switch
+    {
+        ClipTrimError.NotFound => ProblemResults.NotFound("not_found"),
+        ClipTrimError.Forbidden => ProblemResults.Forbidden("forbidden"),
+        ClipTrimError.Moderated => ProblemResults.Forbidden("moderated"),
+        ClipTrimError.InvalidState => ProblemResults.Conflict("invalid_state"),
+        ClipTrimError.InvalidTrim => ProblemResults.BadRequest("invalid_trim"),
+        ClipTrimError.TrimUnavailable => ProblemResults.BadRequest("trim_unavailable"),
+        _ => UnmappedTrimError(error, loggerFactory),
+    };
+
+    private static IResult UnmappedTrimError(ClipTrimError error, ILoggerFactory loggerFactory)
+    {
+        loggerFactory.CreateLogger(LogCategory)
+            .LogError("Unmapped ClipTrimError value {Error}; add a case to MapTrimError.", error);
+        return ProblemResults.Internal("unmapped_error", $"Unhandled error: {error}");
     }
 
     private static async Task<IResult> PatchClip(

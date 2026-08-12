@@ -49,7 +49,9 @@ public class ClipMediaJobStoreIntegrationTests
         string? importSourceUrl = null,
         long? fileSizeBytes = null,
         double? trimStartSecs = null,
-        double? trimEndSecs = null)
+        double? trimEndSecs = null,
+        DateTimeOffset? editedAt = null,
+        int editCount = 0)
     {
         await using var db = NewContext();
         var clip = new Clip
@@ -72,6 +74,8 @@ public class ClipMediaJobStoreIntegrationTests
             FileSizeBytes = fileSizeBytes,
             TrimStartSecs = trimStartSecs,
             TrimEndSecs = trimEndSecs,
+            EditedAt = editedAt,
+            EditCount = editCount,
         };
         db.Clips.Add(clip);
         await db.SaveChangesAsync();
@@ -522,6 +526,94 @@ public class ClipMediaJobStoreIntegrationTests
         clip.ProcessingStartedAt.Should().BeNull();
         // ProcessingAttempts is preserved so audit/forensics can see how many tries it took.
         clip.ProcessingAttempts.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task MarkFailedAsync_FailedReCut_RestoresClipToReady()
+    {
+        // A re-cut that exhausts its retries must not take a published clip dark: its previous
+        // master is untouched, so the clip goes back to 'ready' with the pending cut dropped.
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("recut");
+        var now = DateTimeOffset.UtcNow;
+        var clipId = await SeedClipAsync(userId, ClipStatuses.Transcoding, now,
+            processingStartedAt: now,
+            processingAttempts: 3,
+            thumbnailKey: "thumbs/x.jpg",
+            trimStartSecs: 2,
+            trimEndSecs: 8,
+            editedAt: now,
+            editCount: 1);
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+
+        await store.MarkFailedAsync(clipId, expectedAttempt: 3, ClipStatuses.Transcoding,
+            CancellationToken.None, reason: ClipFailureReasons.TranscodeFailed);
+
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.Status.Should().Be(ClipStatuses.Ready);
+        clip.FailureReason.Should().BeNull();
+        clip.ProcessingStartedAt.Should().BeNull();
+        // Range cleared so an admin requeue can't re-apply the cut that just failed.
+        clip.TrimStartSecs.Should().BeNull();
+        clip.TrimEndSecs.Should().BeNull();
+        // First re-cut, so the footage is back to never-edited and the badge must go.
+        clip.EditedAt.Should().BeNull();
+        // Generation is monotonic — it must not be reused by the next re-cut.
+        clip.EditCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task MarkFailedAsync_FailedReCut_KeepsEarlierEditStamp()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("recut2");
+        var now = DateTimeOffset.UtcNow;
+        var earlierEdit = now.AddDays(-3);
+        var clipId = await SeedClipAsync(userId, ClipStatuses.Transcoding, now,
+            processingStartedAt: now,
+            processingAttempts: 3,
+            thumbnailKey: "thumbs/x.jpg",
+            editedAt: earlierEdit,
+            editCount: 2);
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+
+        await store.MarkFailedAsync(clipId, expectedAttempt: 3, ClipStatuses.Transcoding, CancellationToken.None);
+
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.Status.Should().Be(ClipStatuses.Ready);
+        // An earlier successful re-cut really did change the footage — that badge stays.
+        clip.EditedAt.Should().BeCloseTo(earlierEdit, TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
+    public async Task MarkFailedAsync_FirstPublishFailure_StillFails()
+    {
+        // The rollback keys off EditedAt, which is only ever stamped on a live clip. A clip that
+        // never reached 'ready' has no previous master to fall back to and must stay failed.
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("firstpub");
+        var now = DateTimeOffset.UtcNow;
+        var clipId = await SeedClipAsync(userId, ClipStatuses.Transcoding, now,
+            processingStartedAt: now,
+            processingAttempts: 3,
+            thumbnailKey: "thumbs/x.jpg");
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+
+        await store.MarkFailedAsync(clipId, expectedAttempt: 3, ClipStatuses.Transcoding,
+            CancellationToken.None, reason: ClipFailureReasons.TranscodeFailed);
+
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.Status.Should().Be(ClipStatuses.Failed);
+        clip.FailureReason.Should().Be(ClipFailureReasons.TranscodeFailed);
     }
 
     [Fact]
