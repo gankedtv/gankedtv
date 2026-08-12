@@ -10,7 +10,10 @@ public sealed record ClaimedMediaJob(
     // Requested cut (seconds into the source). Thumbnail stage clamps them to the probed
     // duration; compress stage applies them. Null = whole clip.
     double? TrimStartSecs = null,
-    double? TrimEndSecs = null);
+    double? TrimEndSecs = null,
+    // Post-publish re-cut generation. Keeps each compress run writing to a key distinct from
+    // the master it replaces, without the key growing a `.cmp` segment per edit.
+    int EditCount = 0);
 
 // Import-stage variant — extends ClaimedMediaJob with the source URL the fetcher needs.
 // Kept as a record-with-extra-property rather than a brand-new shape so the import worker

@@ -80,7 +80,7 @@ public sealed class ClipStreamJobStore : IClipStreamJobStore
         var clip = await _db.Clips
             .AsNoTracking()
             .Where(c => c.Id == job.ClipId)
-            .Select(c => new { c.VideoKey, c.Height, c.Status, c.Visibility })
+            .Select(c => new { c.VideoKey, c.Height, c.Status, c.Visibility, c.EditCount })
             .FirstOrDefaultAsync(ct);
 
         if (clip is null || clip.Status != ClipStatuses.Ready || clip.Visibility == ClipVisibilities.Hidden)
@@ -102,7 +102,7 @@ public sealed class ClipStreamJobStore : IClipStreamJobStore
 
         await tx.CommitAsync(ct);
 
-        return new ClaimedStreamJob(job.ClipId, clip.VideoKey, clip.Height, nextAttempt);
+        return new ClaimedStreamJob(job.ClipId, clip.VideoKey, clip.Height, nextAttempt, clip.EditCount);
     }
 
     public async Task CompleteAsync(Guid clipId, CancellationToken ct) =>

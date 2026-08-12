@@ -67,6 +67,10 @@ export interface ClipDetail {
   // the author's own device-approved API key (rewynd) — the detail page renders that as a
   // "rewynd verified upload" badge. Server-derived from the auth scheme; never client-set.
   uploadSource: 'web' | 'api' | 'import'
+  // When the video itself was last re-cut after publish (POST /clips/{id}/trim). Null while
+  // the clip still shows its originally-published footage. Drives the "Edited" badge —
+  // metadata-only edits never set it.
+  editedAt: string | null
 }
 
 export interface UpdateClipBody {
@@ -172,6 +176,13 @@ export interface ClipTrimRange {
   trimEndSeconds: number
 }
 
+// POST /clips/{id}/trim response. The clip has re-entered the pipeline; poll getStatus until
+// it flips back to 'ready' (or 'failed').
+export interface TrimClipResult {
+  id: string
+  status: string
+}
+
 export interface LikeResult {
   likeCount: number
   liked: boolean
@@ -275,6 +286,16 @@ export const clips = {
     return api<CompleteClipResult>(`/clips/${encodeURIComponent(id)}/complete`, {
       method: 'POST',
       ...(trim ? { body: trim } : {}),
+    })
+  },
+
+  // POST /clips/{id}/trim — re-cut a published clip. Offsets are seconds into the CURRENT
+  // master (what the owner just scrubbed), not the raw upload, which no longer exists. The
+  // clip leaves 'ready' while the pipeline re-runs, so it briefly 404s on the detail route.
+  trim(id: string, range: ClipTrimRange): Promise<TrimClipResult> {
+    return api<TrimClipResult>(`/clips/${encodeURIComponent(id)}/trim`, {
+      method: 'POST',
+      body: range,
     })
   },
 

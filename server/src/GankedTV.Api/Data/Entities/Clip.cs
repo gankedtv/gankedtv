@@ -38,12 +38,23 @@ public class Clip
     public DateTimeOffset? ProcessingStartedAt { get; set; }
     public int ProcessingAttempts { get; set; }
 
-    // Optional trim range (seconds into the raw upload) requested at complete time by the
-    // web trimmer. The thumbnail stage clamps both against the probed duration; the compress
-    // stage then cuts the master to [start, end]. Null = keep the whole clip. Kept after the
-    // clip reaches 'ready' so a failed-compress requeue re-applies the same cut.
+    // Optional trim range (seconds into the current master) requested at complete time by the
+    // web trimmer, or later by a post-publish re-trim. The thumbnail stage clamps both against
+    // the probed duration; the compress stage then cuts the master to [start, end]. Null = keep
+    // the whole clip. Kept after the clip reaches 'ready' so a failed-compress requeue re-applies
+    // the same cut.
     public double? TrimStartSecs { get; set; }
     public double? TrimEndSecs { get; set; }
+
+    // Set the first time the *video* is re-cut after the clip went live (POST /clips/{id}/trim).
+    // Metadata edits (title/description/tags) deliberately don't stamp it — the badge exists so
+    // viewers know the footage itself changed since publish.
+    public DateTimeOffset? EditedAt { get; set; }
+
+    // Number of completed post-publish re-cuts. Doubles as the compressed master's key
+    // generation so a re-encode never collides with the object it is replacing, and the key
+    // doesn't accumulate a `.cmp` suffix per edit. See CompressJobService.CompressedKeyFor.
+    public int EditCount { get; set; }
 
     // Set on rows ingested via POST /clips/import — preserves the original Medal.tv /
     // YouTube URL the fetcher pulled from. Stays populated after the clip reaches 'ready'

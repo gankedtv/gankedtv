@@ -68,7 +68,8 @@ public static class ClipMappings
             likedByMe,
             clip.Visibility,
             clip.ImportSourceUrl,
-            clip.UploadSource);
+            clip.UploadSource,
+            clip.EditedAt);
 
     // Tag projection used by both ToFeedItem and ToDetail. Sorted by slug so cards
     // render deterministically regardless of clip_tags insertion order. Callers must

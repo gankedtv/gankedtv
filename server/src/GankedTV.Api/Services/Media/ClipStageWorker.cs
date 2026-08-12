@@ -39,9 +39,17 @@ public abstract class ClipStageWorker : MediaStageWorker<ClaimedMediaJob>
     protected override Task ReleaseAsync(IServiceProvider scope, ClaimedMediaJob job, CancellationToken ct) =>
         scope.GetRequiredService<IClipMediaJobStore>().ReleaseLeaseAsync(job.ClipId, job.AttemptNumber, ClaimStatus, ct);
 
-    protected override Task FailAsync(IServiceProvider scope, ClaimedMediaJob job, CancellationToken ct) =>
-        scope.GetRequiredService<IClipMediaJobStore>()
+    protected override async Task FailAsync(IServiceProvider scope, ClaimedMediaJob job, CancellationToken ct)
+    {
+        await scope.GetRequiredService<IClipMediaJobStore>()
             .MarkFailedAsync(job.ClipId, job.AttemptNumber, ClaimStatus, ct, reason: TerminalFailureReason);
+
+        // A failed re-cut restores the clip to 'ready' (see MarkFailedAsync), which puts it back
+        // in the feeds it left when the re-cut started. Invalidating unconditionally costs one
+        // cache drop on a rare terminal failure and saves the store from reporting which branch
+        // it took.
+        await InvalidateFeedsBestEffortAsync(scope, ct);
+    }
 
     // Drop cached feed pages once a clip becomes feed-visible (reaches 'ready'). Best-effort: the
     // status transition has already committed, so a cache failure (e.g. Redis down) must NOT bubble

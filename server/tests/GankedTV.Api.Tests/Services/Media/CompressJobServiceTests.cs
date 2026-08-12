@@ -19,6 +19,46 @@ public class CompressJobServiceTests
         CompressJobService.CompressedKeyFor(original).Should().Be(expected);
     }
 
+    [Theory]
+    // A re-cut compresses the previous master, so the generation replaces the old suffix
+    // instead of stacking (…cmp.cmp.cmp…) — and never collides with the key it replaces.
+    [InlineData("user/clip.cmp.mp4", 1, "user/clip.cmp1.mp4")]
+    [InlineData("user/clip.cmp1.mp4", 2, "user/clip.cmp2.mp4")]
+    [InlineData("user/clip.cmp12.mp4", 13, "user/clip.cmp13.mp4")]
+    // Not a generation suffix: a dotted stem must survive untouched.
+    [InlineData("user/my.clip.mp4", 1, "user/my.clip.cmp1.mp4")]
+    [InlineData("user/clip.cmpx.mp4", 1, "user/clip.cmpx.cmp1.mp4")]
+    public void CompressedKeyFor_ReplacesPreviousGeneration(string original, int generation, string expected)
+    {
+        CompressJobService.CompressedKeyFor(original, generation).Should().Be(expected);
+    }
+
+    [Fact]
+    public void CompressedKeyFor_NeverReturnsItsOwnInput()
+    {
+        // The encode must never write onto the key it reads from, so the output has to differ
+        // from the input for every generation — including a re-run at a generation the master
+        // already carries (an admin requeue back into 'transcoding').
+        var key = "user/clip.mp4";
+        for (var generation = 0; generation < 5; generation++)
+        {
+            var next = CompressJobService.CompressedKeyFor(key, generation);
+            next.Should().NotBe(key);
+            // Same clip re-entering compress without the generation advancing.
+            CompressJobService.CompressedKeyFor(next, generation).Should().NotBe(next);
+            key = next;
+        }
+    }
+
+    [Fact]
+    public void CompressedKeyFor_IsDeterministic()
+    {
+        // A re-claimed lease re-derives the key mid-encode; a non-deterministic result would
+        // orphan the object the previous attempt uploaded.
+        CompressJobService.CompressedKeyFor("user/clip.cmp1.mp4", 1)
+            .Should().Be(CompressJobService.CompressedKeyFor("user/clip.cmp1.mp4", 1));
+    }
+
     [Fact]
     public void BuildCompressArgs_DownscalesOnlyWhenSourceTallerThanCap()
     {

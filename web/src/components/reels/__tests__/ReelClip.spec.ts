@@ -68,6 +68,7 @@ function makeDetail(overrides: Partial<ClipDetail> = {}): ClipDetail {
     visibility: 'public',
     importSourceUrl: null,
     uploadSource: 'web',
+    editedAt: null,
     ...overrides,
   }
 }

@@ -39,7 +39,7 @@ public sealed class CompressJobService : ICompressJobService
         var buckets = _s3.CurrentValue;
 
         var inputUrl = _storage.GetPresignedGetUrlForWorker(buckets.ClipsBucket, job.VideoKey, DownloadUrlLifetime);
-        var outputKey = CompressedKeyFor(job.VideoKey);
+        var outputKey = CompressedKeyFor(job.VideoKey, job.EditCount);
 
         // Per-attempt token so a re-claimed lease can't collide on the same temp path.
         var outPath = Path.Combine(
@@ -120,11 +120,43 @@ public sealed class CompressJobService : ICompressJobService
 
     // The compressed master lives at a distinct key (…/{clipId}.cmp.mp4) so the encode never
     // overwrites the source mid-job; the worker deletes the original only after the DB has
-    // been repointed at this key.
-    internal static string CompressedKeyFor(string originalKey) =>
-        originalKey.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)
-            ? originalKey[..^4] + ".cmp.mp4"
-            : originalKey + ".cmp.mp4";
+    // been repointed at this key. A post-publish re-cut compresses the previous master, so the
+    // generation suffix (.cmp2, .cmp3, …) replaces the old one instead of stacking onto it —
+    // still deterministic per job, so a re-claimed lease can't flap the output key.
+    internal static string CompressedKeyFor(string originalKey, int generation = 0)
+    {
+        var stem = originalKey.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)
+            ? originalKey[..^4]
+            : originalKey;
+        var root = StripCompressedSuffix(stem);
+        var key = root + CompressedSuffix(generation) + ".mp4";
+
+        // An admin requeue can re-run compress on a master already written at this generation.
+        // Skipping ahead keeps the "never encode onto the source key" invariant without giving
+        // up determinism — the same (key, generation) still maps to the same output.
+        return string.Equals(key, originalKey, StringComparison.Ordinal)
+            ? root + CompressedSuffix(generation + 1) + ".mp4"
+            : key;
+    }
+
+    private static string CompressedSuffix(int generation) =>
+        generation <= 0 ? ".cmp" : ".cmp" + generation.ToString(CultureInfo.InvariantCulture);
+
+    // Drops a trailing ".cmp" / ".cmp<digits>" segment so generations replace rather than nest.
+    private static string StripCompressedSuffix(string stem)
+    {
+        var dot = stem.LastIndexOf('.');
+        if (dot < 0) return stem;
+
+        var segment = stem.AsSpan(dot + 1);
+        if (!segment.StartsWith("cmp", StringComparison.Ordinal)) return stem;
+
+        foreach (var c in segment[3..])
+        {
+            if (!char.IsAsciiDigit(c)) return stem;
+        }
+        return stem[..dot];
+    }
 
     internal static List<string> BuildCompressArgs(
         string inputUrl,

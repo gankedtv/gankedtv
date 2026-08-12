@@ -5,7 +5,10 @@ public sealed record ClaimedStreamJob(
     Guid ClipId,
     string VideoKey,
     short? SourceHeight,
-    int AttemptNumber);
+    int AttemptNumber,
+    // Re-cut generation of the master being transcoded — scopes the cache prefix so a ladder
+    // built from a superseded master can't be served after the cut lands.
+    int EditCount = 0);
 
 public interface IClipStreamJobStore
 {

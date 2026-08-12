@@ -351,6 +351,7 @@ builder.Services.AddOptions<ClipValidationOptions>()
 
 builder.Services.AddScoped<IClipUploadService, ClipUploadService>();
 builder.Services.AddScoped<IClipImportService, ClipImportService>();
+builder.Services.AddScoped<IClipTrimService, ClipTrimService>();
 builder.Services.AddScoped<IClipImportUrlValidator, ClipImportUrlValidator>();
 builder.Services.AddScoped<ITagsResolver, TagsResolver>();
 builder.Services.AddScoped<INotificationService, NotificationService>();

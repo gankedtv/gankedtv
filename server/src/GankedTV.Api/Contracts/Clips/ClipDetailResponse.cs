@@ -36,4 +36,8 @@ public sealed record ClipDetailResponse(
     // How the clip entered the platform: 'web' | 'api' | 'import' (ClipUploadSources).
     // 'api' proves the upload came through the user's own device-approved API key
     // (rewynd) — the web renders it as a verified-upload badge.
-    string UploadSource);
+    string UploadSource,
+    // When the video itself was last re-cut after going live (POST /clips/{id}/trim). Null for
+    // clips still showing their originally-published footage. Every viewer sees the resulting
+    // "Edited" badge — metadata-only edits never set it.
+    DateTimeOffset? EditedAt);

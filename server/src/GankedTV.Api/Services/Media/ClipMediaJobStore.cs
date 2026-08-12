@@ -70,7 +70,7 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
 
         return new ClaimedMediaJob(
             clip.Id, clip.UserId, clip.GameId, clip.VideoKey, clip.Height, nextAttempt,
-            clip.TrimStartSecs, clip.TrimEndSecs);
+            clip.TrimStartSecs, clip.TrimEndSecs, clip.EditCount);
     }
 
     public async Task<string?> GetGameSlugAsync(int? gameId, CancellationToken ct)
@@ -133,6 +133,36 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
     public async Task MarkFailedAsync(Guid clipId, int expectedAttempt, string fromStatus, CancellationToken ct, string? reason = null)
     {
         var now = _clock.GetUtcNow();
+
+        // A failed re-cut must never take a live clip dark. Its previous master is still in
+        // storage (compress deletes the old object only after the row is repointed), so drop the
+        // pending cut and put the clip back the way viewers last saw it instead of failing it.
+        // EditedAt is only ever stamped on an already-published clip, so its presence proves this
+        // run is a re-cut rather than a first publish. The poster may already show a frame from
+        // the discarded range — cosmetic, and the next successful re-cut replaces it.
+        var rolledBack = await _db.Clips
+            .Where(c => c.Id == clipId
+                && c.Status == fromStatus
+                && c.ProcessingAttempts == expectedAttempt
+                && c.EditedAt != null
+                && c.ThumbnailKey != null)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(c => c.Status, ClipStatuses.Ready)
+                // Clear the range so an admin requeue can't re-apply the cut that just failed.
+                .SetProperty(c => c.TrimStartSecs, (double?)null)
+                .SetProperty(c => c.TrimEndSecs, (double?)null)
+                // Only the first re-cut can restore "never edited"; later ones had a real
+                // earlier edit whose stamp must survive.
+                .SetProperty(c => c.EditedAt, c => c.EditCount <= 1 ? null : c.EditedAt)
+                .SetProperty(c => c.ProcessingStartedAt, (DateTimeOffset?)null)
+                .SetProperty(c => c.FailureReason, (string?)null)
+                .SetProperty(c => c.UpdatedAt, now), ct);
+
+        if (rolledBack > 0)
+        {
+            return;
+        }
+
         await _db.Clips
             .Where(c => c.Id == clipId
                 && c.Status == fromStatus
