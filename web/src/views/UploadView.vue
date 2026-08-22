@@ -961,6 +961,25 @@ const IMPORT_HOSTS_HINT = IMPORT_ALLOWED_HOSTS.filter(
                  back and forth preserves both selections. -->
             <ClipTrimmer v-if="editTab === 'trim'" :file="file" v-model="trimRange" />
             <ClipCropper v-else :file="file" v-model="cropRect" />
+
+            <!-- Permanence disclosure. The compress stage deletes the raw upload once the
+                 master is written, so there is no full-frame copy to restore from later —
+                 the post-publish dialog says the same thing, and the upload path is where
+                 the decision actually gets made. -->
+            <p class="m-0 mt-3 text-[11px] leading-relaxed text-text-muted">
+              <template v-if="editTab === 'crop'">
+                We only keep the area inside the box. Everything outside it is
+                <span class="font-semibold text-text-secondary">removed permanently</span> when the
+                clip is processed — the full-frame original isn't stored, so this can't be undone
+                later.
+              </template>
+              <template v-else>
+                We only keep the selected range. Everything outside it is
+                <span class="font-semibold text-text-secondary">removed permanently</span> when the
+                clip is processed — the untrimmed original isn't stored, so this can't be undone
+                later.
+              </template>
+            </p>
           </div>
 
           <div class="flex gap-3">
