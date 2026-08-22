@@ -139,13 +139,33 @@ export function toCropModel(rect: CropRect): CropRect | null {
 export const FULL_FRAME: CropRect = { x: 0, y: 0, width: 1, height: 1 }
 
 // Initial rect once metadata loads: restore a previously picked crop when it's still valid
-// (navigating back to the crop tab), else the full frame.
-export function seedCropRect(model: CropRect | null): CropRect {
-  if (!model) return { ...FULL_FRAME }
+// (navigating back to the crop tab), else `fallback` — which the cropper sets to the default
+// preset's rect, so an ultrawide source arrives already framed to 16:9 rather than needing the
+// user to discover the pills. On a source that already matches the preset the fallback IS the
+// full frame, so `toCropModel` still returns null and nothing is sent.
+export function seedCropRect(model: CropRect | null, fallback: CropRect = FULL_FRAME): CropRect {
+  if (!model) return { ...fallback }
   const values = [model.x, model.y, model.width, model.height]
-  if (!values.every((v) => typeof v === 'number' && Number.isFinite(v))) return { ...FULL_FRAME }
-  if (model.width < MIN_CROP_EXTENT || model.height < MIN_CROP_EXTENT) return { ...FULL_FRAME }
+  if (!values.every((v) => typeof v === 'number' && Number.isFinite(v))) return { ...fallback }
+  if (model.width < MIN_CROP_EXTENT || model.height < MIN_CROP_EXTENT) return { ...fallback }
   return clampRect(model)
+}
+
+// The rect the cropper opens on for a source it has never seen. Returns the preset's rect ONLY
+// when the frame is meaningfully wider than the preset — i.e. when there are pillarbox bars to
+// remove, which is the whole reason for defaulting to a crop at all.
+//
+// The guard is load-bearing in the other direction: a 9:16 phone clip is *narrower* than 16:9,
+// so seeding the preset there would chop a 1080x1920 upload down to 1080x607 — throwing away
+// two thirds of the frame for someone who never opened the crop tab. Portrait and 4:3 sources
+// therefore open on the full frame and upload untouched unless the user asks for something.
+export function defaultSeedRect(frameRatio: number, key: CropRatioKey): CropRect {
+  const target = outputRatioFor(key, frameRatio)
+  if (target === null || !Number.isFinite(frameRatio) || frameRatio <= 0) return { ...FULL_FRAME }
+  // Same epsilon as the "did anything change" test: a frame within a rounding error of the
+  // target has no bars worth cutting.
+  if (frameRatio <= target * (1 + CROP_CHANGED_EPS)) return { ...FULL_FRAME }
+  return maxRectForRatio(rectRatioFor(key, frameRatio))
 }
 
 // The 8 resize handles plus the body. Named by the edge(s) they move so a drag can resolve

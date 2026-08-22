@@ -6,6 +6,7 @@ import {
   applyRectRatio,
   clampRect,
   cropWindowStyle,
+  defaultSeedRect,
   handlePosition,
   hitTestHandle,
   isCropChanged,
@@ -173,11 +174,94 @@ describe('lib/crop', () => {
       expect(seedCropRect({ x: 0, y: 0, width: 0.001, height: 0.5 })).toEqual(FULL_FRAME)
     })
 
+    it('uses the supplied fallback so a fresh open lands on the default preset', () => {
+      // The cropper passes the 16:9 rect, so an ultrawide capture opens already framed with the
+      // pillarbox bars outside the rect instead of waiting for the user to find the pills.
+      const preset = maxRectForRatio(rectRatioFor('16:9', ULTRAWIDE))
+
+      expect(seedCropRect(null, preset)).toEqual(preset)
+      expect(seedCropRect({ x: 0, y: 0, width: 0.001, height: 0.5 }, preset)).toEqual(preset)
+    })
+
+    it('lets a restored crop win over the fallback', () => {
+      // Coming back to the crop tab must not throw away what the user picked.
+      const restored: CropRect = { x: 0.3, y: 0.1, width: 0.4, height: 0.6 }
+      const preset = maxRectForRatio(rectRatioFor('16:9', ULTRAWIDE))
+
+      expect(seedCropRect(restored, preset)).toEqual(restored)
+    })
+
+    it('the default preset is a no-op on a source that already matches it', () => {
+      // A plain 16:9 upload must still send nothing — the seed is the whole frame, so the
+      // null sentinel holds and no re-encode is requested for zero visible change.
+      const preset = maxRectForRatio(rectRatioFor('16:9', WIDESCREEN))
+
+      expect(toCropModel(seedCropRect(null, preset))).toBeNull()
+    })
+
+    it('the default preset DOES arm a crop on an ultrawide source', () => {
+      const preset = maxRectForRatio(rectRatioFor('16:9', ULTRAWIDE))
+      const model = toCropModel(seedCropRect(null, preset))
+
+      expect(model).not.toBeNull()
+      expect(model!.width * 3440).toBeCloseTo(2560, 0)
+      expect(model!.x * 3440).toBeCloseTo(440, 0)
+    })
+
     it('returns a copy, so mutating the seed cannot write through to the model', () => {
       const model = { ...FULL_FRAME }
       const seeded = seedCropRect(null)
       seeded.x = 0.5
       expect(model.x).toBe(0)
+    })
+  })
+
+  describe('defaultSeedRect', () => {
+    it('arms the 16:9 rect on an ultrawide source, removing the pillarbox', () => {
+      const rect = defaultSeedRect(ULTRAWIDE, '16:9')
+
+      expect(isCropChanged(rect)).toBe(true)
+      expect(rect.width * 3440).toBeCloseTo(2560, 0)
+      expect(rect.x * 3440).toBeCloseTo(440, 0)
+      expect(rect.height).toBeCloseTo(1, 6)
+    })
+
+    it('leaves a PORTRAIT source completely alone', () => {
+      // The one that would quietly ruin uploads: a 9:16 phone clip is narrower than 16:9, so
+      // applying the preset would crop 1080x1920 down to 1080x607 — two thirds of the frame
+      // gone for a user who never opened the crop tab.
+      const rect = defaultSeedRect(9 / 16, '16:9')
+
+      expect(rect).toEqual(FULL_FRAME)
+      expect(toCropModel(rect)).toBeNull()
+    })
+
+    it('leaves a 4:3 source alone too', () => {
+      expect(defaultSeedRect(4 / 3, '16:9')).toEqual(FULL_FRAME)
+    })
+
+    it('is a no-op on a source that already matches the preset', () => {
+      expect(defaultSeedRect(WIDESCREEN, '16:9')).toEqual(FULL_FRAME)
+      expect(toCropModel(defaultSeedRect(WIDESCREEN, '16:9'))).toBeNull()
+    })
+
+    it('does not arm a crop for a frame within rounding error of the target', () => {
+      // 1920x1081 is 16:9 for every practical purpose; cropping it would cost a re-encode to
+      // remove a single row.
+      expect(defaultSeedRect(1920 / 1081, '16:9')).toEqual(FULL_FRAME)
+    })
+
+    it('returns the full frame for an unconstrained or degenerate preset', () => {
+      expect(defaultSeedRect(ULTRAWIDE, 'free')).toEqual(FULL_FRAME)
+      expect(defaultSeedRect(0, '16:9')).toEqual(FULL_FRAME)
+      expect(defaultSeedRect(Number.NaN, '16:9')).toEqual(FULL_FRAME)
+    })
+
+    it("never arms a crop for the 'original' preset, whatever the frame", () => {
+      // 'original' targets the frame's own ratio, so there is by definition nothing to remove.
+      for (const frameRatio of [ULTRAWIDE, WIDESCREEN, 4 / 3, 9 / 16]) {
+        expect(defaultSeedRect(frameRatio, 'original')).toEqual(FULL_FRAME)
+      }
     })
   })
 

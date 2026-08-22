@@ -6,6 +6,7 @@ import {
   CROP_RATIOS,
   FULL_FRAME,
   clampRect,
+  defaultSeedRect,
   handlePosition,
   hitTestHandle,
   isCropChanged,
@@ -52,11 +53,12 @@ const objectUrl = ref('')
 const frameWidth = ref(0)
 const frameHeight = ref(0)
 const rect = ref<CropRect>({ ...FULL_FRAME })
-// The pill describes the lock applied to FUTURE drags, not the current rect — which starts as
-// the untouched full frame. Defaulting to 16:9 makes the ultrawide case one click (or one drag)
-// without silently cropping a clip the user never touched: seeding the rect to 16:9 instead
-// would hand every 21:9 upload a crop it never asked for, and break the null sentinel.
-const ratioKey = ref<CropRatioKey>('16:9')
+// The cropper OPENS on this preset and seeds the rect to it, so an ultrawide capture arrives
+// already framed to 16:9 with the bars outside the rect — the overwhelmingly common intent, and
+// it doesn't depend on the user discovering the pills. On a source that's already 16:9 the
+// preset rect is the whole frame, so the model stays null and nothing is sent.
+const DEFAULT_RATIO: CropRatioKey = '16:9'
+const ratioKey = ref<CropRatioKey>(DEFAULT_RATIO)
 const decodeFailed = ref(false)
 const dragging = ref<CropHandle | null>(null)
 // Only announced on keyup and drag-end — a live region firing at pointer rate is unusable.
@@ -115,11 +117,18 @@ function onLoadedMetadata() {
   decodeFailed.value = false
 
   const restored = model.value
-  const seeded = seedCropRect(restored)
+  // frameRatio is live now that the dimensions are in, so the default resolves against THIS
+  // source rather than the 16/9 placeholder the computed falls back to before load.
+  const seeded = seedCropRect(
+    restored,
+    defaultSeedRect(frameWidth.value / frameHeight.value, DEFAULT_RATIO),
+  )
   rect.value = seeded
-  // Only infer the preset when there IS a restored crop — otherwise the full-frame seed would
-  // resolve to 'Original' and stomp the 16:9 default on every fresh open.
-  if (restored) ratioKey.value = matchRatioKey(seeded)
+  // A restored crop dictates its own preset. A fresh open keeps DEFAULT_RATIO when the seed
+  // actually armed a crop; when defaultSeedRect declined (portrait, 4:3, already-16:9) the rect
+  // is the full frame, so infer instead — leaving the pill on 16:9 would claim a lock the rect
+  // doesn't have and would snap the frame away on the user's first drag.
+  ratioKey.value = restored || isCropChanged(seeded) ? matchRatioKey(seeded) : 'free'
 }
 
 function onDecodeError() {
