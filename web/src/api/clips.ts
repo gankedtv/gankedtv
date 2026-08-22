@@ -67,9 +67,9 @@ export interface ClipDetail {
   // the author's own device-approved API key (rewynd) — the detail page renders that as a
   // "rewynd verified upload" badge. Server-derived from the auth scheme; never client-set.
   uploadSource: 'web' | 'api' | 'import'
-  // When the video itself was last re-cut after publish (POST /clips/{id}/trim). Null while
-  // the clip still shows its originally-published footage. Drives the "Edited" badge —
-  // metadata-only edits never set it.
+  // When the video itself was last re-cut or re-cropped after publish (POST /clips/{id}/edit).
+  // Null while the clip still shows its originally-published footage. Drives the "Edited"
+  // badge — metadata-only edits never set it.
   editedAt: string | null
 }
 
@@ -176,11 +176,39 @@ export interface ClipTrimRange {
   trimEndSeconds: number
 }
 
-// POST /clips/{id}/trim response. The clip has re-entered the pipeline; poll getStatus until
-// it flips back to 'ready' (or 'failed').
+// Optional crop rect, as NORMALIZED 0..1 fractions of the frame — never pixels. The server
+// records the request before it has probed anything, and rescales the master by its height cap
+// on every edit generation, so a pixel rect would mean something different after each one.
+export interface ClipCropRect {
+  cropX: number
+  cropY: number
+  cropWidth: number
+  cropHeight: number
+}
+
+// The edit operations complete() and edit() accept: a cut, a crop, or both. Both ride the SAME
+// single server-side re-encode, so combining them costs one generation of quality loss rather
+// than two. Modelled as one widened parameter rather than two so every existing call site
+// (and spec case) that passes a bare trim range keeps compiling.
+export type ClipEdits = Partial<ClipTrimRange> & Partial<ClipCropRect>
+
+// POST /clips/{id}/trim and /clips/{id}/edit response. The clip has re-entered the pipeline;
+// poll getStatus until it flips back to 'ready' (or 'failed').
 export interface TrimClipResult {
   id: string
   status: string
+}
+
+// GET /clips/{id}/crop-suggestion. `detected: false` means "no suggestion" for any reason at
+// all — detection failed, the result was the whole frame, the server's budget ran out — so the
+// UI hides the affordance rather than surfacing an error. The rect is in the same normalized
+// space as the request bodies, so it round-trips without conversion.
+export interface CropSuggestion {
+  detected: boolean
+  crop: { x: number; y: number; width: number; height: number } | null
+  sourceWidth: number | null
+  sourceHeight: number | null
+  samples: number
 }
 
 export interface LikeResult {
@@ -282,21 +310,40 @@ export const clips = {
     return api<UploadUrl>(`/clips/${encodeURIComponent(id)}/upload-url`, { method: 'POST' })
   },
 
-  complete(id: string, trim?: ClipTrimRange): Promise<CompleteClipResult> {
+  complete(id: string, edits?: ClipEdits): Promise<CompleteClipResult> {
+    // A body-less complete is the unchanged contract for an untouched clip — sending `{}`
+    // instead would be equivalent server-side but noisier on the wire.
+    const hasEdits = !!edits && Object.keys(edits).length > 0
     return api<CompleteClipResult>(`/clips/${encodeURIComponent(id)}/complete`, {
       method: 'POST',
-      ...(trim ? { body: trim } : {}),
+      ...(hasEdits ? { body: edits } : {}),
     })
   },
 
-  // POST /clips/{id}/trim — re-cut a published clip. Offsets are seconds into the CURRENT
-  // master (what the owner just scrubbed), not the raw upload, which no longer exists. The
-  // clip leaves 'ready' while the pipeline re-runs, so it briefly 404s on the detail route.
+  // POST /clips/{id}/edit — re-cut and/or re-crop a published clip in ONE re-encode. Offsets
+  // and the crop rect are relative to the CURRENT master (what the owner just watched), not the
+  // raw upload, which no longer exists. The clip leaves 'ready' while the pipeline re-runs, so
+  // it briefly 404s on the detail route.
+  edit(id: string, edits: ClipEdits): Promise<TrimClipResult> {
+    return api<TrimClipResult>(`/clips/${encodeURIComponent(id)}/edit`, {
+      method: 'POST',
+      body: edits,
+    })
+  },
+
+  // POST /clips/{id}/trim — the trim-only predecessor of edit(). Kept because the server still
+  // serves it for shipped clients; new callers should use edit().
   trim(id: string, range: ClipTrimRange): Promise<TrimClipResult> {
     return api<TrimClipResult>(`/clips/${encodeURIComponent(id)}/trim`, {
       method: 'POST',
       body: range,
     })
+  },
+
+  // GET /clips/{id}/crop-suggestion — owner-only advisory "remove black bars" probe. Allowed on
+  // draft (upload wizard) and ready (post-publish dialog). Never applied automatically.
+  cropSuggestion(id: string): Promise<CropSuggestion> {
+    return api<CropSuggestion>(`/clips/${encodeURIComponent(id)}/crop-suggestion`)
   },
 
   update(id: string, body: UpdateClipBody): Promise<ClipDetail> {

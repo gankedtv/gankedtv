@@ -70,8 +70,16 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
 
         return new ClaimedMediaJob(
             clip.Id, clip.UserId, clip.GameId, clip.VideoKey, clip.Height, nextAttempt,
-            clip.TrimStartSecs, clip.TrimEndSecs, clip.EditCount);
+            clip.TrimStartSecs, clip.TrimEndSecs, clip.EditCount, ToCropRect(clip));
     }
+
+    // The four columns are written and cleared as a unit (ck_clips_crop_rect enforces it), so
+    // one null means "no crop" rather than a partially-specified rect.
+    private static CropRect? ToCropRect(Clip clip) =>
+        clip.CropX is { } x && clip.CropY is { } y
+            && clip.CropWidth is { } w && clip.CropHeight is { } h
+            ? new CropRect(x, y, w, h)
+            : null;
 
     public async Task<string?> GetGameSlugAsync(int? gameId, CancellationToken ct)
     {
@@ -103,6 +111,13 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
                 .SetProperty(c => c.Height, result.Height)
                 .SetProperty(c => c.TrimStartSecs, result.TrimStartSecs)
                 .SetProperty(c => c.TrimEndSecs, result.TrimEndSecs)
+                // The snapped rect, so the compress stage crops through exactly the filter the
+                // poster was taken with. Null when the crop was dropped (unknown source dims) or
+                // snapped out to the whole frame — either way the master must not be cropped.
+                .SetProperty(c => c.CropX, result.Crop == null ? null : (double?)result.Crop.X)
+                .SetProperty(c => c.CropY, result.Crop == null ? null : (double?)result.Crop.Y)
+                .SetProperty(c => c.CropWidth, result.Crop == null ? null : (double?)result.Crop.Width)
+                .SetProperty(c => c.CropHeight, result.Crop == null ? null : (double?)result.Crop.Height)
                 .SetProperty(c => c.ProcessingStartedAt, (DateTimeOffset?)null)
                 // Reset the attempt counter so the next stage (compress) gets its own full
                 // MaxAttempts budget rather than inheriting the thumbnail stage's count.
@@ -148,9 +163,13 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
                 && c.ThumbnailKey != null)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(c => c.Status, ClipStatuses.Ready)
-                // Clear the range so an admin requeue can't re-apply the cut that just failed.
+                // Clear the range so an admin requeue can't re-apply the edit that just failed.
                 .SetProperty(c => c.TrimStartSecs, (double?)null)
                 .SetProperty(c => c.TrimEndSecs, (double?)null)
+                .SetProperty(c => c.CropX, (double?)null)
+                .SetProperty(c => c.CropY, (double?)null)
+                .SetProperty(c => c.CropWidth, (double?)null)
+                .SetProperty(c => c.CropHeight, (double?)null)
                 // Only the first re-cut can restore "never edited"; later ones had a real
                 // earlier edit whose stamp must survive.
                 .SetProperty(c => c.EditedAt, c => c.EditCount <= 1 ? null : c.EditedAt)

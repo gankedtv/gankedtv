@@ -172,12 +172,14 @@ public sealed class ClipUploadService : IClipUploadService
     public async Task<ClipResult<CompleteClipResult>> CompleteAsync(
         Guid userId,
         Guid clipId,
-        ClipTrimInput? trim,
+        ClipEdits edits,
         CancellationToken ct)
     {
-        if (trim is not null)
+        var media = _mediaJobs.CurrentValue;
+
+        if (edits.Trim is { } trim)
         {
-            if (!_mediaJobs.CurrentValue.TranscodeEnabled)
+            if (!media.TranscodeEnabled)
             {
                 return ClipResult<CompleteClipResult>.Fail(ClipUploadError.TrimUnavailable);
             }
@@ -188,6 +190,13 @@ public sealed class ClipUploadService : IClipUploadService
             {
                 return ClipResult<CompleteClipResult>.Fail(ClipUploadError.InvalidTrim);
             }
+        }
+
+        // Crop rides the same re-encode, so it needs TranscodeEnabled too — plus its own
+        // kill switch. Shape was already checked by ClipCropValidation at the endpoint.
+        if (edits.Crop is not null && (!media.TranscodeEnabled || !media.CropEnabled))
+        {
+            return ClipResult<CompleteClipResult>.Fail(ClipUploadError.CropUnavailable);
         }
 
         // AsNoTracking: the final mutation goes through ExecuteUpdateAsync, which bypasses
@@ -235,8 +244,12 @@ public sealed class ClipUploadService : IClipUploadService
                 setters => setters
                     .SetProperty(c => c.Status, ClipStatuses.Processing)
                     .SetProperty(c => c.FileSizeBytes, meta.SizeBytes)
-                    .SetProperty(c => c.TrimStartSecs, trim == null ? null : (double?)trim.StartSecs)
-                    .SetProperty(c => c.TrimEndSecs, trim == null ? null : (double?)trim.EndSecs)
+                    .SetProperty(c => c.TrimStartSecs, edits.Trim == null ? null : (double?)edits.Trim.StartSecs)
+                    .SetProperty(c => c.TrimEndSecs, edits.Trim == null ? null : (double?)edits.Trim.EndSecs)
+                    .SetProperty(c => c.CropX, edits.Crop == null ? null : (double?)edits.Crop.X)
+                    .SetProperty(c => c.CropY, edits.Crop == null ? null : (double?)edits.Crop.Y)
+                    .SetProperty(c => c.CropWidth, edits.Crop == null ? null : (double?)edits.Crop.Width)
+                    .SetProperty(c => c.CropHeight, edits.Crop == null ? null : (double?)edits.Crop.Height)
                     .SetProperty(c => c.UpdatedAt, now),
                 ct);
 

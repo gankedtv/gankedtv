@@ -108,7 +108,8 @@ public sealed class CompressJobService : ICompressJobService
         CancellationToken ct)
     {
         var args = BuildCompressArgs(
-            inputUrl, outPath, job.SourceHeight, opts, encoder, job.TrimStartSecs, job.TrimEndSecs);
+            inputUrl, outPath, job.SourceHeight, opts, encoder, job.TrimStartSecs, job.TrimEndSecs,
+            opts.CropEnabled ? job.Crop : null);
         var result = await _ffmpeg.RunAsync(opts.FfmpegPath, args, timeout, ct);
         if (result.ExitCode != 0 || !File.Exists(outPath) || new FileInfo(outPath).Length <= 0)
         {
@@ -165,7 +166,8 @@ public sealed class CompressJobService : ICompressJobService
         MediaJobOptions opts,
         string? encoder = null,
         double? trimStartSecs = null,
-        double? trimEndSecs = null)
+        double? trimEndSecs = null,
+        CropRect? crop = null)
     {
         var videoEncoder = encoder ?? opts.VideoEncoder;
         var ci = CultureInfo.InvariantCulture;
@@ -196,12 +198,28 @@ public sealed class CompressJobService : ICompressJobService
             args.Add(t2.Span.ToString("F3", ci));
         }
 
+        // One -vf slot, composed. Crop comes FIRST so the height cap applies to the kept
+        // region rather than the source frame — cropping after the scale would cap the wrong
+        // axis and leave an oversized output. Trim (-ss/-t) is an orthogonal axis, so a
+        // combined edit needs no ordering care beyond this.
+        var filters = new List<string>();
+        if (crop is not null)
+        {
+            filters.Add(MediaFilters.Crop(crop));
+        }
+
         // Only downscale (never upscale): scale to MaxHeight when the source is known to be
-        // taller. -2 keeps width even and preserves aspect ratio.
+        // taller. -2 keeps width even and preserves aspect ratio. SourceHeight is already the
+        // POST-crop height — the thumbnail stage wrote it back before this stage claimed the row.
         if (sourceHeight is { } h && h > opts.MaxHeight)
         {
+            filters.Add($"scale=-2:{opts.MaxHeight.ToString(ci)}");
+        }
+
+        if (filters.Count > 0)
+        {
             args.Add("-vf");
-            args.Add($"scale=-2:{opts.MaxHeight.ToString(ci)}");
+            args.Add(string.Join(",", filters));
         }
 
         args.Add("-c:v");

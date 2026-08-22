@@ -58,6 +58,17 @@ public sealed class ThumbnailJobService : IThumbnailJobService
                 "Clip has a trim range but ffprobe could not determine the source duration; failing rather than encoding an unverifiable cut.");
         }
 
+        // Divergence from trim, deliberately: a crop we can't validate is DROPPED with a warning
+        // rather than failing the clip. A dropped trim would publish footage the user cut away;
+        // a dropped crop just leaves the black bars in place, and that's fixable post-publish.
+        var crop = SanitizeCrop(job.Crop, probe.Width, probe.Height);
+        if (job.Crop is not null && crop is null && (probe.Width is null || probe.Height is null))
+        {
+            _logger.LogWarning(
+                "clip={ClipId}: ffprobe reported no source dimensions; publishing without the requested crop.",
+                job.ClipId);
+        }
+
         var trim = SanitizeTrim(job.TrimStartSecs, job.TrimEndSecs, probe.DurationSecs);
         var playableStart = trim?.Start ?? 0;
         var playableSecs = trim is { } span ? span.End - span.Start : probe.DurationSecs;
@@ -77,7 +88,7 @@ public sealed class ThumbnailJobService : IThumbnailJobService
             $"gankedtv-thumb-{job.ClipId:N}-{Guid.NewGuid():N}.jpg");
         try
         {
-            await ExtractFrameAsync(videoUrl, thumbPath, seekOffset, opts, ct);
+            await ExtractFrameAsync(videoUrl, thumbPath, seekOffset, crop, opts, ct);
 
             var thumbnailKey = ClipKeys.BuildThumbnailKey(job.UserId, job.ClipId, gameSlug);
             await using (var stream = File.OpenRead(thumbPath))
@@ -85,13 +96,18 @@ public sealed class ThumbnailJobService : IThumbnailJobService
                 await _storage.PutObjectAsync(buckets.ThumbnailsBucket, thumbnailKey, stream, "image/jpeg", ct);
             }
 
+            // Dimensions are POST-crop: they drive the player's aspect ratio and the JIT ladder's
+            // source cap, both of which see the cropped master, never the source frame.
+            var (outWidth, outHeight) = CroppedDimensions(probe.Width, probe.Height, crop);
+
             return new FinalizedMediaJob(
                 ThumbnailKey: thumbnailKey,
                 DurationSecs: ToShortSecs(playableSecs),
-                Width: ToShort(probe.Width),
-                Height: ToShort(probe.Height),
+                Width: ToShort(outWidth),
+                Height: ToShort(outHeight),
                 TrimStartSecs: trim?.Start,
-                TrimEndSecs: trim?.End);
+                TrimEndSecs: trim?.End,
+                Crop: crop);
         }
         finally
         {
@@ -122,6 +138,56 @@ public sealed class ThumbnailJobService : IThumbnailJobService
 
         return (start, end);
     }
+
+    // Round-trips a requested rect through the probed pixel grid: fractions → pixels → clamp
+    // into frame → snap DOWN to even (yuv420p chroma alignment) → back to fractions. Flooring
+    // here is the conservative direction — it can only ever pull the rect further inside the
+    // frame. MediaFilters.Crop then rounds those fractions back to the nearest even pixel, which
+    // recovers these exact values, so the persisted rect is what actually gets encoded.
+    // Returns null for no crop, unknown source dimensions, a degenerate axis, or a rect that
+    // still covers the whole frame — all of which mean "don't crop".
+    internal static CropRect? SanitizeCrop(CropRect? crop, int? sourceWidth, int? sourceHeight)
+    {
+        if (crop is null) return null;
+        if (sourceWidth is not { } sw || sourceHeight is not { } sh || sw <= 0 || sh <= 0) return null;
+        if (!IsFinite(crop.X) || !IsFinite(crop.Y) || !IsFinite(crop.Width) || !IsFinite(crop.Height))
+        {
+            return null;
+        }
+
+        var x = SnapEven(Math.Clamp(crop.X, 0, 1) * sw);
+        var y = SnapEven(Math.Clamp(crop.Y, 0, 1) * sh);
+        var w = SnapEven(Math.Clamp(crop.Width, 0, 1) * sw);
+        var h = SnapEven(Math.Clamp(crop.Height, 0, 1) * sh);
+
+        // Shrink before shifting: a rect that overhangs the frame keeps its origin (the user
+        // dragged that edge deliberately) and loses the overhang instead of sliding inward.
+        w = Math.Min(w, SnapEven(sw - x));
+        h = Math.Min(h, SnapEven(sh - y));
+        if (w < 2 || h < 2) return null;
+
+        var fx = (double)x / sw;
+        var fy = (double)y / sh;
+        var fw = (double)w / sw;
+        var fh = (double)h / sh;
+        if (fw < ClipCropExtents.MinExtent || fh < ClipCropExtents.MinExtent) return null;
+
+        // Whole frame after snapping — encoding a no-op crop filter would only cost clarity.
+        if (x == 0 && y == 0 && w >= sw - 1 && h >= sh - 1) return null;
+
+        return new CropRect(fx, fy, fw, fh);
+    }
+
+    // Output frame after the crop, in the same even-snapped grid SanitizeCrop worked in.
+    private static (int? Width, int? Height) CroppedDimensions(int? width, int? height, CropRect? crop)
+    {
+        if (crop is null || width is not { } w || height is not { } h) return (width, height);
+        return (SnapEven(crop.Width * w), SnapEven(crop.Height * h));
+    }
+
+    private static bool IsFinite(double v) => double.IsFinite(v);
+
+    private static int SnapEven(double pixels) => (int)Math.Floor(Math.Max(pixels, 0) / 2) * 2;
 
     private async Task<ProbeResult> ProbeAsync(string inputUrl, MediaJobOptions opts, CancellationToken ct)
     {
@@ -178,6 +244,7 @@ public sealed class ThumbnailJobService : IThumbnailJobService
         string inputUrl,
         string outputPath,
         TimeSpan seekOffset,
+        CropRect? crop,
         MediaJobOptions opts,
         CancellationToken ct)
     {
@@ -189,11 +256,24 @@ public sealed class ThumbnailJobService : IThumbnailJobService
             "-y",
             "-ss", seekOffset.TotalSeconds.ToString("F3", CultureInfo.InvariantCulture),
             "-i", inputUrl,
+        };
+
+        // Poster and master go through the SAME filter builder. The feed renders the poster,
+        // so a poster that kept the bars while the video lost them would make the whole
+        // feature look broken exactly where most people see it.
+        if (crop is not null)
+        {
+            args.Add("-vf");
+            args.Add(MediaFilters.Crop(crop));
+        }
+
+        args.AddRange(new[]
+        {
             "-frames:v", "1",
             "-q:v", "4",
             "-f", "mjpeg",
             outputPath,
-        };
+        });
 
         var result = await _ffmpeg.RunAsync(opts.FfmpegPath, args, opts.ProcessTimeout, ct);
         if (result.ExitCode != 0 || !File.Exists(outputPath) || new FileInfo(outputPath).Length <= 0)

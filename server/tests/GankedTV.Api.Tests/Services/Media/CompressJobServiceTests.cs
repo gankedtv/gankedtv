@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Runtime.CompilerServices;
 using FluentAssertions;
 using GankedTV.Api.Services.Media;
 using GankedTV.Api.Services.ObjectStorage;
@@ -130,6 +131,114 @@ public class CompressJobServiceTests
 
         seenArgs.Should().ContainInOrder("-ss", "2.000");
         seenArgs.Should().ContainInOrder("-t", "4.500");
+    }
+
+    // ---- crop ----
+
+    [Fact]
+    public void BuildCompressArgs_WithCrop_EmitsCropFilter()
+    {
+        var args = CompressJobService.BuildCompressArgs(
+            "in", "o.mp4", sourceHeight: 1440, new MediaJobOptions { MaxHeight = 1080 },
+            crop: new CropRect(0.1279, 0, 0.7442, 1));
+
+        var vf = args.IndexOf("-vf");
+        vf.Should().BeGreaterThanOrEqualTo(0);
+        args[vf + 1].Should().Contain("crop=");
+    }
+
+    [Fact]
+    public void BuildCompressArgs_CropAndScale_ShareOneVfSlotWithCropFirst()
+    {
+        // Two -vf flags would silently drop the first. And crop MUST precede scale: capping the
+        // height of the source frame instead of the kept region leaves an oversized output.
+        var args = CompressJobService.BuildCompressArgs(
+            "in", "o.mp4", sourceHeight: 1440, new MediaJobOptions { MaxHeight = 1080 },
+            crop: new CropRect(0.1279, 0, 0.7442, 1));
+
+        args.Count(a => a == "-vf").Should().Be(1);
+        var chain = args[args.IndexOf("-vf") + 1];
+        chain.IndexOf("crop=", StringComparison.Ordinal)
+            .Should().BeLessThan(chain.IndexOf("scale=", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void BuildCompressArgs_CropWithinHeightCap_OmitsScale()
+    {
+        // SourceHeight is already POST-crop by the time compress claims the row, so a crop that
+        // left the height under the cap must not pull in a pointless rescale.
+        var args = CompressJobService.BuildCompressArgs(
+            "in", "o.mp4", sourceHeight: 720, new MediaJobOptions { MaxHeight = 1080 },
+            crop: new CropRect(0.1, 0, 0.8, 1));
+
+        var chain = args[args.IndexOf("-vf") + 1];
+        chain.Should().StartWith("crop=").And.NotContain("scale=");
+    }
+
+    [Fact]
+    public void BuildCompressArgs_TrimAndCrop_AreOrthogonal()
+    {
+        // Trim rides -ss/-t and crop rides -vf, so a combined edit needs no ordering care.
+        var args = CompressJobService.BuildCompressArgs(
+            "in", "o.mp4", 720, new MediaJobOptions(),
+            trimStartSecs: 2, trimEndSecs: 6.5,
+            crop: new CropRect(0.1, 0, 0.8, 1));
+
+        args.IndexOf("-ss").Should().BeLessThan(args.IndexOf("-i"));
+        args[args.IndexOf("-t") + 1].Should().Be("4.500");
+        args[args.IndexOf("-vf") + 1].Should().Contain("crop=");
+    }
+
+    [Fact]
+    public async Task CompressAsync_PassesJobCropToFfmpeg()
+    {
+        var (svc, seenArgs) = BuildCapturing(new MediaJobOptions());
+        var job = new ClaimedMediaJob(Guid.NewGuid(), Guid.NewGuid(), null, "user/clip.mp4", 720, 1,
+            Crop: new CropRect(0.1279, 0, 0.7442, 1));
+
+        await svc.CompressAsync(job, CancellationToken.None);
+
+        seenArgs.Value.Should().NotBeNull();
+        seenArgs.Value!.Should().Contain("-vf");
+        seenArgs.Value![seenArgs.Value.ToList().IndexOf("-vf") + 1].Should().Contain("crop=");
+    }
+
+    [Fact]
+    public async Task CompressAsync_CropDisabled_IgnoresTheStoredRect()
+    {
+        // MEDIA_CROP_ENABLED=false is a kill switch: a rect already sitting on the row from
+        // before the flag flipped must not still be applied.
+        var (svc, seenArgs) = BuildCapturing(new MediaJobOptions { CropEnabled = false });
+        var job = new ClaimedMediaJob(Guid.NewGuid(), Guid.NewGuid(), null, "user/clip.mp4", 720, 1,
+            Crop: new CropRect(0.1279, 0, 0.7442, 1));
+
+        await svc.CompressAsync(job, CancellationToken.None);
+
+        seenArgs.Value.Should().NotBeNull();
+        seenArgs.Value!.Should().NotContain("-vf");
+    }
+
+    // Wires a service whose ffmpeg stub records the args it was handed and writes a non-empty
+    // output file so CompressAsync gets past its "did the encode produce anything" check.
+    private static (CompressJobService Svc, StrongBox<IReadOnlyList<string>?> Args) BuildCapturing(
+        MediaJobOptions opts)
+    {
+        var storage = Substitute.For<IObjectStorageService>();
+        storage.GetPresignedGetUrlForWorker(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan?>())
+            .Returns("http://minio/clips/orig.mp4?sig=x");
+
+        var box = new StrongBox<IReadOnlyList<string>?>(null);
+        var ffmpeg = Substitute.For<IFfmpegRunner>();
+        ffmpeg.RunAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                var args = (IReadOnlyList<string>)call[1];
+                box.Value = args;
+                File.WriteAllText(args[^1], "compressed-bytes");
+                return new FfmpegResult(0, "", "");
+            });
+
+        return (Build(storage, ffmpeg, opts), box);
     }
 
     [Fact]

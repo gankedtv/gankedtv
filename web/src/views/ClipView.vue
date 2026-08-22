@@ -19,6 +19,7 @@ import SectionHeader from '@/components/SectionHeader.vue'
 import ClipCard from '@/components/ClipCard.vue'
 import ClipEditDialog from '@/components/ClipEditDialog.vue'
 import ClipTrimDialog from '@/components/ClipTrimDialog.vue'
+import ClipCropDialog from '@/components/ClipCropDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ReportDialog from '@/components/ReportDialog.vue'
 import CommentsSection from '@/components/CommentsSection.vue'
@@ -467,8 +468,25 @@ const authorColor = computed(() => {
 // Hoisted so the template doesn't re-parse the URL on every render.
 const authorAvatarUrl = computed(() => safeImageUrl(clip.value?.author.avatarUrl))
 
+// Render the player at the clip's REAL aspect ratio rather than a hard-coded 16:9. Before crop
+// existed every master was effectively widescreen, so aspect-video was harmless; a 21:9 or 9:16
+// clip in a 16:9 box letterboxes on all four sides and undoes the crop the user just paid an
+// encode for. width/height have been served all along with no consumers — this is their job.
+//
+// Inline aspect-ratio beats Plyr's height:auto, which resolves against the video's intrinsic
+// size only after metadata loads (so the box jumps). maxHeight keeps a tall 9:16 crop from
+// pushing the whole meta block below the fold. Falls back to the aspect-video class for older
+// rows whose dimensions the pipeline never recorded.
+const playerStyle = computed(() => {
+  const w = clip.value?.width
+  const h = clip.value?.height
+  if (!w || !h || w <= 0 || h <= 0) return null
+  return { aspectRatio: `${w} / ${h}`, maxHeight: '75vh', margin: '0 auto' }
+})
+
 const editOpen = ref(false)
 const trimOpen = ref(false)
+const cropOpen = ref(false)
 const deleteOpen = ref(false)
 const deleting = ref(false)
 
@@ -487,6 +505,7 @@ function onReportSubmitted() {
 const ownerMenuItems = computed<KebabMenuItem[]>(() => [
   { label: 'Edit', onClick: openEdit },
   { label: 'Trim video', onClick: openTrim },
+  { label: 'Crop video', onClick: openCrop },
   { label: 'Delete', variant: 'danger', onClick: openDelete },
 ])
 
@@ -508,10 +527,19 @@ function openTrim() {
   trimOpen.value = true
 }
 
+function openCrop() {
+  cropOpen.value = true
+}
+
 // The clip has left 'ready', so the detail route 404s until the pipeline finishes. Reloading
 // drops straight into the existing processing state, which polls until the re-cut lands.
 function onTrimmed() {
   fireToast('Re-cutting your clip…')
+  void loadClip()
+}
+
+function onCropped() {
+  fireToast('Re-cropping your clip…')
   void loadClip()
 }
 
@@ -571,7 +599,13 @@ async function onConfirmDelete() {
     <div v-else-if="clip">
       <!-- Player -->
       <div class="overflow-hidden rounded-lg border border-border bg-black">
-        <video ref="videoEl" controls playsinline class="block aspect-video w-full"></video>
+        <video
+          ref="videoEl"
+          controls
+          playsinline
+          :style="playerStyle"
+          :class="['block w-full', playerStyle ? '' : 'aspect-video']"
+        ></video>
       </div>
 
       <!-- Meta block -->
@@ -760,6 +794,15 @@ async function onConfirmDelete() {
       :open="trimOpen"
       @close="trimOpen = false"
       @trimmed="onTrimmed"
+      @error="onEditError"
+    />
+
+    <ClipCropDialog
+      v-if="clip"
+      :clip="clip"
+      :open="cropOpen"
+      @close="cropOpen = false"
+      @cropped="onCropped"
       @error="onEditError"
     />
 

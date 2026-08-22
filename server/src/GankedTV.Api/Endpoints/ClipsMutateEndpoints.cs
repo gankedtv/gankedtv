@@ -12,6 +12,7 @@ using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Services.Tags;
 using GankedTV.Api.Validation;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -30,17 +31,21 @@ public static class ClipsMutateEndpoints
             .RequireRateLimiting(ClipsRateLimiting.ClipsWritePolicy);
         group.MapPatch("/{id:guid}", PatchClip).WithValidation<UpdateClipRequest>();
         group.MapPost("/{id:guid}/trim", TrimClip).WithValidation<TrimClipRequest>();
+        group.MapPost("/{id:guid}/edit", EditClip);
         group.MapDelete("/{id:guid}", DeleteClip);
         return app;
     }
 
+    // Thin forwarder onto /edit, kept so shipped web and rewynd builds keep working with an
+    // identical body and response shape. Both offsets stay [Required] here — that was always
+    // this route's contract, and loosening it would change the error a client already handles.
     private static async Task<IResult> TrimClip(
         Guid id,
         // Nullable for the same reason as PatchClip: a literal JSON `null` body must reach the
         // ValidationEndpointFilter rather than surface as a framework-generated 400.
         [FromBody] TrimClipRequest? req,
         ClaimsPrincipal principal,
-        IClipTrimService trimmer,
+        IClipEditService editor,
         ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
@@ -56,27 +61,70 @@ public static class ClipsMutateEndpoints
             return ProblemResults.InvalidBody();
         }
 
-        var error = await trimmer.TrimAsync(userId, id, new ClipTrimInput(start, end), ct);
+        var error = await editor.EditAsync(
+            userId, id, new ClipEdits(new ClipTrimInput(start, end)), ct);
         return error is null
             ? Results.Ok(new TrimClipResponse(id, ClipStatuses.Processing))
-            : MapTrimError(error.Value, loggerFactory);
+            : MapEditError(error.Value, loggerFactory);
     }
 
-    private static IResult MapTrimError(ClipTrimError error, ILoggerFactory loggerFactory) => error switch
+    // Re-cut and/or re-crop in ONE re-encode. No WithValidation<T>: every field is optional at
+    // the DataAnnotations level and "at least one operation" isn't expressible there, so the
+    // whole shape check lives in the handler and the service.
+    private static async Task<IResult> EditClip(
+        Guid id,
+        [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] EditClipRequest? req,
+        ClaimsPrincipal principal,
+        IClipEditService editor,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
     {
-        ClipTrimError.NotFound => ProblemResults.NotFound("not_found"),
-        ClipTrimError.Forbidden => ProblemResults.Forbidden("forbidden"),
-        ClipTrimError.Moderated => ProblemResults.Forbidden("moderated"),
-        ClipTrimError.InvalidState => ProblemResults.Conflict("invalid_state"),
-        ClipTrimError.InvalidTrim => ProblemResults.BadRequest("invalid_trim"),
-        ClipTrimError.TrimUnavailable => ProblemResults.BadRequest("trim_unavailable"),
-        _ => UnmappedTrimError(error, loggerFactory),
+        if (!principal.TryGetUserId(out var userId))
+        {
+            return ProblemResults.Unauthorized("unauthorized");
+        }
+
+        ClipTrimInput? trim = null;
+        if (req is { TrimStartSeconds: not null } or { TrimEndSeconds: not null })
+        {
+            if (req.TrimStartSeconds is not { } start || req.TrimEndSeconds is not { } end)
+            {
+                return ProblemResults.BadRequest("invalid_trim");
+            }
+            trim = new ClipTrimInput(start, end);
+        }
+
+        var (crop, invalidCrop) = ClipCropValidation.TryParse(
+            req?.CropX, req?.CropY, req?.CropWidth, req?.CropHeight);
+        if (invalidCrop)
+        {
+            return ProblemResults.BadRequest("invalid_crop");
+        }
+
+        var error = await editor.EditAsync(userId, id, new ClipEdits(trim, crop), ct);
+        return error is null
+            ? Results.Ok(new TrimClipResponse(id, ClipStatuses.Processing))
+            : MapEditError(error.Value, loggerFactory);
+    }
+
+    private static IResult MapEditError(ClipEditError error, ILoggerFactory loggerFactory) => error switch
+    {
+        ClipEditError.NotFound => ProblemResults.NotFound("not_found"),
+        ClipEditError.Forbidden => ProblemResults.Forbidden("forbidden"),
+        ClipEditError.Moderated => ProblemResults.Forbidden("moderated"),
+        ClipEditError.InvalidState => ProblemResults.Conflict("invalid_state"),
+        ClipEditError.InvalidTrim => ProblemResults.BadRequest("invalid_trim"),
+        ClipEditError.TrimUnavailable => ProblemResults.BadRequest("trim_unavailable"),
+        ClipEditError.InvalidCrop => ProblemResults.BadRequest("invalid_crop"),
+        ClipEditError.CropUnavailable => ProblemResults.BadRequest("crop_unavailable"),
+        ClipEditError.NoOperations => ProblemResults.BadRequest("no_operations"),
+        _ => UnmappedEditError(error, loggerFactory),
     };
 
-    private static IResult UnmappedTrimError(ClipTrimError error, ILoggerFactory loggerFactory)
+    private static IResult UnmappedEditError(ClipEditError error, ILoggerFactory loggerFactory)
     {
         loggerFactory.CreateLogger(LogCategory)
-            .LogError("Unmapped ClipTrimError value {Error}; add a case to MapTrimError.", error);
+            .LogError("Unmapped ClipEditError value {Error}; add a case to MapEditError.", error);
         return ProblemResults.Internal("unmapped_error", $"Unhandled error: {error}");
     }
 

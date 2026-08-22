@@ -923,4 +923,326 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
+
+    [Fact]
+    public async Task Trim_LeavesCropColumnsNull()
+    {
+        // The forwarder must behave exactly as it always did: shipped web and rewynd builds
+        // send this body and expect a trim-only edit.
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, durationSecs: 30);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/trim", TrimBody(1, 5));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var db = _fx.CreateContext();
+        var clip = await db.Clips.AsNoTracking().FirstAsync(c => c.Id == clipId);
+        clip.TrimStartSecs.Should().Be(1);
+        clip.CropX.Should().BeNull();
+        clip.CropWidth.Should().BeNull();
+    }
+
+    // ---- POST /clips/{id}/edit ----
+
+    private static object CropBody(double x, double y, double w, double h) =>
+        new { cropX = x, cropY = y, cropWidth = w, cropHeight = h };
+
+    private static object TrimAndCropBody(double start, double end, double x, double y, double w, double h) =>
+        new { trimStartSeconds = start, trimEndSeconds = end, cropX = x, cropY = y, cropWidth = w, cropHeight = h };
+
+    [Fact]
+    public async Task Edit_CropOnly_RequeuesWithCropAndClearsTrim()
+    {
+        // THE double-cut regression. A crop-only edit that left a previous trim in place would
+        // re-apply an already-applied range to the already-trimmed master and cut it twice.
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, durationSecs: 30);
+
+        await using (var seed = _fx.CreateContext())
+        {
+            await seed.Clips.Where(c => c.Id == clipId)
+                .ExecuteUpdateAsync(x => x
+                    .SetProperty(c => c.TrimStartSecs, (double?)2)
+                    .SetProperty(c => c.TrimEndSecs, (double?)9));
+        }
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/edit", CropBody(0.1279, 0, 0.7442, 1));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var db = _fx.CreateContext();
+        var clip = await db.Clips.AsNoTracking().FirstAsync(c => c.Id == clipId);
+        clip.Status.Should().Be(ClipStatuses.Processing);
+        clip.CropX.Should().BeApproximately(0.1279, 1e-9);
+        clip.CropWidth.Should().BeApproximately(0.7442, 1e-9);
+        clip.TrimStartSecs.Should().BeNull("the stale range would otherwise cut the master a second time");
+        clip.TrimEndSecs.Should().BeNull();
+        clip.EditCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Edit_TrimAndCrop_AppliesBothInOneGeneration()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, durationSecs: 30);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync(
+            $"/clips/{clipId}/edit", TrimAndCropBody(2, 9, 0.1279, 0, 0.7442, 1));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var db = _fx.CreateContext();
+        var clip = await db.Clips.AsNoTracking().FirstAsync(c => c.Id == clipId);
+        clip.TrimStartSecs.Should().Be(2);
+        clip.TrimEndSecs.Should().Be(9);
+        clip.CropX.Should().BeApproximately(0.1279, 1e-9);
+        // One re-encode, so one generation of quality loss — not two.
+        clip.EditCount.Should().Be(1);
+        clip.EditedAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Edit_TrimOnly_ClearsAnyPreviousCrop()
+    {
+        // Symmetric to the crop-only case: all six columns are written unconditionally, so a
+        // trim-only edit must not silently re-apply a crop the user has moved on from.
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, durationSecs: 30);
+
+        await using (var seed = _fx.CreateContext())
+        {
+            await seed.Clips.Where(c => c.Id == clipId)
+                .ExecuteUpdateAsync(x => x
+                    .SetProperty(c => c.CropX, (double?)0.1)
+                    .SetProperty(c => c.CropY, (double?)0)
+                    .SetProperty(c => c.CropWidth, (double?)0.8)
+                    .SetProperty(c => c.CropHeight, (double?)1));
+        }
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/edit", TrimBody(1, 5));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var db = _fx.CreateContext();
+        var clip = await db.Clips.AsNoTracking().FirstAsync(c => c.Id == clipId);
+        clip.CropX.Should().BeNull();
+        clip.CropHeight.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Edit_EmptyBody_Returns400NoOperations()
+    {
+        // Requeuing through a full re-encode to apply no change would burn a generation of
+        // quality for free.
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, durationSecs: 30);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/edit", new { });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("no_operations");
+
+        await using var db = _fx.CreateContext();
+        (await db.Clips.AsNoTracking().Where(c => c.Id == clipId).Select(c => c.Status).FirstAsync())
+            .Should().Be(ClipStatuses.Ready);
+    }
+
+    [Theory]
+    // Partial rect.
+    [InlineData(0.1, null, 0.5, 0.5)]
+    [InlineData(0.1, 0.1, null, 0.5)]
+    // Out of range. (Doubles spelled out: a bare 0 boxes as int and won't bind to double?.)
+    [InlineData(-0.1, 0.0, 0.5, 0.5)]
+    [InlineData(0.6, 0.0, 0.5, 0.5)]
+    // Below minimum extent.
+    [InlineData(0.0, 0.0, 0.01, 0.5)]
+    public async Task Edit_InvalidCrop_Returns400(double? x, double? y, double? w, double? h)
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, durationSecs: 30);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync(
+            $"/clips/{clipId}/edit",
+            new { cropX = x, cropY = y, cropWidth = w, cropHeight = h });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("invalid_crop");
+    }
+
+    [Fact]
+    public async Task Edit_MissingTrimOffset_Returns400InvalidTrim()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, durationSecs: 30);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/edit", new { trimStartSeconds = 1.0 });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("invalid_trim");
+    }
+
+    [Fact]
+    public async Task Edit_CropWithCropDisabled_Returns400CropUnavailable()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, durationSecs: 30);
+
+        await using var factory = new AuthApiFactory(_fx.ConnectionString, _storage, configureServices: services =>
+            services.Configure<GankedTV.Api.Services.Media.MediaJobOptions>(o => o.CropEnabled = false));
+        using var client = AuthTestHelpers.CreateBearerClient(factory, token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/edit", CropBody(0.1, 0, 0.8, 1));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("crop_unavailable");
+    }
+
+    [Fact]
+    public async Task Edit_CropWithTranscodeDisabled_Returns400CropUnavailable()
+    {
+        // Crop rides the compress re-encode, so no compression means nothing to attach it to.
+        // The error names the operation the caller actually asked for, not the trim.
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, durationSecs: 30);
+
+        await using var factory = new AuthApiFactory(_fx.ConnectionString, _storage, configureServices: services =>
+            services.Configure<GankedTV.Api.Services.Media.MediaJobOptions>(o => o.TranscodeEnabled = false));
+        using var client = AuthTestHelpers.CreateBearerClient(factory, token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/edit", CropBody(0.1, 0, 0.8, 1));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("crop_unavailable");
+    }
+
+    [Fact]
+    public async Task Edit_CropDisabled_StillAllowsTrimOnly()
+    {
+        // The two kill switches are independent: disabling crop must not take trimming down.
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, durationSecs: 30);
+
+        await using var factory = new AuthApiFactory(_fx.ConnectionString, _storage, configureServices: services =>
+            services.Configure<GankedTV.Api.Services.Media.MediaJobOptions>(o => o.CropEnabled = false));
+        using var client = AuthTestHelpers.CreateBearerClient(factory, token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/edit", TrimBody(1, 5));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Edit_NonOwner_Returns403()
+    {
+        await _fx.ResetAsync();
+        var (ownerId, _) = await SeedUserAndIssueTokenAsync("owner");
+        var (_, otherToken) = await SeedUserAndIssueTokenAsync("intruder");
+        var clipId = await SeedClipAsync(ownerId, durationSecs: 30);
+
+        using var client = ClientWithBearer(otherToken);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/edit", CropBody(0.1, 0, 0.8, 1));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Edit_HiddenClip_Returns403Moderated()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, visibility: ClipVisibilities.Hidden, durationSecs: 30);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/edit", CropBody(0.1, 0, 0.8, 1));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("moderated");
+    }
+
+    [Fact]
+    public async Task Edit_ClipMissing_Returns404()
+    {
+        await _fx.ResetAsync();
+        var (_, token) = await SeedUserAndIssueTokenAsync();
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{Guid.NewGuid()}/edit", CropBody(0.1, 0, 0.8, 1));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Edit_NoBearer_Returns401()
+    {
+        await _fx.ResetAsync();
+        using var client = _factory!.CreateClient();
+
+        var resp = await client.PostAsJsonAsync($"/clips/{Guid.NewGuid()}/edit", CropBody(0.1, 0, 0.8, 1));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Theory]
+    [InlineData(ClipStatuses.Processing)]
+    [InlineData(ClipStatuses.Transcoding)]
+    [InlineData(ClipStatuses.Failed)]
+    public async Task Edit_NotReady_Returns409(string status)
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, status: status, durationSecs: 30);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/edit", CropBody(0.1, 0, 0.8, 1));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public async Task Edit_SecondCallWhileProcessing_Returns409()
+    {
+        // The status guard serialises concurrent re-edits — the second sees 'processing'.
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, durationSecs: 30);
+
+        using var client = ClientWithBearer(token);
+        (await client.PostAsJsonAsync($"/clips/{clipId}/edit", CropBody(0.1, 0, 0.8, 1)))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        var second = await client.PostAsJsonAsync($"/clips/{clipId}/edit", CropBody(0.2, 0, 0.6, 1));
+
+        second.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        await using var db = _fx.CreateContext();
+        (await db.Clips.AsNoTracking().Where(c => c.Id == clipId).Select(c => c.EditCount).FirstAsync())
+            .Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Edit_PurgesCachedHlsLadder()
+    {
+        // A ladder built from the pre-crop master would keep serving the bars to devices that
+        // can't decode the master.
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, durationSecs: 30);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/edit", CropBody(0.1, 0, 0.8, 1));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        await _storage.Received(1).DeleteByPrefixAsync(
+            Arg.Any<string>(), $"{clipId:N}/", Arg.Any<CancellationToken>());
+    }
 }

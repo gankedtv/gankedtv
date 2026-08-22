@@ -34,6 +34,9 @@ public static class ClipsReadEndpoints
     // two lifetimes aligned means a feed page that's still fresh enough to play the
     // video still has working poster images.
     private static readonly TimeSpan ThumbnailUrlLifetime = TimeSpan.FromHours(1);
+    // Just long enough to cover CropDetectTimeout plus ffmpeg's own connection setup; the URL
+    // exists only for the duration of one detection run.
+    private static readonly TimeSpan CropSuggestionUrlLifetime = TimeSpan.FromMinutes(5);
 
     public static IEndpointRouteBuilder MapClipsReadEndpoints(this IEndpointRouteBuilder app)
     {
@@ -49,6 +52,10 @@ public static class ClipsReadEndpoints
         // miss), so it rides the same per-IP view rate limit to bound abuse.
         group.MapGet("/{id:guid}/stream", GetStream)
             .RequireRateLimiting(ClipsRateLimiting.ClipsViewPolicy);
+        // Owner-only, and it forks ffmpeg — so it rides the write limit, not the view one.
+        group.MapGet("/{id:guid}/crop-suggestion", GetCropSuggestion)
+            .RequireAuthorization()
+            .RequireRateLimiting(ClipsRateLimiting.ClipsWritePolicy);
         return app;
     }
 
@@ -75,6 +82,65 @@ public static class ClipsReadEndpoints
             .SingleOrDefaultAsync(ct);
 
         return row is null ? ProblemResults.NotFound("not_found") : Results.Ok(row);
+    }
+
+    // Advisory "remove black bars" suggestion for the crop editor. Owner-only, and allowed on
+    // 'draft' as well as 'ready' so the upload wizard can offer it before the clip is published
+    // (at that point the raw upload is the only thing in storage). Never 5xx on a detection
+    // failure and never writes anything: a miss just means the user crops by hand.
+    private static async Task<IResult> GetCropSuggestion(
+        Guid id,
+        ClaimsPrincipal principal,
+        GankedTvDbContext db,
+        IObjectStorageService storage,
+        IOptions<S3Options> s3,
+        IOptionsMonitor<MediaJobOptions> mediaJobs,
+        ICropDetectService cropDetect,
+        CancellationToken ct)
+    {
+        if (!principal.TryGetUserId(out var userId))
+        {
+            return ProblemResults.Unauthorized("unauthorized");
+        }
+
+        var opts = mediaJobs.CurrentValue;
+        if (!opts.CropDetectEnabled)
+        {
+            return ProblemResults.ServiceUnavailable("crop_detect_unavailable");
+        }
+
+        var clip = await db.Clips.AsNoTracking()
+            .Where(c => c.Id == id && c.UserId == userId
+                && (c.Status == ClipStatuses.Draft || c.Status == ClipStatuses.Ready)
+                && c.Visibility != ClipVisibilities.Hidden)
+            .Select(c => new { c.VideoKey, c.DurationSecs })
+            .SingleOrDefaultAsync(ct);
+
+        if (clip is null)
+        {
+            return ProblemResults.NotFound("not_found");
+        }
+
+        var videoUrl = storage.GetPresignedGetUrlForWorker(
+            s3.Value.ClipsBucket, clip.VideoKey, CropSuggestionUrlLifetime);
+
+        // Bound the whole detection independently of the request's own cancellation so a slow
+        // ffmpeg can't hold the connection past the configured budget.
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        budget.CancelAfter(opts.CropDetectTimeout);
+
+        CropSuggestion suggestion;
+        try
+        {
+            suggestion = await cropDetect.DetectAsync(videoUrl, clip.DurationSecs, budget.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // Budget blown, caller still connected — degrade rather than error.
+            suggestion = new CropSuggestion(false, null, null, null, 0);
+        }
+
+        return Results.Ok(CropSuggestionResponse.From(suggestion));
     }
 
     // Just-in-time H.264 stream for devices that can't decode a clip's stored master (e.g.

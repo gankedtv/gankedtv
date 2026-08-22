@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
 using GankedTV.Api.Auth.ApiKeys;
+using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Tests.TestSupport;
 using Microsoft.EntityFrameworkCore;
@@ -110,6 +111,76 @@ public class ApiKeyUploadAuthTests : IAsyncLifetime
         var clip = await db.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
         clip.UserId.Should().Be(userId);
         clip.TrimStartSecs.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Complete_WithCrop_ViaApiKey_IsAccepted()
+    {
+        // Crop deliberately diverges from trim here. rewynd trims locally because that genuinely
+        // saves upload bytes; cropping pillarbox saves almost nothing (black encodes to near-zero
+        // bitrate) while costing a full re-encode on the user's gaming PC — and the server
+        // re-encodes anyway. So the rect rides along and the compress stage applies it.
+        await _fx.ResetAsync();
+        var (userId, rawKey, jwtClient) = await SeedUserAndMintKeyAsync();
+        jwtClient.Dispose();
+
+        _storage.GetObjectMetadataAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new ObjectMetadata(1024, "video/mp4"));
+
+        using var client = _factory!.CreateClient();
+        client.DefaultRequestHeaders.Add(ApiKeyDefaults.HeaderName, rawKey);
+        var create = await client.PostAsJsonAsync("/clips", new { title = "ultrawide capture" });
+        var clipId = (await create.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/complete",
+            new { cropX = 0.1, cropY = 0.0, cropWidth = 0.8, cropHeight = 1.0 });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var db = _fx.CreateContext();
+        var clip = await db.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.UserId.Should().Be(userId);
+        clip.CropX.Should().BeApproximately(0.1, 1e-9);
+        clip.CropWidth.Should().BeApproximately(0.8, 1e-9);
+    }
+
+    [Fact]
+    public async Task Edit_WithCrop_ViaApiKey_IsAccepted()
+    {
+        // The original ask: an endpoint rewynd can call to crop natively. API-key auth is
+        // accepted on /edit for the same reason it is on /complete.
+        await _fx.ResetAsync();
+        var (userId, rawKey, jwtClient) = await SeedUserAndMintKeyAsync();
+        jwtClient.Dispose();
+
+        _storage.GetObjectMetadataAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new ObjectMetadata(1024, "video/mp4"));
+
+        using var client = _factory!.CreateClient();
+        client.DefaultRequestHeaders.Add(ApiKeyDefaults.HeaderName, rawKey);
+        var create = await client.PostAsJsonAsync("/clips", new { title = "ultrawide capture" });
+        var clipId = (await create.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        (await client.PostAsJsonAsync($"/clips/{clipId}/complete", new { })).EnsureSuccessStatusCode();
+
+        // Walk the clip to 'ready' the way the pipeline would, so /edit's state guard passes.
+        await using (var seed = _fx.CreateContext())
+        {
+            await seed.Clips.Where(c => c.Id == clipId)
+                .ExecuteUpdateAsync(x => x
+                    .SetProperty(c => c.Status, ClipStatuses.Ready)
+                    .SetProperty(c => c.ThumbnailKey, $"thumbs/{clipId}.jpg")
+                    .SetProperty(c => c.DurationSecs, (short?)30));
+        }
+
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/edit",
+            new { cropX = 0.1279, cropY = 0.0, cropWidth = 0.7442, cropHeight = 1.0 });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var db = _fx.CreateContext();
+        var clip = await db.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.UserId.Should().Be(userId);
+        clip.Status.Should().Be(ClipStatuses.Processing);
+        clip.CropX.Should().BeApproximately(0.1279, 1e-9);
+        clip.EditCount.Should().Be(1);
     }
 
     [Fact]
