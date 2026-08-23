@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { AuthorSummary } from './clips'
+import type { AuthorSummary, LikeResult } from './clips'
 
 export interface CommentItem {
   id: string
@@ -18,6 +18,9 @@ export interface CommentItem {
   // preview instead of re-fetching it.
   repliesNextCursor: string | null
   deleted: boolean
+  likeCount: number
+  // Always false for a signed-out viewer.
+  likedByMe: boolean
 }
 
 export interface CommentListResponse {
@@ -65,5 +68,13 @@ export const comments = {
 
   delete(commentId: string): Promise<void> {
     return api<void>(`/comments/${encodeURIComponent(commentId)}`, { method: 'DELETE' })
+  },
+
+  like(commentId: string): Promise<LikeResult> {
+    return api<LikeResult>(`/comments/${encodeURIComponent(commentId)}/like`, { method: 'POST' })
+  },
+
+  unlike(commentId: string): Promise<LikeResult> {
+    return api<LikeResult>(`/comments/${encodeURIComponent(commentId)}/like`, { method: 'DELETE' })
   },
 }

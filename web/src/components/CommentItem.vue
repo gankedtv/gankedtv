@@ -4,18 +4,21 @@ import type { CommentItem } from '@/api/comments'
 import { formatRelativeTime } from '@/lib/format'
 import UserAvatar from '@/components/UserAvatar.vue'
 import AuthorHandle from '@/components/AuthorHandle.vue'
+import IconHeart from '@/components/icons/IconHeart.vue'
 
 const props = defineProps<{
   comment: CommentItem
   currentUserId: string | null
   // Top-level rows expose a Reply affordance; replies (one level deep) do not.
   canReply: boolean
+  likeBusy?: boolean
 }>()
 
 const emit = defineEmits<{
   delete: [id: string]
   reply: [id: string]
   report: [id: string]
+  like: [id: string]
 }>()
 
 const isOwn = computed(
@@ -54,6 +57,21 @@ const isOwn = computed(
       </p>
 
       <div class="mt-1 flex items-center gap-3">
+        <!-- Hidden on `[deleted]` rows: there is no body left to endorse, and the endpoint
+             404s them anyway. The count only appears once someone has liked. -->
+        <button
+          v-if="!comment.deleted"
+          type="button"
+          class="flex cursor-pointer items-center gap-1 text-[11px] font-medium transition-colors duration-150"
+          :class="comment.likedByMe ? 'text-accent' : 'text-text-muted hover:text-accent'"
+          :aria-pressed="comment.likedByMe"
+          :aria-label="comment.likedByMe ? 'Unlike comment' : 'Like comment'"
+          :disabled="likeBusy"
+          @click="emit('like', comment.id)"
+        >
+          <IconHeart :size="12" />
+          <span v-if="comment.likeCount > 0">{{ comment.likeCount }}</span>
+        </button>
         <button
           v-if="canReply"
           type="button"

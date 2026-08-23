@@ -12,6 +12,8 @@ const actionLabel = computed(() => {
       return 'liked your clip'
     case 'comment':
       return 'commented on your clip'
+    case 'comment_like':
+      return 'liked your comment'
     case 'follow':
       return 'started following you'
     default:

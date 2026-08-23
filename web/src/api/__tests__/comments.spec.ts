@@ -178,4 +178,46 @@ describe('api/comments', () => {
       })
     })
   })
+
+  describe('like() / unlike()', () => {
+    it('POSTs /comments/{id}/like and returns the server count', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ likeCount: 4, liked: true })),
+      )
+
+      const result = await comments.like(COMMENT_ID)
+
+      expect(result).toEqual({ likeCount: 4, liked: true })
+      const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(url).toBe(`${BASE_URL}/comments/${COMMENT_ID}/like`)
+      expect(init.method).toBe('POST')
+    })
+
+    it('DELETEs /comments/{id}/like', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ likeCount: 3, liked: false })),
+      )
+
+      const result = await comments.unlike(COMMENT_ID)
+
+      expect(result).toEqual({ likeCount: 3, liked: false })
+      const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(url).toBe(`${BASE_URL}/comments/${COMMENT_ID}/like`)
+      expect(init.method).toBe('DELETE')
+    })
+
+    it('throws ApiError on 404 for a deleted or hidden comment', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ code: 'not_found' }, 404)),
+      )
+
+      await expect(comments.like(COMMENT_ID)).rejects.toMatchObject({
+        status: 404,
+        body: { code: 'not_found' },
+      })
+    })
+  })
 })

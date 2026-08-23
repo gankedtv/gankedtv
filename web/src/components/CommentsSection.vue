@@ -36,6 +36,9 @@ const replyPosting = ref(false)
 const replyCursors = ref<Record<string, string | null>>({})
 // Per-thread in-flight guard so rapid "Show more" clicks can't fire overlapping requests.
 const replyLoading = ref<Record<string, boolean>>({})
+// Per-comment like guard, keyed the same way — a single boolean would block liking a second
+// comment while the first is still in flight.
+const likeBusy = ref<Record<string, boolean>>({})
 
 // Delete confirmation
 const pendingDelete = ref<string | null>(null)
@@ -121,6 +124,8 @@ function buildOptimistic(body: string, parentId: string | null): CommentItem {
     replies: [],
     repliesNextCursor: null,
     deleted: false,
+    likeCount: 0,
+    likedByMe: false,
   }
 }
 
@@ -241,6 +246,49 @@ async function confirmDelete() {
   }
 }
 
+async function toggleLike(commentId: string) {
+  if (!auth.user) return goLogin()
+  if (likeBusy.value[commentId]) return
+
+  const target = findComment(commentId)
+  if (!target || target.deleted) return
+
+  const wasLiked = target.likedByMe
+  likeBusy.value[commentId] = true
+  target.likedByMe = !wasLiked
+  target.likeCount = Math.max(0, target.likeCount + (wasLiked ? -1 : 1))
+
+  try {
+    const result = wasLiked ? await comments.unlike(commentId) : await comments.like(commentId)
+    // Re-locate rather than reusing `target`: the clip can change mid-request, in which case
+    // the row we optimistically edited belongs to a list that is no longer rendered.
+    const current = findComment(commentId)
+    if (current) {
+      current.likeCount = result.likeCount
+      current.likedByMe = result.liked
+    }
+  } catch {
+    const current = findComment(commentId)
+    if (current) {
+      current.likedByMe = wasLiked
+      current.likeCount = Math.max(0, current.likeCount + (wasLiked ? 1 : -1))
+    }
+    actionError.value = 'Could not update your like — try again.'
+  } finally {
+    delete likeBusy.value[commentId]
+  }
+}
+
+// Threads are two levels deep, so a linear walk over both is enough.
+function findComment(id: string): CommentItem | null {
+  for (const thread of threads.value) {
+    if (thread.id === id) return thread
+    const reply = thread.replies.find((r) => r.id === id)
+    if (reply) return reply
+  }
+  return null
+}
+
 // Soft-delete in place: top-level rows stay visible as `[deleted]` so replies don't
 // collapse; a deleted reply is dropped (the server excludes it on the next load).
 function markDeleted(id: string) {
@@ -317,9 +365,11 @@ function markDeleted(id: string) {
           :comment="thread"
           :current-user-id="currentUserId"
           :can-reply="auth.isAuthenticated"
+          :like-busy="likeBusy[thread.id]"
           @reply="toggleReply"
           @delete="requestDelete"
           @report="requestReport"
+          @like="toggleLike"
         />
 
         <!-- Reply composer -->
@@ -362,8 +412,10 @@ function markDeleted(id: string) {
               :comment="reply"
               :current-user-id="currentUserId"
               :can-reply="false"
+              :like-busy="likeBusy[reply.id]"
               @delete="requestDelete"
               @report="requestReport"
+              @like="toggleLike"
             />
           </li>
         </ul>

@@ -25,6 +25,7 @@ public static class ClipsRateLimiting
     // endpoints — every endpoint that attaches this policy shares one bucket per user:
     // POST /clips, POST /clips/{id}/upload-url, POST /clips/{id}/complete, PATCH /clips/{id},
     // DELETE /clips/{id}, POST /clips/{id}/like, DELETE /clips/{id}/like,
+    // POST /comments/{id}/like, DELETE /comments/{id}/like,
     // POST /clips/{id}/report, POST /comments/{id}/report, POST /users/{id}/report.
     // A happy-path upload burns 3 (create + upload-url + complete), so the floor is ~10 clips/min
     // per user before the bucket exhausts. Reports share the same bucket on purpose: it caps

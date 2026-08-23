@@ -772,4 +772,100 @@ public class CommentsEndpointsTests : IAsyncLifetime
 
         resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
+
+    // ---- like projection (issue #219) ----
+
+    [Fact]
+    public async Task List_ProjectsLikeCountAndLikedByMe_OnThreadsAndInlineReplies()
+    {
+        // Both levels are stamped from one lookup, so both need covering — a reply's
+        // likedByMe is the easy one to drop.
+        await _fx.ResetAsync();
+        var (ownerId, _) = await SeedUserAndIssueTokenAsync("owner");
+        var (fanId, fanToken) = await SeedUserAndIssueTokenAsync("fan");
+        var clipId = await SeedClipAsync(ownerId);
+        var topId = await SeedCommentAsync(clipId, ownerId, "top");
+        var replyId = await SeedCommentAsync(clipId, ownerId, "reply", parentId: topId);
+        await using (var db = _fx.CreateContext())
+        {
+            db.CommentLikes.Add(new CommentLike { UserId = fanId, CommentId = replyId });
+            await db.Comments.Where(c => c.Id == replyId)
+                .ExecuteUpdateAsync(s => s.SetProperty(c => c.LikeCount, 1));
+            await db.SaveChangesAsync();
+        }
+
+        using var client = ClientWithBearer(fanToken);
+        var resp = await client.GetAsync($"/clips/{clipId}/comments");
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var thread = body.GetProperty("items").EnumerateArray().Single();
+        thread.GetProperty("likeCount").GetInt32().Should().Be(0);
+        thread.GetProperty("likedByMe").GetBoolean().Should().BeFalse();
+        var reply = thread.GetProperty("replies").EnumerateArray().Single();
+        reply.GetProperty("likeCount").GetInt32().Should().Be(1);
+        reply.GetProperty("likedByMe").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task List_AnonymousCaller_NeverSeesLikedByMe()
+    {
+        await _fx.ResetAsync();
+        var (ownerId, _) = await SeedUserAndIssueTokenAsync("owner");
+        var (fanId, _) = await SeedUserAndIssueTokenAsync("fan");
+        var clipId = await SeedClipAsync(ownerId);
+        var commentId = await SeedCommentAsync(clipId, ownerId, "top");
+        await using (var db = _fx.CreateContext())
+        {
+            db.CommentLikes.Add(new CommentLike { UserId = fanId, CommentId = commentId });
+            await db.Comments.Where(c => c.Id == commentId)
+                .ExecuteUpdateAsync(s => s.SetProperty(c => c.LikeCount, 1));
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory!.CreateClient();
+        var resp = await client.GetAsync($"/clips/{clipId}/comments");
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var thread = body.GetProperty("items").EnumerateArray().Single();
+        thread.GetProperty("likeCount").GetInt32().Should().Be(1, "the total is public");
+        thread.GetProperty("likedByMe").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ListReplies_ProjectsLikedByMe()
+    {
+        await _fx.ResetAsync();
+        var (ownerId, _) = await SeedUserAndIssueTokenAsync("owner");
+        var (fanId, fanToken) = await SeedUserAndIssueTokenAsync("fan");
+        var clipId = await SeedClipAsync(ownerId);
+        var topId = await SeedCommentAsync(clipId, ownerId, "top");
+        var replyId = await SeedCommentAsync(clipId, ownerId, "reply", parentId: topId);
+        await using (var db = _fx.CreateContext())
+        {
+            db.CommentLikes.Add(new CommentLike { UserId = fanId, CommentId = replyId });
+            await db.SaveChangesAsync();
+        }
+
+        using var client = ClientWithBearer(fanToken);
+        var resp = await client.GetAsync($"/comments/{topId}/replies");
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("items").EnumerateArray().Single()
+            .GetProperty("likedByMe").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Create_ReturnsZeroLikes()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId);
+        using var client = ClientWithBearer(token);
+
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/comments", new { body = "fresh" });
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("likeCount").GetInt32().Should().Be(0);
+        body.GetProperty("likedByMe").GetBoolean().Should().BeFalse();
+    }
 }

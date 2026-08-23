@@ -738,6 +738,7 @@ app.MapClipsMutateEndpoints();
 app.MapLikesEndpoints();
 app.MapClipsViewEndpoints();
 app.MapCommentsEndpoints();
+app.MapCommentLikesEndpoints();
 app.MapUsersEndpoints();
 app.MapFollowsEndpoints();
 app.MapNotificationsEndpoints();
