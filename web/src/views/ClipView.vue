@@ -474,14 +474,27 @@ const authorAvatarUrl = computed(() => safeImageUrl(clip.value?.author.avatarUrl
 // encode for. width/height have been served all along with no consumers — this is their job.
 //
 // Inline aspect-ratio beats Plyr's height:auto, which resolves against the video's intrinsic
-// size only after metadata loads (so the box jumps). maxHeight keeps a tall 9:16 crop from
-// pushing the whole meta block below the fold. Falls back to the aspect-video class for older
-// rows whose dimensions the pipeline never recorded.
+// size only after metadata loads (so the box jumps). Falls back to the aspect-video class for
+// older rows whose dimensions the pipeline never recorded.
+//
+// The size cap ships as a CUSTOM PROPERTY, not as an inline max-width, and that is load-bearing:
+// Plyr's stylesheet does `:fullscreen video{height:100%}`, so in fullscreen the video's height
+// becomes definite and the only thing left constraining it is our cap. An inline cap wins over
+// every stylesheet rule, so it would survive into fullscreen and hold the video at a fraction of
+// the screen — black on all four sides. Handing the value to a class via a variable lets the
+// `[:fullscreen_&]` rule below switch it off where it doesn't belong.
+//
+// Cap the WIDTH, not the height: `aspect-ratio` + `max-height` clamps the box without shrinking
+// the width, so the ratio silently breaks and the content pillarboxes. width ≤ 75vh × ratio is
+// the same constraint expressed on the axis that actually resizes. (Same trap as ClipCropper.)
 const playerStyle = computed(() => {
   const w = clip.value?.width
   const h = clip.value?.height
   if (!w || !h || w <= 0 || h <= 0) return null
-  return { aspectRatio: `${w} / ${h}`, maxHeight: '75vh', margin: '0 auto' }
+  return {
+    aspectRatio: `${w} / ${h}`,
+    '--clip-player-max-w': `${((75 * w) / h).toFixed(2)}vh`,
+  }
 })
 
 const editOpen = ref(false)
@@ -599,12 +612,20 @@ async function onConfirmDelete() {
     <div v-else-if="clip">
       <!-- Player -->
       <div class="overflow-hidden rounded-lg border border-border bg-black">
+        <!-- The two fullscreen variants drop the in-page size cap: `:fullscreen` covers the
+             native path, `.plyr--fullscreen-fallback` covers Plyr's own fallback when the
+             Fullscreen API isn't available. Without them the video can't fill the screen. -->
         <video
           ref="videoEl"
           controls
           playsinline
           :style="playerStyle"
-          :class="['block w-full', playerStyle ? '' : 'aspect-video']"
+          :class="[
+            'block w-full',
+            playerStyle
+              ? 'mx-auto max-w-[var(--clip-player-max-w)] [.plyr--fullscreen-fallback_&]:max-w-none [:fullscreen_&]:max-w-none'
+              : 'aspect-video',
+          ]"
         ></video>
       </div>
 
