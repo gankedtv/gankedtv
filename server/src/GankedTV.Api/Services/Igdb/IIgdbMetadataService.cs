@@ -2,9 +2,8 @@ namespace GankedTV.Api.Services.Igdb;
 
 /// <summary>
 /// One game's metadata as returned by IGDB (only the fields we mirror).
-/// <paramref name="AlternativeNames"/> carries IGDB's own alias list, which is what lets the
-/// importer still recognise a game after upstream renames it (IGDB keeps the previous title
-/// as an alias). Empty when the caller didn't request aliases.
+/// <paramref name="AlternativeNames"/> is IGDB's alias list, which is how the importer still
+/// recognises a game after an upstream rename. Null when the caller didn't request aliases.
 /// </summary>
 public sealed record IgdbGame(
     int Id,

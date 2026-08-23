@@ -39,11 +39,8 @@ public sealed class MediaJobOptions
     // if the clip is shorter than this.
     public TimeSpan ThumbnailFrameOffset { get; set; } = TimeSpan.FromSeconds(1);
 
-    // Longest-edge cap for the poster JPEG. The thumbnail stage runs BEFORE compress, so it
-    // reads the raw upload — without a cap a 4K phone capture produces a 4K JPEG that the feed
-    // then renders into a ~320px card. Capping the long edge rather than the height keeps
-    // portrait captures (which reels renders full-height) at the same pixel budget as landscape
-    // ones. Only ever downscales: a smaller source is left alone.
+    // Longest-edge cap for the poster JPEG — the long edge rather than the height, so portrait
+    // captures (which reels renders full-height) get the same pixel budget as landscape.
     public int ThumbnailMaxEdge { get; set; } = 1280;
 
     // --- Compression + just-in-time playback (issue #102) -------------------------------

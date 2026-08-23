@@ -90,9 +90,7 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             e.Property(g => g.IgdbManaged).HasDefaultValue(false);
             e.HasIndex(g => g.Slug).IsUnique().HasDatabaseName("idx_games_slug");
             e.HasIndex(g => g.Name).HasDatabaseName("idx_games_name");
-            // One catalog row per IGDB game. Partial so curated rows that were never linked
-            // (igdb_id NULL) stay exempt. Without this, an upstream rename that stops the
-            // importer recognising a row silently mints a second row for the same game.
+            // One row per IGDB game. Partial so never-linked curated rows stay exempt.
             e.HasIndex(g => g.IgdbId)
                 .IsUnique()
                 .HasFilter("igdb_id IS NOT NULL")
@@ -114,10 +112,8 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
                 new Game { Id = 4, Name = "Fortnite", Slug = "fortnite", Tag = "FN" },
                 new Game { Id = 5, Name = "Apex Legends", Slug = "apex-legends", Tag = "APEX" },
                 new Game { Id = 6, Name = "Rocket League", Slug = "rocket-league", Tag = "RL" },
-                // Linked to IGDB because upstream renamed 125174 back to "Overwatch": without
-                // the id the importer recognises neither the id nor the name and mints a second
-                // row for a game we already list. The alias pass in GameCatalogImporter covers
-                // the general case; this pins the one that already went wrong.
+                // Pinned: IGDB 125174 is titled "Overwatch" now, so without the id the importer
+                // matches neither id nor name and mints a duplicate.
                 new Game { Id = 7, Name = "Overwatch 2", Slug = "overwatch-2", Tag = "OW2", IgdbId = 125174 },
                 new Game { Id = 8, Name = "Dota 2", Slug = "dota-2", Tag = "DOTA2" },
                 new Game { Id = 9, Name = "Marvel Rivals", Slug = "marvel-rivals", Tag = "RIVALS" });
@@ -371,8 +367,7 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             e.HasKey(l => new { l.UserId, l.CommentId });
             e.Property(l => l.CreatedAt).HasDefaultValueSql("now()");
 
-            // Parameterless WithMany on the user side: nothing reads a user's comment likes as a
-            // collection, and adding one to User would be a nav property with no call site.
+            // Parameterless WithMany: nothing reads a user's comment likes as a collection.
             e.HasOne(l => l.User)
                 .WithMany()
                 .HasForeignKey(l => l.UserId)

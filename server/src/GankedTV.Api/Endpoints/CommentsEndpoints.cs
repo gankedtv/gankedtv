@@ -161,8 +161,7 @@ public static class CommentsEndpoints
 
         var repliesByParent = await LoadRepliesForParentsAsync(db, page.Select(c => c.Id), ct);
 
-        // One lookup covering both levels — the top-level rows and every preview reply. Two
-        // calls (or worse, one per comment) would reintroduce the per-thread N+1 that
+        // One lookup over both levels; per-level or per-comment would be the N+1 that
         // LoadRepliesForParentsAsync exists to avoid.
         var likedIds = await LoadLikedCommentIdsAsync(
             db,
@@ -294,9 +293,7 @@ public static class CommentsEndpoints
         CancellationToken ct) =>
         clips.Where(ClipQueryExtensions.NotVisibleTo(principal.GetUserIdOrNull())).AnyAsync(ct);
 
-    // Which of these comments the caller has already liked. Anonymous callers short-circuit to
-    // an empty set, so the signed-out list path costs nothing extra. Mirrors
-    // ClipsReadEndpoints.LoadLikedClipIdsAsync.
+    // Anonymous callers short-circuit, so the signed-out path costs nothing.
     private static async Task<HashSet<Guid>> LoadLikedCommentIdsAsync(
         GankedTvDbContext db,
         ClaimsPrincipal principal,

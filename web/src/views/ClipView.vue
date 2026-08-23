@@ -76,15 +76,10 @@ const JIT_POLL_MS = 2000
 // Give up polling after ~3 minutes so a stuck/disabled transcoder doesn't poll forever.
 const JIT_MAX_POLLS = 90
 
-// Autoplay. Shown when the browser refused both the unmuted and the muted attempt — the only
-// remaining path is a real user gesture, and Plyr's own play button is behind our overlay.
 const needsTapToPlay = ref(false)
-// Set when the muted retry is what got playback going, so we can offer a one-click unmute
-// instead of leaving the viewer to hunt for the volume control.
 const autoplayMuted = ref(false)
-// A source that resolves long after navigation (the JIT ladder polls for up to ~3 minutes, and
-// a still-processing clip for up to five) must not suddenly start playing at someone who has
-// moved on. Beyond this, mount and wait for a click.
+// The JIT ladder polls for up to ~3 minutes and a still-processing clip for up to five; a source
+// that lands that late must not start playing at someone who has moved on.
 const AUTOPLAY_GRACE_MS = 10_000
 let playerMountedAt = 0
 let unmuteListener: { el: HTMLVideoElement; handler: () => void } | null = null
@@ -271,21 +266,16 @@ watch(
   { flush: 'post' },
 )
 
-// Start playback without a click. Two attempts: first with whatever mute state Plyr restored
-// from the viewer's last visit, then — if the browser refuses, which it will for audible
-// playback without a prior gesture — muted. A third refusal falls back to the tap overlay.
-//
-// Plyr has to exist first: its `muted` setter resolves a non-boolean argument through
-// localStorage, and its own build calls `muted = null`, so anything set on the element before
-// construction can be silently reverted. Assigning an explicit boolean afterwards is the only
-// ordering that holds.
+// Two attempts: the viewer's restored mute state, then muted, since browsers refuse audible
+// autoplay without a gesture. Must run after Plyr is constructed — its `muted` setter resolves a
+// non-boolean through localStorage and its build assigns `muted = null`, so anything set on the
+// element beforehand gets silently reverted.
 async function tryAutoplay(el: HTMLVideoElement) {
   const myToken = playerToken
   needsTapToPlay.value = false
   autoplayMuted.value = false
 
-  // Reduced motion asks for less movement, and an unrequested video is the canonical case.
-  // A backgrounded tab gets the same treatment: audio out of a tab you aren't looking at.
+  // Reduced motion and backgrounded tabs opt out.
   if (
     window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ||
     document.visibilityState !== 'visible' ||
@@ -294,14 +284,12 @@ async function tryAutoplay(el: HTMLVideoElement) {
     return
   }
 
-  // jsdom returns undefined from play(); real browsers return a Promise. Normalise so .catch
-  // is always safe and the view can be tested without a media shim.
+  // jsdom returns undefined from play(); Promise.resolve keeps .catch safe without a media shim.
   try {
     await Promise.resolve(el.play())
     if (myToken !== playerToken) return
-    // Plyr persists mute state, so the *first* attempt can succeed already-muted from a previous
-    // visit where we had to mute to get past the policy. That still needs the badge, or the
-    // viewer gets silent playback with nothing explaining it, forever.
+    // Plyr persists mute state, so this can succeed already-muted from a previous visit — still
+    // needs the badge, or the silence has nothing explaining it.
     if (el.muted) markAutoplayedMuted(el)
     return
   } catch {
@@ -338,17 +326,15 @@ function handleTapToPlay() {
     })
 }
 
-// Unmute on the media element rather than the Plyr wrapper: Plyr's `muted` setter resolves a
-// non-boolean through localStorage and its build assigns `muted = null`, so the element is the
-// unambiguous surface. Plyr's own control updates off the resulting `volumechange`.
+// The element, not the Plyr wrapper, for the same setter reason as above. Plyr's own control
+// updates off the resulting `volumechange`.
 function unmute() {
   autoplayMuted.value = false
   if (videoEl.value) videoEl.value.muted = false
 }
 
-// Plyr's controls and its own large play button sit above our overlay, so the viewer can start
-// the clip without ever clicking it. Retire the overlay on the first `play` from any source,
-// or the play circle sits over a playing video and swallows clicks on the picture.
+// Plyr's controls sit above this overlay, so playback can start without it being clicked — and
+// a play circle left over a playing video swallows clicks on the picture.
 function watchForPlay(el: HTMLVideoElement) {
   detachPlayWatch()
   const onPlay = () => {

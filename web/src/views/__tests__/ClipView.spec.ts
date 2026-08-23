@@ -6,9 +6,8 @@ import { useAuthStore } from '@/stores/auth'
 import { defineComponent, h } from 'vue'
 import type { ClipDetail } from '@/api/clips'
 
-// Plyr and hls.js are imported at module scope by ClipView and neither survives jsdom, so both
-// are replaced wholesale. The Plyr double records construction so the specs can assert that
-// autoplay runs after the player exists, which is the ordering the real Plyr requires.
+// Neither survives jsdom. The Plyr double records construction so specs can assert autoplay
+// runs after the player exists — the ordering the real Plyr requires.
 const plyrInstances: { destroy: () => void }[] = []
 vi.mock('plyr', () => ({
   default: class {
@@ -145,8 +144,7 @@ beforeEach(() => {
 
 afterEach(() => {
   while (wrappers.length) wrappers.pop()!.unmount()
-  // Spies are restored here, not inline, so a failing assertion can't leak one into the
-  // tests that follow.
+  // Not inline, so a failing assertion can't leak a spy into later tests.
   vi.restoreAllMocks()
 })
 
@@ -192,14 +190,12 @@ describe('ClipView autoplay', () => {
 
     const tap = wrapper.find('button[aria-label="Play No-scope wallbang"]')
     expect(tap.exists()).toBe(true)
-    // The failed muted attempt must not leave the element silently muted for the click that
-    // follows — the viewer asked for this one.
+    // The failed muted attempt must not leave the element muted for the click that follows.
     expect(wrapper.find('video').element.muted).toBe(false)
   })
 
   it('retires the tap overlay when playback starts from Plyr\u2019s own controls', async () => {
-    // Plyr's control bar and large play button render above our overlay, so the viewer can start
-    // the clip without touching it — leaving a play circle over a playing video.
+    // Plyr's controls render above the overlay, so playback can start without it being clicked.
     play.mockRejectedValue(new DOMException('blocked', 'NotAllowedError'))
     const wrapper = await mountClip()
     expect(wrapper.find('button[aria-label="Play No-scope wallbang"]').exists()).toBe(true)
@@ -210,8 +206,7 @@ describe('ClipView autoplay', () => {
   })
 
   it('shows the unmute badge when the first attempt succeeds already-muted', async () => {
-    // Plyr restores mute state across visits, so a viewer we had to mute yesterday plays muted
-    // today on the first attempt — with nothing to explain the silence unless we say so.
+    // Plyr restores mute state, so a viewer muted last visit plays muted on the first attempt.
     Object.defineProperty(HTMLMediaElement.prototype, 'muted', {
       configurable: true,
       get: () => true,

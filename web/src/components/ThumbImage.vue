@@ -1,16 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted, useTemplateRef, watch } from 'vue'
 
-// The one way to render a clip thumbnail or game cover, so the loading behaviour is identical
-// everywhere. Renders only the <img>; call sites keep their own wrapper and overlays.
+// The one way to render a thumbnail or cover. Renders only the <img>; call sites keep their
+// own wrapper and overlays.
 const props = withDefaults(
   defineProps<{
     src: string
     alt?: string
-    /**
-     * Above-the-fold images (the home hero, the trending feature) load eagerly at high
-     * priority — they are the LCP element, and deferring them is the opposite of the point.
-     */
+    /** For the LCP element only — the home hero, the trending feature, a game's cover. */
     eager?: boolean
   }>(),
   { alt: '', eager: false },
@@ -19,8 +16,7 @@ const props = withDefaults(
 const el = useTemplateRef<HTMLImageElement>('el')
 const loaded = ref(false)
 
-// A cached image can already be complete before the load event would fire, and fading in
-// something the browser has ready is a flash for no reason.
+// A cached image is already complete before `load` fires; fading it in would be a flash.
 function settleIfReady() {
   if (el.value?.complete) loaded.value = true
 }
@@ -30,7 +26,6 @@ watch(
   () => props.src,
   () => {
     loaded.value = false
-    // The new src may also come from cache.
     requestAnimationFrame(settleIfReady)
   },
 )

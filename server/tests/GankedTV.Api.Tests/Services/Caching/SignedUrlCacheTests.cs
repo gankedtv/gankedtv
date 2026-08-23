@@ -8,9 +8,8 @@ using Xunit;
 
 namespace GankedTV.Api.Tests.Services.Caching;
 
-// Against a real HybridCache (L1-only, mirroring dev / a Redis outage). The property under test
-// is URL *stability*: SigV4 stamps the signing time into the query string, so an un-memoised
-// presign produces a different URL — and therefore a browser cache miss — on every request.
+// Against a real HybridCache (L1-only, as in dev). The property under test is URL stability:
+// SigV4 stamps the signing time, so an un-memoised presign is a cache miss every request.
 public class SignedUrlCacheTests
 {
     private static (SignedUrlCache cache, IObjectStorageService storage, ServiceProvider sp) Build()
@@ -66,8 +65,7 @@ public class SignedUrlCacheTests
     [Fact]
     public async Task BumpedVersion_MintsAFreshUrl()
     {
-        // How a re-cut invalidates a viewer's cached poster: the object key is unchanged, so the
-        // only thing that can bust the browser cache is a different URL.
+        // How a re-cut busts the browser cache: the key is unchanged, so the URL must differ.
         var (cache, _, sp) = Build();
         await using var __ = sp;
 
@@ -80,15 +78,11 @@ public class SignedUrlCacheTests
     [Fact]
     public void CachedCopyNeverOutlivesTheSignature()
     {
-        // Two ordering rules. A URL handed out at the last moment of the memo window must still
-        // be valid for a while after, or the tail of every window serves URLs about to 403. And
-        // max-age must not outlive the signature, or a browser keeps serving a URL that no longer
-        // works. The lifetime also stays at the historical one hour on purpose: a longer
-        // signature widens the window in which a leaked private-clip poster URL still resolves.
+        // One hour on purpose: longer widens the window in which a leaked private-clip poster
+        // URL still resolves.
         SignedUrlCache.UrlLifetime.Should().Be(TimeSpan.FromHours(1));
         SignedUrlCache.CacheControlHeader.Should().Be("public, max-age=900");
-        // The binding constraint: a URL handed out on the memo's last tick has UrlLifetime minus
-        // the memo window left on it, and the browser must not cache it past that.
+        // A URL from the memo's last tick has UrlLifetime minus the memo window left on it.
         (SignedUrlCache.MemoLifetime + TimeSpan.FromSeconds(900))
             .Should().BeLessThanOrEqualTo(SignedUrlCache.UrlLifetime);
     }

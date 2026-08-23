@@ -627,9 +627,8 @@ public class GamesEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task GetGames_SameName_OrdersDeterministically()
     {
-        // Two catalog rows can legitimately share a display name (IGDB renames a sequel onto its
-        // predecessor's title). Ordering by name alone leaves the tie unresolved, so which row a
-        // client sees first — and which survives `Take(limit)` — varies between requests.
+        // Ordering by name alone leaves the tie unresolved, so which row survives `Take(limit)`
+        // varies between requests.
         await _fx.ResetAsync();
         int lowId, highId;
         await using (var db = _fx.CreateContext())

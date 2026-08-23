@@ -11,9 +11,8 @@ public class Comment
     public Guid? ParentId { get; set; }
     public required string Body { get; set; }
 
-    // Denormalised, mirroring Clip.LikeCount: the read path renders whole threads plus inline
-    // reply previews, so a per-row COUNT would grow with the page. Kept in the same transaction
-    // as the like row, and the decrement is clamped at zero.
+    // Denormalised like Clip.LikeCount: the read path renders whole threads plus inline reply
+    // previews, so a per-row COUNT would grow with the page.
     public int LikeCount { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }

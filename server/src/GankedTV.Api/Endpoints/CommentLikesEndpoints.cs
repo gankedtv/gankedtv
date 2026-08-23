@@ -10,9 +10,8 @@ using Microsoft.EntityFrameworkCore;
 namespace GankedTV.Api.Endpoints;
 
 /// <summary>
-/// Likes on comments and replies. A near-mechanical sibling of <see cref="LikesEndpoints"/> —
-/// same transaction shape, same idempotent insert, same clamped decrement — with the visibility
-/// gate reached through the comment's clip instead of the clip directly.
+/// Likes on comments and replies. Mirrors <see cref="LikesEndpoints"/>, with the visibility gate
+/// reached through the comment's clip.
 /// </summary>
 public static class CommentLikesEndpoints
 {
@@ -46,9 +45,8 @@ public static class CommentLikesEndpoints
             return ProblemResults.NotFound("not_found");
         }
 
-        // Atomic idempotent insert, mirroring clip likes: ON CONFLICT DO NOTHING collapses a
-        // double-click (or two concurrent requests from the same user) into a 0-row insert, so
-        // the counter only moves when the row was actually new.
+        // ON CONFLICT collapses a double-click into a 0-row insert, so the counter only moves
+        // when the row was actually new.
         var inserted = await db.Database.ExecuteSqlInterpolatedAsync(
             $"INSERT INTO comment_likes (user_id, comment_id) VALUES ({userId}, {id}) ON CONFLICT DO NOTHING",
             ct);
@@ -60,9 +58,8 @@ public static class CommentLikesEndpoints
                     s => s.SetProperty(c => c.LikeCount, c => c.LikeCount + 1),
                     ct);
 
-            // ClipId rides along so the notification row deep-links to the clip; the service
-            // drops self-likes, and the surrounding transaction means a notification failure
-            // rolls the like row back too.
+            // ClipId rides along so the notification deep-links; self-likes are dropped by the
+            // service, and the transaction rolls the like back if this fails.
             await notifications.RecordAsync(
                 target.AuthorId, userId, NotificationTypes.CommentLike, target.ClipId, id, ct);
         }
@@ -92,16 +89,14 @@ public static class CommentLikesEndpoints
             return ProblemResults.NotFound("not_found");
         }
 
-        // Set-based delete so concurrent unlikes from the same user resolve to one 1-row and one
-        // 0-row result instead of a DbUpdateConcurrencyException.
+        // Set-based so concurrent unlikes resolve to 1-row and 0-row rather than throwing.
         var deleted = await db.CommentLikes
             .Where(l => l.UserId == userId && l.CommentId == id)
             .ExecuteDeleteAsync(ct);
 
         if (deleted > 0)
         {
-            // The `LikeCount > 0` guard is the ≥ 0 clamp: a counter already at zero (data drift,
-            // a manually inserted row) must not go negative.
+            // `LikeCount > 0` is the clamp: a counter already at zero must not go negative.
             await db.Comments.Where(c => c.Id == id && c.LikeCount > 0)
                 .ExecuteUpdateAsync(
                     s => s.SetProperty(c => c.LikeCount, c => c.LikeCount - 1),
@@ -115,9 +110,8 @@ public static class CommentLikesEndpoints
     }
 
     /// <summary>
-    /// The comment's clip and author, or null when the caller must not be able to like it: the
-    /// comment is gone, soft-deleted (it renders as <c>[deleted]</c> — there is nothing to like),
-    /// or sits on a clip that is private or hidden from this viewer.
+    /// Null when the comment is missing, soft-deleted (nothing left to endorse), or on a clip
+    /// hidden from this viewer.
     /// </summary>
     private static async Task<LikeTarget?> LoadLikeableAsync(
         GankedTvDbContext db,
@@ -134,8 +128,7 @@ public static class CommentLikesEndpoints
             return null;
         }
 
-        // Visibility is a second query rather than a subquery so it can go through the shared
-        // WhereVisibleTo — the one place the private/hidden rule is written down.
+        // A second query, not a subquery, so it goes through the shared WhereVisibleTo.
         var visible = await db.Clips.AsNoTracking()
             .Where(c => c.Id == target.ClipId)
             .WhereVisibleTo(userId)

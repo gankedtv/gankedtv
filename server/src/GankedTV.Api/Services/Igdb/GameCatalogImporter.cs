@@ -47,16 +47,11 @@ public sealed class GameCatalogImporter(
         var s3 = s3Options.Value;
         await storage.EnsureBucketsAsync(ct);
 
-        // Reconcile by igdb_id, then by display name, then by IGDB's own alternative names, so
-        // curated seeds (hand-picked slug/tag, e.g. "cs2"/"CS2") get adopted in place rather than
-        // duplicated. The alias pass is what survives an upstream rename: IGDB 125174 is titled
-        // "Overwatch" today but still lists "Overwatch 2", which is the name our seed row carries.
-        // Without it a rename mints a second row for a game we already have. Track only the rows
-        // this batch can touch — the on-demand search import runs this on a request path. Slugs
-        // are still read from the whole table (untracked) so generated slugs stay globally unique.
+        // Only the rows this batch can touch — the on-demand search import runs this on a request
+        // path. Slugs are read from the whole table so generated ones stay globally unique.
         var incomingIds = games.Select(g => g.Id).ToHashSet();
         var incomingNames = games
-            .SelectMany(MatchableNames)
+            .SelectMany(g => Aliases(g).Prepend(g.Name))
             .Select(n => n.ToLowerInvariant())
             .ToHashSet();
         var existing = await db.Games
@@ -64,9 +59,8 @@ public sealed class GameCatalogImporter(
                 || incomingNames.Contains(g.Name.ToLower()))
             .ToListAsync(ct);
         var byIgdbId = existing.Where(g => g.IgdbId is not null).ToDictionary(g => g.IgdbId!.Value);
-        // Unlinked rows first within a name bucket, then lowest id: adoption skips rows that
-        // already carry an igdb_id, so an arbitrary `First()` could hand back the linked one and
-        // mint a duplicate while the adoptable row sat right behind it.
+        // Unlinked first, then lowest id: claiming skips linked rows, so an arbitrary First()
+        // could hand back a linked one and mint a duplicate while the adoptable row sat behind it.
         var byName = existing
             .GroupBy(g => g.Name, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
@@ -76,6 +70,8 @@ public sealed class GameCatalogImporter(
         var usedSlugs = await db.Games.AsNoTracking()
             .Select(g => g.Slug)
             .ToHashSetAsync(StringComparer.Ordinal, ct);
+
+        var adopted = ResolveAdoptions(games, byIgdbId, byName);
 
         var processed = 0;
         var created = 0;
@@ -89,7 +85,7 @@ public sealed class GameCatalogImporter(
             {
                 // already linked
             }
-            else if (TryAdoptByName(meta, byName, out game))
+            else if (adopted.TryGetValue(meta.Id, out game))
             {
                 game.IgdbId = meta.Id; // adopt the curated seed row (IgdbManaged stays false)
                 byIgdbId[meta.Id] = game;
@@ -180,64 +176,68 @@ public sealed class GameCatalogImporter(
     }
 
     /// <summary>
-    /// Every name this IGDB game can be recognised by, display name first because it's the
-    /// stronger signal when a row matches both.
+    /// Decides which existing row (if any) each unlinked IGDB game adopts, for the whole batch,
+    /// before anything is written.
+    ///
+    /// Two passes, and the order is the point: a game whose <em>current</em> title matches a row
+    /// must win over one that only matches through an old alias. Overwatch went Overwatch →
+    /// Overwatch 2 → Overwatch, so the 2016 entry and the sequel can both answer to "Overwatch" —
+    /// resolving aliases second stops whichever happened to come first in the batch from taking
+    /// the other's row.
     /// </summary>
-    private static IEnumerable<string> MatchableNames(IgdbGame meta)
+    private static Dictionary<int, Game> ResolveAdoptions(
+        IReadOnlyList<IgdbGame> games,
+        Dictionary<int, Game> byIgdbId,
+        Dictionary<string, Game> byName)
     {
-        yield return meta.Name;
-        if (meta.AlternativeNames is null)
+        var adopted = new Dictionary<int, Game>();
+
+        foreach (var meta in games.Where(m => !byIgdbId.ContainsKey(m.Id)))
         {
-            yield break;
-        }
-        foreach (var alias in meta.AlternativeNames)
-        {
-            if (!string.IsNullOrWhiteSpace(alias))
+            if (TryClaim(byName, meta.Name, out var row))
             {
-                yield return alias;
+                adopted[meta.Id] = row;
             }
         }
+
+        foreach (var meta in games.Where(m => !byIgdbId.ContainsKey(m.Id) && !adopted.ContainsKey(m.Id)))
+        {
+            foreach (var alias in Aliases(meta))
+            {
+                if (TryClaim(byName, alias, out var row))
+                {
+                    adopted[meta.Id] = row;
+                    break;
+                }
+            }
+        }
+
+        return adopted;
     }
 
+    private static IEnumerable<string> Aliases(IgdbGame meta) =>
+        (meta.AlternativeNames ?? []).Where(a => !string.IsNullOrWhiteSpace(a));
+
     /// <summary>
-    /// Finds an <em>unlinked</em> catalog row for this IGDB game by display name, falling back
-    /// to IGDB's alternative names; rows already carrying an <c>igdb_id</c> are skipped. The
-    /// matched row is dropped from every name bucket it occupies so a second IGDB game sharing
-    /// one of those names can't re-adopt it — that one becomes a new, slug-disambiguated row.
+    /// Takes an unlinked row for <paramref name="name"/>, removing it from every bucket it sits
+    /// in so nothing else in the batch can claim it too. Rows that already carry an
+    /// <c>igdb_id</c> belong to another game and are left alone.
     /// </summary>
-    private static bool TryAdoptByName(
-        IgdbGame meta,
-        Dictionary<string, Game> byName,
-        out Game game)
+    private static bool TryClaim(Dictionary<string, Game> byName, string name, out Game game)
     {
-        foreach (var candidate in MatchableNames(meta))
+        if (!byName.TryGetValue(name, out var match) || match.IgdbId is not null)
         {
-            if (!byName.TryGetValue(candidate, out var match))
-            {
-                continue;
-            }
-
-            // Never steal a row that already belongs to a different IGDB game. `byName` holds
-            // linked rows too, and an alias collision would otherwise repoint one game's row at
-            // another — leaving the rightful owner to match it by id on a later iteration and
-            // rename it. The alias pass makes such collisions far more reachable than exact-name
-            // matching did, so the guard is load-bearing, not defensive.
-            if (match.IgdbId is not null)
-            {
-                continue;
-            }
-
-            foreach (var claimed in byName.Where(kv => ReferenceEquals(kv.Value, match)).Select(kv => kv.Key).ToList())
-            {
-                byName.Remove(claimed);
-            }
-
-            game = match;
-            return true;
+            game = null!;
+            return false;
         }
 
-        game = null!;
-        return false;
+        foreach (var claimed in byName.Where(kv => ReferenceEquals(kv.Value, match)).Select(kv => kv.Key).ToList())
+        {
+            byName.Remove(claimed);
+        }
+
+        game = match;
+        return true;
     }
 
     private static string UniqueSlug(string name, int igdbId, HashSet<string> used)

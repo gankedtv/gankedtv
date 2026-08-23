@@ -10,10 +10,9 @@ namespace GankedTV.Api.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // Links the curated "Overwatch 2" seed to IGDB 125174. On a database that already
-            // grew the duplicate row (the importer minted one after IGDB renamed 125174 back to
-            // "Overwatch"), this momentarily leaves two rows claiming the id — the merge below
-            // collapses them before the unique index is built.
+            // Links the curated "Overwatch 2" seed to IGDB 125174. Where the duplicate row
+            // already exists this leaves two rows claiming the id; the merge below collapses
+            // them before the unique index is built.
             migrationBuilder.UpdateData(
                 table: "games",
                 keyColumn: "id",
@@ -21,11 +20,9 @@ namespace GankedTV.Api.Data.Migrations
                 column: "igdb_id",
                 value: 125174);
 
-            // Collapse every duplicate igdb_id group, repointing clips onto the survivor.
-            // Curated rows win over importer-managed ones — they carry the hand-picked slug and
-            // tag that existing links point at — and within a group the lowest (oldest) id wins.
-            // Written against the data rather than specific row ids because the duplicate's id
-            // differs per environment; a no-op on a database that never grew one.
+            // Collapse duplicate igdb_id groups, repointing clips onto the survivor: curated
+            // rows win (they carry the slug existing links use), then lowest id. Keyed on the
+            // data, not row ids — the duplicate's id differs per environment.
             migrationBuilder.Sql("""
                 DO $$
                 DECLARE
@@ -60,8 +57,7 @@ namespace GankedTV.Api.Data.Migrations
         }
 
         /// <inheritdoc />
-        // The merge is one-way: the duplicate rows and the clip assignments they held are gone.
-        // Down only unwinds the schema and the seed link.
+        // One-way: the merged rows and their clip assignments are gone.
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropIndex(

@@ -11,11 +11,9 @@ public static class CommentMappings
     /// Maps a comment to its API shape. Soft-deleted comments surface a <c>null</c> body and
     /// <c>Deleted = true</c>. The caller supplies <paramref name="replyCount"/>, the inline
     /// <paramref name="replies"/> page, and <paramref name="repliesNextCursor"/> — the cursor
-    /// to fetch the next page of replies (or <c>null</c> when the preview is exhaustive), and
-    /// <paramref name="likedByMe"/>. All default to empty/null/false for a reply or a freshly-
-    /// created comment. The defaults exist so a new call site compiles — which also means a
-    /// forgotten one silently ships <c>likedByMe: false</c> rather than failing the build;
-    /// every call site is covered by a test for that reason.
+    /// to fetch the next page of replies, and <paramref name="likedByMe"/>. The defaults mean a
+    /// forgotten call site ships <c>likedByMe: false</c> instead of failing the build, so each
+    /// one has a test.
     /// </summary>
     public static CommentItem ToItem(
         this Comment comment,

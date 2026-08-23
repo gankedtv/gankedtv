@@ -223,9 +223,7 @@ public sealed class IgdbMetadataService : IIgdbMetadataService
         }
     }
 
-    // IGDB returns alternative_names as objects; flatten to the non-empty names. Null (not an
-    // empty list) when there are none, so an alias-less IgdbGame stays record-equal to one
-    // constructed without the argument.
+    // Null rather than empty, so an alias-less IgdbGame stays record-equal to one built without.
     private static IReadOnlyList<string>? Aliases(IgdbGameDto dto)
     {
         if (dto.AlternativeNames is null)

@@ -317,9 +317,8 @@ public class GameCatalogImporterTests : IAsyncLifetime
     [Fact]
     public async Task SeededOverwatch2_IsAdoptedByIgdbId_EvenAfterUpstreamRenamedIt()
     {
-        // The reported bug: IGDB renamed 125174 (Overwatch 2) back to "Overwatch", so neither the
-        // id nor the name matched the curated seed and a second row was minted. The seed now
-        // ships pre-linked, so the rename reconciles onto it.
+        // The reported bug: 125174 is titled "Overwatch" now, so neither id nor name matched the
+        // curated seed and a second row was minted. The seed ships pre-linked.
         var igdb = StubIgdb(new IgdbGame(SeededGames.LinkedIgdbId, "Overwatch", "owImg"));
         var storage = new InMemoryObjectStorage();
 
@@ -337,10 +336,8 @@ public class GameCatalogImporterTests : IAsyncLifetime
     [Fact]
     public async Task AlternativeName_AdoptsCuratedSeed_WhenDisplayNameIsTakenByAnotherGame()
     {
-        // The general shape of the duplicate-"Overwatch" bug, on a seed that isn't pre-linked:
-        // one IGDB game holds the display name, and a *different* one — renamed upstream onto
-        // that same name — is only recognisable by its alias. Without the alias pass the second
-        // game mints a slug-disambiguated row and the curated seed is duplicated.
+        // The general shape, on a seed that isn't pre-linked: one game holds the display name,
+        // another is only recognisable by its alias. Without the alias pass the seed duplicates.
         var igdb = StubIgdb(
             new IgdbGame(7801, "Rivals Test", "img1"),
             new IgdbGame(7802, "Rivals Test", "img2", ["Marvel Rivals"]));
@@ -360,8 +357,7 @@ public class GameCatalogImporterTests : IAsyncLifetime
     [Fact]
     public async Task AlternativeName_CannotReAdoptARowAlreadyClaimedThisRun()
     {
-        // Two IGDB games both resolve to the same catalog row (one by name, one by alias). The
-        // first claims it; the second must become its own row rather than stealing the link.
+        // Two games resolve to one row; the second must get its own rather than steal the link.
         var igdb = StubIgdb(
             new IgdbGame(7811, "Marvel Rivals", "i1"),
             new IgdbGame(7812, "Zzz Rivals Test", "i2", ["Marvel Rivals"]));
@@ -380,9 +376,8 @@ public class GameCatalogImporterTests : IAsyncLifetime
     [Fact]
     public async Task AlternativeName_NeverStealsARowLinkedToAnotherGame()
     {
-        // An alias that happens to match a row already owned by a different IGDB game must not
-        // repoint it. If it did, the rightful owner would match it by id on a later run and
-        // rename it — one game ends up with the wrong identity and the other loses its row.
+        // Repointing a row owned by another game would leave the owner to match it by id on a
+        // later run and rename it — wrong identity for one game, no row for the other.
         var storage = new InMemoryObjectStorage();
         var igdb = StubIgdb(new IgdbGame(7820, "Owned Test Game", "i1"));
         await using (var db = _fx.CreateContext())
@@ -406,9 +401,8 @@ public class GameCatalogImporterTests : IAsyncLifetime
     [Fact]
     public async Task SharedName_AdoptsTheUnlinkedRow_NotTheLinkedOne()
     {
-        // Two rows can carry the same display name, one already linked. Adoption skips linked
-        // rows, so if the name bucket handed back the linked one the importer would mint a
-        // duplicate while the adoptable row sat right behind it.
+        // Claiming skips linked rows, so a bucket that returned the linked one would mint a
+        // duplicate while the adoptable row sat behind it.
         var storage = new InMemoryObjectStorage();
         await using (var setup = _fx.CreateContext())
         {
@@ -441,11 +435,41 @@ public class GameCatalogImporterTests : IAsyncLifetime
         (await verify.Games.SingleAsync(g => g.Slug == "shared-linked")).IgdbId.Should().Be(7830);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task CurrentTitle_BeatsAnAlias_RegardlessOfBatchOrder(bool aliasGameFirst)
+    {
+        // Overwatch went Overwatch → Overwatch 2 → Overwatch, so two IGDB entries can both answer
+        // to "Overwatch": the 2016 game by its current title, the sequel by an old alias. The
+        // entry that still *is* called that must get the row whichever order the batch arrives in.
+        var storage = new InMemoryObjectStorage();
+        await using (var setup = _fx.CreateContext())
+        {
+            setup.Games.Add(new Game { Name = "Roundtrip Test", Slug = "roundtrip-test", Tag = "RT" });
+            await setup.SaveChangesAsync();
+        }
+
+        var byTitle = new IgdbGame(7840, "Roundtrip Test", "i1");
+        var byAlias = new IgdbGame(7841, "Roundtrip Test 2", "i2", ["Roundtrip Test"]);
+        var igdb = StubIgdb(aliasGameFirst ? [byAlias, byTitle] : [byTitle, byAlias]);
+
+        await using (var db = _fx.CreateContext())
+        {
+            await Build(db, igdb, storage).RunAsync(CancellationToken.None);
+        }
+
+        await using var verify = _fx.CreateContext();
+        (await verify.Games.SingleAsync(g => g.Slug == "roundtrip-test")).IgdbId
+            .Should().Be(7840, "the entry whose current title matches owns the row");
+        (await verify.Games.SingleAsync(g => g.IgdbId == 7841)).Slug
+            .Should().Be("roundtrip-test-2", "the alias claimant gets its own row");
+    }
+
     [Fact]
     public async Task TwoRows_CannotClaimTheSameIgdbId()
     {
-        // Backstop for the whole bug class: even if a future reconciliation path regresses, the
-        // database refuses to hold two catalog rows for one IGDB game.
+        // Backstop: even if reconciliation regresses, the database refuses the duplicate.
         await using var db = _fx.CreateContext();
         db.Games.Add(new Game { Name = "Dup A Test", Slug = "dup-a-test", Tag = "DA", IgdbId = 7899 });
         db.Games.Add(new Game { Name = "Dup B Test", Slug = "dup-b-test", Tag = "DB", IgdbId = 7899 });

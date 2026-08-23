@@ -1,10 +1,7 @@
 /**
- * A small markdown subset for the profile bio: paragraphs, soft line breaks, bullets, numbering,
- * bold, italic, and http(s) links. Everything else stays literal text.
- *
- * Returns a typed tree, never an HTML string, so `RichText.vue` builds real elements — that is
- * what keeps the repo's "no `v-html` anywhere" invariant, and with no markup generated there is
- * nothing to sanitise. Code spans are out: a monospace face would be a third font.
+ * A small markdown subset for the profile bio. Returns a typed tree, never an HTML string, so
+ * `RichText.vue` builds real elements — that is what keeps the repo's "no `v-html`" invariant,
+ * and with no markup generated there is nothing to sanitise.
  */
 
 export interface TextNode {
@@ -38,8 +35,7 @@ export interface ListBlock {
 
 export type Block = ParagraphBlock | ListBlock
 
-// Bound the render tree against pathological input (500 lone hyphens is 250 list items). The
-// bio is 500 chars server-side, so nothing a person would write comes near these.
+// Bound the render tree against pathological input; the bio is 500 chars, so real ones don't.
 const MAX_BLOCKS = 60
 const MAX_LIST_ITEMS = 40
 const MAX_LINES_PER_PARAGRAPH = 40
@@ -47,10 +43,7 @@ const MAX_LINES_PER_PARAGRAPH = 40
 const BULLET = /^[-*]\s+(.*)$/
 const NUMBERED = /^\d{1,3}[.)]\s+(.*)$/
 
-/**
- * Only http/https survive — `javascript:` and `data:` are the point. A scheme-less href is
- * rejected too, so `example.com` can't resolve against our own origin and fake an internal route.
- */
+/** http/https only. Scheme-less is rejected too, so `example.com` can't fake an internal route. */
 export function safeLinkUrl(url: string): string | null {
   try {
     const parsed = new URL(url)
@@ -89,15 +82,12 @@ export function parseRichText(source: string | null | undefined): Block[] {
     if (marker) {
       const kind: ListBlock['t'] = bullet ? 'ul' : 'ol'
       flushParagraph()
-      // Consecutive markers of the same kind extend the open list; switching kind starts a
-      // new one, so a bullet list followed by a numbered list renders as two lists.
       const previous = blocks[blocks.length - 1]
       let list: ListBlock
       if (previous !== undefined && previous.t === kind) {
         list = previous
       } else {
-        // The flush above may have just consumed the last slot; an open list of the same kind
-        // can still grow, but a new one would push the tree over the cap.
+        // The flush above may have taken the last slot.
         if (blocks.length >= MAX_BLOCKS) continue
         list = { t: kind, items: [] }
         blocks.push(list)
@@ -114,8 +104,8 @@ export function parseRichText(source: string | null | undefined): Block[] {
   return blocks
 }
 
-// Links before emphasis so a `*` inside link text stays literal. No nested quantifiers, so
-// adversarial runs of `*` or `[` can't cause backtracking blowup.
+// Links before emphasis so a `*` in link text stays literal. No nested quantifiers, so
+// adversarial runs can't backtrack.
 const INLINE = new RegExp(
   [
     '\\[([^\\]\\n]*)\\]\\(([^)\\s]+)\\)', // [text](url)
@@ -138,8 +128,7 @@ function parseInline(text: string): Inline[] {
     const [, linkText, linkHref, bold, star, underscore] = m
     if (linkHref !== undefined) {
       const href = safeLinkUrl(linkHref)
-      // A rejected scheme degrades to the literal source text rather than a bare, clickable-
-      // looking span — the reader sees exactly what was written.
+      // A rejected scheme degrades to the literal source text.
       out.push(href ? { t: 'link', href, v: linkText || href } : { t: 'text', v: m[0] })
     } else if (bold !== undefined) {
       out.push({ t: 'strong', v: bold })

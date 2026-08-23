@@ -120,16 +120,15 @@ public class ThumbnailJobServiceTests
     [InlineData(480, "scale=w='min(iw,480)':h='min(ih,480)':force_original_aspect_ratio=decrease:force_divisible_by=2")]
     public void BuildScaleFilter_ClampsBothAxes_SoASmallSourceIsNeverEnlarged(int maxEdge, string expected)
     {
-        // `force_original_aspect_ratio=decrease` on its own scales a 640x360 source UP to fill a
-        // 1280x1280 box; the min() on each axis is what keeps it at 640x360.
+        // `force_original_aspect_ratio=decrease` alone scales a 640x360 source UP into a
+        // 1280x1280 box; the per-axis min() is what keeps it at 640x360.
         ThumbnailJobService.BuildScaleFilter(maxEdge).Should().Be(expected);
     }
 
     [Fact]
     public async Task ExtractAsync_StoresALongCacheControl()
     {
-        // The stored header is what makes a repeat page load a browser cache hit rather than a
-        // re-download; it is safe only because the URL is versioned (see SignedUrlCache).
+        // What turns a repeat page load into a cache hit.
         var (svc, ffmpeg, storage) = Build();
         StubFfprobe(ffmpeg, """{"streams":[{"width":640,"height":360,"duration":"5.0"}]}""");
         StubFfmpegFrame(ffmpeg, new byte[] { 0xFF, 0xD8, 0xFF });

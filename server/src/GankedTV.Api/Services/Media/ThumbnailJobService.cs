@@ -102,9 +102,7 @@ public sealed class ThumbnailJobService : IThumbnailJobService
             var thumbnailKey = ClipKeys.BuildThumbnailKey(job.UserId, job.ClipId, gameSlug);
             await using (var stream = File.OpenRead(thumbPath))
             {
-                // Long max-age is safe because the URL viewers get is presigned through
-                // SignedUrlCache and versioned on edit_count: a re-cut hands out a different
-                // URL, so a cached copy of the old frame can never be served under it.
+                // Safe to cache because the URL is versioned on edit_count (see SignedUrlCache).
                 await _storage.PutObjectAsync(
                     buckets.ThumbnailsBucket,
                     thumbnailKey,
@@ -236,10 +234,8 @@ public sealed class ThumbnailJobService : IThumbnailJobService
         // we don't care about exact frame accuracy; speed matters more.
         // -frames:v 1 = single frame; -q:v 4 = JPEG quality (~lossy but small).
         //
-        // This stage runs BEFORE compress, so its input is the raw upload: uncapped, a 4K capture
-        // yields a 4K poster for a ~320px card. Both axes are clamped so the LONG edge is bounded
-        // whichever way round the clip is, and `min(i*, cap)` keeps a smaller source from being
-        // enlarged — `force_original_aspect_ratio=decrease` alone would upscale it to fit.
+        // Runs BEFORE compress, so the input is the raw upload — uncapped, a 4K capture yields a
+        // 4K poster for a ~320px card. See BuildScaleFilter for the clamping.
         var maxEdge = Math.Max(2, opts.ThumbnailMaxEdge);
         var args = new List<string>
         {

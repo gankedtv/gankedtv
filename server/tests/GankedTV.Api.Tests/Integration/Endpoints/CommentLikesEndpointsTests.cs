@@ -142,8 +142,7 @@ public class CommentLikesEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task Like_Twice_IsIdempotent()
     {
-        // A double-click must not double-count: the ON CONFLICT insert collapses the second
-        // request to zero rows, so the counter only moves once.
+        // ON CONFLICT collapses the second request to zero rows.
         await _fx.ResetAsync();
         var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
         var (_, token) = await SeedUserAndIssueTokenAsync("fan");
@@ -163,7 +162,7 @@ public class CommentLikesEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task Like_Reply_Works()
     {
-        // The explicit ask in the issue: subcomments are likeable too, on the same endpoint.
+        // Subcomments are likeable too, on the same endpoint.
         await _fx.ResetAsync();
         var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
         var (_, token) = await SeedUserAndIssueTokenAsync("fan");
@@ -182,7 +181,7 @@ public class CommentLikesEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task Like_DeletedComment_Returns404()
     {
-        // A soft-deleted comment renders as `[deleted]` — there is no body left to endorse.
+        // Renders as `[deleted]` — nothing left to endorse.
         await _fx.ResetAsync();
         var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
         var (_, token) = await SeedUserAndIssueTokenAsync("fan");
@@ -200,8 +199,7 @@ public class CommentLikesEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task Like_PrivateClip_NonOwnerReturns404()
     {
-        // Matches the clip-like gate exactly: the same 404 a missing comment yields, so a
-        // stranger can't tell "exists but private" from "gone".
+        // Same 404 a missing comment yields, so "private" and "gone" are indistinguishable.
         await _fx.ResetAsync();
         var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
         var (_, token) = await SeedUserAndIssueTokenAsync("fan");
@@ -309,8 +307,7 @@ public class CommentLikesEndpointsTests : IAsyncLifetime
     [Fact]
     public async Task Unlike_DoesNotDecrementBelowZero()
     {
-        // Guards the counter against data drift: a like row with a counter already at zero
-        // must clamp rather than go negative.
+        // A like row with the counter already at zero must clamp, not go negative.
         await _fx.ResetAsync();
         var (authorId, _) = await SeedUserAndIssueTokenAsync("author");
         var (fanId, token) = await SeedUserAndIssueTokenAsync("fan");

@@ -36,8 +36,7 @@ const replyPosting = ref(false)
 const replyCursors = ref<Record<string, string | null>>({})
 // Per-thread in-flight guard so rapid "Show more" clicks can't fire overlapping requests.
 const replyLoading = ref<Record<string, boolean>>({})
-// Per-comment like guard, keyed the same way — a single boolean would block liking a second
-// comment while the first is still in flight.
+// Per-comment: a single boolean would block liking a second while the first is in flight.
 const likeBusy = ref<Record<string, boolean>>({})
 
 // Delete confirmation
@@ -260,8 +259,7 @@ async function toggleLike(commentId: string) {
 
   try {
     const result = wasLiked ? await comments.unlike(commentId) : await comments.like(commentId)
-    // Re-locate rather than reusing `target`: the clip can change mid-request, in which case
-    // the row we optimistically edited belongs to a list that is no longer rendered.
+    // Re-locate, not reuse `target`: the clip can change mid-request.
     const current = findComment(commentId)
     if (current) {
       current.likeCount = result.likeCount
@@ -279,7 +277,6 @@ async function toggleLike(commentId: string) {
   }
 }
 
-// Threads are two levels deep, so a linear walk over both is enough.
 function findComment(id: string): CommentItem | null {
   for (const thread of threads.value) {
     if (thread.id === id) return thread

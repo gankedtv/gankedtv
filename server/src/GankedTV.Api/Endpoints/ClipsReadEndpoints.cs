@@ -635,9 +635,8 @@ public static class ClipsReadEndpoints
         }
 
         var thumbnailsBucket = s3.Value.ThumbnailsBucket;
-        // Issued together, not one clip at a time: on a cold pod with Redis behind HybridCache
-        // a sequential loop is one round-trip per clip, so a 100-item page would serialise 100
-        // of them before the response starts.
+        // Together, not one at a time: with Redis behind HybridCache a sequential loop is one
+        // round-trip per clip.
         var urls = await Task.WhenAll(clips.Select(c =>
             BuildThumbnailUrlAsync(signedUrls, thumbnailsBucket, c, ct).AsTask()));
         return [.. clips.Select((c, i) => c.ToFeedItem(urls[i], likedByMe: false))];
@@ -669,11 +668,8 @@ public static class ClipsReadEndpoints
     // Public Ready clips always have a thumbnail (the worker is the only path to Ready
     // and never marks Ready without writing ThumbnailKey first). Caller is expected to
     // pass non-null; passing null indicates a corrupted row and we fail loudly.
-    //
-    // The URL goes through the memo so repeat page loads reuse one signed URL instead of
-    // minting a fresh (and therefore uncacheable) one per request. EditCount is the version:
-    // a re-cut re-posters the same object key, and bumping it hands viewers a new URL rather
-    // than leaving them on a cached copy of the old frame.
+    // Memoised so repeat loads reuse one URL. EditCount is the version: a re-cut re-posters the
+    // same key, so bumping it is what stops viewers seeing a cached copy of the old frame.
     internal static ValueTask<string> BuildThumbnailUrlAsync(
         ISignedUrlCache signedUrls, string bucket, Clip clip, CancellationToken ct)
     {
