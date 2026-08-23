@@ -452,10 +452,14 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
               <textarea
                 v-model="bio"
                 maxlength="500"
-                rows="3"
+                rows="5"
                 placeholder="Tell people about yourself"
-                :class="inputClass + ' resize-y min-h-20'"
+                :class="inputClass + ' resize-y min-h-28'"
               />
+              <p class="m-0 text-[10px] leading-relaxed text-text-muted">
+                Line breaks are kept. **bold**, *italic*, &quot;- &quot; bullets, &quot;1.
+                &quot; numbering and [text](https://…) links are rendered.
+              </p>
             </div>
 
             <!-- ---- Accent color ---- -->

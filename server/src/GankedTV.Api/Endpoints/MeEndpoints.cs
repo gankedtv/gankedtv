@@ -114,6 +114,10 @@ public static partial class MeEndpoints
             }
         }
 
+        // Stored verbatim as plain text — newlines and any markup characters included. The web
+        // profile renders a small markdown subset from it (lib/richText.ts) by building elements,
+        // never HTML, so nothing here is sanitised. Any future consumer that puts a bio into
+        // markup owes it the encoding.
         if (req.Bio is not null)
         {
             if (req.Bio.Length > MaxBioLength)
