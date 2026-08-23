@@ -60,7 +60,9 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
         string? thumbnailKey = DefaultThumbnailKey,
         string uploadSource = "web",
         DateTimeOffset? createdAt = null,
-        short? durationSecs = null)
+        short? durationSecs = null,
+        short? width = null,
+        short? height = null)
     {
         var id = Guid.NewGuid();
         var seeded = createdAt ?? DateTimeOffset.UtcNow;
@@ -81,6 +83,8 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
             VideoKey = $"clips/{userId}/{id}.mp4",
             ThumbnailKey = resolvedThumbKey,
             ShareCode = ShareCodeGenerator.Next(),
+            Width = width,
+            Height = height,
             Status = status,
             Visibility = visibility,
             UploadSource = uploadSource,
@@ -707,6 +711,29 @@ public class ClipsMutateEndpointsTests : IAsyncLifetime
         clip.EditCount.Should().Be(1);
         clip.ProcessingAttempts.Should().Be(0);
         clip.ProcessingStartedAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Edit_SnapshotsThePublishedFrameForTheRollbackPath()
+    {
+        // The thumbnail stage overwrites duration/width/height with the POST-edit values long
+        // before the compress stage produces the master they describe. Without this snapshot a
+        // re-edit that then exhausts its retries rolls back to the old master while advertising
+        // the new one's frame — and its duration is unrecoverable, since a [2,8] cut says
+        // nothing about how long the source was.
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId, durationSecs: 30, width: 3440, height: 1440);
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/edit", TrimBody(2, 8));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var db = _fx.CreateContext();
+        var clip = await db.Clips.AsNoTracking().FirstAsync(c => c.Id == clipId);
+        clip.PreEditDurationSecs.Should().Be(30);
+        clip.PreEditWidth.Should().Be(3440);
+        clip.PreEditHeight.Should().Be(1440);
     }
 
     [Fact]

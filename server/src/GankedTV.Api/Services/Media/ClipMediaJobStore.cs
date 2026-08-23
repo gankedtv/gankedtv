@@ -141,6 +141,11 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
                 .SetProperty(c => c.Status, ClipStatuses.Ready)
                 .SetProperty(c => c.VideoKey, videoKey)
                 .SetProperty(c => c.VideoCodec, videoCodec)
+                // The edit landed, so the frame on the row now describes the master that just
+                // shipped and there is nothing left to roll back to.
+                .SetProperty(c => c.PreEditDurationSecs, (short?)null)
+                .SetProperty(c => c.PreEditWidth, (short?)null)
+                .SetProperty(c => c.PreEditHeight, (short?)null)
                 .SetProperty(c => c.ProcessingStartedAt, (DateTimeOffset?)null)
                 .SetProperty(c => c.UpdatedAt, now), ct);
     }
@@ -170,17 +175,21 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
                 .SetProperty(c => c.CropY, (double?)null)
                 .SetProperty(c => c.CropWidth, (double?)null)
                 .SetProperty(c => c.CropHeight, (double?)null)
-                // Put the frame back too: the thumbnail stage already overwrote these with the
-                // cropped dimensions, but the master this row falls back to was never cropped and
-                // the player shapes its box from them. The stored fraction is even_px / source_px,
-                // so dividing recovers the source exactly; UPDATE reads the pre-update row, so
-                // clearing the rect above doesn't disturb it.
-                .SetProperty(c => c.Width, c => c.Width != null && c.CropWidth > 0
-                    ? (short?)Math.Round(c.Width.Value / c.CropWidth.Value)
-                    : c.Width)
-                .SetProperty(c => c.Height, c => c.Height != null && c.CropHeight > 0
-                    ? (short?)Math.Round(c.Height.Value / c.CropHeight.Value)
-                    : c.Height)
+                // Put the published frame back. The thumbnail stage overwrites duration/width/
+                // height with the POST-edit values as soon as it succeeds, but the master this row
+                // falls back to is the pre-edit one — the player shapes its box from width/height
+                // and the feed badge reads duration, so leaving the new values there describes a
+                // frame and a runtime that no longer exist anywhere. Restoring from the snapshot
+                // /edit took (rather than inverting the crop) also covers the thumbnail-stage
+                // failure, where the overwrite never happened and inverting would inflate the
+                // frame, and the duration, which no arithmetic on the row can recover: a [2,8] cut
+                // says nothing about how long the source was.
+                .SetProperty(c => c.DurationSecs, c => c.PreEditDurationSecs ?? c.DurationSecs)
+                .SetProperty(c => c.Width, c => c.PreEditWidth ?? c.Width)
+                .SetProperty(c => c.Height, c => c.PreEditHeight ?? c.Height)
+                .SetProperty(c => c.PreEditDurationSecs, (short?)null)
+                .SetProperty(c => c.PreEditWidth, (short?)null)
+                .SetProperty(c => c.PreEditHeight, (short?)null)
                 // Only the first re-cut can restore "never edited"; later ones had a real
                 // earlier edit whose stamp must survive.
                 .SetProperty(c => c.EditedAt, c => c.EditCount <= 1 ? null : c.EditedAt)

@@ -125,6 +125,12 @@ public sealed class ClipEditService : IClipEditService
                 .SetProperty(c => c.CropY, edits.Crop == null ? null : (double?)edits.Crop.Y)
                 .SetProperty(c => c.CropWidth, edits.Crop == null ? null : (double?)edits.Crop.Width)
                 .SetProperty(c => c.CropHeight, edits.Crop == null ? null : (double?)edits.Crop.Height)
+                // Snapshot the published frame before the thumbnail stage overwrites it with the
+                // post-edit one. UPDATE reads the pre-update row, so these capture the values the
+                // clip is live with right now — what a failed re-edit has to fall back to.
+                .SetProperty(c => c.PreEditDurationSecs, c => c.DurationSecs)
+                .SetProperty(c => c.PreEditWidth, c => c.Width)
+                .SetProperty(c => c.PreEditHeight, c => c.Height)
                 .SetProperty(c => c.EditedAt, now)
                 .SetProperty(c => c.EditCount, c => c.EditCount + 1)
                 .SetProperty(c => c.ProcessingAttempts, 0)

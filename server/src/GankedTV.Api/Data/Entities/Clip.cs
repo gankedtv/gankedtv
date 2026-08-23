@@ -58,6 +58,16 @@ public class Clip
     public double? CropWidth { get; set; }
     public double? CropHeight { get; set; }
 
+    // Snapshot of the frame the clip is currently published with, taken when a post-publish
+    // re-edit is requested and cleared once one lands. It exists for one reason: the thumbnail
+    // stage overwrites DurationSecs/Width/Height with the POST-edit values long before the
+    // compress stage produces the master they describe, so a re-edit that then exhausts its
+    // retries would roll back to the old master while advertising the new one's frame. Duration
+    // can't be recovered any other way — a [2,8] cut says nothing about how long the source was.
+    public short? PreEditDurationSecs { get; set; }
+    public short? PreEditWidth { get; set; }
+    public short? PreEditHeight { get; set; }
+
     // Set the first time the *video* is re-cut after the clip went live (POST /clips/{id}/edit).
     // Metadata edits (title/description/tags) deliberately don't stamp it — the badge exists so
     // viewers know the footage itself changed since publish.
