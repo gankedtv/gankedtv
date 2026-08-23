@@ -378,6 +378,32 @@ public class GameCatalogImporterTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AlternativeName_NeverStealsARowLinkedToAnotherGame()
+    {
+        // An alias that happens to match a row already owned by a different IGDB game must not
+        // repoint it. If it did, the rightful owner would match it by id on a later run and
+        // rename it — one game ends up with the wrong identity and the other loses its row.
+        var storage = new InMemoryObjectStorage();
+        var igdb = StubIgdb(new IgdbGame(7820, "Owned Test Game", "i1"));
+        await using (var db = _fx.CreateContext())
+        {
+            await Build(db, igdb, storage).RunAsync(CancellationToken.None);
+        }
+
+        var poacher = StubIgdb(new IgdbGame(7821, "Poacher Test", "i2", ["Owned Test Game"]));
+        await using (var db = _fx.CreateContext())
+        {
+            await Build(db, poacher, storage).RunAsync(CancellationToken.None);
+        }
+
+        await using var verify = _fx.CreateContext();
+        var owned = await verify.Games.SingleAsync(g => g.Slug == "owned-test-game");
+        owned.IgdbId.Should().Be(7820, "the original owner keeps its link");
+        owned.Name.Should().Be("Owned Test Game");
+        (await verify.Games.SingleAsync(g => g.IgdbId == 7821)).Slug.Should().Be("poacher-test");
+    }
+
+    [Fact]
     public async Task TwoRows_CannotClaimTheSameIgdbId()
     {
         // Backstop for the whole bug class: even if a future reconciliation path regresses, the

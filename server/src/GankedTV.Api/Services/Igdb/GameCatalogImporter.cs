@@ -194,10 +194,10 @@ public sealed class GameCatalogImporter(
     }
 
     /// <summary>
-    /// Finds an unlinked catalog row for this IGDB game by display name, falling back to IGDB's
-    /// alternative names. The matched row is dropped from every name bucket it occupies so a
-    /// second IGDB game sharing one of those names can't re-adopt it — that one becomes a new,
-    /// slug-disambiguated row instead.
+    /// Finds an <em>unlinked</em> catalog row for this IGDB game by display name, falling back
+    /// to IGDB's alternative names; rows already carrying an <c>igdb_id</c> are skipped. The
+    /// matched row is dropped from every name bucket it occupies so a second IGDB game sharing
+    /// one of those names can't re-adopt it — that one becomes a new, slug-disambiguated row.
     /// </summary>
     private static bool TryAdoptByName(
         IgdbGame meta,
@@ -207,6 +207,16 @@ public sealed class GameCatalogImporter(
         foreach (var candidate in MatchableNames(meta))
         {
             if (!byName.TryGetValue(candidate, out var match))
+            {
+                continue;
+            }
+
+            // Never steal a row that already belongs to a different IGDB game. `byName` holds
+            // linked rows too, and an alias collision would otherwise repoint one game's row at
+            // another — leaving the rightful owner to match it by id on a later iteration and
+            // rename it. The alias pass makes such collisions far more reachable than exact-name
+            // matching did, so the guard is load-bearing, not defensive.
+            if (match.IgdbId is not null)
             {
                 continue;
             }

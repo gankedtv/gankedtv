@@ -92,7 +92,7 @@ public class ThumbnailJobServiceTests
     }
 
     [Fact]
-    public async Task ExtractAsync_CapsPosterHeight()
+    public async Task ExtractAsync_CapsPosterLongEdge()
     {
         // This stage runs before compress, so its input is the raw upload — without the cap a 4K
         // capture yields a 4K poster for a card that renders a few hundred pixels wide.
@@ -102,7 +102,7 @@ public class ThumbnailJobServiceTests
             FfprobePath = "ffprobe",
             ProcessTimeout = TimeSpan.FromSeconds(30),
             ThumbnailFrameOffset = TimeSpan.FromSeconds(1),
-            ThumbnailMaxHeight = 480,
+            ThumbnailMaxEdge = 480,
         });
         StubFfprobe(ffmpeg, """{"streams":[{"width":3840,"height":2160,"duration":"5.0"}]}""");
         StubFfmpegFrame(ffmpeg, new byte[] { 0xFF, 0xD8, 0xFF });
@@ -113,7 +113,8 @@ public class ThumbnailJobServiceTests
             .Where(c => c.GetArguments()[0] as string == "ffmpeg")
             .Select(c => (IReadOnlyList<string>)c.GetArguments()[1]!)
             .Single();
-        args.Should().ContainInOrder("-vf", "scale=-2:'min(ih,480)'");
+        args.Should().ContainInOrder(
+            "-vf", "scale=w=480:h=480:force_original_aspect_ratio=decrease:force_divisible_by=2");
     }
 
     [Fact]
@@ -133,7 +134,7 @@ public class ThumbnailJobServiceTests
             Arg.Any<Stream>(),
             "image/jpeg",
             Arg.Any<CancellationToken>(),
-            "public, max-age=518400");
+            "public, max-age=2700");
     }
 
     [Fact]

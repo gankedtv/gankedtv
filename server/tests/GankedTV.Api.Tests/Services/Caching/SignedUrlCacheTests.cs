@@ -78,13 +78,15 @@ public class SignedUrlCacheTests
     }
 
     [Fact]
-    public void UrlLifetime_OutlastsTheMemo()
+    public void CachedCopyNeverOutlivesTheSignature()
     {
-        // A URL handed out at the last moment of the memo window must still be valid for a while
-        // after — otherwise the tail of every window serves URLs that are about to 403.
-        SignedUrlCache.UrlLifetime.Should().Be(TimeSpan.FromDays(7),
-            "seven days is SigV4's ceiling for a presigned URL");
-        SignedUrlCache.CacheControlHeader.Should().Be("public, max-age=518400");
-        TimeSpan.FromSeconds(518400).Should().BeLessThan(SignedUrlCache.UrlLifetime);
+        // Two ordering rules. A URL handed out at the last moment of the memo window must still
+        // be valid for a while after, or the tail of every window serves URLs about to 403. And
+        // max-age must not outlive the signature, or a browser keeps serving a URL that no longer
+        // works. The lifetime also stays at the historical one hour on purpose: a longer
+        // signature widens the window in which a leaked private-clip poster URL still resolves.
+        SignedUrlCache.UrlLifetime.Should().Be(TimeSpan.FromHours(1));
+        SignedUrlCache.CacheControlHeader.Should().Be("public, max-age=2700");
+        TimeSpan.FromSeconds(2700).Should().BeLessThan(SignedUrlCache.UrlLifetime);
     }
 }

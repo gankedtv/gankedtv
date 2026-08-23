@@ -29,24 +29,27 @@ public sealed class SignedUrlCache(HybridCache cache, IObjectStorageService stor
     public const string Tag = "signed-urls";
 
     /// <summary>
-    /// How long a handed-out URL stays valid. Seven days is SigV4's ceiling for a presigned URL.
+    /// How long a handed-out URL stays valid — deliberately left at the one hour thumbnails have
+    /// always used. A longer signature would widen the window in which a leaked poster URL for a
+    /// private or hidden clip still resolves, and buys very little: the memo below already turns
+    /// a browsing session's repeat page loads into cache hits, which is the whole problem.
     /// </summary>
-    public static readonly TimeSpan UrlLifetime = TimeSpan.FromDays(7);
+    public static readonly TimeSpan UrlLifetime = TimeSpan.FromHours(1);
 
     /// <summary>
-    /// Matching <c>Cache-Control</c> for the stored object. Aligned with the L2 memo so a browser
-    /// never holds a cached copy of a URL the memo has already stopped handing out.
+    /// Matching <c>Cache-Control</c> for the stored object, capped at the memo window so a
+    /// browser never holds a cached copy of a URL the memo has already stopped handing out —
+    /// and never past the signature's own expiry.
     /// </summary>
-    public const string CacheControlHeader = "public, max-age=518400";
+    public const string CacheControlHeader = "public, max-age=2700";
 
-    // L2 (Redis) is the real window: six days of a seven-day signature, so a URL handed out at
-    // the last moment still has a day of validity left. L1 is deliberately shorter — it is a
-    // per-pod dictionary that would otherwise hold one string per clip for the better part of a
-    // week, and a lapsed L1 entry just re-signs (the URL changes, costing one refetch).
+    // 45 minutes of a 60-minute signature, so a URL handed out at the last moment still has a
+    // quarter of an hour left on it. L1 and L2 share the window: the entries are one short string
+    // per clip, and a lapsed one just re-signs (a new URL, costing one refetch).
     private static readonly HybridCacheEntryOptions Entry = new()
     {
-        Expiration = TimeSpan.FromDays(6),
-        LocalCacheExpiration = TimeSpan.FromHours(12),
+        Expiration = TimeSpan.FromMinutes(45),
+        LocalCacheExpiration = TimeSpan.FromMinutes(45),
     };
 
     private static readonly string[] Tags = [Tag];

@@ -194,6 +194,36 @@ describe('ClipView autoplay (issue #218)', () => {
     expect(wrapper.find('video').element.muted).toBe(false)
   })
 
+  it('retires the tap overlay when playback starts from Plyr\u2019s own controls', async () => {
+    // Plyr's control bar and large play button render above our overlay, so the viewer can start
+    // the clip without touching it — leaving a play circle over a playing video.
+    play.mockRejectedValue(new DOMException('blocked', 'NotAllowedError'))
+    const wrapper = await mountClip()
+    expect(wrapper.find('button[aria-label="Play No-scope wallbang"]').exists()).toBe(true)
+
+    await wrapper.find('video').trigger('play')
+
+    expect(wrapper.find('button[aria-label="Play No-scope wallbang"]').exists()).toBe(false)
+  })
+
+  it('shows the unmute badge when the first attempt succeeds already-muted', async () => {
+    // Plyr restores mute state across visits, so a viewer we had to mute yesterday plays muted
+    // today on the first attempt — with nothing to explain the silence unless we say so.
+    Object.defineProperty(HTMLMediaElement.prototype, 'muted', {
+      configurable: true,
+      get: () => true,
+      set: () => {},
+    })
+    try {
+      const wrapper = await mountClip()
+
+      expect(play).toHaveBeenCalledTimes(1)
+      expect(wrapper.text()).toContain('Unmute')
+    } finally {
+      delete (HTMLMediaElement.prototype as unknown as Record<string, unknown>).muted
+    }
+  })
+
   it('does not autoplay when the viewer asked for reduced motion', async () => {
     setReducedMotion(true)
 

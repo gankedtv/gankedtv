@@ -236,11 +236,12 @@ public sealed class ThumbnailJobService : IThumbnailJobService
         // we don't care about exact frame accuracy; speed matters more.
         // -frames:v 1 = single frame; -q:v 4 = JPEG quality (~lossy but small).
         //
-        // The height cap matters more than it looks: this stage runs BEFORE compress, so the
-        // input is the raw upload — a 4K phone capture would otherwise produce a 4K poster for
-        // a card that renders ~320px wide. `min(ih,cap)` only ever downscales, and -2 keeps the
-        // width even and the aspect ratio intact.
-        var maxHeight = Math.Max(1, opts.ThumbnailMaxHeight);
+        // The size cap matters more than it looks: this stage runs BEFORE compress, so the input
+        // is the raw upload — a 4K phone capture would otherwise produce a 4K poster for a card
+        // that renders ~320px wide. Capping both axes with force_original_aspect_ratio=decrease
+        // bounds the LONG edge whichever way round the clip is, so a portrait capture isn't left
+        // with a third of the pixels of a landscape one. It only ever shrinks.
+        var maxEdge = Math.Max(2, opts.ThumbnailMaxEdge);
         var args = new List<string>
         {
             "-y",
@@ -260,7 +261,9 @@ public sealed class ThumbnailJobService : IThumbnailJobService
         args.AddRange(new[]
         {
             "-frames:v", "1",
-            "-vf", string.Create(CultureInfo.InvariantCulture, $"scale=-2:'min(ih,{maxHeight})'"),
+            "-vf", string.Create(
+                CultureInfo.InvariantCulture,
+                $"scale=w={maxEdge}:h={maxEdge}:force_original_aspect_ratio=decrease:force_divisible_by=2"),
             "-q:v", "4",
             "-f", "mjpeg",
             outputPath,

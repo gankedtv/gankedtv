@@ -30,10 +30,6 @@ public static class ClipsReadEndpoints
     // top-10 with headroom. Capping here keeps the in-memory scoring step bounded.
     internal const int TrendingMaxLimit = 50;
     private static readonly TimeSpan VideoUrlLifetime = TimeSpan.FromHours(1);
-    // Thumbnail URLs ride the same 1-hour signed window as video URLs — keeping the
-    // two lifetimes aligned means a feed page that's still fresh enough to play the
-    // video still has working poster images.
-    private static readonly TimeSpan ThumbnailUrlLifetime = TimeSpan.FromHours(1);
     // Just long enough to cover CropDetectTimeout plus ffmpeg's own connection setup; the URL
     // exists only for the duration of one detection run.
     private static readonly TimeSpan CropSuggestionUrlLifetime = TimeSpan.FromMinutes(5);
@@ -639,14 +635,12 @@ public static class ClipsReadEndpoints
         }
 
         var thumbnailsBucket = s3.Value.ThumbnailsBucket;
-        var items = new List<ClipFeedItem>(clips.Count);
-        foreach (var c in clips)
-        {
-            items.Add(c.ToFeedItem(
-                await BuildThumbnailUrlAsync(signedUrls, thumbnailsBucket, c, ct),
-                likedByMe: false));
-        }
-        return items;
+        // Issued together, not one clip at a time: on a cold pod with Redis behind HybridCache
+        // a sequential loop is one round-trip per clip, so a 100-item page would serialise 100
+        // of them before the response starts.
+        var urls = await Task.WhenAll(clips.Select(c =>
+            BuildThumbnailUrlAsync(signedUrls, thumbnailsBucket, c, ct).AsTask()));
+        return [.. clips.Select((c, i) => c.ToFeedItem(urls[i], likedByMe: false))];
     }
 
     // Re-stamps the per-caller LikedByMe flag onto an anonymous (possibly cached) item list.

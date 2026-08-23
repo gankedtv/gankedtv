@@ -266,8 +266,8 @@ builder.Services.AddOptions<MediaJobOptions>()
         if (bool.TryParse(hwFallback, out var hwf)) opts.HardwareEncoderFallbackEnabled = hwf;
         var maxHeight = Environment.GetEnvironmentVariable("MEDIA_MAX_HEIGHT");
         if (int.TryParse(maxHeight, out var mh) && mh > 0) opts.MaxHeight = mh;
-        var thumbHeight = Environment.GetEnvironmentVariable("MEDIA_THUMBNAIL_MAX_HEIGHT");
-        if (int.TryParse(thumbHeight, out var th) && th > 0) opts.ThumbnailMaxHeight = th;
+        var thumbEdge = Environment.GetEnvironmentVariable("MEDIA_THUMBNAIL_MAX_EDGE");
+        if (int.TryParse(thumbEdge, out var tme) && tme > 0) opts.ThumbnailMaxEdge = tme;
         var crf = Environment.GetEnvironmentVariable("MEDIA_CRF");
         if (int.TryParse(crf, out var cr) && cr > 0) opts.Crf = cr;
         // Crop. CropEnabled gates the feature on both write routes; CropDetect* gate only the

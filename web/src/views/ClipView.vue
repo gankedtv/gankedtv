@@ -88,6 +88,7 @@ const autoplayMuted = ref(false)
 const AUTOPLAY_GRACE_MS = 10_000
 let playerMountedAt = 0
 let unmuteListener: { el: HTMLVideoElement; handler: () => void } | null = null
+let playListener: { el: HTMLVideoElement; handler: () => void } | null = null
 
 const BASE_CONTROLS = [
   'play-large',
@@ -297,6 +298,11 @@ async function tryAutoplay(el: HTMLVideoElement) {
   // is always safe and the view can be tested without a media shim.
   try {
     await Promise.resolve(el.play())
+    if (myToken !== playerToken) return
+    // Plyr persists mute state, so the *first* attempt can succeed already-muted from a previous
+    // visit where we had to mute to get past the policy. That still needs the badge, or the
+    // viewer gets silent playback with nothing explaining it, forever.
+    if (el.muted) markAutoplayedMuted(el)
     return
   } catch {
     if (myToken !== playerToken) return
@@ -306,13 +312,18 @@ async function tryAutoplay(el: HTMLVideoElement) {
     el.muted = true
     await Promise.resolve(el.play())
     if (myToken !== playerToken) return
-    autoplayMuted.value = true
-    watchForUnmute(el)
+    markAutoplayedMuted(el)
   } catch {
     if (myToken !== playerToken) return
     el.muted = false
     needsTapToPlay.value = true
+    watchForPlay(el)
   }
+}
+
+function markAutoplayedMuted(el: HTMLVideoElement) {
+  autoplayMuted.value = true
+  watchForUnmute(el)
 }
 
 function handleTapToPlay() {
@@ -333,6 +344,26 @@ function handleTapToPlay() {
 function unmute() {
   autoplayMuted.value = false
   if (videoEl.value) videoEl.value.muted = false
+}
+
+// Plyr's controls and its own large play button sit above our overlay, so the viewer can start
+// the clip without ever clicking it. Retire the overlay on the first `play` from any source,
+// or the play circle sits over a playing video and swallows clicks on the picture.
+function watchForPlay(el: HTMLVideoElement) {
+  detachPlayWatch()
+  const onPlay = () => {
+    needsTapToPlay.value = false
+    detachPlayWatch()
+  }
+  el.addEventListener('play', onPlay)
+  playListener = { el, handler: onPlay }
+}
+
+function detachPlayWatch() {
+  if (playListener) {
+    playListener.el.removeEventListener('play', playListener.handler)
+    playListener = null
+  }
 }
 
 // Plyr's own mute control is right there in the toolbar; using it should retire our badge too.
@@ -485,6 +516,7 @@ function attachHlsStream(el: HTMLVideoElement, hlsUrl: string) {
 function teardownPlayer() {
   detachViewTracking()
   detachUnmuteWatch()
+  detachPlayWatch()
   needsTapToPlay.value = false
   autoplayMuted.value = false
   // Invalidate any in-flight JIT poll loop.

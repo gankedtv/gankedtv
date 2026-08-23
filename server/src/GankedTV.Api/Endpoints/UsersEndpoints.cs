@@ -74,13 +74,13 @@ public static class UsersEndpoints
             db, principal, clips.Select(c => c.Id), ct);
 
         var thumbnailsBucket = s3.Value.ThumbnailsBucket;
-        var clipDtos = new List<ClipFeedItem>(clips.Count);
-        foreach (var c in clips)
-        {
-            clipDtos.Add(c.ToFeedItem(
-                await ClipsReadEndpoints.BuildThumbnailUrlAsync(signedUrls, thumbnailsBucket, c, ct),
-                likedIds.Contains(c.Id)));
-        }
+        // Batched for the same reason as the feed projection: one Redis round-trip per clip,
+        // serialised, is a slow profile page on a cold pod.
+        var thumbnailUrls = await Task.WhenAll(clips.Select(c =>
+            ClipsReadEndpoints.BuildThumbnailUrlAsync(signedUrls, thumbnailsBucket, c, ct).AsTask()));
+        var clipDtos = clips
+            .Select((c, i) => c.ToFeedItem(thumbnailUrls[i], likedIds.Contains(c.Id)))
+            .ToList();
 
         var followerCount = await db.Follows.AsNoTracking()
             .CountAsync(f => f.FolloweeId == user.Id, ct);
