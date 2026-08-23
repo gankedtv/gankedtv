@@ -140,13 +140,15 @@ app-host instead if you'd rather posters keep generating when the GPU host is do
 
 **Cropping** rides the existing compress re-encode, so it needs no worker of its own and no extra
 toggle on the GPU host — but it does need `MEDIA_TRANSCODE_ENABLED=true`, since with compression
-off there is no re-encode to attach the crop filter to.
+off there is no re-encode to attach the crop filter to. With it off the thumbnail stage also stops
+cropping the poster, so a crop that slipped in before the toggle flipped leaves the clip whole
+rather than publishing a cropped poster over an uncropped master.
 
 | Var | Default | Notes |
 |---|---|---|
-| `MEDIA_CROP_ENABLED` | `true` | Kill switch for cropping on `POST /clips/{id}/complete` and `/edit`. `false` → `400 crop_unavailable`. Set it on the **app host** — that's where the requests land. |
+| `MEDIA_CROP_ENABLED` | `true` | Kill switch for cropping on `POST /clips/{id}/complete` and `/edit`. `false` → `400 crop_unavailable`. Set it on the **app host** — that's where the requests land — and give **every** host the same value: the thumbnail and compress stages each recheck it, so a split verdict crops the poster on one host while the other leaves the master alone. |
 | `MEDIA_CROPDETECT_ENABLED` | `true` | Kill switch for the advisory `GET /clips/{id}/crop-suggestion`. `false` → `503 crop_detect_unavailable`. Independent of `MEDIA_CROP_ENABLED`, so manual cropping survives turning detection off. |
-| `MEDIA_CROPDETECT_SAMPLES` | `3` | Timestamps sampled per detection (15/50/85% of the duration), combined as a union bounding box. |
+| `MEDIA_CROPDETECT_SAMPLES` | `3` | Timestamps sampled per detection, spread evenly over the middle 70% of the duration (`3` → 15/50/85%), combined as a union bounding box. **1–10**; outside that the app fails to start rather than clamping silently. A clip with no probed duration yet (`draft`) takes a single sample at t=0 — every offset there would be 0 anyway. |
 | `MEDIA_CROPDETECT_LIMIT` | `24` | ffmpeg `cropdetect` luma threshold. Raise it for washed-out captures whose bars aren't pure black. |
 | `MEDIA_CROPDETECT_TIMEOUT_SECS` | `8` | Whole-endpoint budget. Blowing it degrades to `detected: false`, never an error. |
 

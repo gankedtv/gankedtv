@@ -85,9 +85,12 @@ public static class ClipsReadEndpoints
     }
 
     // Advisory "remove black bars" suggestion for the crop editor. Owner-only, and allowed on
-    // 'draft' as well as 'ready' so the upload wizard can offer it before the clip is published
-    // (at that point the raw upload is the only thing in storage). Never 5xx on a detection
-    // failure and never writes anything: a miss just means the user crops by hand.
+    // 'draft' as well as 'ready' — an API-key uploader (rewynd) creates the row, PUTs the object,
+    // and can ask about it before calling /complete, at which point the raw upload is the only
+    // thing in storage. NOT reachable from the web wizard: it holds a local File and doesn't
+    // create the clip until startUpload(), so there is neither an id nor an object to probe until
+    // the crop has already been chosen. Never 5xx on a detection failure and never writes
+    // anything: a miss just means the user crops by hand.
     private static async Task<IResult> GetCropSuggestion(
         Guid id,
         ClaimsPrincipal principal,
