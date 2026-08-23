@@ -111,6 +111,7 @@ public static class TagsEndpoints
         IObjectStorageService storage,
         IOptions<S3Options> s3,
         IFeedCache feedCache,
+        ISignedUrlCache signedUrls,
         CancellationToken ct)
     {
         // Distinguish "no such tag" (404) from "tag exists but has no clips" (200, empty page)
@@ -138,14 +139,14 @@ public static class TagsEndpoints
             var cached = await feedCache.GetOrCreateFeedAsync(
                 $"feed:tag:{slug}:{feedLimit}",
                 c => new ValueTask<CachedFeedPage>(
-                    ClipsReadEndpoints.BuildAnonymousFeedPageAsync(baseQuery, null, limit, storage, s3, c)),
+                    ClipsReadEndpoints.BuildAnonymousFeedPageAsync(baseQuery, null, limit, signedUrls, s3, c)),
                 ct);
             var items = await ClipsReadEndpoints.ApplyLikedByMeAsync(cached.Items, principal, db, ct);
             return Results.Ok(new ClipFeedResponse(items, cached.NextCursor));
         }
 
         var response = await ClipsReadEndpoints.BuildFeedPageAsync(
-            baseQuery, cursor, limit, principal, db, storage, s3, ct);
+            baseQuery, cursor, limit, principal, db, signedUrls, s3, ct);
         return Results.Ok(response);
     }
 }

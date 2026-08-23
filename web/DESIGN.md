@@ -88,7 +88,7 @@ Scale highlights: wordmark 18px/900 caps; page title `clamp(30px,3.6vw,42px)` 90
 
 ## 6 — Component recipes
 
-- **Clip card** ([ClipCard.vue](src/components/ClipCard.vue)): `rounded-lg border border-border bg-surface-raised overflow-hidden hover:border-border-strong`. Thumb `aspect-video bg-black` with GameTag top-left + DurationBadge bottom-right. Below: Inter 600 12px title (2-line clamp) + meta (`@author` mint · time · views/likes right). No tag chips on cards — tags live on detail surfaces.
+- **Clip card** ([ClipCard.vue](src/components/ClipCard.vue)): `rounded-lg border border-border bg-surface-raised overflow-hidden hover:border-border-strong`. Thumb `aspect-video bg-surface-high` with GameTag top-left + DurationBadge bottom-right. Below: Inter 600 12px title (2-line clamp) + meta (`@author` mint · time · views/likes right). No tag chips on cards — tags live on detail surfaces.
 - **Hero (Home):** full-bleed 16:9 with legibility gradient, mint kicker ("Clip of the Day"), condensed 900 overlay title in `#f4f1e8`, meta row, centered play button (`rounded-full bg-black/55 border-white/30`).
 - **Ranked lists:** `grid-cols-[36px_56px_1fr]` (rank / 16:9 thumb / title+meta), rank `font-condensed text-[22px] font-black`, #1 `text-accent`, rest `text-text-muted`, zero-padded.
 - **Game tile** ([GameCoverTile.vue](src/components/GameCoverTile.vue)): `aspect-3/4 rounded-lg border border-border`, optional rank numeral on cover, name below (Inter 700 11px) + `#footer-extra` for clip counts. `group-hover:-translate-y-0.5 group-hover:border-accent-border` — the sole transform.
@@ -154,7 +154,8 @@ Sanctioned exceptions (the only allowed hits): nav backdrop-blur, game-tile lift
 - Dynamic values (user accent, avatar fills) via inline `:style`.
 - Icons: stroke-based SVG components inheriting `currentColor` ([src/components/icons/](src/components/icons/)).
 - Images from user input: `<img>`, never CSS `background-image`.
-- Game cover art: `<img>` with `object-cover aspect-3/4`. Clip thumbnails: `<img>` with `object-cover aspect-video`.
+- Game cover art: `object-cover aspect-3/4`. Clip thumbnails: `object-cover aspect-video`. Both render through [ThumbImage.vue](src/components/ThumbImage.vue), never a bare `<img>` and never a CSS `background-image` — it carries the lazy/async loading and the 150ms fade over the placeholder. Pass `eager` only for the LCP element on a page (the home hero, the trending feature, a game's cover).
+- **Loading placeholder is `bg-surface-high`, not `bg-black`.** The wrapper is visible only until the image paints, and a black box reads as a broken video. `bg-black` is reserved for real letterboxing behind a `<video>`.
 - Theme mechanism: `.light` class on `<html>` via `useThemeStore` — do not introduce `data-theme`.
 
 Before writing any component: check the token table (§3), reuse the recipes (§6), run the sweep (§9). If something isn't covered: least visual noise, most content, mint only for interactive states.

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
+using GankedTV.Api.Services.Caching;
 using GankedTV.Api.Services.Clips;
 using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.Extensions.Options;
@@ -101,7 +102,16 @@ public sealed class ThumbnailJobService : IThumbnailJobService
             var thumbnailKey = ClipKeys.BuildThumbnailKey(job.UserId, job.ClipId, gameSlug);
             await using (var stream = File.OpenRead(thumbPath))
             {
-                await _storage.PutObjectAsync(buckets.ThumbnailsBucket, thumbnailKey, stream, "image/jpeg", ct);
+                // Long max-age is safe because the URL viewers get is presigned through
+                // SignedUrlCache and versioned on edit_count: a re-cut hands out a different
+                // URL, so a cached copy of the old frame can never be served under it.
+                await _storage.PutObjectAsync(
+                    buckets.ThumbnailsBucket,
+                    thumbnailKey,
+                    stream,
+                    "image/jpeg",
+                    ct,
+                    SignedUrlCache.CacheControlHeader);
             }
 
             // Dimensions are POST-crop: they drive the player's aspect ratio and the JIT ladder's
@@ -225,6 +235,12 @@ public sealed class ThumbnailJobService : IThumbnailJobService
         // -ss before -i = fast seek (decode-skip to nearest keyframe). For a thumbnail
         // we don't care about exact frame accuracy; speed matters more.
         // -frames:v 1 = single frame; -q:v 4 = JPEG quality (~lossy but small).
+        //
+        // The height cap matters more than it looks: this stage runs BEFORE compress, so the
+        // input is the raw upload — a 4K phone capture would otherwise produce a 4K poster for
+        // a card that renders ~320px wide. `min(ih,cap)` only ever downscales, and -2 keeps the
+        // width even and the aspect ratio intact.
+        var maxHeight = Math.Max(1, opts.ThumbnailMaxHeight);
         var args = new List<string>
         {
             "-y",
@@ -244,6 +260,7 @@ public sealed class ThumbnailJobService : IThumbnailJobService
         args.AddRange(new[]
         {
             "-frames:v", "1",
+            "-vf", string.Create(CultureInfo.InvariantCulture, $"scale=-2:'min(ih,{maxHeight})'"),
             "-q:v", "4",
             "-f", "mjpeg",
             outputPath,

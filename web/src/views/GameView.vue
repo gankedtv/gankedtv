@@ -10,6 +10,7 @@ import GameTag from '@/components/GameTag.vue'
 import GameLeaderboardBlock from '@/components/GameLeaderboardBlock.vue'
 import SectionHeader from '@/components/SectionHeader.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
+import ThumbImage from '@/components/ThumbImage.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -213,10 +214,10 @@ watch(slug, () => {
              name is the visible <h1> right beside it, so a bound alt would re-announce it.
              Covers are <img> not background-image so a hostile coverUrl can't break out of a
              CSS url() string. -->
-        <img
+        <ThumbImage
           v-if="game.coverUrl"
           :src="game.coverUrl"
-          alt=""
+          eager
           class="aspect-3/4 w-50 shrink-0 rounded-lg border border-border object-cover max-tablet:w-32"
         />
         <div class="min-w-0">

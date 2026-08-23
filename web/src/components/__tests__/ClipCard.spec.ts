@@ -126,6 +126,31 @@ describe('ClipCard', () => {
     expect(wrapper.emitted('click')).toBeFalsy()
   })
 
+  it('defers the thumbnail — lazy, async-decoded, and faded in over the placeholder', () => {
+    // Every feed grid renders dozens of these below the fold; eager loading is what makes a
+    // long feed slow as the catalogue grows (issue #199).
+    const wrapper = mount(ClipCard, {
+      props: { clip: makeClip() },
+      global: { plugins: [makeRouter()] },
+    })
+
+    const img = wrapper.find('img')
+    expect(img.attributes('loading')).toBe('lazy')
+    expect(img.attributes('decoding')).toBe('async')
+    expect(img.classes()).toContain('opacity-0')
+  })
+
+  it('reveals the thumbnail once it loads', async () => {
+    const wrapper = mount(ClipCard, {
+      props: { clip: makeClip() },
+      global: { plugins: [makeRouter()] },
+    })
+
+    await wrapper.find('img').trigger('load')
+
+    expect(wrapper.find('img').classes()).toContain('opacity-100')
+  })
+
   it('does not render tag chips on the card — tags live on detail surfaces', () => {
     const tags = [
       { id: 1, slug: 'clutch', name: 'clutch', clipCount: 0 },

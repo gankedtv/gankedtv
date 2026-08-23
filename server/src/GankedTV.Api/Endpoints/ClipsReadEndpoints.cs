@@ -209,6 +209,7 @@ public static class ClipsReadEndpoints
         IObjectStorageService storage,
         IOptions<S3Options> s3,
         IFeedCache feedCache,
+        ISignedUrlCache signedUrls,
         CancellationToken ct)
     {
         var baseQuery = db.Clips.AsNoTracking()
@@ -266,7 +267,7 @@ public static class ClipsReadEndpoints
             // so it must never hit the shared cache; only the global trending feed is cached.
             if (isFollowing)
             {
-                var personalised = await BuildTrendingFeedAsync(baseQuery, since, limit, principal, db, storage, s3, ct);
+                var personalised = await BuildTrendingFeedAsync(baseQuery, since, limit, principal, db, signedUrls, s3, ct);
                 return Results.Ok(personalised);
             }
 
@@ -274,7 +275,7 @@ public static class ClipsReadEndpoints
             var cachedTrending = await feedCache.GetOrCreateTrendingAsync(
                 $"feed:trending:{window}:{trendingLimit}{gameKeySuffix}",
                 c => new ValueTask<CachedFeedPage>(
-                    BuildAnonymousTrendingFeedAsync(baseQuery, since, limit, db, storage, s3, c)),
+                    BuildAnonymousTrendingFeedAsync(baseQuery, since, limit, db, signedUrls, s3, c)),
                 ct);
             var trendingItems = await ApplyLikedByMeAsync(cachedTrending.Items, principal, db, ct);
             return Results.Ok(new ClipFeedResponse(trendingItems, cachedTrending.NextCursor));
@@ -303,13 +304,13 @@ public static class ClipsReadEndpoints
                 var cachedTop = await feedCache.GetOrCreateFeedAsync(
                     $"feed:top:{window}:{topLimit}{gameKeySuffix}",
                     c => new ValueTask<CachedFeedPage>(
-                        BuildAnonymousTopFeedPageAsync(topBase, null, limit, storage, s3, c)),
+                        BuildAnonymousTopFeedPageAsync(topBase, null, limit, signedUrls, s3, c)),
                     ct);
                 var topItems = await ApplyLikedByMeAsync(cachedTop.Items, principal, db, ct);
                 return Results.Ok(new ClipFeedResponse(topItems, cachedTop.NextCursor));
             }
 
-            var topPage = await BuildTopFeedPageAsync(topBase, cursor, limit, principal, db, storage, s3, ct);
+            var topPage = await BuildTopFeedPageAsync(topBase, cursor, limit, principal, db, signedUrls, s3, ct);
             return Results.Ok(topPage);
         }
 
@@ -323,7 +324,7 @@ public static class ClipsReadEndpoints
             var forYou = await ForYouFeedBuilder.BuildPageAsync(db, viewerId, gameId, cursor, limit, ct);
             if (forYou is not null) // null = caller has no personalisation signals -> cold-start
             {
-                var items = await ProjectFeedItemsAsync(forYou.Clips, principal, db, storage, s3, ct);
+                var items = await ProjectFeedItemsAsync(forYou.Clips, principal, db, signedUrls, s3, ct);
                 return Results.Ok(new ClipFeedResponse(items, forYou.NextCursor));
             }
             // Cold-start falls through to the shared latest path, which emits a plain KeysetCursor
@@ -341,13 +342,13 @@ public static class ClipsReadEndpoints
             var cached = await feedCache.GetOrCreateFeedAsync(
                 $"feed:latest:{feedLimit}{gameKeySuffix}",
                 c => new ValueTask<CachedFeedPage>(
-                    BuildAnonymousFeedPageAsync(baseQuery, null, limit, storage, s3, c)),
+                    BuildAnonymousFeedPageAsync(baseQuery, null, limit, signedUrls, s3, c)),
                 ct);
             var items = await ApplyLikedByMeAsync(cached.Items, principal, db, ct);
             return Results.Ok(new ClipFeedResponse(items, cached.NextCursor));
         }
 
-        var latest = await BuildFeedPageAsync(baseQuery, cursor, limit, principal, db, storage, s3, ct);
+        var latest = await BuildFeedPageAsync(baseQuery, cursor, limit, principal, db, signedUrls, s3, ct);
         return Results.Ok(latest);
     }
 
@@ -413,11 +414,11 @@ public static class ClipsReadEndpoints
         int? limit,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
-        IObjectStorageService storage,
+                ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
-        var page = await BuildAnonymousTrendingFeedAsync(baseQuery, since, limit, db, storage, s3, ct);
+        var page = await BuildAnonymousTrendingFeedAsync(baseQuery, since, limit, db, signedUrls, s3, ct);
         var items = await ApplyLikedByMeAsync(page.Items, principal, db, ct);
         return new ClipFeedResponse(items, page.NextCursor);
     }
@@ -431,7 +432,7 @@ public static class ClipsReadEndpoints
         DateTimeOffset since,
         int? limit,
         GankedTvDbContext db,
-        IObjectStorageService storage,
+                ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
@@ -471,7 +472,7 @@ public static class ClipsReadEndpoints
         var ranked = await RankedFeedBuilder.HydrateOrderedAsync(
             topIds, db, reapplyPublicReadyFilter: false, ct);
 
-        var items = ProjectAnonymousFeedItems(ranked, storage, s3);
+        var items = await ProjectAnonymousFeedItemsAsync(ranked, signedUrls, s3, ct);
         return new CachedFeedPage(items, NextCursor: null);
     }
 
@@ -484,11 +485,11 @@ public static class ClipsReadEndpoints
         int? limit,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
-        IObjectStorageService storage,
+        ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
-        var page = await BuildAnonymousFeedPageAsync(baseQuery, cursor, limit, storage, s3, ct);
+        var page = await BuildAnonymousFeedPageAsync(baseQuery, cursor, limit, signedUrls, s3, ct);
         var items = await ApplyLikedByMeAsync(page.Items, principal, db, ct);
         return new ClipFeedResponse(items, page.NextCursor);
     }
@@ -501,7 +502,7 @@ public static class ClipsReadEndpoints
         IQueryable<Clip> baseQuery,
         string? cursor,
         int? limit,
-        IObjectStorageService storage,
+                ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
@@ -533,7 +534,7 @@ public static class ClipsReadEndpoints
         var hasMore = rows.Count > clampedLimit;
         var page = hasMore ? rows.GetRange(0, clampedLimit) : rows;
 
-        var items = ProjectAnonymousFeedItems(page, storage, s3);
+        var items = await ProjectAnonymousFeedItemsAsync(page, signedUrls, s3, ct);
         var nextCursor = hasMore ? KeysetCursor.Build(page[^1].CreatedAt, page[^1].Id) : null;
 
         return new CachedFeedPage(items, nextCursor);
@@ -548,11 +549,11 @@ public static class ClipsReadEndpoints
         int? limit,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
-        IObjectStorageService storage,
+        ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
-        var page = await BuildAnonymousTopFeedPageAsync(baseQuery, cursor, limit, storage, s3, ct);
+        var page = await BuildAnonymousTopFeedPageAsync(baseQuery, cursor, limit, signedUrls, s3, ct);
         var items = await ApplyLikedByMeAsync(page.Items, principal, db, ct);
         return new ClipFeedResponse(items, page.NextCursor);
     }
@@ -565,7 +566,7 @@ public static class ClipsReadEndpoints
         IQueryable<Clip> baseQuery,
         string? cursor,
         int? limit,
-        IObjectStorageService storage,
+                ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
@@ -600,7 +601,7 @@ public static class ClipsReadEndpoints
         var hasMore = rows.Count > clampedLimit;
         var page = hasMore ? rows.GetRange(0, clampedLimit) : rows;
 
-        var items = ProjectAnonymousFeedItems(page, storage, s3);
+        var items = await ProjectAnonymousFeedItemsAsync(page, signedUrls, s3, ct);
         var nextCursor = hasMore
             ? TopFeedCursor.Build(page[^1].LikeCount, page[^1].ViewCount, page[^1].CreatedAt, page[^1].Id)
             : null;
@@ -615,21 +616,22 @@ public static class ClipsReadEndpoints
         IReadOnlyList<Clip> clips,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
-        IObjectStorageService storage,
+                ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
-        var anonymous = ProjectAnonymousFeedItems(clips, storage, s3);
+        var anonymous = await ProjectAnonymousFeedItemsAsync(clips, signedUrls, s3, ct);
         return await ApplyLikedByMeAsync(anonymous, principal, db, ct);
     }
 
     // Caller-independent projection: thumbnail signing only, LikedByMe left false. This is the
     // shape the feed cache stores — never personalised — so one user's likes can't leak to
     // another via a shared cache entry. likedByMe is re-stamped per request by ApplyLikedByMeAsync.
-    internal static List<ClipFeedItem> ProjectAnonymousFeedItems(
+    internal static async Task<List<ClipFeedItem>> ProjectAnonymousFeedItemsAsync(
         IReadOnlyList<Clip> clips,
-        IObjectStorageService storage,
-        IOptions<S3Options> s3)
+        ISignedUrlCache signedUrls,
+        IOptions<S3Options> s3,
+        CancellationToken ct)
     {
         if (clips.Count == 0)
         {
@@ -637,9 +639,14 @@ public static class ClipsReadEndpoints
         }
 
         var thumbnailsBucket = s3.Value.ThumbnailsBucket;
-        return [.. clips.Select(c => c.ToFeedItem(
-            BuildThumbnailUrl(storage, thumbnailsBucket, c.ThumbnailKey),
-            likedByMe: false))];
+        var items = new List<ClipFeedItem>(clips.Count);
+        foreach (var c in clips)
+        {
+            items.Add(c.ToFeedItem(
+                await BuildThumbnailUrlAsync(signedUrls, thumbnailsBucket, c, ct),
+                likedByMe: false));
+        }
+        return items;
     }
 
     // Re-stamps the per-caller LikedByMe flag onto an anonymous (possibly cached) item list.
@@ -668,11 +675,16 @@ public static class ClipsReadEndpoints
     // Public Ready clips always have a thumbnail (the worker is the only path to Ready
     // and never marks Ready without writing ThumbnailKey first). Caller is expected to
     // pass non-null; passing null indicates a corrupted row and we fail loudly.
-    internal static string BuildThumbnailUrl(
-        IObjectStorageService storage, string bucket, string? thumbnailKey)
+    //
+    // The URL goes through the memo so repeat page loads reuse one signed URL instead of
+    // minting a fresh (and therefore uncacheable) one per request. EditCount is the version:
+    // a re-cut re-posters the same object key, and bumping it hands viewers a new URL rather
+    // than leaving them on a cached copy of the old frame.
+    internal static ValueTask<string> BuildThumbnailUrlAsync(
+        ISignedUrlCache signedUrls, string bucket, Clip clip, CancellationToken ct)
     {
-        ArgumentException.ThrowIfNullOrEmpty(thumbnailKey);
-        return storage.GetPresignedGetUrl(bucket, thumbnailKey, ThumbnailUrlLifetime);
+        ArgumentException.ThrowIfNullOrEmpty(clip.ThumbnailKey);
+        return signedUrls.GetOrCreateAsync(bucket, clip.ThumbnailKey, clip.EditCount, ct);
     }
 
     // Daily "Clip of the Day". Selection reuses the time-weighted trending score over a
@@ -685,9 +697,9 @@ public static class ClipsReadEndpoints
     private static async Task<IResult> GetFeatured(
         ClaimsPrincipal principal,
         GankedTvDbContext db,
-        IObjectStorageService storage,
         IOptions<S3Options> s3,
         IMemoryCache cache,
+        ISignedUrlCache signedUrls,
         CancellationToken ct)
     {
         // Construct todayStart as a true DateTimeOffset at UTC midnight (see
@@ -736,7 +748,7 @@ public static class ClipsReadEndpoints
             return Results.NoContent();
         }
 
-        var items = await ProjectFeedItemsAsync([clip], principal, db, storage, s3, ct);
+        var items = await ProjectFeedItemsAsync([clip], principal, db, signedUrls, s3, ct);
         return Results.Ok(items[0]);
     }
 
@@ -798,13 +810,14 @@ public static class ClipsReadEndpoints
         ClaimsPrincipal principal,
         GankedTvDbContext db,
         IObjectStorageService storage,
+        ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
         var viewerId = principal.GetUserIdOrNull();
         return ResolveClipByPredicateAsync(
             c => c.Id == id && c.Status == ClipStatuses.Ready,
-            viewerId, principal, db, storage, s3, ct);
+            viewerId, principal, db, storage, signedUrls, s3, ct);
     }
 
     internal static async Task<IResult> BuildDetailResultAsync(
@@ -833,6 +846,7 @@ public static class ClipsReadEndpoints
         Guid? viewerId,
         GankedTvDbContext db,
         IObjectStorageService storage,
+        ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
@@ -847,7 +861,7 @@ public static class ClipsReadEndpoints
         // videoUrl presigns the stored master (the compressed file). The web player decides
         // from VideoCodec whether to play it directly or request a JIT H.264 stream.
         var videoUrl = storage.GetPresignedGetUrl(s3.Value.ClipsBucket, clip.VideoKey, VideoUrlLifetime);
-        var thumbnailUrl = BuildThumbnailUrl(storage, s3.Value.ThumbnailsBucket, clip.ThumbnailKey);
+        var thumbnailUrl = await BuildThumbnailUrlAsync(signedUrls, s3.Value.ThumbnailsBucket, clip, ct);
 
         return (clip, videoUrl, thumbnailUrl);
     }
@@ -858,10 +872,11 @@ public static class ClipsReadEndpoints
         ClaimsPrincipal principal,
         GankedTvDbContext db,
         IObjectStorageService storage,
+        ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
-        var result = await LoadClipWithUrlsAsync(predicate, viewerId, db, storage, s3, ct);
+        var result = await LoadClipWithUrlsAsync(predicate, viewerId, db, storage, signedUrls, s3, ct);
 
         if (result is null)
         {

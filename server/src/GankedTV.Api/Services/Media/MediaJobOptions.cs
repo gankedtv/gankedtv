@@ -39,6 +39,12 @@ public sealed class MediaJobOptions
     // if the clip is shorter than this.
     public TimeSpan ThumbnailFrameOffset { get; set; } = TimeSpan.FromSeconds(1);
 
+    // Height cap for the poster JPEG. The thumbnail stage runs BEFORE compress, so it reads the
+    // raw upload — without a cap a 4K phone capture produces a 4K JPEG that the feed then
+    // renders into a ~320px card. 720 still covers a retina hero at full width. Only ever
+    // downscales: a source shorter than this is left alone.
+    public int ThumbnailMaxHeight { get; set; } = 720;
+
     // --- Compression + just-in-time playback (issue #102) -------------------------------
     // The pipeline runs as two upload-time queue stages — thumbnail (status 'processing') and
     // compress (status 'transcoding') — plus a watch-time JIT stage (clip_stream_jobs). The

@@ -7,6 +7,7 @@ using GankedTV.Api.Contracts.Users;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Problems;
+using GankedTV.Api.Services.Caching;
 using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -64,6 +65,7 @@ public static class SearchEndpoints
         ClaimsPrincipal principal,
         GankedTvDbContext db,
         IObjectStorageService storage,
+        ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
@@ -105,7 +107,7 @@ public static class SearchEndpoints
         }
 
         var clips = includeClips
-            ? await SearchClipsAsync(tsQuery, clampedLimit, principal, db, storage, s3, ct)
+            ? await SearchClipsAsync(tsQuery, clampedLimit, principal, db, signedUrls, s3, ct)
             : Array.Empty<ClipFeedItem>();
 
         var games = includeGames
@@ -120,7 +122,7 @@ public static class SearchEndpoints
         int limit,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
-        IObjectStorageService storage,
+        ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
@@ -136,7 +138,7 @@ public static class SearchEndpoints
             .Take(limit)
             .ToListAsync(ct);
 
-        return await ClipsReadEndpoints.ProjectFeedItemsAsync(rows, principal, db, storage, s3, ct);
+        return await ClipsReadEndpoints.ProjectFeedItemsAsync(rows, principal, db, signedUrls, s3, ct);
     }
 
     private static Task<List<UserSummary>> SearchUsersAsync(

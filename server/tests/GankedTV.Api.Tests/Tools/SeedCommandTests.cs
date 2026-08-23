@@ -455,7 +455,13 @@ public class SeedCommandTests : IAsyncLifetime
                 : null);
         }
 
-        public async Task PutObjectAsync(string bucket, string key, Stream content, string contentType, CancellationToken ct = default)
+        public async Task PutObjectAsync(
+            string bucket,
+            string key,
+            Stream content,
+            string contentType,
+            CancellationToken ct = default,
+            string? cacheControl = null)
         {
             using var ms = new MemoryStream();
             await content.CopyToAsync(ms, ct);

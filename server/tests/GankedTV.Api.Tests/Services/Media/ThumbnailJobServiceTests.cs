@@ -1,4 +1,5 @@
 using FluentAssertions;
+using GankedTV.Api.Services.Caching;
 using GankedTV.Api.Services.Media;
 using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -86,7 +87,53 @@ public class ThumbnailJobServiceTests
             $"{userId}/valorant/{clipId}.jpg",
             Arg.Any<Stream>(),
             "image/jpeg",
-            Arg.Any<CancellationToken>());
+            Arg.Any<CancellationToken>(),
+            SignedUrlCache.CacheControlHeader);
+    }
+
+    [Fact]
+    public async Task ExtractAsync_CapsPosterHeight()
+    {
+        // This stage runs before compress, so its input is the raw upload — without the cap a 4K
+        // capture yields a 4K poster for a card that renders a few hundred pixels wide.
+        var (svc, ffmpeg, _) = Build(new MediaJobOptions
+        {
+            FfmpegPath = "ffmpeg",
+            FfprobePath = "ffprobe",
+            ProcessTimeout = TimeSpan.FromSeconds(30),
+            ThumbnailFrameOffset = TimeSpan.FromSeconds(1),
+            ThumbnailMaxHeight = 480,
+        });
+        StubFfprobe(ffmpeg, """{"streams":[{"width":3840,"height":2160,"duration":"5.0"}]}""");
+        StubFfmpegFrame(ffmpeg, new byte[] { 0xFF, 0xD8, 0xFF });
+
+        await svc.ExtractAsync(NewJob(), null, CancellationToken.None);
+
+        var args = ffmpeg.ReceivedCalls()
+            .Where(c => c.GetArguments()[0] as string == "ffmpeg")
+            .Select(c => (IReadOnlyList<string>)c.GetArguments()[1]!)
+            .Single();
+        args.Should().ContainInOrder("-vf", "scale=-2:'min(ih,480)'");
+    }
+
+    [Fact]
+    public async Task ExtractAsync_StoresALongCacheControl()
+    {
+        // The stored header is what makes a repeat page load a browser cache hit rather than a
+        // re-download; it is safe only because the URL is versioned (see SignedUrlCache).
+        var (svc, ffmpeg, storage) = Build();
+        StubFfprobe(ffmpeg, """{"streams":[{"width":640,"height":360,"duration":"5.0"}]}""");
+        StubFfmpegFrame(ffmpeg, new byte[] { 0xFF, 0xD8, 0xFF });
+
+        await svc.ExtractAsync(NewJob(), null, CancellationToken.None);
+
+        await storage.Received(1).PutObjectAsync(
+            "thumbnails",
+            Arg.Any<string>(),
+            Arg.Any<Stream>(),
+            "image/jpeg",
+            Arg.Any<CancellationToken>(),
+            "public, max-age=518400");
     }
 
     [Fact]

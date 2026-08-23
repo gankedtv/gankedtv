@@ -257,18 +257,24 @@ public sealed class S3ObjectStorageService : IObjectStorageService
         string key,
         Stream content,
         string contentType,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? cacheControl = null)
     {
         // AutoCloseStream=false so callers (which own the stream) can still dispose it
         // themselves; AWSSDK would otherwise dispose the InputStream after the upload.
-        await _s3.PutObjectAsync(new PutObjectRequest
+        var request = new PutObjectRequest
         {
             BucketName = bucket,
             Key = key,
             InputStream = content,
             ContentType = contentType,
             AutoCloseStream = false,
-        }, ct);
+        };
+        if (!string.IsNullOrWhiteSpace(cacheControl))
+        {
+            request.Headers.CacheControl = cacheControl;
+        }
+        await _s3.PutObjectAsync(request, ct);
     }
 
     public async Task<ObjectMetadata?> GetObjectMetadataAsync(

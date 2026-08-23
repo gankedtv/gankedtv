@@ -18,6 +18,7 @@ import UnderlineTabs from '@/components/UnderlineTabs.vue'
 import LoadMoreButton from '@/components/LoadMoreButton.vue'
 import ReelsFab from '@/components/reels/ReelsFab.vue'
 import IconPlay from '@/components/icons/IconPlay.vue'
+import ThumbImage from '@/components/ThumbImage.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -393,12 +394,12 @@ onMounted(() => {
         <div class="grid grid-cols-[1fr_300px] items-start gap-5 max-lg:grid-cols-1">
           <!-- Hero — full-bleed thumbnail, overlay title (board treatment 1d) -->
           <article
-            class="group relative aspect-video min-w-0 cursor-pointer overflow-hidden rounded-lg border border-border bg-black transition-colors duration-150 hover:border-border-strong"
+            class="group relative aspect-video min-w-0 cursor-pointer overflow-hidden rounded-lg border border-border bg-surface-high transition-colors duration-150 hover:border-border-strong"
             @click="openClip(hero.id)"
           >
-            <img
+            <ThumbImage
               :src="hero.thumbnailUrl"
-              alt=""
+              eager
               class="absolute inset-0 h-full w-full object-cover"
             />
             <!-- The one sanctioned gradient: thumbnail legibility overlay. -->
@@ -477,9 +478,9 @@ onMounted(() => {
                   {{ String(i + 1).padStart(2, '0') }}
                 </span>
                 <span
-                  class="relative block aspect-video overflow-hidden rounded-md border border-border bg-black transition-colors duration-150 group-hover:border-border-strong"
+                  class="relative block aspect-video overflow-hidden rounded-md border border-border bg-surface-high transition-colors duration-150 group-hover:border-border-strong"
                 >
-                  <img :src="clip.thumbnailUrl" alt="" class="h-full w-full object-cover" />
+                  <ThumbImage :src="clip.thumbnailUrl" class="h-full w-full object-cover" />
                 </span>
                 <span class="min-w-0">
                   <span
@@ -555,9 +556,12 @@ onMounted(() => {
             @keydown.space.self.prevent="openClip(trendingFeature.id)"
           >
             <div
-              class="relative aspect-video overflow-hidden rounded-md border border-border bg-black"
+              class="relative aspect-video overflow-hidden rounded-md border border-border bg-surface-high"
             >
-              <img :src="trendingFeature.thumbnailUrl" alt="" class="h-full w-full object-cover" />
+              <ThumbImage
+                :src="trendingFeature.thumbnailUrl"
+                class="h-full w-full object-cover"
+              />
               <DurationBadge
                 :seconds="trendingFeature.durationSecs"
                 class="absolute right-2 bottom-2"

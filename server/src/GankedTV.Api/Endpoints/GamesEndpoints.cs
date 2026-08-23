@@ -265,6 +265,7 @@ public static class GamesEndpoints
         IObjectStorageService storage,
         IOptions<S3Options> s3,
         IFeedCache feedCache,
+        ISignedUrlCache signedUrls,
         CancellationToken ct)
     {
         // Distinguish "no such game" (404) from "game exists but has no clips" (200, empty page)
@@ -287,14 +288,14 @@ public static class GamesEndpoints
             var cached = await feedCache.GetOrCreateFeedAsync(
                 $"feed:game:{slug}:{feedLimit}",
                 c => new ValueTask<CachedFeedPage>(
-                    ClipsReadEndpoints.BuildAnonymousFeedPageAsync(baseQuery, null, limit, storage, s3, c)),
+                    ClipsReadEndpoints.BuildAnonymousFeedPageAsync(baseQuery, null, limit, signedUrls, s3, c)),
                 ct);
             var items = await ClipsReadEndpoints.ApplyLikedByMeAsync(cached.Items, principal, db, ct);
             return Results.Ok(new ClipFeedResponse(items, cached.NextCursor));
         }
 
         var response = await ClipsReadEndpoints.BuildFeedPageAsync(
-            baseQuery, cursor, limit, principal, db, storage, s3, ct);
+            baseQuery, cursor, limit, principal, db, signedUrls, s3, ct);
         return Results.Ok(response);
     }
 
@@ -305,6 +306,7 @@ public static class GamesEndpoints
         ClaimsPrincipal principal,
         GankedTvDbContext db,
         IObjectStorageService storage,
+        ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         IFeedCache feedCache,
         CancellationToken ct)
@@ -339,7 +341,7 @@ public static class GamesEndpoints
                 var baseQuery = db.Clips.AsNoTracking()
                     .Where(cl => cl.GameId == gameId).WherePublicReady();
                 return new ValueTask<List<LeaderboardEntry>>(
-                    LeaderboardsEndpoints.BuildAnonymousEntriesAsync(baseQuery, since, cap, db, storage, s3, c));
+                    LeaderboardsEndpoints.BuildAnonymousEntriesAsync(baseQuery, since, cap, db, signedUrls, s3, c));
             },
             ct);
 

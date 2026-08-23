@@ -8,6 +8,7 @@ import SectionHeader from '@/components/SectionHeader.vue'
 import UnderlineTabs from '@/components/UnderlineTabs.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
 import PageHeader from '@/components/PageHeader.vue'
+import ThumbImage from '@/components/ThumbImage.vue'
 
 // Server vocabulary is week|month|all — see LeaderboardWindow.cs. Tabs render in the
 // order the user reads time: shortest window first, all-time last.
@@ -101,10 +102,9 @@ function selectWindow(key: LeaderboardWindow) {
           <div
             class="aspect-3/4 w-10 shrink-0 overflow-hidden rounded-md border border-border bg-surface-high transition-colors duration-150 group-hover:border-border-strong"
           >
-            <img
+            <ThumbImage
               v-if="entry.coverUrl"
               :src="entry.coverUrl"
-              alt=""
               class="block h-full w-full object-cover"
             />
           </div>

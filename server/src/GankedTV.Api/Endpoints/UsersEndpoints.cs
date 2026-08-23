@@ -5,6 +5,7 @@ using GankedTV.Api.Contracts.Users;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Problems;
+using GankedTV.Api.Services.Caching;
 using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -37,7 +38,7 @@ public static class UsersEndpoints
         string username,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
-        IObjectStorageService storage,
+        ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
@@ -73,11 +74,13 @@ public static class UsersEndpoints
             db, principal, clips.Select(c => c.Id), ct);
 
         var thumbnailsBucket = s3.Value.ThumbnailsBucket;
-        var clipDtos = clips
-            .Select(c => c.ToFeedItem(
-                ClipsReadEndpoints.BuildThumbnailUrl(storage, thumbnailsBucket, c.ThumbnailKey),
-                likedIds.Contains(c.Id)))
-            .ToList();
+        var clipDtos = new List<ClipFeedItem>(clips.Count);
+        foreach (var c in clips)
+        {
+            clipDtos.Add(c.ToFeedItem(
+                await ClipsReadEndpoints.BuildThumbnailUrlAsync(signedUrls, thumbnailsBucket, c, ct),
+                likedIds.Contains(c.Id)));
+        }
 
         var followerCount = await db.Follows.AsNoTracking()
             .CountAsync(f => f.FolloweeId == user.Id, ct);

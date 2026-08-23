@@ -6,6 +6,7 @@ import GameTag from '@/components/GameTag.vue'
 import DurationBadge from '@/components/DurationBadge.vue'
 import AuthorHandle from '@/components/AuthorHandle.vue'
 import IconChevronRight from '@/components/icons/IconChevronRight.vue'
+import ThumbImage from '@/components/ThumbImage.vue'
 
 const props = defineProps<{
   entry: LeaderboardEntry
@@ -27,9 +28,9 @@ const isFirst = computed(() => props.entry.rank === 1)
     >
 
     <div
-      class="relative aspect-video overflow-hidden rounded-md border border-border bg-black transition-colors duration-150 group-hover:border-border-strong"
+      class="relative aspect-video overflow-hidden rounded-md border border-border bg-surface-high transition-colors duration-150 group-hover:border-border-strong"
     >
-      <img :src="entry.clip.thumbnailUrl" alt="" class="block h-full w-full object-cover" />
+      <ThumbImage :src="entry.clip.thumbnailUrl" class="block h-full w-full object-cover" />
       <DurationBadge :seconds="entry.clip.durationSecs" class="absolute right-1 bottom-1" />
     </div>
 

@@ -10,6 +10,8 @@ public sealed class InMemoryObjectStorage : IObjectStorageService
 {
     public Dictionary<(string Bucket, string Key), byte[]> Objects { get; } = new();
     public List<(string Bucket, string Key, string ContentType, byte[] Bytes)> PutCalls { get; } = new();
+    /// <summary>Cache-Control header recorded per stored object (null when the put omitted it).</summary>
+    public Dictionary<(string Bucket, string Key), string?> CacheControl { get; } = new();
     public int EnsureBucketsCallCount { get; private set; }
 
     public Task EnsureBucketsAsync(CancellationToken ct = default)
@@ -23,12 +25,19 @@ public sealed class InMemoryObjectStorage : IObjectStorageService
             ? new ObjectMetadata(bytes.Length, null)
             : null);
 
-    public async Task PutObjectAsync(string bucket, string key, Stream content, string contentType, CancellationToken ct = default)
+    public async Task PutObjectAsync(
+        string bucket,
+        string key,
+        Stream content,
+        string contentType,
+        CancellationToken ct = default,
+        string? cacheControl = null)
     {
         using var ms = new MemoryStream();
         await content.CopyToAsync(ms, ct);
         var bytes = ms.ToArray();
         Objects[(bucket, key)] = bytes;
+        CacheControl[(bucket, key)] = cacheControl;
         PutCalls.Add((bucket, key, contentType, bytes));
     }
 
