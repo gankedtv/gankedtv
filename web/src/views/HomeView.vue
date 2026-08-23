@@ -558,10 +558,7 @@ onMounted(() => {
             <div
               class="relative aspect-video overflow-hidden rounded-md border border-border bg-surface-high"
             >
-              <ThumbImage
-                :src="trendingFeature.thumbnailUrl"
-                class="h-full w-full object-cover"
-              />
+              <ThumbImage :src="trendingFeature.thumbnailUrl" class="h-full w-full object-cover" />
               <DurationBadge
                 :seconds="trendingFeature.durationSecs"
                 class="absolute right-2 bottom-2"

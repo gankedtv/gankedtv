@@ -355,7 +355,6 @@ function detachUnmuteWatch() {
   }
 }
 
-
 // Bind to the underlying <video> element's `timeupdate` (not Plyr's wrapper) — Plyr
 // re-fires the same DOM event but the element listener stays valid across Plyr lifecycle
 // quirks. Per-tick delta is clamped to [0, 1000ms] so a scrub forward doesn't credit the

@@ -30,11 +30,14 @@ function settleIfReady() {
 }
 
 onMounted(settleIfReady)
-watch(() => props.src, () => {
-  loaded.value = false
-  // The new src may also come from cache.
-  requestAnimationFrame(settleIfReady)
-})
+watch(
+  () => props.src,
+  () => {
+    loaded.value = false
+    // The new src may also come from cache.
+    requestAnimationFrame(settleIfReady)
+  },
+)
 </script>
 
 <template>

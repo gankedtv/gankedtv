@@ -174,7 +174,10 @@ describe('ClipView autoplay (issue #218)', () => {
     play.mockRejectedValueOnce(new DOMException('blocked', 'NotAllowedError'))
     const wrapper = await mountClip()
 
-    await wrapper.findAll('button').find((b) => b.text() === 'Unmute')!.trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === 'Unmute')!
+      .trigger('click')
 
     expect(wrapper.find('video').element.muted).toBe(false)
     expect(wrapper.text()).not.toContain('Unmute')
