@@ -539,6 +539,39 @@ public class ThumbnailJobServiceTests
     }
 
     [Fact]
+    public async Task ExtractAsync_CropDisabled_IgnoresTheStoredRect()
+    {
+        // The compress stage rechecks the same flag, so a poster cropped here would advertise a
+        // frame the master never gets — and the dimensions written alongside it would shape the
+        // player to that phantom frame.
+        var (svc, ffmpeg, _) = Build(new MediaJobOptions
+        {
+            FfmpegPath = "ffmpeg",
+            FfprobePath = "ffprobe",
+            ProcessTimeout = TimeSpan.FromSeconds(30),
+            ThumbnailFrameOffset = TimeSpan.FromSeconds(1),
+            CropEnabled = false,
+        });
+        StubFfprobe(ffmpeg, """{"streams":[{"width":3440,"height":1440,"duration":"12.0"}]}""");
+        IReadOnlyList<string>? args = null;
+        ffmpeg.RunAsync(Arg.Is("ffmpeg"), Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                args = call.Arg<IReadOnlyList<string>>();
+                File.WriteAllBytes(args[^1], new byte[] { 0xFF });
+                return new FfmpegResult(0, "", "");
+            });
+
+        var result = await svc.ExtractAsync(
+            JobWithCrop(new CropRect(0.1279, 0, 0.7442, 1)), null, CancellationToken.None);
+
+        args.Should().NotContain("-vf");
+        result.Crop.Should().BeNull();
+        result.Width.Should().Be(3440);
+        result.Height.Should().Be(1440);
+    }
+
+    [Fact]
     public async Task ExtractAsync_TrimAndCrop_AppliesBothToThePoster()
     {
         // Orthogonal axes: the poster seeks inside the kept range AND crops the frame.

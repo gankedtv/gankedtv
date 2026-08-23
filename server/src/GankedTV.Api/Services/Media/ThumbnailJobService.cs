@@ -58,11 +58,16 @@ public sealed class ThumbnailJobService : IThumbnailJobService
                 "Clip has a trim range but ffprobe could not determine the source duration; failing rather than encoding an unverifiable cut.");
         }
 
+        // One kill switch for both stages: the compress stage rechecks CropEnabled, so cropping
+        // the poster here would leave the master uncropped while the poster and the recorded
+        // dimensions — which shape the player — describe a frame that was never encoded.
+        var requestedCrop = opts.CropEnabled ? job.Crop : null;
+
         // Divergence from trim, deliberately: a crop we can't validate is DROPPED with a warning
         // rather than failing the clip. A dropped trim would publish footage the user cut away;
         // a dropped crop just leaves the black bars in place, and that's fixable post-publish.
-        var crop = SanitizeCrop(job.Crop, probe.Width, probe.Height);
-        if (job.Crop is not null && crop is null && (probe.Width is null || probe.Height is null))
+        var crop = SanitizeCrop(requestedCrop, probe.Width, probe.Height);
+        if (requestedCrop is not null && crop is null && (probe.Width is null || probe.Height is null))
         {
             _logger.LogWarning(
                 "clip={ClipId}: ffprobe reported no source dimensions; publishing without the requested crop.",
