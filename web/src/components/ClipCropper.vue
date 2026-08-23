@@ -24,8 +24,8 @@ import {
 } from '@/lib/crop'
 
 // Drag-a-rectangle cropper over a video preview. Emits null while the rect covers the whole
-// frame, so the caller only sends a crop when the user actually cropped something. All the
-// clamping and ratio math lives in lib/crop.
+// frame — or while the "crop this clip" toggle is off — so the caller only sends a crop when
+// the user actually asked for one. All the clamping and ratio math lives in lib/crop.
 //
 // Deliberately NOT an extended ClipTrimmer: the two share only the shape of the pointer engine,
 // and the trimmer's filmstrip capture pipeline is dead weight here.
@@ -53,6 +53,12 @@ const objectUrl = ref('')
 const frameWidth = ref(0)
 const frameHeight = ref(0)
 const rect = ref<CropRect>({ ...FULL_FRAME })
+// Whether the rect on screen is actually sent. Mounting this component is NOT consent to
+// destroy a quarter of someone's frame: the seed below pre-frames an ultrawide capture to 16:9,
+// and without this gate opening the tab to look at it — then leaving — would silently publish
+// the cut. It opens ticked whenever the seed armed a crop, so the ultrawide case still needs no
+// discovery; it's a stated, visible choice the user can untick rather than a side effect.
+const applyCrop = ref(false)
 // The cropper OPENS on this preset and seeds the rect to it, so an ultrawide capture arrives
 // already framed to 16:9 with the bars outside the rect — the overwhelmingly common intent, and
 // it doesn't depend on the user discovering the pills. On a source that's already 16:9 the
@@ -87,6 +93,7 @@ watch(
     frameWidth.value = 0
     frameHeight.value = 0
     rect.value = { ...FULL_FRAME }
+    applyCrop.value = false
     decodeFailed.value = false
     suggestionMissed.value = false
     undoBuffer.value = null
@@ -99,9 +106,9 @@ onUnmounted(() => {
 })
 
 watch(
-  rect,
-  (r) => {
-    model.value = toCropModel(r)
+  [rect, applyCrop],
+  ([r, apply]) => {
+    model.value = apply ? toCropModel(r) : null
   },
   { deep: true },
 )
@@ -124,6 +131,9 @@ function onLoadedMetadata() {
     defaultSeedRect(frameWidth.value / frameHeight.value, DEFAULT_RATIO),
   )
   rect.value = seeded
+  // Ticked for a rect the user already committed to, and for a seed that found bars to remove;
+  // a source with nothing to crop opens on the full frame, where the toggle would be a no-op.
+  applyCrop.value = !!restored || isCropChanged(seeded)
   // A restored crop dictates its own preset. A fresh open keeps DEFAULT_RATIO when the seed
   // actually armed a crop; when defaultSeedRect declined (portrait, 4:3, already-16:9) the rect
   // is the full frame, so infer instead — leaving the pill on 16:9 would claim a lock the rect
@@ -194,6 +204,9 @@ function onPointerMove(e: PointerEvent) {
   } else {
     rect.value = resizeRect(rect.value, dragging.value, p, rectRatio.value)
   }
+  // Dragging the rect IS the ask, so nobody has to find the toggle to make a crop they framed
+  // by hand actually happen.
+  applyCrop.value = true
   lastPointer = p
 }
 
@@ -212,6 +225,7 @@ function pickRatio(key: CropRatioKey) {
   // 'free' keeps whatever is on screen; every other preset re-frames to the largest rect that
   // satisfies it, which is the only unambiguous answer when the current rect doesn't fit.
   rect.value = target === null ? rect.value : maxRectForRatio(target)
+  applyCrop.value = true
   undoBuffer.value = null
   announce()
 }
@@ -232,6 +246,7 @@ async function suggest() {
     // that the user can't back out of would cost them a re-encode.
     undoBuffer.value = { ...rect.value }
     rect.value = clampRect(result.crop)
+    applyCrop.value = true
     ratioKey.value = matchRatioKey(rect.value)
     announce()
   } catch {
@@ -273,6 +288,9 @@ function onKeyDown(e: KeyboardEvent) {
     default:
       return
   }
+  // Nudging the rect is consent to apply it; Escape is the opposite ask, and reset() has just
+  // cleared the toggle for exactly that reason.
+  if (e.key !== 'Escape') applyCrop.value = true
   // Every handled branch preventDefaults. ClipCropDialog checks !e.defaultPrevented before
   // treating Escape as "close the dialog", so an unmarked Escape here would close the editor
   // instead of resetting the crop.
@@ -291,6 +309,7 @@ function reset() {
   // Rect only — the pill describes the lock for the NEXT drag, and silently switching it to
   // 'free' would change how the editor behaves afterwards without the user asking.
   rect.value = { ...FULL_FRAME }
+  applyCrop.value = false
   undoBuffer.value = null
   announce()
 }
@@ -306,8 +325,15 @@ const output = computed(() =>
 )
 
 const farFromWidescreen = computed(
-  () => loaded.value && changed.value && isFarFromWidescreen(rect.value, frameRatio.value),
+  () =>
+    loaded.value &&
+    changed.value &&
+    applyCrop.value &&
+    isFarFromWidescreen(rect.value, frameRatio.value),
 )
+
+// Only offered once there is a crop to apply: on the full frame it would toggle nothing.
+const showApplyToggle = computed(() => loaded.value && !decodeFailed.value && changed.value)
 
 function announce() {
   const o = output.value
@@ -395,6 +421,24 @@ const decodeFailedMessage = computed(() =>
         </button>
       </div>
     </div>
+
+    <!-- The consent gate. Opening this editor pre-frames an ultrawide capture to 16:9, which is
+         almost always what the user wants — but the cut is permanent, so it has to be something
+         they can see and untick rather than something that happens because a tab was opened. -->
+    <label
+      v-if="showApplyToggle"
+      :class="[
+        'flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 transition-colors duration-150',
+        applyCrop ? 'border-accent-border bg-accent-bg' : 'border-border',
+      ]"
+    >
+      <input v-model="applyCrop" type="checkbox" class="mt-0.5 size-3.5 shrink-0 accent-accent" />
+      <span class="text-[11px] leading-relaxed text-text-muted">
+        <span class="font-semibold text-text-primary">Crop this clip</span>
+        <template v-if="output"> to {{ output.width }} × {{ output.height }}</template>
+        — everything outside the box is removed permanently. Untick to publish the full frame.
+      </span>
+    </label>
 
     <!-- Preview + crop overlay. The box is sized to the SOURCE ratio so the overlay lines up
          with the picture rather than with letterbox bars. -->
@@ -492,7 +536,10 @@ const decodeFailedMessage = computed(() =>
           }}</span>
           <span v-if="output">
             Output
-            <span class="font-semibold" :class="changed ? 'text-accent' : 'text-text-primary'">
+            <span
+              class="font-semibold"
+              :class="changed && applyCrop ? 'text-accent' : 'text-text-primary'"
+            >
               {{ output.width }}×{{ output.height }}
             </span>
           </span>

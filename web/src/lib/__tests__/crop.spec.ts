@@ -208,11 +208,17 @@ describe('lib/crop', () => {
       expect(model!.x * 3440).toBeCloseTo(440, 0)
     })
 
-    it('returns a copy, so mutating the seed cannot write through to the model', () => {
-      const model = { ...FULL_FRAME }
-      const seeded = seedCropRect(null)
-      seeded.x = 0.5
-      expect(model.x).toBe(0)
+    it('returns a copy, so mutating the seed cannot write through to its source', () => {
+      // Both aliasing hazards, asserted on the objects aliasing would actually damage: the
+      // shared FULL_FRAME module constant every later caller reads, and the caller's own model.
+      const fresh = seedCropRect(null)
+      fresh.x = 0.5
+      expect(FULL_FRAME.x).toBe(0)
+
+      const restored: CropRect = { x: 0.1, y: 0, width: 0.5, height: 1 }
+      const seeded = seedCropRect(restored)
+      seeded.x = 0.9
+      expect(restored.x).toBe(0.1)
     })
   })
 
