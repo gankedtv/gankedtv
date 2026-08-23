@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Globalization;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
 
@@ -28,9 +27,22 @@ public sealed partial class CropDetectService : ICropDetectService
         _logger = logger;
     }
 
-    // Where to sample, as fractions of the duration. Avoids both ends: intros and outros are the
+    // Sampling window, as fractions of the duration. Avoids both ends: intros and outros are the
     // most likely places to hit a fade or a title card.
-    private static readonly double[] SamplePoints = [0.15, 0.50, 0.85];
+    private const double FirstSamplePoint = 0.15;
+    private const double LastSamplePoint = 0.85;
+
+    // Upper bound on MEDIA_CROPDETECT_SAMPLES. Each sample is a separate ffmpeg fork on the
+    // request path; the timeout caps wall-clock but not how many processes a fat-fingered value
+    // would spawn. Program.cs rejects anything above this at startup rather than clamping here,
+    // so an operator who asks for more finds out immediately instead of reading a `samples`
+    // field that silently disagrees with their config.
+    internal const int MaxSamples = 10;
+
+    // Evenly spaced across the sampling window. A single sample goes mid-clip — the least likely
+    // spot to catch a fade — rather than to the window's start.
+    internal static double SampleFraction(int index, int count) =>
+        count <= 1 ? 0.5 : FirstSamplePoint + (LastSamplePoint - FirstSamplePoint) * index / (count - 1);
 
     // A suggestion this close to the full frame isn't worth offering — the user would apply it,
     // see nothing change, and pay a re-encode for it.
@@ -56,7 +68,7 @@ public sealed partial class CropDetectService : ICropDetectService
         }
 
         var (fw, fh) = (frame.Value.Width, frame.Value.Height);
-        var sampleCount = Math.Clamp(opts.CropDetectSamples, 1, SamplePoints.Length);
+        var sampleCount = Math.Clamp(opts.CropDetectSamples, 1, MaxSamples);
 
         // Union bounding box across samples, in source pixels. A fade-to-black sample reports a
         // tiny rect; taking the union means it widens the suggestion back toward the full frame
@@ -66,6 +78,14 @@ public sealed partial class CropDetectService : ICropDetectService
         int? left = null, top = null, right = null, bottom = null;
         var detectedSamples = 0;
 
+        // Without a known duration — every clip still in 'draft', which is exactly what this
+        // endpoint allows — the only offset that is guaranteed to decode is 0. Every sample
+        // would fork the identical ffmpeg command and union in the identical rect, so one
+        // reading is taken and the loop stops: repeats cost request-path CPU for nothing and
+        // would report `samples: 3`, the very signal a caller uses to tell a solid result from
+        // one lucky frame.
+        var spread = durationSecs is { } dur && dur > 0;
+
         for (var i = 0; i < sampleCount; i++)
         {
             if (ct.IsCancellationRequested) break;
@@ -73,11 +93,10 @@ public sealed partial class CropDetectService : ICropDetectService
             var remaining = RemainingBudget(opts, budget);
             if (remaining <= TimeSpan.Zero) break;
 
-            // Without a known duration, sample from the very start — the only offset guaranteed
-            // to decode. Better one usable sample than three seeks past the end.
-            var offset = durationSecs is { } dur && dur > 0 ? dur * SamplePoints[i] : 0;
+            var offset = spread ? durationSecs!.Value * SampleFraction(i, sampleCount) : 0;
 
             var parsed = await RunSampleAsync(videoUrl, offset, opts, remaining, ct);
+            if (parsed is null && !spread) break;
             if (parsed is not { } rect) continue;
 
             // A rect that doesn't fit the probed frame means the two disagree about what was
@@ -94,6 +113,8 @@ public sealed partial class CropDetectService : ICropDetectService
             top = top is { } t ? Math.Min(t, rect.Y) : rect.Y;
             right = right is { } r ? Math.Max(r, rect.X + rect.Width) : rect.X + rect.Width;
             bottom = bottom is { } b ? Math.Max(b, rect.Y + rect.Height) : rect.Y + rect.Height;
+
+            if (!spread) break;
         }
 
         if (detectedSamples == 0
@@ -132,36 +153,12 @@ public sealed partial class CropDetectService : ICropDetectService
     {
         if (timeout <= TimeSpan.Zero) return null;
 
-        var args = new List<string>
-        {
-            "-v", "error",
-            "-print_format", "json",
-            "-show_streams",
-            "-select_streams", "v:0",
-            videoUrl,
-        };
-
         try
         {
-            var result = await _ffmpeg.RunAsync(opts.FfprobePath, args, timeout, ct);
+            var result = await _ffmpeg.RunAsync(opts.FfprobePath, MediaProbe.BuildArgs(videoUrl), timeout, ct);
             if (result.ExitCode != 0) return null;
 
-            using var doc = JsonDocument.Parse(result.Stdout);
-            if (!doc.RootElement.TryGetProperty("streams", out var streams)
-                || streams.ValueKind != JsonValueKind.Array
-                || streams.GetArrayLength() == 0)
-            {
-                return null;
-            }
-
-            var s = streams[0];
-            if (!s.TryGetProperty("width", out var w) || w.ValueKind != JsonValueKind.Number
-                || !s.TryGetProperty("height", out var h) || h.ValueKind != JsonValueKind.Number)
-            {
-                return null;
-            }
-
-            return (w.GetInt32(), h.GetInt32());
+            return MediaProbe.Parse(result.Stdout) is { Width: { } w, Height: { } h } ? (w, h) : null;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

@@ -337,6 +337,56 @@ public class CropDetectServiceTests
     }
 
     [Fact]
+    public async Task DetectAsync_UnknownDuration_TakesOneSampleInsteadOfRepeatingIt()
+    {
+        // Every offset collapses to 0 without a duration — the state every 'draft' clip is in —
+        // so extra passes fork the identical ffmpeg command for the identical rect. Repeating it
+        // triples request-path CPU and inflates `samples`, the very field a caller reads to tell
+        // a solid result from one lucky frame.
+        var (svc, ffmpeg) = Build();
+        StubProbe(ffmpeg, ProbeJson());
+        ffmpeg.RunAsync(Arg.Is("ffmpeg"), Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(new FfmpegResult(0, "", CropLine(440, 0, 2560, 1440)));
+
+        var result = await svc.DetectAsync("http://signed/v.mp4", null, CancellationToken.None);
+
+        result.Detected.Should().BeTrue();
+        result.Samples.Should().Be(1);
+        await ffmpeg.Received(1).RunAsync(
+            Arg.Is("ffmpeg"), Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task DetectAsync_SampleCountAboveThree_SpreadsThatManyOffsets()
+    {
+        // MEDIA_CROPDETECT_SAMPLES is documented as a free tunable, so a value above the old
+        // hard-coded three has to actually sample that many times rather than be clamped down
+        // while `samples` keeps reporting three.
+        var (svc, ffmpeg) = Build(new MediaJobOptions
+        {
+            FfmpegPath = "ffmpeg",
+            FfprobePath = "ffprobe",
+            CropDetectSamples = 5,
+            CropDetectLimit = 24,
+            CropDetectTimeout = TimeSpan.FromSeconds(8),
+        });
+        StubProbe(ffmpeg, ProbeJson());
+        var offsets = new List<string>();
+        ffmpeg.RunAsync(Arg.Is("ffmpeg"), Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                var args = call.Arg<IReadOnlyList<string>>().ToList();
+                offsets.Add(args[args.IndexOf("-ss") + 1]);
+                return new FfmpegResult(0, "", CropLine(440, 0, 2560, 1440));
+            });
+
+        var result = await svc.DetectAsync("http://signed/v.mp4", 100, CancellationToken.None);
+
+        offsets.Should().Equal("15.000", "32.500", "50.000", "67.500", "85.000");
+        result.Samples.Should().Be(5);
+    }
+
+    [Fact]
     public async Task DetectAsync_RespectsConfiguredSampleCountAndLimit()
     {
         var (svc, ffmpeg) = Build(new MediaJobOptions

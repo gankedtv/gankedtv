@@ -98,9 +98,11 @@ public sealed class MediaJobOptions
     // user request (bounded by CropDetectTimeout), so it gets its own kill switch.
     public bool CropDetectEnabled { get; set; } = true;
 
-    // How many timestamps cropdetect samples across the clip. Results are combined as a
-    // UNION bounding box, so a fade-to-black sample widens the suggestion back toward the
-    // full frame instead of eating real content.
+    // How many timestamps cropdetect samples across the clip, spread evenly over the middle
+    // 70% of it. Results are combined as a UNION bounding box, so a fade-to-black sample
+    // widens the suggestion back toward the full frame instead of eating real content.
+    // 1..CropDetectService.MaxSamples — each one is a separate ffmpeg fork on the request path,
+    // so anything higher fails validation at startup rather than being quietly clamped.
     public int CropDetectSamples { get; set; } = 3;
 
     // cropdetect's `limit` — the luma threshold below which a pixel counts as border. 24 is
