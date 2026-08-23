@@ -89,6 +89,13 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             e.Property(g => g.IgdbManaged).HasDefaultValue(false);
             e.HasIndex(g => g.Slug).IsUnique().HasDatabaseName("idx_games_slug");
             e.HasIndex(g => g.Name).HasDatabaseName("idx_games_name");
+            // One catalog row per IGDB game. Partial so curated rows that were never linked
+            // (igdb_id NULL) stay exempt. Without this, an upstream rename that stops the
+            // importer recognising a row silently mints a second row for the same game.
+            e.HasIndex(g => g.IgdbId)
+                .IsUnique()
+                .HasFilter("igdb_id IS NOT NULL")
+                .HasDatabaseName("idx_games_igdb_id");
             // Full-text search vector, stored generated column. EF emits ALTER TABLE …
             // GENERATED ALWAYS AS … STORED so the value is maintained by Postgres on every
             // INSERT/UPDATE of name. Companion GIN index makes `@@` lookups index-driven.
@@ -106,7 +113,11 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
                 new Game { Id = 4, Name = "Fortnite", Slug = "fortnite", Tag = "FN" },
                 new Game { Id = 5, Name = "Apex Legends", Slug = "apex-legends", Tag = "APEX" },
                 new Game { Id = 6, Name = "Rocket League", Slug = "rocket-league", Tag = "RL" },
-                new Game { Id = 7, Name = "Overwatch 2", Slug = "overwatch-2", Tag = "OW2" },
+                // Linked to IGDB because upstream renamed 125174 back to "Overwatch": without
+                // the id the importer recognises neither the id nor the name and mints a second
+                // row for a game we already list. The alias pass in GameCatalogImporter covers
+                // the general case; this pins the one that already went wrong.
+                new Game { Id = 7, Name = "Overwatch 2", Slug = "overwatch-2", Tag = "OW2", IgdbId = 125174 },
                 new Game { Id = 8, Name = "Dota 2", Slug = "dota-2", Tag = "DOTA2" },
                 new Game { Id = 9, Name = "Marvel Rivals", Slug = "marvel-rivals", Tag = "RIVALS" });
         });

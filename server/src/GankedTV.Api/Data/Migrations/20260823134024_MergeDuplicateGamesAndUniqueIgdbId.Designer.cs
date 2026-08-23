@@ -3,6 +3,7 @@ using System;
 using GankedTV.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using NpgsqlTypes;
@@ -12,9 +13,11 @@ using NpgsqlTypes;
 namespace GankedTV.Api.Data.Migrations
 {
     [DbContext(typeof(GankedTvDbContext))]
-    partial class GankedTvDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260823134024_MergeDuplicateGamesAndUniqueIgdbId")]
+    partial class MergeDuplicateGamesAndUniqueIgdbId
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -97,22 +100,6 @@ namespace GankedTV.Api.Data.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("now()");
 
-                    b.Property<double?>("CropHeight")
-                        .HasColumnType("double precision")
-                        .HasColumnName("crop_height");
-
-                    b.Property<double?>("CropWidth")
-                        .HasColumnType("double precision")
-                        .HasColumnName("crop_width");
-
-                    b.Property<double?>("CropX")
-                        .HasColumnType("double precision")
-                        .HasColumnName("crop_x");
-
-                    b.Property<double?>("CropY")
-                        .HasColumnType("double precision")
-                        .HasColumnName("crop_y");
-
                     b.Property<string>("Description")
                         .HasColumnType("text")
                         .HasColumnName("description");
@@ -154,18 +141,6 @@ namespace GankedTV.Api.Data.Migrations
                         .HasColumnType("integer")
                         .HasDefaultValue(0)
                         .HasColumnName("like_count");
-
-                    b.Property<short?>("PreEditDurationSecs")
-                        .HasColumnType("smallint")
-                        .HasColumnName("pre_edit_duration_secs");
-
-                    b.Property<short?>("PreEditHeight")
-                        .HasColumnType("smallint")
-                        .HasColumnName("pre_edit_height");
-
-                    b.Property<short?>("PreEditWidth")
-                        .HasColumnType("smallint")
-                        .HasColumnName("pre_edit_width");
 
                     b.Property<int>("ProcessingAttempts")
                         .ValueGeneratedOnAdd()
@@ -300,10 +275,7 @@ namespace GankedTV.Api.Data.Migrations
                         .HasDatabaseName("idx_clips_top_ranked")
                         .HasFilter("status = 'ready' AND visibility = 'public'");
 
-                    b.ToTable("clips", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_clips_crop_rect", "(crop_x IS NULL AND crop_y IS NULL AND crop_width IS NULL AND crop_height IS NULL) OR (crop_x IS NOT NULL AND crop_y IS NOT NULL AND crop_width IS NOT NULL AND crop_height IS NOT NULL AND crop_x >= 0 AND crop_y >= 0 AND crop_width > 0 AND crop_height > 0 AND crop_x + crop_width <= 1 AND crop_y + crop_height <= 1)");
-                        });
+                    b.ToTable("clips", (string)null);
                 });
 
             modelBuilder.Entity("GankedTV.Api.Data.Entities.ClipStreamJob", b =>

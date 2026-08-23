@@ -47,12 +47,18 @@ public sealed class GameCatalogImporter(
         var s3 = s3Options.Value;
         await storage.EnsureBucketsAsync(ct);
 
-        // Reconcile by igdb_id, then by name so curated seeds (hand-picked slug/tag, e.g.
-        // "cs2"/"CS2") get adopted in place rather than duplicated. Track only the rows this
-        // batch can touch — the on-demand search import runs this on a request path. Slugs are
-        // still read from the whole table (untracked) so generated slugs stay globally unique.
+        // Reconcile by igdb_id, then by display name, then by IGDB's own alternative names, so
+        // curated seeds (hand-picked slug/tag, e.g. "cs2"/"CS2") get adopted in place rather than
+        // duplicated. The alias pass is what survives an upstream rename: IGDB 125174 is titled
+        // "Overwatch" today but still lists "Overwatch 2", which is the name our seed row carries.
+        // Without it a rename mints a second row for a game we already have. Track only the rows
+        // this batch can touch — the on-demand search import runs this on a request path. Slugs
+        // are still read from the whole table (untracked) so generated slugs stay globally unique.
         var incomingIds = games.Select(g => g.Id).ToHashSet();
-        var incomingNames = games.Select(g => g.Name.ToLowerInvariant()).ToHashSet();
+        var incomingNames = games
+            .SelectMany(MatchableNames)
+            .Select(n => n.ToLowerInvariant())
+            .ToHashSet();
         var existing = await db.Games
             .Where(g => (g.IgdbId != null && incomingIds.Contains(g.IgdbId.Value))
                 || incomingNames.Contains(g.Name.ToLower()))
@@ -77,13 +83,10 @@ public sealed class GameCatalogImporter(
             {
                 // already linked
             }
-            else if (byName.TryGetValue(meta.Name, out game))
+            else if (TryAdoptByName(meta, byName, out game))
             {
                 game.IgdbId = meta.Id; // adopt the curated seed row (IgdbManaged stays false)
                 byIgdbId[meta.Id] = game;
-                // Don't let a second IGDB game with the same name re-adopt this row — it should
-                // become a new (slug-disambiguated) row instead.
-                byName.Remove(meta.Name);
             }
             else
             {
@@ -168,6 +171,57 @@ public sealed class GameCatalogImporter(
         game.CoverUrl = GameCovers.BuildCoverUrl(s3, key);
         game.CoverImageId = imageId;
         return true;
+    }
+
+    /// <summary>
+    /// Every name this IGDB game can be recognised by, display name first because it's the
+    /// stronger signal when a row matches both.
+    /// </summary>
+    private static IEnumerable<string> MatchableNames(IgdbGame meta)
+    {
+        yield return meta.Name;
+        if (meta.AlternativeNames is null)
+        {
+            yield break;
+        }
+        foreach (var alias in meta.AlternativeNames)
+        {
+            if (!string.IsNullOrWhiteSpace(alias))
+            {
+                yield return alias;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Finds an unlinked catalog row for this IGDB game by display name, falling back to IGDB's
+    /// alternative names. The matched row is dropped from every name bucket it occupies so a
+    /// second IGDB game sharing one of those names can't re-adopt it — that one becomes a new,
+    /// slug-disambiguated row instead.
+    /// </summary>
+    private static bool TryAdoptByName(
+        IgdbGame meta,
+        Dictionary<string, Game> byName,
+        out Game game)
+    {
+        foreach (var candidate in MatchableNames(meta))
+        {
+            if (!byName.TryGetValue(candidate, out var match))
+            {
+                continue;
+            }
+
+            foreach (var claimed in byName.Where(kv => ReferenceEquals(kv.Value, match)).Select(kv => kv.Key).ToList())
+            {
+                byName.Remove(claimed);
+            }
+
+            game = match;
+            return true;
+        }
+
+        game = null!;
+        return false;
     }
 
     private static string UniqueSlug(string name, int igdbId, HashSet<string> used)

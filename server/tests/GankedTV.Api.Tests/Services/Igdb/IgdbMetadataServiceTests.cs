@@ -74,6 +74,43 @@ public class IgdbMetadataServiceTests
     }
 
     [Fact]
+    public async Task GetPopularGamesAsync_RequestsAndParsesAlternativeNames()
+    {
+        // The importer reconciles renamed games through IGDB's alias list, so the query has to
+        // ask for it and the parse has to survive rows that have none.
+        const string gamesJson = """
+        [
+          {"id":125174,"name":"Overwatch","cover":{"id":10,"image_id":"img1"},
+           "alternative_names":[{"name":"Overwatch 2"},{"name":"OW2"},{"name":""}]},
+          {"id":2,"name":"No Aliases","cover":{"id":11,"image_id":"img2"}}
+        ]
+        """;
+        var handler = new TestHttpMessageHandler()
+            .OnPost(TokenUrl, HttpStatusCode.OK, TokenJson)
+            .OnPost(GamesUrl, HttpStatusCode.OK, gamesJson);
+
+        var games = await Build(handler).GetPopularGamesAsync(2);
+
+        handler.CapturedBodies.Single(b => b.Body.Contains("fields name", StringComparison.Ordinal))
+            .Body.Should().Contain("alternative_names.name");
+        games[0].AlternativeNames.Should().Equal("Overwatch 2", "OW2");
+        games[1].AlternativeNames.Should().BeNull("no aliases stays null, not an empty list");
+    }
+
+    [Fact]
+    public async Task SearchGamesAsync_RequestsAlternativeNames()
+    {
+        var handler = new TestHttpMessageHandler()
+            .OnPost(TokenUrl, HttpStatusCode.OK, TokenJson)
+            .OnPost(GamesUrl, HttpStatusCode.OK, "[]");
+
+        await Build(handler).SearchGamesAsync("overwatch", 5);
+
+        handler.CapturedBodies.Single(b => b.Body.Contains("search ", StringComparison.Ordinal))
+            .Body.Should().Contain("alternative_names.name");
+    }
+
+    [Fact]
     public async Task GetPopularGamesAsync_SendsClientIdAndBearerToken()
     {
         var handler = new TestHttpMessageHandler()

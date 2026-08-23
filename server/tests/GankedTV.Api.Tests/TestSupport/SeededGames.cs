@@ -16,6 +16,14 @@ internal static class SeededGames
         "rocket-league", "overwatch-2", "dota-2", "marvel-rivals",
     ];
 
+    /// <summary>
+    /// The one seed row that ships pre-linked to IGDB (see the <c>HasData</c> block): upstream
+    /// renamed 125174 back to "Overwatch", so the seed carries the id to stop the importer
+    /// minting a duplicate.
+    /// </summary>
+    public const string LinkedSlug = "overwatch-2";
+    public const int LinkedIgdbId = 125174;
+
     /// <summary>Deletes non-seed rows and clears IGDB-derived metadata back to the clean baseline.</summary>
     public static async Task ResetBaselineAsync(GankedTvDbContext db)
     {
@@ -25,5 +33,8 @@ internal static class SeededGames
             .SetProperty(g => g.CoverImageId, (string?)null)
             .SetProperty(g => g.IgdbId, (int?)null)
             .SetProperty(g => g.IgdbManaged, false));
+        // Restore the pre-linked seed so the baseline matches a freshly migrated database.
+        await db.Games.Where(g => g.Slug == LinkedSlug)
+            .ExecuteUpdateAsync(s => s.SetProperty(g => g.IgdbId, (int?)LinkedIgdbId));
     }
 }

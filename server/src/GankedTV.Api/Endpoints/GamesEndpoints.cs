@@ -117,8 +117,12 @@ public static class GamesEndpoints
                 || EF.Functions.ILike(g.Slug, pattern, @"\"));
         }
 
+        // Id breaks name ties: two catalog rows can legitimately share a display name (IGDB
+        // renames a sequel back onto its predecessor's title), and an unordered tie makes
+        // `Take(limit)` non-deterministic across requests.
         return await query
             .OrderBy(g => g.Name)
+            .ThenBy(g => g.Id)
             .Take(clampedLimit)
             .Select(g => new GameListItem(g.Id, g.Name, g.Slug, g.Tag, g.CoverUrl))
             .ToListAsync(ct);
