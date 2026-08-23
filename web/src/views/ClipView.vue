@@ -28,6 +28,8 @@ import IconShare from '@/components/icons/IconShare.vue'
 import IconLink from '@/components/icons/IconLink.vue'
 import IconLock from '@/components/icons/IconLock.vue'
 import IconScissors from '@/components/icons/IconScissors.vue'
+import IconPlay from '@/components/icons/IconPlay.vue'
+import IconVolumeMute from '@/components/icons/IconVolumeMute.vue'
 import KebabMenu, { type KebabMenuItem } from '@/components/KebabMenu.vue'
 
 const route = useRoute()
@@ -73,6 +75,19 @@ const AV1_MIME = 'video/mp4; codecs="av01.0.05M.08"'
 const JIT_POLL_MS = 2000
 // Give up polling after ~3 minutes so a stuck/disabled transcoder doesn't poll forever.
 const JIT_MAX_POLLS = 90
+
+// Autoplay. Shown when the browser refused both the unmuted and the muted attempt — the only
+// remaining path is a real user gesture, and Plyr's own play button is behind our overlay.
+const needsTapToPlay = ref(false)
+// Set when the muted retry is what got playback going, so we can offer a one-click unmute
+// instead of leaving the viewer to hunt for the volume control.
+const autoplayMuted = ref(false)
+// A source that resolves long after navigation (the JIT ladder polls for up to ~3 minutes, and
+// a still-processing clip for up to five) must not suddenly start playing at someone who has
+// moved on. Beyond this, mount and wait for a click.
+const AUTOPLAY_GRACE_MS = 10_000
+let playerMountedAt = 0
+let unmuteListener: { el: HTMLVideoElement; handler: () => void } | null = null
 
 const BASE_CONTROLS = [
   'play-large',
@@ -248,11 +263,98 @@ watch(
   [clip, videoEl],
   ([detail, el]) => {
     if (!detail || !el || player) return
+    playerMountedAt = Date.now()
     setupPlayer(detail, el)
     attachViewTracking(detail.id, el)
   },
   { flush: 'post' },
 )
+
+// Start playback without a click. Two attempts: first with whatever mute state Plyr restored
+// from the viewer's last visit, then — if the browser refuses, which it will for audible
+// playback without a prior gesture — muted. A third refusal falls back to the tap overlay.
+//
+// Plyr has to exist first: its `muted` setter resolves a non-boolean argument through
+// localStorage, and its own build calls `muted = null`, so anything set on the element before
+// construction can be silently reverted. Assigning an explicit boolean afterwards is the only
+// ordering that holds.
+async function tryAutoplay(el: HTMLVideoElement) {
+  const myToken = playerToken
+  needsTapToPlay.value = false
+  autoplayMuted.value = false
+
+  // Reduced motion asks for less movement, and an unrequested video is the canonical case.
+  // A backgrounded tab gets the same treatment: audio out of a tab you aren't looking at.
+  if (
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ||
+    document.visibilityState !== 'visible' ||
+    Date.now() - playerMountedAt > AUTOPLAY_GRACE_MS
+  ) {
+    return
+  }
+
+  // jsdom returns undefined from play(); real browsers return a Promise. Normalise so .catch
+  // is always safe and the view can be tested without a media shim.
+  try {
+    await Promise.resolve(el.play())
+    return
+  } catch {
+    if (myToken !== playerToken) return
+  }
+
+  try {
+    el.muted = true
+    await Promise.resolve(el.play())
+    if (myToken !== playerToken) return
+    autoplayMuted.value = true
+    watchForUnmute(el)
+  } catch {
+    if (myToken !== playerToken) return
+    el.muted = false
+    needsTapToPlay.value = true
+  }
+}
+
+function handleTapToPlay() {
+  const el = videoEl.value
+  if (!el) return
+  Promise.resolve(el.play())
+    .then(() => {
+      needsTapToPlay.value = false
+    })
+    .catch(() => {
+      // The gesture didn't help either — leave the overlay up.
+    })
+}
+
+// Unmute on the media element rather than the Plyr wrapper: Plyr's `muted` setter resolves a
+// non-boolean through localStorage and its build assigns `muted = null`, so the element is the
+// unambiguous surface. Plyr's own control updates off the resulting `volumechange`.
+function unmute() {
+  autoplayMuted.value = false
+  if (videoEl.value) videoEl.value.muted = false
+}
+
+// Plyr's own mute control is right there in the toolbar; using it should retire our badge too.
+function watchForUnmute(el: HTMLVideoElement) {
+  detachUnmuteWatch()
+  const onVolumeChange = () => {
+    if (!el.muted) {
+      autoplayMuted.value = false
+      detachUnmuteWatch()
+    }
+  }
+  el.addEventListener('volumechange', onVolumeChange)
+  unmuteListener = { el, handler: onVolumeChange }
+}
+
+function detachUnmuteWatch() {
+  if (unmuteListener) {
+    unmuteListener.el.removeEventListener('volumechange', unmuteListener.handler)
+    unmuteListener = null
+  }
+}
+
 
 // Bind to the underlying <video> element's `timeupdate` (not Plyr's wrapper) — Plyr
 // re-fires the same DOM event but the element listener stays valid across Plyr lifecycle
@@ -292,6 +394,7 @@ function setupPlayer(detail: ClipDetail, el: HTMLVideoElement) {
   if (canPlayMaster(detail.videoCodec, el)) {
     el.src = detail.videoUrl
     player = new Plyr(el, { controls: BASE_CONTROLS, tooltips: { controls: true, seek: true } })
+    void tryAutoplay(el)
     return
   }
   void startJitStream(detail.id, el)
@@ -340,6 +443,7 @@ function attachHlsStream(el: HTMLVideoElement, hlsUrl: string) {
   if (el.canPlayType('application/vnd.apple.mpegurl') !== '') {
     el.src = hlsUrl
     player = new Plyr(el, { controls: BASE_CONTROLS, tooltips: { controls: true, seek: true } })
+    void tryAutoplay(el)
     return
   }
 
@@ -370,6 +474,7 @@ function attachHlsStream(el: HTMLVideoElement, hlsUrl: string) {
         },
         i18n: { qualityLabel: { 0: 'Auto' } },
       })
+      void tryAutoplay(el)
     })
     return
   }
@@ -380,6 +485,9 @@ function attachHlsStream(el: HTMLVideoElement, hlsUrl: string) {
 
 function teardownPlayer() {
   detachViewTracking()
+  detachUnmuteWatch()
+  needsTapToPlay.value = false
+  autoplayMuted.value = false
   // Invalidate any in-flight JIT poll loop.
   playerToken++
   if (player) {
@@ -511,6 +619,11 @@ function onReportSubmitted() {
   fireToast('Report submitted')
 }
 
+// ClipVideoEditDialog opens a second <video> on the same master, so without this two would play.
+watch([editOpen, editVideoOpen, deleteOpen, reportOpen], (states) => {
+  if (states.some(Boolean)) videoEl.value?.pause()
+})
+
 // Owner-only kebab (Edit + Trim & crop + Delete). KebabMenu owns open/close + outside-click +
 // Esc; this view just declares the items. Trim and crop share ONE entry because they share one
 // re-encode — separate entries would walk the owner through two of them for the same result.
@@ -599,15 +712,18 @@ async function onConfirmDelete() {
     </StatusPanel>
 
     <div v-else-if="clip">
-      <!-- Player -->
-      <div class="overflow-hidden rounded-lg border border-border bg-black">
+      <!-- Player. The poster matters more now that playback starts on its own: a blocked
+           autoplay shows the thumbnail rather than a black box. -->
+      <div class="relative overflow-hidden rounded-lg border border-border bg-black">
         <!-- The two fullscreen variants drop the in-page size cap: `:fullscreen` covers the
              native path, `.plyr--fullscreen-fallback` covers Plyr's own fallback when the
              Fullscreen API isn't available. Without them the video can't fill the screen. -->
         <video
           ref="videoEl"
+          :poster="clip.thumbnailUrl"
           controls
           playsinline
+          preload="auto"
           :style="playerStyle"
           :class="[
             'block w-full',
@@ -616,6 +732,32 @@ async function onConfirmDelete() {
               : 'aspect-video',
           ]"
         ></video>
+
+        <!-- Autoplay was refused outright — offer the gesture the browser is waiting for. -->
+        <button
+          v-if="needsTapToPlay"
+          type="button"
+          class="absolute inset-0 flex cursor-pointer items-center justify-center bg-transparent"
+          :aria-label="`Play ${clip.title}`"
+          @click="handleTapToPlay"
+        >
+          <span
+            class="inline-flex size-16 items-center justify-center rounded-full border border-white/25 bg-black/55 text-[#f4f1e8]"
+          >
+            <IconPlay :size="26" />
+          </span>
+        </button>
+
+        <!-- Playing, but only because we muted it to get past the autoplay policy. -->
+        <button
+          v-else-if="autoplayMuted"
+          type="button"
+          class="absolute left-3 top-3 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-white/25 bg-black/55 px-2.5 py-1.5 text-[11px] font-semibold text-[#f4f1e8] transition-colors duration-150 hover:border-accent hover:text-accent"
+          @click="unmute"
+        >
+          <IconVolumeMute :size="13" />
+          Unmute
+        </button>
       </div>
 
       <!-- Meta block -->

@@ -112,6 +112,7 @@ Scale highlights: wordmark 18px/900 caps; page title `clamp(30px,3.6vw,42px)` 90
 - Mint CTAs: `hover:brightness-105` on `transition-[filter]`.
 - Toasts: 250ms `slideUp` in, `slideDown` out. Loading bars: `tick` keyframe.
 - No `transition-transform` on clip cards — they stay put.
+- **Autoplay is motion.** The clip page starts playback on its own ([ClipView.vue](src/views/ClipView.vue)), and skips it under `prefers-reduced-motion: reduce` or in a backgrounded tab. Any future surface that plays video unprompted honours the same two gates. Reels is exempt — playback *is* the interaction there.
 
 ---
 
