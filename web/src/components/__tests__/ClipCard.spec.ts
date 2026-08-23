@@ -128,7 +128,7 @@ describe('ClipCard', () => {
 
   it('defers the thumbnail — lazy, async-decoded, and faded in over the placeholder', () => {
     // Every feed grid renders dozens of these below the fold; eager loading is what makes a
-    // long feed slow as the catalogue grows (issue #199).
+    // long feed slow as the catalogue grows.
     const wrapper = mount(ClipCard, {
       props: { clip: makeClip() },
       global: { plugins: [makeRouter()] },

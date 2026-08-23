@@ -2,9 +2,8 @@
 import { computed } from 'vue'
 import { parseRichText } from '@/lib/richText'
 
-// Renders the small markdown subset in lib/richText.ts as real elements. Every piece of user
-// text lands in a `{{ }}` interpolation and every href comes back scheme-checked from the
-// parser, so no `v-html` is involved and there is nothing to sanitise.
+// Every piece of user text lands in a `{{ }}` interpolation and every href arrives
+// scheme-checked from the parser, so no `v-html` is involved and there is nothing to sanitise.
 const props = defineProps<{ text: string | null | undefined }>()
 
 const blocks = computed(() => parseRichText(props.text))
@@ -52,9 +51,8 @@ const blocks = computed(() => parseRichText(props.text))
 </template>
 
 <style scoped>
-/* Tailwind's preflight strips list markers and element margins, so prose elements have to
-   re-declare them. Sizing/colour are inherited from the call site — this component only
-   restores structure. */
+/* Tailwind's preflight strips list markers and element margins; these put them back. Sizing
+   and colour are inherited from the call site. */
 .rich-text > * {
   margin: 0;
 }

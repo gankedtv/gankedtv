@@ -1,12 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, useTemplateRef, watch } from 'vue'
 
-// The one way to render a clip thumbnail or game cover. Centralised because the loading
-// behaviour — lazy below the fold, async decode, fade in over the placeholder instead of
-// popping out of a black box — has to be identical everywhere or the feed looks uneven.
-//
-// Renders only the <img>; call sites keep their own aspect-ratio wrapper and overlays, and
-// their `class` merges onto the element as usual.
+// The one way to render a clip thumbnail or game cover, so the loading behaviour is identical
+// everywhere. Renders only the <img>; call sites keep their own wrapper and overlays.
 const props = withDefaults(
   defineProps<{
     src: string

@@ -132,6 +132,13 @@ describe('parseRichText', () => {
     expect(items(blocks[0]).length).toBeLessThanOrEqual(40)
   })
 
+  it('holds the block cap when a paragraph flush and a new list land together', () => {
+    // The flush can consume the last slot, and the list would then be pushed on top of it.
+    const source = Array.from({ length: 59 }, (_, i) => `p${i}`).join('\n\n') + '\n\nlast\n- item'
+
+    expect(parseRichText(source).length).toBeLessThanOrEqual(60)
+  })
+
   it('caps block count', () => {
     const blocks = parseRichText(Array.from({ length: 200 }, (_, i) => `p${i}`).join('\n\n'))
 

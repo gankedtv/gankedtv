@@ -773,7 +773,7 @@ public class CommentsEndpointsTests : IAsyncLifetime
         resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
 
-    // ---- like projection (issue #219) ----
+    // ---- like projection ----
 
     [Fact]
     public async Task List_ProjectsLikeCountAndLikedByMe_OnThreadsAndInlineReplies()

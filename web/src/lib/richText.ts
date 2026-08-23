@@ -1,16 +1,10 @@
 /**
- * A deliberately small markdown subset for user-authored prose (today: the profile bio).
+ * A small markdown subset for the profile bio: paragraphs, soft line breaks, bullets, numbering,
+ * bold, italic, and http(s) links. Everything else stays literal text.
  *
- * The parser returns a typed tree, never an HTML string, so `RichText.vue` can render it with
- * real Vue elements. That keeps the codebase's "no `v-html` anywhere" invariant intact — with
- * no HTML ever generated there is no injection channel to sanitise, and no sanitiser bypass to
- * keep patched. It also means no new runtime dependency for a 500-character field.
- *
- * Supported: paragraphs (blank line breaks), soft line breaks, `- `/`* ` bullets, `1. ` numbers,
- * `**bold**`, `*italic*`/`_italic_`, and `[text](url)` links restricted to http/https.
- * Everything else — raw HTML, headings, images, code spans, tables, nested lists — is left as
- * literal text. Code spans are deliberately out: a monospace face would be a third font, which
- * the design system doesn't have.
+ * Returns a typed tree, never an HTML string, so `RichText.vue` builds real elements — that is
+ * what keeps the repo's "no `v-html` anywhere" invariant, and with no markup generated there is
+ * nothing to sanitise. Code spans are out: a monospace face would be a third font.
  */
 
 export interface TextNode {
@@ -44,9 +38,8 @@ export interface ListBlock {
 
 export type Block = ParagraphBlock | ListBlock
 
-// Hard caps. The bio is capped at 500 characters server-side, so these are only ever hit by
-// pathological input (500 lone hyphens is 250 list items); they bound the render tree rather
-// than reject anything a person would plausibly write.
+// Bound the render tree against pathological input (500 lone hyphens is 250 list items). The
+// bio is 500 chars server-side, so nothing a person would write comes near these.
 const MAX_BLOCKS = 60
 const MAX_LIST_ITEMS = 40
 const MAX_LINES_PER_PARAGRAPH = 40
@@ -55,9 +48,8 @@ const BULLET = /^[-*]\s+(.*)$/
 const NUMBERED = /^\d{1,3}[.)]\s+(.*)$/
 
 /**
- * Only http/https survive. `javascript:` and `data:` are the reason this exists; a bare
- * `example.com` is not linkified at all, so a scheme-less href can't resolve against the app's
- * own origin and impersonate an internal route.
+ * Only http/https survive — `javascript:` and `data:` are the point. A scheme-less href is
+ * rejected too, so `example.com` can't resolve against our own origin and fake an internal route.
  */
 export function safeLinkUrl(url: string): string | null {
   try {
@@ -76,7 +68,9 @@ export function parseRichText(source: string | null | undefined): Block[] {
   let paragraph: Inline[][] | null = null
 
   const flushParagraph = () => {
-    if (paragraph && paragraph.length > 0) blocks.push({ t: 'p', lines: paragraph })
+    if (paragraph && paragraph.length > 0 && blocks.length < MAX_BLOCKS) {
+      blocks.push({ t: 'p', lines: paragraph })
+    }
     paragraph = null
   }
 
@@ -102,6 +96,9 @@ export function parseRichText(source: string | null | undefined): Block[] {
       if (previous !== undefined && previous.t === kind) {
         list = previous
       } else {
+        // The flush above may have just consumed the last slot; an open list of the same kind
+        // can still grow, but a new one would push the tree over the cap.
+        if (blocks.length >= MAX_BLOCKS) continue
         list = { t: kind, items: [] }
         blocks.push(list)
       }
@@ -117,9 +114,8 @@ export function parseRichText(source: string | null | undefined): Block[] {
   return blocks
 }
 
-// Links before emphasis so a `*` inside link text stays literal. Each alternative is
-// non-greedy with no nested quantifier, so there is no backtracking blowup on adversarial
-// runs of `*` or `[`.
+// Links before emphasis so a `*` inside link text stays literal. No nested quantifiers, so
+// adversarial runs of `*` or `[` can't cause backtracking blowup.
 const INLINE = new RegExp(
   [
     '\\[([^\\]\\n]*)\\]\\(([^)\\s]+)\\)', // [text](url)

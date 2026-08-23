@@ -86,7 +86,10 @@ public class SignedUrlCacheTests
         // works. The lifetime also stays at the historical one hour on purpose: a longer
         // signature widens the window in which a leaked private-clip poster URL still resolves.
         SignedUrlCache.UrlLifetime.Should().Be(TimeSpan.FromHours(1));
-        SignedUrlCache.CacheControlHeader.Should().Be("public, max-age=2700");
-        TimeSpan.FromSeconds(2700).Should().BeLessThan(SignedUrlCache.UrlLifetime);
+        SignedUrlCache.CacheControlHeader.Should().Be("public, max-age=900");
+        // The binding constraint: a URL handed out on the memo's last tick has UrlLifetime minus
+        // the memo window left on it, and the browser must not cache it past that.
+        (SignedUrlCache.MemoLifetime + TimeSpan.FromSeconds(900))
+            .Should().BeLessThanOrEqualTo(SignedUrlCache.UrlLifetime);
     }
 }

@@ -236,11 +236,10 @@ public sealed class ThumbnailJobService : IThumbnailJobService
         // we don't care about exact frame accuracy; speed matters more.
         // -frames:v 1 = single frame; -q:v 4 = JPEG quality (~lossy but small).
         //
-        // The size cap matters more than it looks: this stage runs BEFORE compress, so the input
-        // is the raw upload — a 4K phone capture would otherwise produce a 4K poster for a card
-        // that renders ~320px wide. Capping both axes with force_original_aspect_ratio=decrease
-        // bounds the LONG edge whichever way round the clip is, so a portrait capture isn't left
-        // with a third of the pixels of a landscape one. It only ever shrinks.
+        // This stage runs BEFORE compress, so its input is the raw upload: uncapped, a 4K capture
+        // yields a 4K poster for a ~320px card. Both axes are clamped so the LONG edge is bounded
+        // whichever way round the clip is, and `min(i*, cap)` keeps a smaller source from being
+        // enlarged — `force_original_aspect_ratio=decrease` alone would upscale it to fit.
         var maxEdge = Math.Max(2, opts.ThumbnailMaxEdge);
         var args = new List<string>
         {
@@ -261,9 +260,7 @@ public sealed class ThumbnailJobService : IThumbnailJobService
         args.AddRange(new[]
         {
             "-frames:v", "1",
-            "-vf", string.Create(
-                CultureInfo.InvariantCulture,
-                $"scale=w={maxEdge}:h={maxEdge}:force_original_aspect_ratio=decrease:force_divisible_by=2"),
+            "-vf", BuildScaleFilter(maxEdge),
             "-q:v", "4",
             "-f", "mjpeg",
             outputPath,
@@ -276,6 +273,10 @@ public sealed class ThumbnailJobService : IThumbnailJobService
                 $"ffmpeg frame extraction failed (exit {result.ExitCode}): {RedactUrls(result.Stderr)}");
         }
     }
+
+    internal static string BuildScaleFilter(int maxEdge) => string.Create(
+        CultureInfo.InvariantCulture,
+        $"scale=w='min(iw,{maxEdge})':h='min(ih,{maxEdge})':force_original_aspect_ratio=decrease:force_divisible_by=2");
 
     private void TryDelete(string path)
     {

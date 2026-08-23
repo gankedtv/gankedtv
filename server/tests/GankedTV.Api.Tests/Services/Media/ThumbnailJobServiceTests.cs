@@ -94,8 +94,7 @@ public class ThumbnailJobServiceTests
     [Fact]
     public async Task ExtractAsync_CapsPosterLongEdge()
     {
-        // This stage runs before compress, so its input is the raw upload — without the cap a 4K
-        // capture yields a 4K poster for a card that renders a few hundred pixels wide.
+        // The configured cap has to reach the ffmpeg args; BuildScaleFilter covers the shape.
         var (svc, ffmpeg, _) = Build(new MediaJobOptions
         {
             FfmpegPath = "ffmpeg",
@@ -113,8 +112,17 @@ public class ThumbnailJobServiceTests
             .Where(c => c.GetArguments()[0] as string == "ffmpeg")
             .Select(c => (IReadOnlyList<string>)c.GetArguments()[1]!)
             .Single();
-        args.Should().ContainInOrder(
-            "-vf", "scale=w=480:h=480:force_original_aspect_ratio=decrease:force_divisible_by=2");
+        args.Should().ContainInOrder("-vf", ThumbnailJobService.BuildScaleFilter(480));
+    }
+
+    [Theory]
+    [InlineData(1280, "scale=w='min(iw,1280)':h='min(ih,1280)':force_original_aspect_ratio=decrease:force_divisible_by=2")]
+    [InlineData(480, "scale=w='min(iw,480)':h='min(ih,480)':force_original_aspect_ratio=decrease:force_divisible_by=2")]
+    public void BuildScaleFilter_ClampsBothAxes_SoASmallSourceIsNeverEnlarged(int maxEdge, string expected)
+    {
+        // `force_original_aspect_ratio=decrease` on its own scales a 640x360 source UP to fill a
+        // 1280x1280 box; the min() on each axis is what keeps it at 640x360.
+        ThumbnailJobService.BuildScaleFilter(maxEdge).Should().Be(expected);
     }
 
     [Fact]
@@ -134,7 +142,7 @@ public class ThumbnailJobServiceTests
             Arg.Any<Stream>(),
             "image/jpeg",
             Arg.Any<CancellationToken>(),
-            "public, max-age=2700");
+            "public, max-age=900");
     }
 
     [Fact]

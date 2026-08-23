@@ -64,9 +64,15 @@ public sealed class GameCatalogImporter(
                 || incomingNames.Contains(g.Name.ToLower()))
             .ToListAsync(ct);
         var byIgdbId = existing.Where(g => g.IgdbId is not null).ToDictionary(g => g.IgdbId!.Value);
+        // Unlinked rows first within a name bucket, then lowest id: adoption skips rows that
+        // already carry an igdb_id, so an arbitrary `First()` could hand back the linked one and
+        // mint a duplicate while the adoptable row sat right behind it.
         var byName = existing
             .GroupBy(g => g.Name, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(grp => grp.Key, grp => grp.First(), StringComparer.OrdinalIgnoreCase);
+            .ToDictionary(
+                grp => grp.Key,
+                grp => grp.OrderBy(g => g.IgdbId is null ? 0 : 1).ThenBy(g => g.Id).First(),
+                StringComparer.OrdinalIgnoreCase);
         var usedSlugs = await db.Games.AsNoTracking()
             .Select(g => g.Slug)
             .ToHashSetAsync(StringComparer.Ordinal, ct);

@@ -168,7 +168,7 @@ describe('UserView (issue #92 regression)', () => {
     expect(router.currentRoute.value.params.id).toBe('clp_01')
   })
 
-  it('renders a multi-line bio as paragraphs and lists (issue #221)', async () => {
+  it('renders a multi-line bio as paragraphs and lists', async () => {
     getByUsername.mockResolvedValue({
       id: 'u1',
       username: 'seeduser',

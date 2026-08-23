@@ -404,6 +404,44 @@ public class GameCatalogImporterTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SharedName_AdoptsTheUnlinkedRow_NotTheLinkedOne()
+    {
+        // Two rows can carry the same display name, one already linked. Adoption skips linked
+        // rows, so if the name bucket handed back the linked one the importer would mint a
+        // duplicate while the adoptable row sat right behind it.
+        var storage = new InMemoryObjectStorage();
+        await using (var setup = _fx.CreateContext())
+        {
+            setup.Games.Add(new Game
+            {
+                Name = "Shared Name Test",
+                Slug = "shared-linked",
+                Tag = "SL",
+                IgdbId = 7830,
+                IgdbManaged = true,
+            });
+            setup.Games.Add(new Game
+            {
+                Name = "Shared Name Test",
+                Slug = "shared-unlinked",
+                Tag = "SU",
+            });
+            await setup.SaveChangesAsync();
+        }
+
+        var igdb = StubIgdb(new IgdbGame(7831, "Shared Name Test", "img"));
+        await using (var db = _fx.CreateContext())
+        {
+            var result = await Build(db, igdb, storage).RunAsync(CancellationToken.None);
+            result.Created.Should().Be(0, "the unlinked row is adoptable");
+        }
+
+        await using var verify = _fx.CreateContext();
+        (await verify.Games.SingleAsync(g => g.Slug == "shared-unlinked")).IgdbId.Should().Be(7831);
+        (await verify.Games.SingleAsync(g => g.Slug == "shared-linked")).IgdbId.Should().Be(7830);
+    }
+
+    [Fact]
     public async Task TwoRows_CannotClaimTheSameIgdbId()
     {
         // Backstop for the whole bug class: even if a future reconciliation path regresses, the

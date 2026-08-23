@@ -37,19 +37,22 @@ public sealed class SignedUrlCache(HybridCache cache, IObjectStorageService stor
     public static readonly TimeSpan UrlLifetime = TimeSpan.FromHours(1);
 
     /// <summary>
-    /// Matching <c>Cache-Control</c> for the stored object, capped at the memo window so a
-    /// browser never holds a cached copy of a URL the memo has already stopped handing out —
-    /// and never past the signature's own expiry.
+    /// <c>Cache-Control</c> stored on the object. Bounded by what is left of the signature at the
+    /// end of the memo window (60 − 45 = 15 minutes): a URL handed out on the memo's last tick
+    /// must not stay cached past the moment it stops resolving.
     /// </summary>
-    public const string CacheControlHeader = "public, max-age=2700";
+    public const string CacheControlHeader = "public, max-age=900";
 
-    // 45 minutes of a 60-minute signature, so a URL handed out at the last moment still has a
-    // quarter of an hour left on it. L1 and L2 share the window: the entries are one short string
-    // per clip, and a lapsed one just re-signs (a new URL, costing one refetch).
+    /// <summary>
+    /// How long one URL keeps being handed out. L1 and L2 share it: the entries are one short
+    /// string per clip, and a lapsed one just re-signs (a new URL, costing one refetch).
+    /// </summary>
+    public static readonly TimeSpan MemoLifetime = TimeSpan.FromMinutes(45);
+
     private static readonly HybridCacheEntryOptions Entry = new()
     {
-        Expiration = TimeSpan.FromMinutes(45),
-        LocalCacheExpiration = TimeSpan.FromMinutes(45),
+        Expiration = MemoLifetime,
+        LocalCacheExpiration = MemoLifetime,
     };
 
     private static readonly string[] Tags = [Tag];

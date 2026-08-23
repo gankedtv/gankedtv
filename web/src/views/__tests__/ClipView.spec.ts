@@ -145,9 +145,12 @@ beforeEach(() => {
 
 afterEach(() => {
   while (wrappers.length) wrappers.pop()!.unmount()
+  // Spies are restored here, not inline, so a failing assertion can't leak one into the
+  // tests that follow.
+  vi.restoreAllMocks()
 })
 
-describe('ClipView autoplay (issue #218)', () => {
+describe('ClipView autoplay', () => {
   it('starts playback on its own once the clip loads', async () => {
     await mountClip()
 
@@ -233,14 +236,13 @@ describe('ClipView autoplay (issue #218)', () => {
   })
 
   it('does not autoplay into a backgrounded tab', async () => {
-    const visibility = vi
-      .spyOn(document, 'visibilityState', 'get')
-      .mockReturnValue('hidden' as DocumentVisibilityState)
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue(
+      'hidden' as DocumentVisibilityState,
+    )
 
     await mountClip()
 
     expect(play).not.toHaveBeenCalled()
-    visibility.mockRestore()
   })
 
   it('pauses the player when a dialog opens over it', async () => {

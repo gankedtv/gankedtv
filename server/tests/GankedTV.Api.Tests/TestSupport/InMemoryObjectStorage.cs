@@ -44,6 +44,7 @@ public sealed class InMemoryObjectStorage : IObjectStorageService
     public Task DeleteObjectAsync(string bucket, string key, CancellationToken ct = default)
     {
         Objects.Remove((bucket, key));
+        CacheControl.Remove((bucket, key));
         return Task.CompletedTask;
     }
 
@@ -52,6 +53,7 @@ public sealed class InMemoryObjectStorage : IObjectStorageService
         foreach (var k in Objects.Keys.Where(k => k.Item1 == bucket && k.Item2.StartsWith(prefix, StringComparison.Ordinal)).ToList())
         {
             Objects.Remove(k);
+            CacheControl.Remove(k);
         }
         return Task.CompletedTask;
     }
