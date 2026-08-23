@@ -170,6 +170,17 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
                 .SetProperty(c => c.CropY, (double?)null)
                 .SetProperty(c => c.CropWidth, (double?)null)
                 .SetProperty(c => c.CropHeight, (double?)null)
+                // Put the frame back too: the thumbnail stage already overwrote these with the
+                // cropped dimensions, but the master this row falls back to was never cropped and
+                // the player shapes its box from them. The stored fraction is even_px / source_px,
+                // so dividing recovers the source exactly; UPDATE reads the pre-update row, so
+                // clearing the rect above doesn't disturb it.
+                .SetProperty(c => c.Width, c => c.Width != null && c.CropWidth > 0
+                    ? (short?)Math.Round(c.Width.Value / c.CropWidth.Value)
+                    : c.Width)
+                .SetProperty(c => c.Height, c => c.Height != null && c.CropHeight > 0
+                    ? (short?)Math.Round(c.Height.Value / c.CropHeight.Value)
+                    : c.Height)
                 // Only the first re-cut can restore "never edited"; later ones had a real
                 // earlier edit whose stamp must survive.
                 .SetProperty(c => c.EditedAt, c => c.EditCount <= 1 ? null : c.EditedAt)

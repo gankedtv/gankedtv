@@ -44,6 +44,7 @@ public class ClipMediaJobStoreIntegrationTests
         int processingAttempts = 0,
         string? thumbnailKey = null,
         int? gameId = null,
+        short? width = null,
         short? height = null,
         string? failureReason = null,
         string? importSourceUrl = null,
@@ -69,6 +70,7 @@ public class ClipMediaJobStoreIntegrationTests
             ProcessingAttempts = processingAttempts,
             ThumbnailKey = thumbnailKey,
             GameId = gameId,
+            Width = width,
             Height = height,
             FailureReason = failureReason,
             ImportSourceUrl = importSourceUrl,
@@ -692,6 +694,69 @@ public class ClipMediaJobStoreIntegrationTests
         clip.Status.Should().Be(ClipStatuses.Ready);
         // An earlier successful re-cut really did change the footage — that badge stays.
         clip.EditedAt.Should().BeCloseTo(earlierEdit, TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
+    public async Task MarkFailedAsync_FailedReCut_RestoresPreCropDimensions()
+    {
+        // The thumbnail stage stamped the CROPPED frame onto the row, but the master the clip
+        // falls back to still has its bars — and the player shapes its box from these columns,
+        // so leaving them cropped renders every viewer a letterboxed sliver.
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("recrop");
+        var now = DateTimeOffset.UtcNow;
+        var clipId = await SeedClipAsync(userId, ClipStatuses.Transcoding, now,
+            processingStartedAt: now,
+            processingAttempts: 3,
+            thumbnailKey: "thumbs/x.jpg",
+            width: 2560,
+            height: 1440,
+            editedAt: now,
+            editCount: 1,
+            crop: new CropRect(440d / 3440, 0, 2560d / 3440, 1));
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+
+        await store.MarkFailedAsync(clipId, expectedAttempt: 3, ClipStatuses.Transcoding,
+            CancellationToken.None, reason: ClipFailureReasons.TranscodeFailed);
+
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.Status.Should().Be(ClipStatuses.Ready);
+        clip.Width.Should().Be(3440);
+        clip.Height.Should().Be(1440);
+    }
+
+    [Fact]
+    public async Task MarkFailedAsync_FailedReCut_TrimOnly_LeavesDimensionsAlone()
+    {
+        // No rect to invert: a trim never changed the frame, so the recorded one is still right.
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("retrim");
+        var now = DateTimeOffset.UtcNow;
+        var clipId = await SeedClipAsync(userId, ClipStatuses.Transcoding, now,
+            processingStartedAt: now,
+            processingAttempts: 3,
+            thumbnailKey: "thumbs/x.jpg",
+            width: 1920,
+            height: 1080,
+            trimStartSecs: 2,
+            trimEndSecs: 8,
+            editedAt: now,
+            editCount: 1);
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+
+        await store.MarkFailedAsync(clipId, expectedAttempt: 3, ClipStatuses.Transcoding,
+            CancellationToken.None, reason: ClipFailureReasons.TranscodeFailed);
+
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.Status.Should().Be(ClipStatuses.Ready);
+        clip.Width.Should().Be(1920);
+        clip.Height.Should().Be(1080);
     }
 
     [Fact]
