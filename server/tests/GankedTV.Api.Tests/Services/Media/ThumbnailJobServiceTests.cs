@@ -396,10 +396,31 @@ public class ThumbnailJobServiceTests
         var crop = ThumbnailJobService.SanitizeCrop(new CropRect(0.1279, 0, 0.7442, 1), 3440, 1440);
 
         crop.Should().NotBeNull();
-        (crop!.X * 3440).Should().BeApproximately(440, 2);
-        (crop.Width * 3440).Should().BeApproximately(2560, 2);
-        crop.Y.Should().Be(0);
-        crop.Height.Should().Be(1);
+        crop!.Width.Should().Be(2560);
+        crop.Height.Should().Be(1440);
+        (crop.Rect.X * 3440).Should().BeApproximately(440, 2);
+        (crop.Rect.Width * 3440).Should().BeApproximately(2560, 2);
+        crop.Rect.Y.Should().Be(0);
+        crop.Rect.Height.Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData(442)]
+    [InlineData(230)]
+    [InlineData(2560)]
+    public void SanitizeCrop_ReportsTheExactPixelsItSnappedTo(int widthPx)
+    {
+        // The pixel dimensions must come from the sanitizer's own arithmetic, not from
+        // re-deriving them out of the fractions it returns: (442/3440)*3440 evaluates to
+        // 441.99999999999994, which floors to a 440px frame the encoder never produces.
+        // 60 of the 1720 even widths on a 3440px frame land on that edge.
+        // +1px on the way in so the sanitizer's own floor-to-even lands exactly on widthPx —
+        // this test is about what it REPORTS having snapped to, not about the input rounding.
+        var crop = ThumbnailJobService.SanitizeCrop(
+            new CropRect(0, 0, (widthPx + 1) / 3440d, 0.5), 3440, 1440);
+
+        crop!.Width.Should().Be(widthPx);
+        crop.Height.Should().Be(720);
     }
 
     [Fact]
@@ -410,10 +431,10 @@ public class ThumbnailJobServiceTests
         var crop = ThumbnailJobService.SanitizeCrop(new CropRect(0.1, 0.1, 0.5, 0.5), 1921, 1081);
 
         crop.Should().NotBeNull();
-        ((int)Math.Round(crop!.X * 1921) % 2).Should().Be(0);
-        ((int)Math.Round(crop.Y * 1081) % 2).Should().Be(0);
-        ((int)Math.Round(crop.Width * 1921) % 2).Should().Be(0);
-        ((int)Math.Round(crop.Height * 1081) % 2).Should().Be(0);
+        ((int)Math.Round(crop!.Rect.X * 1921) % 2).Should().Be(0);
+        ((int)Math.Round(crop.Rect.Y * 1081) % 2).Should().Be(0);
+        (crop.Width % 2).Should().Be(0);
+        (crop.Height % 2).Should().Be(0);
     }
 
     [Fact]
@@ -431,9 +452,9 @@ public class ThumbnailJobServiceTests
         var crop = ThumbnailJobService.SanitizeCrop(new CropRect(0.8, 0.8, 0.5, 0.5), 1920, 1080);
 
         crop.Should().NotBeNull();
-        crop!.X.Should().BeApproximately(0.8, 0.002);
-        (crop.X + crop.Width).Should().BeLessThanOrEqualTo(1.0001);
-        (crop.Y + crop.Height).Should().BeLessThanOrEqualTo(1.0001);
+        crop!.Rect.X.Should().BeApproximately(0.8, 0.002);
+        (crop.Rect.X + crop.Rect.Width).Should().BeLessThanOrEqualTo(1.0001);
+        (crop.Rect.Y + crop.Rect.Height).Should().BeLessThanOrEqualTo(1.0001);
     }
 
     [Fact]
@@ -457,7 +478,7 @@ public class ThumbnailJobServiceTests
         // The row is re-read on a requeue, so a second pass over an already-snapped rect must
         // not creep the crop inward one even-pixel step per retry.
         var once = ThumbnailJobService.SanitizeCrop(new CropRect(0.1279, 0, 0.7442, 1), 3440, 1440);
-        var twice = ThumbnailJobService.SanitizeCrop(once, 3440, 1440);
+        var twice = ThumbnailJobService.SanitizeCrop(once!.Rect, 3440, 1440);
 
         twice.Should().Be(once);
     }
@@ -536,6 +557,40 @@ public class ThumbnailJobServiceTests
         result.ThumbnailKey.Should().NotBeNullOrEmpty();
         result.Crop.Should().BeNull();
         args.Should().NotContain("-vf");
+    }
+
+    [Fact]
+    public async Task ExtractAsync_TranscodeDisabled_IgnoresTheStoredRect()
+    {
+        // With compression off this stage advances straight to 'ready' over a master that is
+        // never re-encoded at all, so there is no second stage to apply the crop. Cropping the
+        // poster anyway would publish a cropped still and a cropped aspect ratio over an
+        // untouched, still-pillarboxed video.
+        var (svc, ffmpeg, _) = Build(new MediaJobOptions
+        {
+            FfmpegPath = "ffmpeg",
+            FfprobePath = "ffprobe",
+            ProcessTimeout = TimeSpan.FromSeconds(30),
+            ThumbnailFrameOffset = TimeSpan.FromSeconds(1),
+            TranscodeEnabled = false,
+        });
+        StubFfprobe(ffmpeg, """{"streams":[{"width":3440,"height":1440,"duration":"12.0"}]}""");
+        IReadOnlyList<string>? args = null;
+        ffmpeg.RunAsync(Arg.Is("ffmpeg"), Arg.Any<IReadOnlyList<string>>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                args = call.Arg<IReadOnlyList<string>>();
+                File.WriteAllBytes(args[^1], new byte[] { 0xFF });
+                return new FfmpegResult(0, "", "");
+            });
+
+        var result = await svc.ExtractAsync(
+            JobWithCrop(new CropRect(0.1279, 0, 0.7442, 1)), null, CancellationToken.None);
+
+        args.Should().NotContain("-vf");
+        result.Crop.Should().BeNull();
+        result.Width.Should().Be(3440);
+        result.Height.Should().Be(1440);
     }
 
     [Fact]

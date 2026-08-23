@@ -209,11 +209,21 @@ public sealed class CompressJobService : ICompressJobService
         }
 
         // Only downscale (never upscale): scale to MaxHeight when the source is known to be
-        // taller. -2 keeps width even and preserves aspect ratio. SourceHeight is already the
-        // POST-crop height — the thumbnail stage wrote it back before this stage claimed the row.
-        if (sourceHeight is { } h && h > opts.MaxHeight)
+        // taller. -2 keeps width even and preserves aspect ratio.
+        //
+        // SourceHeight is the POST-crop height (the thumbnail stage wrote it back before this
+        // stage claimed the row), and judging the cap on it lets a wide/short crop escape the
+        // only resolution bound in the pipeline: a 3440x1440 upload cropped to half height
+        // reports 720, emits no scale, and stores a 3440x720 master — at 4K that's twice the
+        // pixels the same clip would have kept uncropped. So recover the frame the clip would
+        // have had and apply THAT scale factor to the kept region: a crop can then only ever
+        // remove pixels, and an uncropped clip is unaffected (the fraction is 1).
+        var keptHeightFraction = crop is { Height: > 0 } ch ? ch.Height : 1d;
+        var preCropHeight = sourceHeight is { } h ? h / keptHeightFraction : (double?)null;
+        if (preCropHeight is { } ph && ph > opts.MaxHeight)
         {
-            filters.Add($"scale=-2:{opts.MaxHeight.ToString(ci)}");
+            var target = Math.Max(2, (int)(opts.MaxHeight * keptHeightFraction) / 2 * 2);
+            filters.Add($"scale=-2:{target.ToString(ci)}");
         }
 
         if (filters.Count > 0)

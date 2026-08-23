@@ -176,6 +176,32 @@ public class CompressJobServiceTests
     }
 
     [Fact]
+    public void BuildCompressArgs_WideShortCrop_CannotEscapeTheHeightCap()
+    {
+        // SourceHeight is POST-crop, so judging the cap on it lets a letterbox-style crop skip
+        // the scale entirely: 3440x1440 cropped to half height reports 720, and the master would
+        // ship at 3440x720 — at 4K that's twice the pixels the same clip keeps uncropped. The cap
+        // is judged against the frame the clip would have had, and applied to the kept region.
+        var args = CompressJobService.BuildCompressArgs(
+            "in", "o.mp4", sourceHeight: 720, new MediaJobOptions { MaxHeight = 1080 },
+            crop: new CropRect(0, 0.25, 1, 0.5));
+
+        var chain = args[args.IndexOf("-vf") + 1];
+        chain.Should().Contain("scale=-2:540");
+    }
+
+    [Fact]
+    public void BuildCompressArgs_NoCrop_ScalesExactlyAsBefore()
+    {
+        // The kept-height fraction is 1 for an uncropped clip, so the cap arithmetic collapses
+        // back to the plain MaxHeight it has always been.
+        var args = CompressJobService.BuildCompressArgs(
+            "in", "o.mp4", sourceHeight: 1440, new MediaJobOptions { MaxHeight = 1080 });
+
+        args[args.IndexOf("-vf") + 1].Should().Be("scale=-2:1080");
+    }
+
+    [Fact]
     public void BuildCompressArgs_TrimAndCrop_AreOrthogonal()
     {
         // Trim rides -ss/-t and crop rides -vf, so a combined edit needs no ordering care.

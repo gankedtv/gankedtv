@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using GankedTV.Api.Services.Clips;
 using GankedTV.Api.Services.ObjectStorage;
@@ -58,16 +57,20 @@ public sealed class ThumbnailJobService : IThumbnailJobService
                 "Clip has a trim range but ffprobe could not determine the source duration; failing rather than encoding an unverifiable cut.");
         }
 
-        // One kill switch for both stages: the compress stage rechecks CropEnabled, so cropping
-        // the poster here would leave the master uncropped while the poster and the recorded
-        // dimensions — which shape the player — describe a frame that was never encoded.
-        var requestedCrop = opts.CropEnabled ? job.Crop : null;
+        // Crop the poster only when the master is actually going to be cropped, which needs BOTH
+        // toggles: the compress stage rechecks CropEnabled, and with TranscodeEnabled off this
+        // stage advances straight to 'ready' over a master that is never re-encoded at all. Either
+        // one alone would leave the poster and the recorded dimensions — which shape the player —
+        // describing a frame that was never encoded. (Both toggles must therefore hold the same
+        // value on every host in a split deployment; DEPLOYMENT.md says so.)
+        var requestedCrop = opts.CropEnabled && opts.TranscodeEnabled ? job.Crop : null;
 
         // Divergence from trim, deliberately: a crop we can't validate is DROPPED with a warning
         // rather than failing the clip. A dropped trim would publish footage the user cut away;
         // a dropped crop just leaves the black bars in place, and that's fixable post-publish.
-        var crop = SanitizeCrop(requestedCrop, probe.Width, probe.Height);
-        if (requestedCrop is not null && crop is null && (probe.Width is null || probe.Height is null))
+        var sanitized = SanitizeCrop(requestedCrop, probe.Width, probe.Height);
+        var crop = sanitized?.Rect;
+        if (requestedCrop is not null && sanitized is null && (probe.Width is null || probe.Height is null))
         {
             _logger.LogWarning(
                 "clip={ClipId}: ffprobe reported no source dimensions; publishing without the requested crop.",
@@ -102,8 +105,14 @@ public sealed class ThumbnailJobService : IThumbnailJobService
             }
 
             // Dimensions are POST-crop: they drive the player's aspect ratio and the JIT ladder's
-            // source cap, both of which see the cropped master, never the source frame.
-            var (outWidth, outHeight) = CroppedDimensions(probe.Width, probe.Height, crop);
+            // source cap, both of which see the cropped master, never the source frame. Taken from
+            // the sanitizer's own pixel arithmetic rather than re-derived from its fractions —
+            // fraction*frame lands 1 ULP low often enough to snap a further 2px off (442/3440*3440
+            // = 441.99999999999994), which would record a frame 2px narrower than the one that
+            // actually ships.
+            var (outWidth, outHeight) = sanitized is { } c
+                ? ((int?)c.Width, (int?)c.Height)
+                : (probe.Width, probe.Height);
 
             return new FinalizedMediaJob(
                 ThumbnailKey: thumbnailKey,
@@ -149,9 +158,12 @@ public sealed class ThumbnailJobService : IThumbnailJobService
     // here is the conservative direction — it can only ever pull the rect further inside the
     // frame. MediaFilters.Crop then rounds those fractions back to the nearest even pixel, which
     // recovers these exact values, so the persisted rect is what actually gets encoded.
+    //
+    // Carries the pixel dimensions back out alongside the fractions: the caller records them as
+    // the clip's post-crop frame, and re-deriving them from the fractions is not lossless.
     // Returns null for no crop, unknown source dimensions, a degenerate axis, or a rect that
     // still covers the whole frame — all of which mean "don't crop".
-    internal static CropRect? SanitizeCrop(CropRect? crop, int? sourceWidth, int? sourceHeight)
+    internal static SanitizedCrop? SanitizeCrop(CropRect? crop, int? sourceWidth, int? sourceHeight)
     {
         if (crop is null) return null;
         if (sourceWidth is not { } sw || sourceHeight is not { } sh || sw <= 0 || sh <= 0) return null;
@@ -180,69 +192,26 @@ public sealed class ThumbnailJobService : IThumbnailJobService
         // Whole frame after snapping — encoding a no-op crop filter would only cost clarity.
         if (x == 0 && y == 0 && w >= sw - 1 && h >= sh - 1) return null;
 
-        return new CropRect(fx, fy, fw, fh);
-    }
-
-    // Output frame after the crop, in the same even-snapped grid SanitizeCrop worked in.
-    private static (int? Width, int? Height) CroppedDimensions(int? width, int? height, CropRect? crop)
-    {
-        if (crop is null || width is not { } w || height is not { } h) return (width, height);
-        return (SnapEven(crop.Width * w), SnapEven(crop.Height * h));
+        return new SanitizedCrop(new CropRect(fx, fy, fw, fh), w, h);
     }
 
     private static bool IsFinite(double v) => double.IsFinite(v);
 
     private static int SnapEven(double pixels) => (int)Math.Floor(Math.Max(pixels, 0) / 2) * 2;
 
-    private async Task<ProbeResult> ProbeAsync(string inputUrl, MediaJobOptions opts, CancellationToken ct)
+    private async Task<MediaProbeResult> ProbeAsync(string inputUrl, MediaJobOptions opts, CancellationToken ct)
     {
-        var args = new List<string>
-        {
-            "-v", "error",
-            "-print_format", "json",
-            "-show_format",
-            "-show_streams",
-            "-select_streams", "v:0",
-            inputUrl,
-        };
-
-        var result = await _ffmpeg.RunAsync(opts.FfprobePath, args, opts.ProcessTimeout, ct);
+        var result = await _ffmpeg.RunAsync(opts.FfprobePath, MediaProbe.BuildArgs(inputUrl), opts.ProcessTimeout, ct);
         if (result.ExitCode != 0)
         {
             throw new InvalidOperationException(
                 $"ffprobe failed (exit {result.ExitCode}): {RedactUrls(result.Stderr)}");
         }
 
-        // ffprobe occasionally reports duration only on the format object (container-level)
-        // and not on the stream — check both.
-        try
-        {
-            using var doc = JsonDocument.Parse(result.Stdout);
-            var root = doc.RootElement;
-
-            int? width = null;
-            int? height = null;
-            double? duration = null;
-
-            if (root.TryGetProperty("streams", out var streams) && streams.ValueKind == JsonValueKind.Array && streams.GetArrayLength() > 0)
-            {
-                var s = streams[0];
-                width = TryGetInt(s, "width");
-                height = TryGetInt(s, "height");
-                duration = TryGetDouble(s, "duration");
-            }
-
-            if (root.TryGetProperty("format", out var format))
-            {
-                duration ??= TryGetDouble(format, "duration");
-            }
-
-            return new ProbeResult(width, height, duration);
-        }
-        catch (JsonException ex)
-        {
-            throw new InvalidOperationException($"ffprobe returned malformed JSON: {ex.Message}", ex);
-        }
+        // A probe we can't read is a hard failure here, unlike the advisory crop suggestion:
+        // the poster offset and the trim clamp both depend on the duration.
+        return MediaProbe.Parse(result.Stdout)
+            ?? throw new InvalidOperationException("ffprobe returned malformed JSON.");
     }
 
     private async Task ExtractFrameAsync(
@@ -313,19 +282,6 @@ public sealed class ThumbnailJobService : IThumbnailJobService
     internal static string RedactUrls(string input) =>
         string.IsNullOrEmpty(input) ? input : UrlPattern.Replace(input, "[redacted-url]");
 
-    private static int? TryGetInt(JsonElement el, string name) =>
-        el.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : null;
-
-    private static double? TryGetDouble(JsonElement el, string name)
-    {
-        if (!el.TryGetProperty(name, out var v)) return null;
-        // ffprobe emits duration as a string ("2.123456") when -of json is used, so try
-        // string-parse first and fall back to native number parsing.
-        if (v.ValueKind == JsonValueKind.String && double.TryParse(v.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var s)) return s;
-        if (v.ValueKind == JsonValueKind.Number) return v.GetDouble();
-        return null;
-    }
-
     // Width/height/duration land in `smallint` columns. Clamp at the upper end so a
     // theoretical 99999×99999 reading from ffprobe still persists; ffprobe never reports
     // negative dimensions so no lower-bound check is needed.
@@ -334,6 +290,8 @@ public sealed class ThumbnailJobService : IThumbnailJobService
 
     private static short? ToShortSecs(double? v) =>
         v is null ? null : ToShort((int)Math.Round(v.Value));
-
-    private sealed record ProbeResult(int? Width, int? Height, double? DurationSecs);
 }
+
+// A crop rect that has been snapped onto a real pixel grid, carrying both the fractions the
+// pipeline stores and the exact even pixel dimensions they were derived from.
+internal sealed record SanitizedCrop(CropRect Rect, int Width, int Height);
