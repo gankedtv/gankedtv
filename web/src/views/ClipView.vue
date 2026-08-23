@@ -18,8 +18,7 @@ import TelemetryStrip, { type TelemetryCell } from '@/components/TelemetryStrip.
 import SectionHeader from '@/components/SectionHeader.vue'
 import ClipCard from '@/components/ClipCard.vue'
 import ClipEditDialog from '@/components/ClipEditDialog.vue'
-import ClipTrimDialog from '@/components/ClipTrimDialog.vue'
-import ClipCropDialog from '@/components/ClipCropDialog.vue'
+import ClipVideoEditDialog from '@/components/ClipVideoEditDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ReportDialog from '@/components/ReportDialog.vue'
 import CommentsSection from '@/components/CommentsSection.vue'
@@ -498,8 +497,7 @@ const playerStyle = computed(() => {
 })
 
 const editOpen = ref(false)
-const trimOpen = ref(false)
-const cropOpen = ref(false)
+const editVideoOpen = ref(false)
 const deleteOpen = ref(false)
 const deleting = ref(false)
 
@@ -513,12 +511,12 @@ function onReportSubmitted() {
   fireToast('Report submitted')
 }
 
-// Owner-only kebab (Edit + Trim + Delete). KebabMenu owns open/close + outside-click + Esc;
-// this view just declares the items.
+// Owner-only kebab (Edit + Trim & crop + Delete). KebabMenu owns open/close + outside-click +
+// Esc; this view just declares the items. Trim and crop share ONE entry because they share one
+// re-encode — separate entries would walk the owner through two of them for the same result.
 const ownerMenuItems = computed<KebabMenuItem[]>(() => [
   { label: 'Edit', onClick: openEdit },
-  { label: 'Trim video', onClick: openTrim },
-  { label: 'Crop video', onClick: openCrop },
+  { label: 'Trim & crop', onClick: openEditVideo },
   { label: 'Delete', variant: 'danger', onClick: openDelete },
 ])
 
@@ -536,23 +534,14 @@ function openEdit() {
   editOpen.value = true
 }
 
-function openTrim() {
-  trimOpen.value = true
-}
-
-function openCrop() {
-  cropOpen.value = true
+function openEditVideo() {
+  editVideoOpen.value = true
 }
 
 // The clip has left 'ready', so the detail route 404s until the pipeline finishes. Reloading
 // drops straight into the existing processing state, which polls until the re-cut lands.
-function onTrimmed() {
+function onVideoEdited() {
   fireToast('Re-cutting your clip…')
-  void loadClip()
-}
-
-function onCropped() {
-  fireToast('Re-cropping your clip…')
   void loadClip()
 }
 
@@ -809,21 +798,12 @@ async function onConfirmDelete() {
       @error="onEditError"
     />
 
-    <ClipTrimDialog
+    <ClipVideoEditDialog
       v-if="clip"
       :clip="clip"
-      :open="trimOpen"
-      @close="trimOpen = false"
-      @trimmed="onTrimmed"
-      @error="onEditError"
-    />
-
-    <ClipCropDialog
-      v-if="clip"
-      :clip="clip"
-      :open="cropOpen"
-      @close="cropOpen = false"
-      @cropped="onCropped"
+      :open="editVideoOpen"
+      @close="editVideoOpen = false"
+      @edited="onVideoEdited"
       @error="onEditError"
     />
 
