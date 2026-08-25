@@ -167,6 +167,16 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             // rather than add a second partial index. It is intentionally not modeled here.
             // Same story for idx_clips_failed_updated_at (drives the maintenance failed-clip sweep),
             // created via raw SQL in the AddFailedClipIndex migration.
+            // The crop rect is all-four-or-none and normalized to 0..1. ClipCropValidation
+            // enforces both at the two write sites; the CHECK is defence in depth against a
+            // future caller (or out-of-band SQL) storing a rect the ffmpeg filter can't express.
+            e.ToTable(t => t.HasCheckConstraint(
+                "ck_clips_crop_rect",
+                "(crop_x IS NULL AND crop_y IS NULL AND crop_width IS NULL AND crop_height IS NULL) "
+                + "OR (crop_x IS NOT NULL AND crop_y IS NOT NULL AND crop_width IS NOT NULL AND crop_height IS NOT NULL "
+                + "AND crop_x >= 0 AND crop_y >= 0 AND crop_width > 0 AND crop_height > 0 "
+                + "AND crop_x + crop_width <= 1 AND crop_y + crop_height <= 1)"));
+
             e.HasIndex(c => c.ShareCode).IsUnique().HasDatabaseName("idx_clips_share_code");
             e.Property(c => c.ShareCode).HasMaxLength(12);
             // Title gets weight 'A' so exact title matches outrank description-only hits;

@@ -44,6 +44,7 @@ public class ClipMediaJobStoreIntegrationTests
         int processingAttempts = 0,
         string? thumbnailKey = null,
         int? gameId = null,
+        short? width = null,
         short? height = null,
         string? failureReason = null,
         string? importSourceUrl = null,
@@ -51,7 +52,12 @@ public class ClipMediaJobStoreIntegrationTests
         double? trimStartSecs = null,
         double? trimEndSecs = null,
         DateTimeOffset? editedAt = null,
-        int editCount = 0)
+        int editCount = 0,
+        CropRect? crop = null,
+        short? durationSecs = null,
+        short? preEditDurationSecs = null,
+        short? preEditWidth = null,
+        short? preEditHeight = null)
     {
         await using var db = NewContext();
         var clip = new Clip
@@ -68,6 +74,7 @@ public class ClipMediaJobStoreIntegrationTests
             ProcessingAttempts = processingAttempts,
             ThumbnailKey = thumbnailKey,
             GameId = gameId,
+            Width = width,
             Height = height,
             FailureReason = failureReason,
             ImportSourceUrl = importSourceUrl,
@@ -76,6 +83,14 @@ public class ClipMediaJobStoreIntegrationTests
             TrimEndSecs = trimEndSecs,
             EditedAt = editedAt,
             EditCount = editCount,
+            CropX = crop?.X,
+            CropY = crop?.Y,
+            CropWidth = crop?.Width,
+            CropHeight = crop?.Height,
+            DurationSecs = durationSecs,
+            PreEditDurationSecs = preEditDurationSecs,
+            PreEditWidth = preEditWidth,
+            PreEditHeight = preEditHeight,
         };
         db.Clips.Add(clip);
         await db.SaveChangesAsync();
@@ -192,6 +207,42 @@ public class ClipMediaJobStoreIntegrationTests
         result.Should().NotBeNull();
         result!.TrimStartSecs.Should().Be(2.5);
         result.TrimEndSecs.Should().Be(11.0);
+    }
+
+    [Fact]
+    public async Task ClaimNextAsync_CarriesCropRect()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("cropper");
+        var now = DateTimeOffset.UtcNow;
+        await SeedClipAsync(userId, ClipStatuses.Transcoding, now,
+            crop: new CropRect(0.1279, 0, 0.7442, 1));
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+
+        var result = await store.ClaimNextAsync(ClipStatuses.Transcoding, TimeSpan.FromMinutes(5), 3, CancellationToken.None);
+
+        result.Should().NotBeNull();
+        result!.Crop.Should().NotBeNull();
+        result.Crop!.X.Should().BeApproximately(0.1279, 1e-9);
+        result.Crop.Width.Should().BeApproximately(0.7442, 1e-9);
+    }
+
+    [Fact]
+    public async Task ClaimNextAsync_NoCrop_ReturnsNullRect()
+    {
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("uncropped");
+        var now = DateTimeOffset.UtcNow;
+        await SeedClipAsync(userId, ClipStatuses.Transcoding, now);
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+
+        var result = await store.ClaimNextAsync(ClipStatuses.Transcoding, TimeSpan.FromMinutes(5), 3, CancellationToken.None);
+
+        result!.Crop.Should().BeNull();
     }
 
     [Fact]
@@ -383,6 +434,63 @@ public class ClipMediaJobStoreIntegrationTests
     }
 
     [Fact]
+    public async Task AdvanceThumbnailAsync_WritesSnappedCropAndPostCropDimensions()
+    {
+        // The compress stage reads these back, so they must be the SNAPPED rect the poster was
+        // actually taken through — not the rect the client originally asked for.
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("snapper");
+        var now = DateTimeOffset.UtcNow;
+        var clipId = await SeedClipAsync(userId, ClipStatuses.Processing, now,
+            processingAttempts: 1, crop: new CropRect(0.1279, 0, 0.7442, 1));
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+
+        await store.AdvanceThumbnailAsync(clipId,
+            expectedAttempt: 1,
+            new FinalizedMediaJob("k.jpg", 6, 2560, 1440, Crop: new CropRect(0.127907, 0, 0.744186, 1)),
+            ClipStatuses.Transcoding,
+            CancellationToken.None);
+
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.CropX.Should().BeApproximately(0.127907, 1e-6);
+        clip.CropWidth.Should().BeApproximately(0.744186, 1e-6);
+        // Post-crop: 3440x1440 ultrawide minus the pillarbox.
+        clip.Width.Should().Be(2560);
+        clip.Height.Should().Be(1440);
+    }
+
+    [Fact]
+    public async Task AdvanceThumbnailAsync_DroppedCrop_ClearsColumns()
+    {
+        // A crop the thumbnail stage dropped (unknown source dims, or it snapped out to the whole
+        // frame) must not survive to the compress stage.
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("dropper");
+        var now = DateTimeOffset.UtcNow;
+        var clipId = await SeedClipAsync(userId, ClipStatuses.Processing, now,
+            processingAttempts: 1, crop: new CropRect(0.1, 0, 0.8, 1));
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+
+        await store.AdvanceThumbnailAsync(clipId,
+            expectedAttempt: 1,
+            new FinalizedMediaJob("k.jpg", 5, 1280, 720),
+            ClipStatuses.Transcoding,
+            CancellationToken.None);
+
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.CropX.Should().BeNull();
+        clip.CropY.Should().BeNull();
+        clip.CropWidth.Should().BeNull();
+        clip.CropHeight.Should().BeNull();
+    }
+
+    [Fact]
     public async Task AdvanceThumbnailAsync_ToReady_WhenTranscodeDisabled()
     {
         await _fx.ResetAsync();
@@ -543,7 +651,8 @@ public class ClipMediaJobStoreIntegrationTests
             trimStartSecs: 2,
             trimEndSecs: 8,
             editedAt: now,
-            editCount: 1);
+            editCount: 1,
+            crop: new CropRect(0.1279, 0, 0.7442, 1));
 
         await using var db = NewContext();
         var store = NewStore(now, db);
@@ -556,9 +665,13 @@ public class ClipMediaJobStoreIntegrationTests
         clip.Status.Should().Be(ClipStatuses.Ready);
         clip.FailureReason.Should().BeNull();
         clip.ProcessingStartedAt.Should().BeNull();
-        // Range cleared so an admin requeue can't re-apply the cut that just failed.
+        // Range cleared so an admin requeue can't re-apply the edit that just failed.
         clip.TrimStartSecs.Should().BeNull();
         clip.TrimEndSecs.Should().BeNull();
+        clip.CropX.Should().BeNull();
+        clip.CropY.Should().BeNull();
+        clip.CropWidth.Should().BeNull();
+        clip.CropHeight.Should().BeNull();
         // First re-cut, so the footage is back to never-edited and the badge must go.
         clip.EditedAt.Should().BeNull();
         // Generation is monotonic — it must not be reused by the next re-cut.
@@ -589,6 +702,119 @@ public class ClipMediaJobStoreIntegrationTests
         clip.Status.Should().Be(ClipStatuses.Ready);
         // An earlier successful re-cut really did change the footage — that badge stays.
         clip.EditedAt.Should().BeCloseTo(earlierEdit, TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
+    public async Task MarkFailedAsync_FailedReCut_RestoresThePublishedFrameAndDuration()
+    {
+        // The thumbnail stage stamped the POST-edit frame and runtime onto the row, but the
+        // master the clip falls back to is the pre-edit one — the player shapes its box from
+        // width/height and the feed badge reads the duration, so leaving the new values there
+        // describes a clip that exists nowhere.
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("recrop");
+        var now = DateTimeOffset.UtcNow;
+        var clipId = await SeedClipAsync(userId, ClipStatuses.Transcoding, now,
+            processingStartedAt: now,
+            processingAttempts: 3,
+            thumbnailKey: "thumbs/x.jpg",
+            width: 2560,
+            height: 1440,
+            durationSecs: 6,
+            editedAt: now,
+            editCount: 1,
+            trimStartSecs: 2,
+            trimEndSecs: 8,
+            crop: new CropRect(440d / 3440, 0, 2560d / 3440, 1),
+            preEditDurationSecs: 30,
+            preEditWidth: 3440,
+            preEditHeight: 1440);
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+
+        await store.MarkFailedAsync(clipId, expectedAttempt: 3, ClipStatuses.Transcoding,
+            CancellationToken.None, reason: ClipFailureReasons.TranscodeFailed);
+
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.Status.Should().Be(ClipStatuses.Ready);
+        clip.Width.Should().Be(3440);
+        clip.Height.Should().Be(1440);
+        // The one no arithmetic on the row could recover: [2,8] says nothing about the source.
+        clip.DurationSecs.Should().Be(30);
+        // Snapshot consumed — a later first-publish failure must not read it back.
+        clip.PreEditDurationSecs.Should().BeNull();
+        clip.PreEditWidth.Should().BeNull();
+        clip.PreEditHeight.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task MarkFailedAsync_FailedReCrop_InThumbnailStage_LeavesTheFrameAlone()
+    {
+        // The thumbnail stage is what failed, so it never overwrote the frame — the row still
+        // holds the pre-crop dimensions and the snapshot restores them to themselves. Inverting
+        // the requested rect here instead would write 3440 / 0.744186 = 4623.
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("rethumb");
+        var now = DateTimeOffset.UtcNow;
+        var clipId = await SeedClipAsync(userId, ClipStatuses.Processing, now,
+            processingStartedAt: now,
+            processingAttempts: 3,
+            thumbnailKey: "thumbs/x.jpg",
+            width: 3440,
+            height: 1440,
+            editedAt: now,
+            editCount: 1,
+            crop: new CropRect(440d / 3440, 0, 2560d / 3440, 1),
+            preEditWidth: 3440,
+            preEditHeight: 1440);
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+
+        await store.MarkFailedAsync(clipId, expectedAttempt: 3, ClipStatuses.Processing,
+            CancellationToken.None, reason: ClipFailureReasons.ThumbnailFailed);
+
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.Status.Should().Be(ClipStatuses.Ready);
+        clip.Width.Should().Be(3440);
+        clip.Height.Should().Be(1440);
+    }
+
+    [Fact]
+    public async Task MarkFailedAsync_FailedReCut_NoSnapshot_LeavesDimensionsAlone()
+    {
+        // A re-cut requested before the snapshot columns existed has nothing to restore from;
+        // the recorded frame is the best answer available and must not be nulled out.
+        await _fx.ResetAsync();
+        var userId = await SeedUserAsync("retrim");
+        var now = DateTimeOffset.UtcNow;
+        var clipId = await SeedClipAsync(userId, ClipStatuses.Transcoding, now,
+            processingStartedAt: now,
+            processingAttempts: 3,
+            thumbnailKey: "thumbs/x.jpg",
+            width: 1920,
+            height: 1080,
+            durationSecs: 6,
+            trimStartSecs: 2,
+            trimEndSecs: 8,
+            editedAt: now,
+            editCount: 1);
+
+        await using var db = NewContext();
+        var store = NewStore(now, db);
+
+        await store.MarkFailedAsync(clipId, expectedAttempt: 3, ClipStatuses.Transcoding,
+            CancellationToken.None, reason: ClipFailureReasons.TranscodeFailed);
+
+        await using var verify = NewContext();
+        var clip = await verify.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.Status.Should().Be(ClipStatuses.Ready);
+        clip.Width.Should().Be(1920);
+        clip.Height.Should().Be(1080);
+        clip.DurationSecs.Should().Be(6);
     }
 
     [Fact]

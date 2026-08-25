@@ -84,6 +84,36 @@ public sealed class MediaJobOptions
     // Set false on a GPU-only box that must never spend CPU on encodes.
     public bool HardwareEncoderFallbackEnabled { get; set; } = true;
 
+    // --- Crop --------------------------------------------------------------
+    // Cropping rides the SAME single compress re-encode as the trim, so it costs no extra
+    // encode. It still needs TranscodeEnabled — with compression off there is no re-encode
+    // to attach the filter to.
+
+    // Whether callers may request a crop at all. False → /complete and /edit reject a crop
+    // with `crop_unavailable`. Independent of CropDetect: an operator can keep manual
+    // cropping while disabling the ffmpeg-forking suggestion endpoint.
+    public bool CropEnabled { get; set; } = true;
+
+    // Whether GET /clips/{id}/crop-suggestion answers. False → 503. It forks ffmpeg on a
+    // user request (bounded by CropDetectTimeout), so it gets its own kill switch.
+    public bool CropDetectEnabled { get; set; } = true;
+
+    // How many timestamps cropdetect samples across the clip, spread evenly over the middle
+    // 70% of it. Results are combined as a UNION bounding box, so a fade-to-black sample
+    // widens the suggestion back toward the full frame instead of eating real content.
+    // 1..CropDetectService.MaxSamples — each one is a separate ffmpeg fork on the request path,
+    // so anything higher fails validation at startup rather than being quietly clamped.
+    public int CropDetectSamples { get; set; } = 3;
+
+    // cropdetect's `limit` — the luma threshold below which a pixel counts as border. 24 is
+    // ffmpeg's own default; raise it for washed-out captures whose bars aren't pure black.
+    public int CropDetectLimit { get; set; } = 24;
+
+    // Whole-endpoint budget for detection, across every sample. A human is waiting on this
+    // inside the crop editor, so it is far tighter than ProcessTimeout; blowing it degrades
+    // to `detected: false` rather than an error.
+    public TimeSpan CropDetectTimeout { get; set; } = TimeSpan.FromSeconds(8);
+
     // --- JIT H.264 ladder (transient, watch-time) ---
     // Encoder for the on-demand compatibility ladder — always an H.264 family for universal
     // playback ('libx264' dev, 'h264_nvenc' on the GPU box).

@@ -18,7 +18,7 @@ import TelemetryStrip, { type TelemetryCell } from '@/components/TelemetryStrip.
 import SectionHeader from '@/components/SectionHeader.vue'
 import ClipCard from '@/components/ClipCard.vue'
 import ClipEditDialog from '@/components/ClipEditDialog.vue'
-import ClipTrimDialog from '@/components/ClipTrimDialog.vue'
+import ClipVideoEditDialog from '@/components/ClipVideoEditDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ReportDialog from '@/components/ReportDialog.vue'
 import CommentsSection from '@/components/CommentsSection.vue'
@@ -467,8 +467,37 @@ const authorColor = computed(() => {
 // Hoisted so the template doesn't re-parse the URL on every render.
 const authorAvatarUrl = computed(() => safeImageUrl(clip.value?.author.avatarUrl))
 
+// Render the player at the clip's REAL aspect ratio rather than a hard-coded 16:9. Before crop
+// existed every master was effectively widescreen, so aspect-video was harmless; a 21:9 or 9:16
+// clip in a 16:9 box letterboxes on all four sides and undoes the crop the user just paid an
+// encode for. width/height have been served all along with no consumers — this is their job.
+//
+// Inline aspect-ratio beats Plyr's height:auto, which resolves against the video's intrinsic
+// size only after metadata loads (so the box jumps). Falls back to the aspect-video class for
+// older rows whose dimensions the pipeline never recorded.
+//
+// The size cap ships as a CUSTOM PROPERTY, not as an inline max-width, and that is load-bearing:
+// Plyr's stylesheet does `:fullscreen video{height:100%}`, so in fullscreen the video's height
+// becomes definite and the only thing left constraining it is our cap. An inline cap wins over
+// every stylesheet rule, so it would survive into fullscreen and hold the video at a fraction of
+// the screen — black on all four sides. Handing the value to a class via a variable lets the
+// `[:fullscreen_&]` rule below switch it off where it doesn't belong.
+//
+// Cap the WIDTH, not the height: `aspect-ratio` + `max-height` clamps the box without shrinking
+// the width, so the ratio silently breaks and the content pillarboxes. width ≤ 75vh × ratio is
+// the same constraint expressed on the axis that actually resizes. (Same trap as ClipCropper.)
+const playerStyle = computed(() => {
+  const w = clip.value?.width
+  const h = clip.value?.height
+  if (!w || !h || w <= 0 || h <= 0) return null
+  return {
+    aspectRatio: `${w} / ${h}`,
+    '--clip-player-max-w': `${((75 * w) / h).toFixed(2)}vh`,
+  }
+})
+
 const editOpen = ref(false)
-const trimOpen = ref(false)
+const editVideoOpen = ref(false)
 const deleteOpen = ref(false)
 const deleting = ref(false)
 
@@ -482,11 +511,12 @@ function onReportSubmitted() {
   fireToast('Report submitted')
 }
 
-// Owner-only kebab (Edit + Trim + Delete). KebabMenu owns open/close + outside-click + Esc;
-// this view just declares the items.
+// Owner-only kebab (Edit + Trim & crop + Delete). KebabMenu owns open/close + outside-click +
+// Esc; this view just declares the items. Trim and crop share ONE entry because they share one
+// re-encode — separate entries would walk the owner through two of them for the same result.
 const ownerMenuItems = computed<KebabMenuItem[]>(() => [
   { label: 'Edit', onClick: openEdit },
-  { label: 'Trim video', onClick: openTrim },
+  { label: 'Trim & crop', onClick: openEditVideo },
   { label: 'Delete', variant: 'danger', onClick: openDelete },
 ])
 
@@ -504,13 +534,13 @@ function openEdit() {
   editOpen.value = true
 }
 
-function openTrim() {
-  trimOpen.value = true
+function openEditVideo() {
+  editVideoOpen.value = true
 }
 
 // The clip has left 'ready', so the detail route 404s until the pipeline finishes. Reloading
 // drops straight into the existing processing state, which polls until the re-cut lands.
-function onTrimmed() {
+function onVideoEdited() {
   fireToast('Re-cutting your clip…')
   void loadClip()
 }
@@ -571,7 +601,21 @@ async function onConfirmDelete() {
     <div v-else-if="clip">
       <!-- Player -->
       <div class="overflow-hidden rounded-lg border border-border bg-black">
-        <video ref="videoEl" controls playsinline class="block aspect-video w-full"></video>
+        <!-- The two fullscreen variants drop the in-page size cap: `:fullscreen` covers the
+             native path, `.plyr--fullscreen-fallback` covers Plyr's own fallback when the
+             Fullscreen API isn't available. Without them the video can't fill the screen. -->
+        <video
+          ref="videoEl"
+          controls
+          playsinline
+          :style="playerStyle"
+          :class="[
+            'block w-full',
+            playerStyle
+              ? 'mx-auto max-w-[var(--clip-player-max-w)] [.plyr--fullscreen-fallback_&]:max-w-none [:fullscreen_&]:max-w-none'
+              : 'aspect-video',
+          ]"
+        ></video>
       </div>
 
       <!-- Meta block -->
@@ -754,12 +798,12 @@ async function onConfirmDelete() {
       @error="onEditError"
     />
 
-    <ClipTrimDialog
+    <ClipVideoEditDialog
       v-if="clip"
       :clip="clip"
-      :open="trimOpen"
-      @close="trimOpen = false"
-      @trimmed="onTrimmed"
+      :open="editVideoOpen"
+      @close="editVideoOpen = false"
+      @edited="onVideoEdited"
       @error="onEditError"
     />
 

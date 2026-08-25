@@ -106,7 +106,7 @@ public static class ClipsUploadEndpoints
         if (req is { TrimStartSeconds: not null } or { TrimEndSeconds: not null })
         {
             // The trimmer is a web-upload feature; API-key uploads are excluded (rewynd
-            // trims locally before uploading).
+            // trims locally before uploading, which genuinely saves upload bytes).
             if (principal.Identity?.AuthenticationType == ApiKeyDefaults.Scheme)
             {
                 return ProblemResults.BadRequest("trim_not_supported");
@@ -118,7 +118,18 @@ public static class ClipsUploadEndpoints
             trim = new ClipTrimInput(start, end);
         }
 
-        var result = await clips.CompleteAsync(userId, id, trim, ct);
+        // Crop deliberately has no API-key exclusion. Cropping pillarbox saves almost nothing
+        // on upload (black encodes to near-zero bitrate) while costing a full re-encode on the
+        // user's gaming PC — and the server re-encodes anyway. So rewynd sends the rect and
+        // lets the existing compress stage apply it.
+        var (crop, invalidCrop) = ClipCropValidation.TryParse(
+            req?.CropX, req?.CropY, req?.CropWidth, req?.CropHeight);
+        if (invalidCrop)
+        {
+            return ProblemResults.BadRequest("invalid_crop");
+        }
+
+        var result = await clips.CompleteAsync(userId, id, new ClipEdits(trim, crop), ct);
         return result.IsSuccess
             ? Results.Ok(result.Value!.ToCompleteClipResponse())
             : MapError(result.Error!.Value, loggerFactory);
@@ -139,6 +150,8 @@ public static class ClipsUploadEndpoints
         ClipUploadError.InvalidTag => ProblemResults.BadRequest(TagsResolveProblemCodes.InvalidTag),
         ClipUploadError.InvalidTrim => ProblemResults.BadRequest("invalid_trim"),
         ClipUploadError.TrimUnavailable => ProblemResults.BadRequest("trim_unavailable"),
+        ClipUploadError.InvalidCrop => ProblemResults.BadRequest("invalid_crop"),
+        ClipUploadError.CropUnavailable => ProblemResults.BadRequest("crop_unavailable"),
         _ => UnmappedError(error, loggerFactory),
     };
 

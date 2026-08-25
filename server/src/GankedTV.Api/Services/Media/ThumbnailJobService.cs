@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using GankedTV.Api.Services.Clips;
 using GankedTV.Api.Services.ObjectStorage;
@@ -58,6 +57,26 @@ public sealed class ThumbnailJobService : IThumbnailJobService
                 "Clip has a trim range but ffprobe could not determine the source duration; failing rather than encoding an unverifiable cut.");
         }
 
+        // Crop the poster only when the master is actually going to be cropped, which needs BOTH
+        // toggles: the compress stage rechecks CropEnabled, and with TranscodeEnabled off this
+        // stage advances straight to 'ready' over a master that is never re-encoded at all. Either
+        // one alone would leave the poster and the recorded dimensions — which shape the player —
+        // describing a frame that was never encoded. (Both toggles must therefore hold the same
+        // value on every host in a split deployment; DEPLOYMENT.md says so.)
+        var requestedCrop = opts.CropEnabled && opts.TranscodeEnabled ? job.Crop : null;
+
+        // Divergence from trim, deliberately: a crop we can't validate is DROPPED with a warning
+        // rather than failing the clip. A dropped trim would publish footage the user cut away;
+        // a dropped crop just leaves the black bars in place, and that's fixable post-publish.
+        var sanitized = SanitizeCrop(requestedCrop, probe.Width, probe.Height);
+        var crop = sanitized?.Rect;
+        if (requestedCrop is not null && sanitized is null && (probe.Width is null || probe.Height is null))
+        {
+            _logger.LogWarning(
+                "clip={ClipId}: ffprobe reported no source dimensions; publishing without the requested crop.",
+                job.ClipId);
+        }
+
         var trim = SanitizeTrim(job.TrimStartSecs, job.TrimEndSecs, probe.DurationSecs);
         var playableStart = trim?.Start ?? 0;
         var playableSecs = trim is { } span ? span.End - span.Start : probe.DurationSecs;
@@ -77,7 +96,7 @@ public sealed class ThumbnailJobService : IThumbnailJobService
             $"gankedtv-thumb-{job.ClipId:N}-{Guid.NewGuid():N}.jpg");
         try
         {
-            await ExtractFrameAsync(videoUrl, thumbPath, seekOffset, opts, ct);
+            await ExtractFrameAsync(videoUrl, thumbPath, seekOffset, crop, opts, ct);
 
             var thumbnailKey = ClipKeys.BuildThumbnailKey(job.UserId, job.ClipId, gameSlug);
             await using (var stream = File.OpenRead(thumbPath))
@@ -85,13 +104,24 @@ public sealed class ThumbnailJobService : IThumbnailJobService
                 await _storage.PutObjectAsync(buckets.ThumbnailsBucket, thumbnailKey, stream, "image/jpeg", ct);
             }
 
+            // Dimensions are POST-crop: they drive the player's aspect ratio and the JIT ladder's
+            // source cap, both of which see the cropped master, never the source frame. Taken from
+            // the sanitizer's own pixel arithmetic rather than re-derived from its fractions —
+            // fraction*frame lands 1 ULP low often enough to snap a further 2px off (442/3440*3440
+            // = 441.99999999999994), which would record a frame 2px narrower than the one that
+            // actually ships.
+            var (outWidth, outHeight) = sanitized is { } c
+                ? ((int?)c.Width, (int?)c.Height)
+                : (probe.Width, probe.Height);
+
             return new FinalizedMediaJob(
                 ThumbnailKey: thumbnailKey,
                 DurationSecs: ToShortSecs(playableSecs),
-                Width: ToShort(probe.Width),
-                Height: ToShort(probe.Height),
+                Width: ToShort(outWidth),
+                Height: ToShort(outHeight),
                 TrimStartSecs: trim?.Start,
-                TrimEndSecs: trim?.End);
+                TrimEndSecs: trim?.End,
+                Crop: crop);
         }
         finally
         {
@@ -123,61 +153,72 @@ public sealed class ThumbnailJobService : IThumbnailJobService
         return (start, end);
     }
 
-    private async Task<ProbeResult> ProbeAsync(string inputUrl, MediaJobOptions opts, CancellationToken ct)
+    // Round-trips a requested rect through the probed pixel grid: fractions → pixels → clamp
+    // into frame → snap DOWN to even (yuv420p chroma alignment) → back to fractions. Flooring
+    // here is the conservative direction — it can only ever pull the rect further inside the
+    // frame. MediaFilters.Crop then rounds those fractions back to the nearest even pixel, which
+    // recovers these exact values, so the persisted rect is what actually gets encoded.
+    //
+    // Carries the pixel dimensions back out alongside the fractions: the caller records them as
+    // the clip's post-crop frame, and re-deriving them from the fractions is not lossless.
+    // Returns null for no crop, unknown source dimensions, a degenerate axis, or a rect that
+    // still covers the whole frame — all of which mean "don't crop".
+    internal static SanitizedCrop? SanitizeCrop(CropRect? crop, int? sourceWidth, int? sourceHeight)
     {
-        var args = new List<string>
+        if (crop is null) return null;
+        if (sourceWidth is not { } sw || sourceHeight is not { } sh || sw <= 0 || sh <= 0) return null;
+        if (!IsFinite(crop.X) || !IsFinite(crop.Y) || !IsFinite(crop.Width) || !IsFinite(crop.Height))
         {
-            "-v", "error",
-            "-print_format", "json",
-            "-show_format",
-            "-show_streams",
-            "-select_streams", "v:0",
-            inputUrl,
-        };
+            return null;
+        }
 
-        var result = await _ffmpeg.RunAsync(opts.FfprobePath, args, opts.ProcessTimeout, ct);
+        var x = SnapEven(Math.Clamp(crop.X, 0, 1) * sw);
+        var y = SnapEven(Math.Clamp(crop.Y, 0, 1) * sh);
+        var w = SnapEven(Math.Clamp(crop.Width, 0, 1) * sw);
+        var h = SnapEven(Math.Clamp(crop.Height, 0, 1) * sh);
+
+        // Shrink before shifting: a rect that overhangs the frame keeps its origin (the user
+        // dragged that edge deliberately) and loses the overhang instead of sliding inward.
+        w = Math.Min(w, SnapEven(sw - x));
+        h = Math.Min(h, SnapEven(sh - y));
+        if (w < 2 || h < 2) return null;
+
+        var fx = (double)x / sw;
+        var fy = (double)y / sh;
+        var fw = (double)w / sw;
+        var fh = (double)h / sh;
+        if (fw < ClipCropExtents.MinExtent || fh < ClipCropExtents.MinExtent) return null;
+
+        // Whole frame after snapping — encoding a no-op crop filter would only cost clarity.
+        if (x == 0 && y == 0 && w >= sw - 1 && h >= sh - 1) return null;
+
+        return new SanitizedCrop(new CropRect(fx, fy, fw, fh), w, h);
+    }
+
+    private static bool IsFinite(double v) => double.IsFinite(v);
+
+    private static int SnapEven(double pixels) => (int)Math.Floor(Math.Max(pixels, 0) / 2) * 2;
+
+    private async Task<MediaProbeResult> ProbeAsync(string inputUrl, MediaJobOptions opts, CancellationToken ct)
+    {
+        var result = await _ffmpeg.RunAsync(opts.FfprobePath, MediaProbe.BuildArgs(inputUrl), opts.ProcessTimeout, ct);
         if (result.ExitCode != 0)
         {
             throw new InvalidOperationException(
                 $"ffprobe failed (exit {result.ExitCode}): {RedactUrls(result.Stderr)}");
         }
 
-        // ffprobe occasionally reports duration only on the format object (container-level)
-        // and not on the stream — check both.
-        try
-        {
-            using var doc = JsonDocument.Parse(result.Stdout);
-            var root = doc.RootElement;
-
-            int? width = null;
-            int? height = null;
-            double? duration = null;
-
-            if (root.TryGetProperty("streams", out var streams) && streams.ValueKind == JsonValueKind.Array && streams.GetArrayLength() > 0)
-            {
-                var s = streams[0];
-                width = TryGetInt(s, "width");
-                height = TryGetInt(s, "height");
-                duration = TryGetDouble(s, "duration");
-            }
-
-            if (root.TryGetProperty("format", out var format))
-            {
-                duration ??= TryGetDouble(format, "duration");
-            }
-
-            return new ProbeResult(width, height, duration);
-        }
-        catch (JsonException ex)
-        {
-            throw new InvalidOperationException($"ffprobe returned malformed JSON: {ex.Message}", ex);
-        }
+        // A probe we can't read is a hard failure here, unlike the advisory crop suggestion:
+        // the poster offset and the trim clamp both depend on the duration.
+        return MediaProbe.Parse(result.Stdout)
+            ?? throw new InvalidOperationException("ffprobe returned malformed JSON.");
     }
 
     private async Task ExtractFrameAsync(
         string inputUrl,
         string outputPath,
         TimeSpan seekOffset,
+        CropRect? crop,
         MediaJobOptions opts,
         CancellationToken ct)
     {
@@ -189,11 +230,24 @@ public sealed class ThumbnailJobService : IThumbnailJobService
             "-y",
             "-ss", seekOffset.TotalSeconds.ToString("F3", CultureInfo.InvariantCulture),
             "-i", inputUrl,
+        };
+
+        // Poster and master go through the SAME filter builder. The feed renders the poster,
+        // so a poster that kept the bars while the video lost them would make the whole
+        // feature look broken exactly where most people see it.
+        if (crop is not null)
+        {
+            args.Add("-vf");
+            args.Add(MediaFilters.Crop(crop));
+        }
+
+        args.AddRange(new[]
+        {
             "-frames:v", "1",
             "-q:v", "4",
             "-f", "mjpeg",
             outputPath,
-        };
+        });
 
         var result = await _ffmpeg.RunAsync(opts.FfmpegPath, args, opts.ProcessTimeout, ct);
         if (result.ExitCode != 0 || !File.Exists(outputPath) || new FileInfo(outputPath).Length <= 0)
@@ -228,19 +282,6 @@ public sealed class ThumbnailJobService : IThumbnailJobService
     internal static string RedactUrls(string input) =>
         string.IsNullOrEmpty(input) ? input : UrlPattern.Replace(input, "[redacted-url]");
 
-    private static int? TryGetInt(JsonElement el, string name) =>
-        el.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : null;
-
-    private static double? TryGetDouble(JsonElement el, string name)
-    {
-        if (!el.TryGetProperty(name, out var v)) return null;
-        // ffprobe emits duration as a string ("2.123456") when -of json is used, so try
-        // string-parse first and fall back to native number parsing.
-        if (v.ValueKind == JsonValueKind.String && double.TryParse(v.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var s)) return s;
-        if (v.ValueKind == JsonValueKind.Number) return v.GetDouble();
-        return null;
-    }
-
     // Width/height/duration land in `smallint` columns. Clamp at the upper end so a
     // theoretical 99999×99999 reading from ffprobe still persists; ffprobe never reports
     // negative dimensions so no lower-bound check is needed.
@@ -249,6 +290,8 @@ public sealed class ThumbnailJobService : IThumbnailJobService
 
     private static short? ToShortSecs(double? v) =>
         v is null ? null : ToShort((int)Math.Round(v.Value));
-
-    private sealed record ProbeResult(int? Width, int? Height, double? DurationSecs);
 }
+
+// A crop rect that has been snapped onto a real pixel grid, carrying both the fractions the
+// pipeline stores and the exact even pixel dimensions they were derived from.
+internal sealed record SanitizedCrop(CropRect Rect, int Width, int Height);

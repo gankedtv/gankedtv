@@ -3,45 +3,66 @@ import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { ApiError } from '@/api/client'
 import { clips, type ClipDetail } from '@/api/clips'
 import ClipTrimmer from '@/components/ClipTrimmer.vue'
+import ClipCropper from '@/components/ClipCropper.vue'
+import UnderlineTabs from '@/components/UnderlineTabs.vue'
 import type { TrimRange } from '@/lib/trim'
+import type { CropRect } from '@/lib/crop'
 
-// Post-publish re-cut. The trimmer scrubs the clip's current master, so the range the user
-// picks is already in the coordinate space the server expects. Submitting hands the clip back
-// to the media pipeline; the parent reloads and its existing "processing" state covers the gap.
+// Post-publish re-edit. Both editors work against the clip's current master, so the range and
+// the rect are already in the coordinate space the server expects.
+//
+// ONE dialog rather than a Trim one and a Crop one, because /edit applies both in a single
+// re-encode: split across two dialogs the owner pays two generations of quality loss for the
+// same result, and the endpoint's whole reason for existing goes unused. Submitting hands the
+// clip back to the media pipeline; the parent reloads and its existing "processing" state
+// covers the gap.
 
 const props = defineProps<{ clip: ClipDetail; open: boolean }>()
 const emit = defineEmits<{
   close: []
-  trimmed: []
+  edited: []
   error: [message: string]
 }>()
 
+type EditTab = 'trim' | 'crop'
+const TABS: { key: EditTab; label: string }[] = [
+  { key: 'trim', label: 'Trim' },
+  { key: 'crop', label: 'Crop' },
+]
+
+const tab = ref<EditTab>('trim')
 const range = ref<TrimRange | null>(null)
+const crop = ref<CropRect | null>(null)
 const submitting = ref(false)
 
 watch(
   () => props.open,
   (open) => {
     if (open) {
+      tab.value = 'trim'
       range.value = null
+      crop.value = null
       submitting.value = false
     }
   },
 )
 
 function onKeydown(e: KeyboardEvent) {
-  // The trimmer binds Escape to "reset the range", so only close when it isn't focused.
+  // Both editors bind Escape to "reset my selection", so only close when neither handled it.
   if (e.key === 'Escape' && props.open && !submitting.value && !e.defaultPrevented) emit('close')
 }
 
 onMounted(() => window.addEventListener('keydown', onKeydown))
 onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
-const canSave = computed(() => range.value !== null && !submitting.value)
+const canSave = computed(() => (range.value !== null || crop.value !== null) && !submitting.value)
 
 const ERROR_CODES: Record<string, string> = {
   invalid_trim: 'That trim range is invalid — try again',
+  invalid_crop: 'That crop is invalid — try again',
   trim_unavailable: 'Trimming is unavailable on this server right now',
+  crop_unavailable: 'Cropping is unavailable on this server right now',
+  no_operations: 'Nothing to apply — trim or crop the clip first',
   invalid_state: 'This clip is already being processed — try again once it finishes',
   moderated: 'This clip is under moderation and can’t be edited',
   forbidden: "You don't have permission to edit this clip",
@@ -50,17 +71,21 @@ const ERROR_CODES: Record<string, string> = {
 
 async function save() {
   const picked = range.value
-  if (!picked || submitting.value) return
+  const rect = crop.value
+  if ((!picked && !rect) || submitting.value) return
   submitting.value = true
   try {
-    await clips.trim(props.clip.id, {
-      trimStartSeconds: picked.start,
-      trimEndSeconds: picked.end,
+    // One call carrying whatever the owner set, so a trim AND a crop cost one re-encode.
+    await clips.edit(props.clip.id, {
+      ...(picked ? { trimStartSeconds: picked.start, trimEndSeconds: picked.end } : {}),
+      ...(rect
+        ? { cropX: rect.x, cropY: rect.y, cropWidth: rect.width, cropHeight: rect.height }
+        : {}),
     })
-    emit('trimmed')
+    emit('edited')
     emit('close')
   } catch (err) {
-    let msg = 'Failed to trim — please try again'
+    let msg = 'Failed to edit — please try again'
     if (err instanceof ApiError) {
       const code = (err.body as { code?: string } | null)?.code
       if (code && ERROR_CODES[code]) msg = ERROR_CODES[code]
@@ -102,7 +127,7 @@ async function save() {
               <h2
                 class="m-0 mt-2 font-condensed text-lg font-extrabold uppercase leading-none tracking-wide text-text-primary"
               >
-                Trim Clip
+                Trim &amp; Crop
               </h2>
             </div>
             <button
@@ -118,12 +143,30 @@ async function save() {
 
           <!-- Body -->
           <div class="flex flex-col gap-4 p-5">
-            <ClipTrimmer v-model="range" :src="clip.videoUrl" />
+            <div class="flex items-baseline justify-between gap-3">
+              <UnderlineTabs :tabs="TABS" :active="tab" class="flex-1" @select="tab = $event" />
+              <span v-if="range || crop" class="text-[10px] font-bold text-accent">
+                {{
+                  range && crop
+                    ? 'Trim + crop, one re-encode'
+                    : range
+                      ? 'Trim pending'
+                      : 'Crop pending'
+                }}
+              </span>
+            </div>
+
+            <!-- v-if, not v-show: only the active editor is mounted so exactly one <video>
+                 decodes at a time. Each re-seeds from its model on loadedmetadata, so switching
+                 tabs preserves both selections. -->
+            <ClipTrimmer v-if="tab === 'trim'" v-model="range" :src="clip.videoUrl" />
+            <ClipCropper v-else v-model="crop" :src="clip.videoUrl" :clip-id="clip.id" />
 
             <p class="m-0 text-[11px] leading-relaxed text-text-muted">
-              Trimming re-encodes the clip, so it drops out of feeds for a moment and comes back
-              with an <span class="font-semibold text-text-secondary">Edited</span> badge. The cut
-              is permanent — the removed footage can't be restored.
+              Editing re-encodes the clip, so it drops out of feeds for a moment and comes back with
+              an <span class="font-semibold text-text-secondary">Edited</span> badge. Whatever you
+              cut away is permanent — the previous version isn't stored. Setting both at once
+              applies them in a single re-encode.
             </p>
           </div>
 
@@ -148,7 +191,7 @@ async function save() {
                   : 'cursor-not-allowed border border-border bg-transparent text-text-muted',
               ]"
             >
-              {{ submitting ? 'Submitting…' : 'Apply trim' }}
+              {{ submitting ? 'Submitting…' : 'Apply changes' }}
             </button>
           </div>
         </div>

@@ -6,7 +6,10 @@ import { config } from '@/config'
 import { clips } from '@/api/clips'
 import type { ClipStatus, ClipVisibility, GameSummary } from '@/api/clips'
 import ClipTrimmer from '@/components/ClipTrimmer.vue'
+import ClipCropper from '@/components/ClipCropper.vue'
+import UnderlineTabs from '@/components/UnderlineTabs.vue'
 import type { TrimRange } from '@/lib/trim'
+import { cropWindowStyle, type CropRect } from '@/lib/crop'
 import GameSelector from '@/components/GameSelector.vue'
 import TagInput from '@/components/TagInput.vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -37,9 +40,9 @@ const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 type IngestMode = 'upload' | 'import'
 const mode = ref<IngestMode>('upload')
 
-// Upload flow: pick → trim → describe → progress. Import flow skips 'trim' (nothing
-// local to cut — the server fetches the source).
-type Step = 'pick' | 'trim' | 'describe' | 'progress'
+// Upload flow: pick → edit → describe → progress. Import flow skips 'edit' (nothing local to
+// reshape — the server fetches the source).
+type Step = 'pick' | 'edit' | 'describe' | 'progress'
 const step = ref<Step>('pick')
 const file = ref<File | null>(null)
 // URL the user pasted in import mode. Client-side allow-list mirrors the server's
@@ -104,6 +107,19 @@ const posterUrl = ref<string | null>(null)
 // Null while the trimmer covers the whole clip — only an actual cut rides along
 // to POST /clips/{id}/complete.
 const trimRange = ref<TrimRange | null>(null)
+// Same contract for the cropper: null = full frame, so an untouched crop sends nothing.
+const cropRect = ref<CropRect | null>(null)
+
+// Trim and crop are tabs inside one wizard step rather than a fifth numbered circle, which
+// would overflow the indicator on mobile. Only the ACTIVE tab is mounted so exactly one
+// <video> decodes at a time; both editors re-seed from their model on loadedmetadata, so a tab
+// switch (or back-navigation) preserves what the user picked.
+type EditTab = 'trim' | 'crop'
+const editTab = ref<EditTab>('trim')
+const EDIT_TABS: { key: EditTab; label: string }[] = [
+  { key: 'trim', label: 'Trim' },
+  { key: 'crop', label: 'Crop' },
+]
 
 // Playable preview of the picked file in the describe step, looping the kept range so
 // the user sees exactly what will be published.
@@ -123,6 +139,48 @@ watch(file, (f) => {
 watch(step, (s) => {
   if (s === 'describe') previewPlaying.value = false
 })
+
+// Source dimensions of the picked file, read off the preview <video> itself. Needed to render
+// the crop honestly: the card is a fixed 16:9 box, so the cropped frame has to be sized to its
+// OWN aspect ratio inside it rather than stretched to fill, which would distort every crop that
+// isn't 16:9.
+const previewFrameW = ref(0)
+const previewFrameH = ref(0)
+
+function onPreviewLoadedMetadata() {
+  const v = previewVideoEl.value
+  if (!v?.videoWidth || !v.videoHeight) return
+  previewFrameW.value = v.videoWidth
+  previewFrameH.value = v.videoHeight
+}
+
+watch(file, () => {
+  previewFrameW.value = 0
+  previewFrameH.value = 0
+})
+
+// Aspect ratio of the published frame — the source ratio narrowed by the crop.
+const croppedAspect = computed(() => {
+  const c = cropRect.value
+  if (!c || !previewFrameW.value || !previewFrameH.value) return null
+  const ratio = (previewFrameW.value * c.width) / (previewFrameH.value * c.height) || 0
+  return Number.isFinite(ratio) && ratio > 0 ? ratio : null
+})
+
+// Sizes the cropped frame inside the 16:9 card: pin the width for anything wider than the card,
+// the height for anything taller. Setting only one dimension alongside `aspect-ratio` is what
+// keeps the ratio intact — pinning both (or capping the other) silently breaks it.
+const previewFrameStyle = computed(() => {
+  const a = croppedAspect.value
+  if (a === null) return undefined
+  return a >= 16 / 9
+    ? { aspectRatio: String(a), width: '100%' }
+    : { aspectRatio: String(a), height: '100%' }
+})
+
+// Scales + offsets the preview media inside that frame so only the cropped window shows. Without
+// this the crop would be invisible to anyone who sets it and then skips straight to publishing.
+const previewCropStyle = computed(() => cropWindowStyle(cropRect.value))
 
 function togglePreview() {
   const v = previewVideoEl.value
@@ -192,6 +250,7 @@ watch(mode, (next) => {
     file.value = null
     posterUrl.value = null
     trimRange.value = null
+    cropRect.value = null
   } else {
     importUrl.value = ''
     posterUrl.value = null
@@ -224,19 +283,23 @@ function pickFile(f: File | null) {
     // pick alongside an error about a different file is confusing.
     file.value = null
     trimRange.value = null
+    cropRect.value = null
     errorMsg.value = `Unsupported file type "${f.type || 'unknown'}" — pick a video.`
     return
   }
   if (f.size > MAX_UPLOAD_BYTES) {
     file.value = null
     trimRange.value = null
+    cropRect.value = null
     errorMsg.value = `File is ${formatSize(f.size)} — limit is ${MAX_UPLOAD_MB} MB.`
     return
   }
   errorMsg.value = null
   file.value = f
   trimRange.value = null
-  step.value = 'trim'
+  cropRect.value = null
+  editTab.value = 'trim'
+  step.value = 'edit'
 }
 
 function handleFileSelect(e: Event) {
@@ -316,15 +379,24 @@ async function startUpload() {
     await putWithProgress(presigned.url, file.value, presigned.contentType)
 
     stage.value = 'completing'
-    await clips.complete(
-      created.id,
-      trimRange.value
+    // One body carrying whichever operations the user actually set. Both ride the same single
+    // server-side re-encode, so combining them costs one generation of quality loss, not two.
+    await clips.complete(created.id, {
+      ...(trimRange.value
         ? {
             trimStartSeconds: Math.round(trimRange.value.start * 1000) / 1000,
             trimEndSeconds: Math.round(trimRange.value.end * 1000) / 1000,
           }
-        : undefined,
-    )
+        : {}),
+      ...(cropRect.value
+        ? {
+            cropX: cropRect.value.x,
+            cropY: cropRect.value.y,
+            cropWidth: cropRect.value.width,
+            cropHeight: cropRect.value.height,
+          }
+        : {}),
+    })
 
     stage.value = 'done'
     uploadPct.value = 100
@@ -626,7 +698,7 @@ const wizardSteps = computed<{ key: Step; label: string }[]>(() =>
   mode.value === 'upload'
     ? [
         { key: 'pick', label: 'Select file' },
-        { key: 'trim', label: 'Trim' },
+        { key: 'edit', label: 'Trim & crop' },
         { key: 'describe', label: 'Describe' },
         { key: 'progress', label: 'Upload' },
       ]
@@ -835,8 +907,8 @@ const IMPORT_HOSTS_HINT = IMPORT_ALLOWED_HOSTS.filter(
         </div>
       </div>
 
-      <!-- Step 2 (upload only): trim the picked file before anything uploads. -->
-      <div v-else-if="step === 'trim'">
+      <!-- Step 2 (upload only): trim and/or crop the picked file before anything uploads. -->
+      <div v-else-if="step === 'edit'">
         <div v-if="file" class="flex flex-col gap-5">
           <div
             class="flex items-center gap-4 rounded-lg border border-border bg-surface-raised px-5 py-3.5"
@@ -861,16 +933,53 @@ const IMPORT_HOSTS_HINT = IMPORT_ALLOWED_HOSTS.filter(
           <div>
             <div class="mb-3 flex items-baseline justify-between">
               <span class="text-[10px] font-bold uppercase tracking-widest text-text-secondary">
-                Trim
+                Trim &amp; crop
                 <span class="text-[9px] font-normal normal-case tracking-normal text-text-muted"
                   >(optional)</span
                 >
               </span>
-              <span v-if="trimRange" class="text-[10px] font-bold text-accent">
-                Only the selected range is published
+              <span v-if="trimRange || cropRect" class="text-[10px] font-bold text-accent">
+                {{
+                  trimRange && cropRect
+                    ? 'Trimmed and cropped'
+                    : trimRange
+                      ? 'Only the selected range is published'
+                      : 'Only the selected area is published'
+                }}
               </span>
             </div>
-            <ClipTrimmer :file="file" v-model="trimRange" />
+
+            <UnderlineTabs
+              :tabs="EDIT_TABS"
+              :active="editTab"
+              class="mb-4"
+              @select="editTab = $event"
+            />
+
+            <!-- v-if, not v-show: only the active editor is mounted so exactly one <video>
+                 decodes at a time. Each re-seeds from its model on loadedmetadata, so switching
+                 back and forth preserves both selections. -->
+            <ClipTrimmer v-if="editTab === 'trim'" :file="file" v-model="trimRange" />
+            <ClipCropper v-else :file="file" v-model="cropRect" />
+
+            <!-- Permanence disclosure. The compress stage deletes the raw upload once the
+                 master is written, so there is no full-frame copy to restore from later —
+                 the post-publish dialog says the same thing, and the upload path is where
+                 the decision actually gets made. -->
+            <p class="m-0 mt-3 text-[11px] leading-relaxed text-text-muted">
+              <template v-if="editTab === 'crop'">
+                We only keep the area inside the box. Everything outside it is
+                <span class="font-semibold text-text-secondary">removed permanently</span> when the
+                clip is processed — the full-frame original isn't stored, so this can't be undone
+                later.
+              </template>
+              <template v-else>
+                We only keep the selected range. Everything outside it is
+                <span class="font-semibold text-text-secondary">removed permanently</span> when the
+                clip is processed — the untrimmed original isn't stored, so this can't be undone
+                later.
+              </template>
+            </p>
           </div>
 
           <div class="flex gap-3">
@@ -981,7 +1090,7 @@ const IMPORT_HOSTS_HINT = IMPORT_ALLOWED_HOSTS.filter(
 
             <div class="flex gap-3 pt-2">
               <button
-                @click="step = mode === 'upload' ? 'trim' : 'pick'"
+                @click="step = mode === 'upload' ? 'edit' : 'pick'"
                 class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border-strong px-4 py-2 text-xs font-semibold text-text-secondary transition-colors duration-150 hover:border-accent hover:text-accent"
               >
                 <IconArrowLeft :size="14" :stroke-width="2.5" />
@@ -1003,22 +1112,38 @@ const IMPORT_HOSTS_HINT = IMPORT_ALLOWED_HOSTS.filter(
               Preview
             </div>
             <div class="overflow-hidden rounded-lg border border-border bg-surface-raised">
-              <div class="relative aspect-video bg-black">
-                <!-- Upload mode: play the local file, looping the kept trim range so the
-                     preview matches what will actually be published. -->
-                <video
+              <div
+                class="relative flex aspect-video items-center justify-center overflow-hidden bg-black"
+              >
+                <!-- Upload mode: play the local file, looping the kept trim range and showing
+                     only the cropped window, so the preview matches what will actually be
+                     published rather than the untouched source.
+                     The wrapper carries the CROPPED frame's own aspect ratio; the video inside
+                     is scaled up and offset so the kept rect exactly fills it. Stretching the
+                     video to the 16:9 card instead would distort every non-16:9 crop. -->
+                <div
                   v-if="mode === 'upload' && describePreviewUrl && !previewFailed"
-                  ref="previewVideoEl"
-                  :src="describePreviewUrl"
-                  playsinline
-                  :loop="!trimRange"
-                  class="absolute inset-0 h-full w-full object-contain"
-                  @click="togglePreview"
-                  @timeupdate="onPreviewTimeUpdate"
-                  @play="previewPlaying = true"
-                  @pause="previewPlaying = false"
-                  @error="previewFailed = true"
-                ></video>
+                  :style="previewFrameStyle"
+                  :class="['relative overflow-hidden', previewFrameStyle ? '' : 'absolute inset-0']"
+                >
+                  <video
+                    ref="previewVideoEl"
+                    :src="describePreviewUrl"
+                    playsinline
+                    :loop="!trimRange"
+                    :style="previewCropStyle"
+                    :class="[
+                      'absolute',
+                      previewFrameStyle ? '' : 'inset-0 h-full w-full object-contain',
+                    ]"
+                    @click="togglePreview"
+                    @loadedmetadata="onPreviewLoadedMetadata"
+                    @timeupdate="onPreviewTimeUpdate"
+                    @play="previewPlaying = true"
+                    @pause="previewPlaying = false"
+                    @error="previewFailed = true"
+                  ></video>
+                </div>
                 <img
                   v-else-if="posterUrl"
                   :src="posterUrl"
@@ -1048,11 +1173,22 @@ const IMPORT_HOSTS_HINT = IMPORT_ALLOWED_HOSTS.filter(
                   {{ visibility }}
                 </div>
                 <div
-                  v-if="mode === 'upload' && trimRange"
-                  class="absolute bottom-2 left-2 rounded-md bg-black/70 px-2 py-0.75 text-[10px] font-bold text-[#f4f1e8]"
+                  v-if="mode === 'upload' && (trimRange || cropRect)"
+                  class="absolute bottom-2 left-2 flex gap-1.5"
                 >
-                  Trimmed ·
-                  {{ fmtSeconds(Math.max(1, Math.round(trimRange.end - trimRange.start))) }}
+                  <span
+                    v-if="trimRange"
+                    class="rounded-md bg-black/70 px-2 py-0.75 text-[10px] font-bold text-[#f4f1e8]"
+                  >
+                    Trimmed ·
+                    {{ fmtSeconds(Math.max(1, Math.round(trimRange.end - trimRange.start))) }}
+                  </span>
+                  <span
+                    v-if="cropRect"
+                    class="rounded-md bg-black/70 px-2 py-0.75 text-[10px] font-bold text-[#f4f1e8]"
+                  >
+                    Cropped
+                  </span>
                 </div>
               </div>
 

@@ -268,6 +268,18 @@ builder.Services.AddOptions<MediaJobOptions>()
         if (int.TryParse(maxHeight, out var mh) && mh > 0) opts.MaxHeight = mh;
         var crf = Environment.GetEnvironmentVariable("MEDIA_CRF");
         if (int.TryParse(crf, out var cr) && cr > 0) opts.Crf = cr;
+        // Crop. CropEnabled gates the feature on both write routes; CropDetect* gate only the
+        // advisory suggestion endpoint, which forks ffmpeg while a user waits.
+        var cropEnabled = Environment.GetEnvironmentVariable("MEDIA_CROP_ENABLED");
+        if (bool.TryParse(cropEnabled, out var ce)) opts.CropEnabled = ce;
+        var cropDetectEnabled = Environment.GetEnvironmentVariable("MEDIA_CROPDETECT_ENABLED");
+        if (bool.TryParse(cropDetectEnabled, out var cde)) opts.CropDetectEnabled = cde;
+        var cropSamples = Environment.GetEnvironmentVariable("MEDIA_CROPDETECT_SAMPLES");
+        if (int.TryParse(cropSamples, out var cs) && cs > 0) opts.CropDetectSamples = cs;
+        var cropLimit = Environment.GetEnvironmentVariable("MEDIA_CROPDETECT_LIMIT");
+        if (int.TryParse(cropLimit, out var cl) && cl >= 0) opts.CropDetectLimit = cl;
+        var cropTimeout = Environment.GetEnvironmentVariable("MEDIA_CROPDETECT_TIMEOUT_SECS");
+        if (int.TryParse(cropTimeout, out var cto) && cto > 0) opts.CropDetectTimeout = TimeSpan.FromSeconds(cto);
         var segType = Environment.GetEnvironmentVariable("MEDIA_HLS_SEGMENT_TYPE");
         if (!string.IsNullOrWhiteSpace(segType)) opts.SegmentType = segType;
         var segDur = Environment.GetEnvironmentVariable("MEDIA_HLS_SEGMENT_SECONDS");
@@ -302,6 +314,10 @@ builder.Services.AddOptions<MediaJobOptions>()
     .Validate(o => o.MaxDrainPerTick > 0, "MediaJobs.MaxDrainPerTick must be positive.")
     .Validate(o => o.MaxHeight > 0, "MediaJobs.MaxHeight must be positive.")
     .Validate(o => o.Crf > 0, "MediaJobs.Crf must be positive.")
+    .Validate(o => o.CropDetectSamples is > 0 and <= CropDetectService.MaxSamples,
+        $"MediaJobs.CropDetectSamples must be between 1 and {CropDetectService.MaxSamples}.")
+    .Validate(o => o.CropDetectLimit >= 0, "MediaJobs.CropDetectLimit must be non-negative.")
+    .Validate(o => o.CropDetectTimeout > TimeSpan.Zero, "MediaJobs.CropDetectTimeout must be positive.")
     .Validate(o => !string.IsNullOrWhiteSpace(o.FfmpegPath), "MediaJobs.FfmpegPath must be set.")
     .Validate(o => !string.IsNullOrWhiteSpace(o.FfprobePath), "MediaJobs.FfprobePath must be set.")
     .Validate(o => !string.IsNullOrWhiteSpace(o.VideoEncoder), "MediaJobs.VideoEncoder must be set.")
@@ -318,6 +334,7 @@ builder.Services.AddScoped<IClipStreamJobStore, ClipStreamJobStore>();
 builder.Services.AddScoped<IThumbnailJobService, ThumbnailJobService>();
 builder.Services.AddScoped<ICompressJobService, CompressJobService>();
 builder.Services.AddScoped<IJitLadderService, JitLadderService>();
+builder.Services.AddScoped<ICropDetectService, CropDetectService>();
 // Boot-time storage reachability/TLS probe for the media-fetching workers. Its own short-timeout
 // HttpClient so a stuck endpoint can't hang worker startup.
 builder.Services.AddHttpClient<IMediaStoragePreflight, MediaStoragePreflight>(c =>
@@ -351,7 +368,7 @@ builder.Services.AddOptions<ClipValidationOptions>()
 
 builder.Services.AddScoped<IClipUploadService, ClipUploadService>();
 builder.Services.AddScoped<IClipImportService, ClipImportService>();
-builder.Services.AddScoped<IClipTrimService, ClipTrimService>();
+builder.Services.AddScoped<IClipEditService, ClipEditService>();
 builder.Services.AddScoped<IClipImportUrlValidator, ClipImportUrlValidator>();
 builder.Services.AddScoped<ITagsResolver, TagsResolver>();
 builder.Services.AddScoped<INotificationService, NotificationService>();

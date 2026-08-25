@@ -70,8 +70,16 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
 
         return new ClaimedMediaJob(
             clip.Id, clip.UserId, clip.GameId, clip.VideoKey, clip.Height, nextAttempt,
-            clip.TrimStartSecs, clip.TrimEndSecs, clip.EditCount);
+            clip.TrimStartSecs, clip.TrimEndSecs, clip.EditCount, ToCropRect(clip));
     }
+
+    // The four columns are written and cleared as a unit (ck_clips_crop_rect enforces it), so
+    // one null means "no crop" rather than a partially-specified rect.
+    private static CropRect? ToCropRect(Clip clip) =>
+        clip.CropX is { } x && clip.CropY is { } y
+            && clip.CropWidth is { } w && clip.CropHeight is { } h
+            ? new CropRect(x, y, w, h)
+            : null;
 
     public async Task<string?> GetGameSlugAsync(int? gameId, CancellationToken ct)
     {
@@ -103,6 +111,13 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
                 .SetProperty(c => c.Height, result.Height)
                 .SetProperty(c => c.TrimStartSecs, result.TrimStartSecs)
                 .SetProperty(c => c.TrimEndSecs, result.TrimEndSecs)
+                // The snapped rect, so the compress stage crops through exactly the filter the
+                // poster was taken with. Null when the crop was dropped (unknown source dims) or
+                // snapped out to the whole frame — either way the master must not be cropped.
+                .SetProperty(c => c.CropX, result.Crop == null ? null : (double?)result.Crop.X)
+                .SetProperty(c => c.CropY, result.Crop == null ? null : (double?)result.Crop.Y)
+                .SetProperty(c => c.CropWidth, result.Crop == null ? null : (double?)result.Crop.Width)
+                .SetProperty(c => c.CropHeight, result.Crop == null ? null : (double?)result.Crop.Height)
                 .SetProperty(c => c.ProcessingStartedAt, (DateTimeOffset?)null)
                 // Reset the attempt counter so the next stage (compress) gets its own full
                 // MaxAttempts budget rather than inheriting the thumbnail stage's count.
@@ -126,6 +141,11 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
                 .SetProperty(c => c.Status, ClipStatuses.Ready)
                 .SetProperty(c => c.VideoKey, videoKey)
                 .SetProperty(c => c.VideoCodec, videoCodec)
+                // The edit landed, so the frame on the row now describes the master that just
+                // shipped and there is nothing left to roll back to.
+                .SetProperty(c => c.PreEditDurationSecs, (short?)null)
+                .SetProperty(c => c.PreEditWidth, (short?)null)
+                .SetProperty(c => c.PreEditHeight, (short?)null)
                 .SetProperty(c => c.ProcessingStartedAt, (DateTimeOffset?)null)
                 .SetProperty(c => c.UpdatedAt, now), ct);
     }
@@ -148,9 +168,28 @@ public sealed class ClipMediaJobStore : IClipMediaJobStore
                 && c.ThumbnailKey != null)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(c => c.Status, ClipStatuses.Ready)
-                // Clear the range so an admin requeue can't re-apply the cut that just failed.
+                // Clear the range so an admin requeue can't re-apply the edit that just failed.
                 .SetProperty(c => c.TrimStartSecs, (double?)null)
                 .SetProperty(c => c.TrimEndSecs, (double?)null)
+                .SetProperty(c => c.CropX, (double?)null)
+                .SetProperty(c => c.CropY, (double?)null)
+                .SetProperty(c => c.CropWidth, (double?)null)
+                .SetProperty(c => c.CropHeight, (double?)null)
+                // Put the published frame back. The thumbnail stage overwrites duration/width/
+                // height with the POST-edit values as soon as it succeeds, but the master this row
+                // falls back to is the pre-edit one — the player shapes its box from width/height
+                // and the feed badge reads duration, so leaving the new values there describes a
+                // frame and a runtime that no longer exist anywhere. Restoring from the snapshot
+                // /edit took (rather than inverting the crop) also covers the thumbnail-stage
+                // failure, where the overwrite never happened and inverting would inflate the
+                // frame, and the duration, which no arithmetic on the row can recover: a [2,8] cut
+                // says nothing about how long the source was.
+                .SetProperty(c => c.DurationSecs, c => c.PreEditDurationSecs ?? c.DurationSecs)
+                .SetProperty(c => c.Width, c => c.PreEditWidth ?? c.Width)
+                .SetProperty(c => c.Height, c => c.PreEditHeight ?? c.Height)
+                .SetProperty(c => c.PreEditDurationSecs, (short?)null)
+                .SetProperty(c => c.PreEditWidth, (short?)null)
+                .SetProperty(c => c.PreEditHeight, (short?)null)
                 // Only the first re-cut can restore "never edited"; later ones had a real
                 // earlier edit whose stamp must survive.
                 .SetProperty(c => c.EditedAt, c => c.EditCount <= 1 ? null : c.EditedAt)

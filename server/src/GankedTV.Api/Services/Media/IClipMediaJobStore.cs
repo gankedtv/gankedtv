@@ -13,7 +13,12 @@ public sealed record ClaimedMediaJob(
     double? TrimEndSecs = null,
     // Post-publish re-cut generation. Keeps each compress run writing to a key distinct from
     // the master it replaces, without the key growing a `.cmp` segment per edit.
-    int EditCount = 0);
+    int EditCount = 0,
+    // Requested crop as 0..1 fractions of the source frame. Thumbnail stage snaps it against
+    // the probed dimensions and posters through it; compress stage applies the same filter to
+    // the master. Null = keep the whole frame. Trailing optional so existing construction
+    // sites keep compiling.
+    CropRect? Crop = null);
 
 // Import-stage variant — extends ClaimedMediaJob with the source URL the fetcher needs.
 // Kept as a record-with-extra-property rather than a brand-new shape so the import worker
@@ -35,7 +40,11 @@ public sealed record FinalizedMediaJob(
     // Trim clamped against the probed duration (null when no/degenerate trim). Written
     // back to the row so the compress stage can trust the range.
     double? TrimStartSecs = null,
-    double? TrimEndSecs = null);
+    double? TrimEndSecs = null,
+    // Crop snapped against the probed frame (null when no crop, or when it covers the whole
+    // frame after snapping). Written back so the compress stage applies exactly the rect the
+    // poster was taken through. Width/Height above are already POST-crop.
+    CropRect? Crop = null);
 
 public interface IClipMediaJobStore
 {
@@ -55,8 +64,9 @@ public interface IClipMediaJobStore
     // no game or the game id is somehow stale. Lookup-only — does not mutate state.
     Task<string?> GetGameSlugAsync(int? gameId, CancellationToken ct);
 
-    // Thumbnail stage success: writes thumbnail + ffprobe metadata onto the clip row,
-    // clears the lease, and advances status from 'processing' to toStatus ('transcoding'
+    // Thumbnail stage success: writes thumbnail + ffprobe metadata (Width/Height are POST-crop)
+    // and the snapped trim/crop back onto the clip row, clears the lease, and advances status
+    // from 'processing' to toStatus ('transcoding'
     // when the transcode stage runs next, or 'ready' when transcoding is disabled). The
     // status + attempt guard ensures we don't clobber a row another worker re-claimed.
     Task AdvanceThumbnailAsync(

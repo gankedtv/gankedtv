@@ -108,7 +108,8 @@ public sealed class CompressJobService : ICompressJobService
         CancellationToken ct)
     {
         var args = BuildCompressArgs(
-            inputUrl, outPath, job.SourceHeight, opts, encoder, job.TrimStartSecs, job.TrimEndSecs);
+            inputUrl, outPath, job.SourceHeight, opts, encoder, job.TrimStartSecs, job.TrimEndSecs,
+            opts.CropEnabled ? job.Crop : null);
         var result = await _ffmpeg.RunAsync(opts.FfmpegPath, args, timeout, ct);
         if (result.ExitCode != 0 || !File.Exists(outPath) || new FileInfo(outPath).Length <= 0)
         {
@@ -165,7 +166,8 @@ public sealed class CompressJobService : ICompressJobService
         MediaJobOptions opts,
         string? encoder = null,
         double? trimStartSecs = null,
-        double? trimEndSecs = null)
+        double? trimEndSecs = null,
+        CropRect? crop = null)
     {
         var videoEncoder = encoder ?? opts.VideoEncoder;
         var ci = CultureInfo.InvariantCulture;
@@ -196,12 +198,38 @@ public sealed class CompressJobService : ICompressJobService
             args.Add(t2.Span.ToString("F3", ci));
         }
 
+        // One -vf slot, composed. Crop comes FIRST so the height cap applies to the kept
+        // region rather than the source frame — cropping after the scale would cap the wrong
+        // axis and leave an oversized output. Trim (-ss/-t) is an orthogonal axis, so a
+        // combined edit needs no ordering care beyond this.
+        var filters = new List<string>();
+        if (crop is not null)
+        {
+            filters.Add(MediaFilters.Crop(crop));
+        }
+
         // Only downscale (never upscale): scale to MaxHeight when the source is known to be
         // taller. -2 keeps width even and preserves aspect ratio.
-        if (sourceHeight is { } h && h > opts.MaxHeight)
+        //
+        // SourceHeight is the POST-crop height (the thumbnail stage wrote it back before this
+        // stage claimed the row), and judging the cap on it lets a wide/short crop escape the
+        // only resolution bound in the pipeline: a 3440x1440 upload cropped to half height
+        // reports 720, emits no scale, and stores a 3440x720 master — at 4K that's twice the
+        // pixels the same clip would have kept uncropped. So recover the frame the clip would
+        // have had and apply THAT scale factor to the kept region: a crop can then only ever
+        // remove pixels, and an uncropped clip is unaffected (the fraction is 1).
+        var keptHeightFraction = crop is { Height: > 0 } ch ? ch.Height : 1d;
+        var preCropHeight = sourceHeight is { } h ? h / keptHeightFraction : (double?)null;
+        if (preCropHeight is { } ph && ph > opts.MaxHeight)
+        {
+            var target = Math.Max(2, (int)(opts.MaxHeight * keptHeightFraction) / 2 * 2);
+            filters.Add($"scale=-2:{target.ToString(ci)}");
+        }
+
+        if (filters.Count > 0)
         {
             args.Add("-vf");
-            args.Add($"scale=-2:{opts.MaxHeight.ToString(ci)}");
+            args.Add(string.Join(",", filters));
         }
 
         args.Add("-c:v");

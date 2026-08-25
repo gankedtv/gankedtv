@@ -404,6 +404,189 @@ describe('api/clips', () => {
         trimEndSeconds: 9.25,
       })
     })
+
+    it('sends the crop rect as normalized fractions', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ id: 'clip-id', fileSizeBytes: 42 })),
+      )
+
+      await clips.complete('clip-id', {
+        cropX: 0.1279,
+        cropY: 0,
+        cropWidth: 0.7442,
+        cropHeight: 1,
+      })
+
+      const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(JSON.parse(init.body as string)).toEqual({
+        cropX: 0.1279,
+        cropY: 0,
+        cropWidth: 0.7442,
+        cropHeight: 1,
+      })
+    })
+
+    it('sends trim and crop together in one body', async () => {
+      // Both ride the same single server-side re-encode, so a combined edit must go out as one
+      // request — two would cost two generations of quality loss.
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ id: 'clip-id', fileSizeBytes: 42 })),
+      )
+
+      await clips.complete('clip-id', {
+        trimStartSeconds: 2,
+        trimEndSeconds: 9,
+        cropX: 0.1,
+        cropY: 0,
+        cropWidth: 0.8,
+        cropHeight: 1,
+      })
+
+      expect(vi.mocked(fetch).mock.calls).toHaveLength(1)
+      const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(JSON.parse(init.body as string)).toEqual({
+        trimStartSeconds: 2,
+        trimEndSeconds: 9,
+        cropX: 0.1,
+        cropY: 0,
+        cropWidth: 0.8,
+        cropHeight: 1,
+      })
+    })
+
+    it('omits the body for an empty edits object', async () => {
+      // A body-less complete is the unchanged contract rewynd and API scripts rely on.
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ id: 'clip-id', fileSizeBytes: 42 })),
+      )
+
+      await clips.complete('clip-id', {})
+
+      const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(init.body).toBeUndefined()
+    })
+  })
+
+  describe('edit()', () => {
+    it('POSTs the operations to /clips/{id}/edit and returns the requeued status', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ id: 'clip-id', status: 'processing' })),
+      )
+
+      const result = await clips.edit('clip-id', {
+        trimStartSeconds: 2,
+        trimEndSeconds: 9,
+        cropX: 0.1279,
+        cropY: 0,
+        cropWidth: 0.7442,
+        cropHeight: 1,
+      })
+
+      expect(result).toEqual({ id: 'clip-id', status: 'processing' })
+      const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(url).toBe(`${BASE_URL}/clips/clip-id/edit`)
+      expect(init.method).toBe('POST')
+      expect(JSON.parse(init.body as string)).toMatchObject({ cropWidth: 0.7442 })
+    })
+
+    it('sends a crop-only edit without any trim fields', async () => {
+      // The server writes all six columns unconditionally, so omitting the trim fields is how a
+      // crop-only edit tells it to clear an already-applied range instead of re-cutting.
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ id: 'clip-id', status: 'processing' })),
+      )
+
+      await clips.edit('clip-id', { cropX: 0.1, cropY: 0, cropWidth: 0.8, cropHeight: 1 })
+
+      const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      const body = JSON.parse(init.body as string)
+      expect(body).not.toHaveProperty('trimStartSeconds')
+      expect(body).not.toHaveProperty('trimEndSeconds')
+    })
+
+    it('percent-encodes the clip id', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonResponse({ id: 'a/b', status: 'processing' })),
+      )
+
+      await clips.edit('a/b', { cropX: 0, cropY: 0, cropWidth: 0.5, cropHeight: 1 })
+
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
+      expect(url).toBe(`${BASE_URL}/clips/a%2Fb/edit`)
+    })
+  })
+
+  describe('cropSuggestion()', () => {
+    it('GETs /clips/{id}/crop-suggestion and returns the detected rect', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () =>
+          jsonResponse({
+            detected: true,
+            crop: { x: 0.1279, y: 0, width: 0.7442, height: 1 },
+            sourceWidth: 3440,
+            sourceHeight: 1440,
+            samples: 3,
+          }),
+        ),
+      )
+
+      const result = await clips.cropSuggestion('clip-id')
+
+      expect(result.detected).toBe(true)
+      expect(result.crop).toEqual({ x: 0.1279, y: 0, width: 0.7442, height: 1 })
+      expect(result.sourceWidth).toBe(3440)
+      const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit | undefined]
+      expect(url).toBe(`${BASE_URL}/clips/clip-id/crop-suggestion`)
+      expect(init?.method ?? 'GET').toBe('GET')
+    })
+
+    it('surfaces a miss as detected:false rather than throwing', async () => {
+      // A miss is not an error — the UI hides the affordance and manual cropping still works.
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () =>
+          jsonResponse({
+            detected: false,
+            crop: null,
+            sourceWidth: 1920,
+            sourceHeight: 1080,
+            samples: 3,
+          }),
+        ),
+      )
+
+      const result = await clips.cropSuggestion('clip-id')
+
+      expect(result.detected).toBe(false)
+      expect(result.crop).toBeNull()
+    })
+
+    it('percent-encodes the clip id', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () =>
+          jsonResponse({
+            detected: false,
+            crop: null,
+            sourceWidth: null,
+            sourceHeight: null,
+            samples: 0,
+          }),
+        ),
+      )
+
+      await clips.cropSuggestion('a/b')
+
+      const [url] = vi.mocked(fetch).mock.calls[0] as [string]
+      expect(url).toBe(`${BASE_URL}/clips/a%2Fb/crop-suggestion`)
+    })
   })
 
   describe('trim()', () => {

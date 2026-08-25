@@ -93,17 +93,96 @@ Both GPU stages (compress + JIT) are **location-independent** — the queues use
 
 In dev, all workers run **in-process** on the host (toggles default `true`), using host ffmpeg — no new container. The master encoder (`MEDIA_VIDEO_ENCODER`/`MEDIA_VIDEO_CODEC`), JIT encoder (`MEDIA_JIT_VIDEO_ENCODER`), resolution cap (`MEDIA_MAX_HEIGHT`), and quality (`MEDIA_CRF`) are all configurable, so moving the GPU box to AV1 is a config change, not code.
 
-**Pre-upload trimming:** the web upload wizard's trimmer (`ClipTrimmer.vue`) sends an optional `trimStartSeconds`/`trimEndSeconds` body on `POST /clips/{id}/complete`. The cut is applied by the **existing compress stage** (`-ss`/`-t` on the single re-encode — no extra encode); the thumbnail stage clamps the range to the probed duration, takes the poster inside the kept range, and records the trimmed duration. Trim requires `MEDIA_TRANSCODE_ENABLED=true` (400 `trim_unavailable` otherwise) and is **web-only**: API-key callers (rewynd trims locally) get 400 `trim_not_supported`; a body-less complete is unchanged.
+**Pre-upload trimming + cropping:** the web upload wizard's `'edit'` step ("Trim & crop") tabs between `ClipTrimmer.vue` and `ClipCropper.vue` (only the active tab is mounted, so one `<video>` decodes at a time) and sends one optional body on `POST /clips/{id}/complete` carrying whichever operations the user set. The cut is applied by the **existing compress stage** (`-ss`/`-t` on the single re-encode — no extra encode); the thumbnail stage clamps the range to the probed duration, takes the poster inside the kept range, and records the trimmed duration. Trim requires `MEDIA_TRANSCODE_ENABLED=true` (400 `trim_unavailable` otherwise) and is **web-only**: API-key callers (rewynd trims locally) get 400 `trim_not_supported`; a body-less complete is unchanged.
 
-**Post-publish re-cut (`POST /clips/{id}/trim`):** owners can re-trim a live clip from the clip page (`ClipTrimDialog.vue`, same trimmer over the clip's presigned master). Rather than add a second encode path, the endpoint walks the row **back to the head of the pipeline** — new range, lease/attempts/failure reason reset, `ready → processing` — so the thumbnail stage re-posters inside the kept span and the compress stage applies the cut. Consequences worth knowing:
+**Cropping (`crop_x`/`crop_y`/`crop_width`/`crop_height`):** ultrawide captures bake pillarbox bars
+into the recording, so both write paths accept an optional crop rect. It rides the **same single
+compress re-encode** as the trim — no extra encode stage — and is expressed as **normalized 0..1
+fractions of the current master's frame, never pixels**: `/complete` records the request before
+anything has been probed, and the master is rescaled by `MEDIA_MAX_HEIGHT` on every edit generation,
+so a pixel rect would silently mean something different after each `.cmp{n}`.
+
+- `MediaFilters.Crop(CropRect)` builds the `crop=…` filter in ffmpeg's `iw`/`ih` expression
+  language and is shared by the **poster and the master**, so the two can never drift — the feed
+  renders the poster, so a poster that kept the bars would make the feature look broken where most
+  people look. It can't be pre-computed pixels: `ClaimedMediaJob.SourceHeight` is `clips.height`,
+  which `AdvanceThumbnailAsync` has already overwritten with the *post-crop* height by the time
+  `CompressWorker` claims the row.
+- The thumbnail stage's `SanitizeCrop` snaps the rect against the probed frame (fractions → pixels →
+  clamp → even-snap → fractions) and writes back **post-crop `width`/`height`** — taken from its own
+  pixel arithmetic, never re-derived from the fractions it returns (`442/3440*3440` is
+  `441.99999999999994`, which snaps 2px small on ~3.5% of widths). The compress stage composes one
+  `-vf` slot, **crop before scale**, and judges the `MEDIA_MAX_HEIGHT` cap against the frame the clip
+  *would* have had uncropped (`clips.height / crop_height`) — on the post-crop height alone a
+  wide/short crop skips the scale entirely and ships a master with up to twice the pixels of the
+  same clip published whole.
+- Cropping the poster needs **both** `MEDIA_CROP_ENABLED` and `MEDIA_TRANSCODE_ENABLED`, since with
+  compression off the thumbnail stage advances straight to `ready` over a master nothing re-encodes.
+  Every host in a split deployment must agree on those toggles or the poster and the master diverge.
+- **Divergence from trim:** when ffprobe reports no source dimensions the crop is **dropped with a
+  warning, not failed**. A dropped trim would publish footage the user cut away; a dropped crop just
+  leaves the bars, and that's fixable post-publish.
+- The web cropper **gates the emit behind a pre-checked "Crop this clip" toggle**. It still opens
+  pre-framed to 16:9 on a wider-than-16:9 source, but mounting the component is not consent to
+  destroy a quarter of the frame permanently — opening the tab to look and switching away used to
+  publish the cut. Dragging, nudging, picking a preset or applying a suggestion all tick it; Escape
+  unticks it.
+- **API-key (rewynd) callers may crop on both routes** — there is no `crop_not_supported`. rewynd
+  trims locally because that saves upload bytes; cropping pillarbox saves almost nothing (black
+  encodes to near-zero bitrate) while costing a full re-encode on the user's gaming PC, and the
+  server re-encodes anyway. `trim_not_supported` is unchanged.
+- `GET /clips/{id}/crop-suggestion` (owner-only, allowed on `draft` *and* `ready`) runs ffmpeg's
+  `cropdetect` at `MEDIA_CROPDETECT_SAMPLES` timestamps and combines them as a **union bounding box**, so a
+  fade-to-black sample widens the suggestion back toward the full frame instead of eating real
+  content. It ffprobes the frame size first: cropdetect's `x1`/`x2`/`y1`/`y2` are the bounds of the
+  detected *content*, not of the frame (a 3440-wide pillarboxed source reports `x2:2999`), so
+  deriving dimensions from them would normalize the rect by exactly the width of the bars being
+  measured. Any failure returns `detected: false` — never a 5xx, never a stored side effect. It is
+  deliberately **not** part of the thumbnail stage: detection costs ~1–3s on *every* upload, ~95% of
+  which are plain 16:9, and the answer is only useful while a human is in the crop editor. The
+  `draft` allowance is for **API-key uploaders** (create row → PUT object → ask → `/complete`);
+  the web wizard can't use it, because it holds a local `File` and doesn't create the clip until
+  `startUpload()`, so the post-publish crop dialog is the only place the web offers the button.
+  Draft rows have no probed duration yet, so detection there takes a single sample at t=0 rather
+  than re-running the same one N times.
+- Toggles: `MEDIA_CROP_ENABLED` (default `true`; also requires `MEDIA_TRANSCODE_ENABLED`),
+  `MEDIA_CROPDETECT_ENABLED` / `_SAMPLES` / `_LIMIT` / `_TIMEOUT_SECS`. Errors: `invalid_crop` (400),
+  `crop_unavailable` (400), `crop_detect_unavailable` (503).
+- `GET /clips/{id}` does **not** echo the crop back — the columns are a pending operation against the
+  current master, not durable state, and echoing them would invite a client to double-crop.
+  `width`/`height` already carry the post-crop aspect, and the web player now binds its
+  `aspect-ratio` from them instead of a hard-coded `aspect-video`.
+
+**Post-publish re-edit (`POST /clips/{id}/edit`):** owners can re-trim and/or re-crop a live clip
+from the clip page — **one** kebab entry ("Trim & crop") opening `ClipVideoEditDialog.vue`, a tabbed
+dialog over the clip's presigned master that sends both operations in one call. Splitting it into a
+Trim dialog and a Crop dialog would walk the owner through two full re-encodes for the result
+`/edit` exists to deliver in one. (`ClipEditDialog.vue` is the unrelated title/description/tags
+dialog.)
+Rather than add a second encode path, the endpoint walks the row **back to the head of the
+pipeline** — new operations, lease/attempts/failure reason reset, `ready → processing` — so the
+thumbnail stage re-posters inside the kept span and the compress stage applies both. Trim and crop
+in one call means **one** generation of quality loss, not two.
+
+`POST /clips/{id}/trim` stays as a thin forwarder with an identical body and response shape, so
+shipped web and rewynd builds keep working. The endpoint **writes all six operation columns
+unconditionally** — a crop-only edit that left the trim columns alone would re-apply the
+already-applied range to the already-trimmed master and cut it twice.
+
+Consequences worth knowing:
 
 - Offsets are seconds into the **current master**, not the long-deleted raw upload, and each re-cut encodes from a lossy source (the same Tdarr-style trade-off as above).
 - The clip **leaves `ready` for the duration of the re-encode**, so its detail route 404s and it drops out of feeds; `ClipView` reuses its existing "still processing" poll to ride that out. Feed cache and the cached JIT HLS ladder (keyed by clip id alone) are both dropped on request.
 - `clips.edit_count` is the compressed master's **key generation** (`…{clipId}.cmp.mp4` → `.cmp1.mp4` → `.cmp2.mp4`), so an encode never writes over the master it replaces and the key doesn't grow a suffix per edit.
 - `edit_count` also scopes the JIT ladder's cache prefix (`{clipId:N}/` → `{clipId:N}/e2/`), so a ladder a `StreamRenditionWorker` was already building from the pre-cut master can't be served once the cut lands. All generations stay under `{clipId:N}/`, so the existing delete-by-prefix purges still cover them.
 - `clips.edited_at` is stamped on request and surfaces as `editedAt` on the clip detail → the web's **"Edited" badge**, visible to every viewer. Metadata-only edits (`PATCH /clips/{id}`) deliberately never set it.
+- **A failed re-cut restores the frame the clip is published with.** `/edit` snapshots
+  `duration_secs`/`width`/`height` into `pre_edit_*` before the thumbnail stage overwrites them with
+  the post-edit values, and `MarkFailedAsync` restores from that snapshot. The duration is the reason
+  it has to be a snapshot rather than arithmetic on the row: a `[2, 8]` cut says nothing about how
+  long the source was. `CompleteCompressionAsync` clears the columns once an edit lands.
 - **A failed re-cut never takes a live clip dark.** `MarkFailedAsync` detects a re-cut (`edited_at` is only ever stamped on a published clip) and rolls the row back to `ready` with the pending range cleared, instead of `failed` — the previous master is still in storage because compress deletes the old object only after a successful swap. First-publish failures are untouched.
-- Rejected with 409 `invalid_state` unless the clip is `ready` (which also serialises concurrent re-cuts), 403 `moderated` for hidden clips, and 400 `trim_unavailable` when `MEDIA_TRANSCODE_ENABLED=false`.
+- Rejected with 409 `invalid_state` unless the clip is `ready` (which also serialises concurrent re-edits), 403 `moderated` for hidden clips, 400 `trim_unavailable` / `crop_unavailable` when the relevant toggle is off, and 400 `no_operations` for a body that asks for nothing (requeuing a full re-encode to apply no change would burn a generation of quality for free).
 
 ### Online presence (`GET /presence/summary`)
 

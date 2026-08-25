@@ -669,6 +669,154 @@ public class ClipsUploadEndpointsTests : IAsyncLifetime
         (await resp.Content.ReadAsStringAsync()).Should().Contain("trim_unavailable");
     }
 
+    // ---- crop ----
+
+    [Fact]
+    public async Task Complete_WithCrop_PersistsNormalizedRect()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId);
+
+        _storage.GetObjectMetadataAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new ObjectMetadata(1024, "video/mp4"));
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/complete",
+            new { cropX = 0.1279, cropY = 0.0, cropWidth = 0.7442, cropHeight = 1.0 });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var db = _fx.CreateContext();
+        var clip = await db.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.CropX.Should().BeApproximately(0.1279, 1e-9);
+        clip.CropY.Should().Be(0);
+        clip.CropWidth.Should().BeApproximately(0.7442, 1e-9);
+        clip.CropHeight.Should().Be(1);
+        clip.Status.Should().Be("processing");
+    }
+
+    [Fact]
+    public async Task Complete_WithTrimAndCrop_PersistsBoth()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId);
+
+        _storage.GetObjectMetadataAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new ObjectMetadata(1024, "video/mp4"));
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/complete",
+            new
+            {
+                trimStartSeconds = 1.5,
+                trimEndSeconds = 9.25,
+                cropX = 0.1,
+                cropY = 0.0,
+                cropWidth = 0.8,
+                cropHeight = 1.0,
+            });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var db = _fx.CreateContext();
+        var clip = await db.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.TrimStartSecs.Should().Be(1.5);
+        clip.CropWidth.Should().BeApproximately(0.8, 1e-9);
+    }
+
+    [Fact]
+    public async Task Complete_WithoutBody_LeavesCropNull()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId);
+
+        _storage.GetObjectMetadataAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new ObjectMetadata(1024, "video/mp4"));
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsync($"/clips/{clipId}/complete", null);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var db = _fx.CreateContext();
+        var clip = await db.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId);
+        clip.CropX.Should().BeNull();
+        clip.CropWidth.Should().BeNull();
+    }
+
+    [Theory]
+    // Partial rect — no defensible interpretation.
+    [InlineData(0.1, null, 0.5, 0.5)]
+    [InlineData(null, 0.1, 0.5, 0.5)]
+    [InlineData(0.1, 0.1, 0.5, null)]
+    // Out of range.
+    [InlineData(-0.1, 0.0, 0.5, 0.5)]
+    [InlineData(0.0, 0.0, 1.5, 0.5)]
+    [InlineData(0.6, 0.0, 0.5, 0.5)]
+    // Below the minimum extent.
+    [InlineData(0.0, 0.0, 0.5, 0.01)]
+    public async Task Complete_InvalidCrop_Returns400AndLeavesClipDraft(
+        double? x, double? y, double? w, double? h)
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId);
+
+        _storage.GetObjectMetadataAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new ObjectMetadata(1024, "video/mp4"));
+
+        using var client = ClientWithBearer(token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/complete",
+            new { cropX = x, cropY = y, cropWidth = w, cropHeight = h });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("invalid_crop");
+
+        await using var db = _fx.CreateContext();
+        (await db.Clips.AsNoTracking().SingleAsync(c => c.Id == clipId)).Status.Should().Be("draft");
+    }
+
+    [Fact]
+    public async Task Complete_CropWithCropDisabled_Returns400CropUnavailable()
+    {
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId);
+
+        _storage.GetObjectMetadataAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new ObjectMetadata(1024, "video/mp4"));
+
+        await using var factory = new AuthApiFactory(_fx.ConnectionString, _storage, configureServices: services =>
+            services.Configure<GankedTV.Api.Services.Media.MediaJobOptions>(o => o.CropEnabled = false));
+        using var client = AuthTestHelpers.CreateBearerClient(factory, token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/complete",
+            new { cropX = 0.1, cropY = 0.0, cropWidth = 0.8, cropHeight = 1.0 });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("crop_unavailable");
+    }
+
+    [Fact]
+    public async Task Complete_CropWithTranscodeDisabled_Returns400CropUnavailable()
+    {
+        // No compress stage means no re-encode to attach the crop filter to.
+        await _fx.ResetAsync();
+        var (userId, token) = await SeedUserAndIssueTokenAsync();
+        var clipId = await SeedClipAsync(userId);
+
+        _storage.GetObjectMetadataAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new ObjectMetadata(1024, "video/mp4"));
+
+        await using var factory = new AuthApiFactory(_fx.ConnectionString, _storage, configureServices: services =>
+            services.Configure<GankedTV.Api.Services.Media.MediaJobOptions>(o => o.TranscodeEnabled = false));
+        using var client = AuthTestHelpers.CreateBearerClient(factory, token);
+        var resp = await client.PostAsJsonAsync($"/clips/{clipId}/complete",
+            new { cropX = 0.1, cropY = 0.0, cropWidth = 0.8, cropHeight = 1.0 });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("crop_unavailable");
+    }
+
     [Fact]
     public async Task Complete_Duplicate_SecondCallReturns400()
     {
