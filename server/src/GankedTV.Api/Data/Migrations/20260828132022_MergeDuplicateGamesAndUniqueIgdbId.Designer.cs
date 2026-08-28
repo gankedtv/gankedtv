@@ -13,7 +13,7 @@ using NpgsqlTypes;
 namespace GankedTV.Api.Data.Migrations
 {
     [DbContext(typeof(GankedTvDbContext))]
-    [Migration("20260823134024_MergeDuplicateGamesAndUniqueIgdbId")]
+    [Migration("20260828132022_MergeDuplicateGamesAndUniqueIgdbId")]
     partial class MergeDuplicateGamesAndUniqueIgdbId
     {
         /// <inheritdoc />
@@ -100,6 +100,22 @@ namespace GankedTV.Api.Data.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("now()");
 
+                    b.Property<double?>("CropHeight")
+                        .HasColumnType("double precision")
+                        .HasColumnName("crop_height");
+
+                    b.Property<double?>("CropWidth")
+                        .HasColumnType("double precision")
+                        .HasColumnName("crop_width");
+
+                    b.Property<double?>("CropX")
+                        .HasColumnType("double precision")
+                        .HasColumnName("crop_x");
+
+                    b.Property<double?>("CropY")
+                        .HasColumnType("double precision")
+                        .HasColumnName("crop_y");
+
                     b.Property<string>("Description")
                         .HasColumnType("text")
                         .HasColumnName("description");
@@ -141,6 +157,18 @@ namespace GankedTV.Api.Data.Migrations
                         .HasColumnType("integer")
                         .HasDefaultValue(0)
                         .HasColumnName("like_count");
+
+                    b.Property<short?>("PreEditDurationSecs")
+                        .HasColumnType("smallint")
+                        .HasColumnName("pre_edit_duration_secs");
+
+                    b.Property<short?>("PreEditHeight")
+                        .HasColumnType("smallint")
+                        .HasColumnName("pre_edit_height");
+
+                    b.Property<short?>("PreEditWidth")
+                        .HasColumnType("smallint")
+                        .HasColumnName("pre_edit_width");
 
                     b.Property<int>("ProcessingAttempts")
                         .ValueGeneratedOnAdd()
@@ -275,7 +303,10 @@ namespace GankedTV.Api.Data.Migrations
                         .HasDatabaseName("idx_clips_top_ranked")
                         .HasFilter("status = 'ready' AND visibility = 'public'");
 
-                    b.ToTable("clips", (string)null);
+                    b.ToTable("clips", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_clips_crop_rect", "(crop_x IS NULL AND crop_y IS NULL AND crop_width IS NULL AND crop_height IS NULL) OR (crop_x IS NOT NULL AND crop_y IS NOT NULL AND crop_width IS NOT NULL AND crop_height IS NOT NULL AND crop_x >= 0 AND crop_y >= 0 AND crop_width > 0 AND crop_height > 0 AND crop_x + crop_width <= 1 AND crop_y + crop_height <= 1)");
+                        });
                 });
 
             modelBuilder.Entity("GankedTV.Api.Data.Entities.ClipStreamJob", b =>
@@ -404,6 +435,12 @@ namespace GankedTV.Api.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("deleted_at");
 
+                    b.Property<int>("LikeCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("like_count");
+
                     b.Property<Guid?>("ParentId")
                         .HasColumnType("uuid")
                         .HasColumnName("parent_id");
@@ -431,6 +468,31 @@ namespace GankedTV.Api.Data.Migrations
                         .HasDatabaseName("idx_comments_parent_id");
 
                     b.ToTable("comments", (string)null);
+                });
+
+            modelBuilder.Entity("GankedTV.Api.Data.Entities.CommentLike", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<Guid>("CommentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("comment_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.HasKey("UserId", "CommentId")
+                        .HasName("pk_comment_likes");
+
+                    b.HasIndex("CommentId")
+                        .HasDatabaseName("idx_comment_likes_comment_id");
+
+                    b.ToTable("comment_likes", (string)null);
                 });
 
             modelBuilder.Entity("GankedTV.Api.Data.Entities.DeviceAuthorization", b =>
@@ -1214,6 +1276,27 @@ namespace GankedTV.Api.Data.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("GankedTV.Api.Data.Entities.CommentLike", b =>
+                {
+                    b.HasOne("GankedTV.Api.Data.Entities.Comment", "Comment")
+                        .WithMany("Likes")
+                        .HasForeignKey("CommentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_comment_likes_comments_comment_id");
+
+                    b.HasOne("GankedTV.Api.Data.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_comment_likes_users_user_id");
+
+                    b.Navigation("Comment");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("GankedTV.Api.Data.Entities.DeviceAuthorization", b =>
                 {
                     b.HasOne("GankedTV.Api.Data.Entities.User", "User")
@@ -1374,6 +1457,8 @@ namespace GankedTV.Api.Data.Migrations
 
             modelBuilder.Entity("GankedTV.Api.Data.Entities.Comment", b =>
                 {
+                    b.Navigation("Likes");
+
                     b.Navigation("Replies");
                 });
 

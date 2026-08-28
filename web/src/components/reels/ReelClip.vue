@@ -13,6 +13,7 @@ import IconVolumeMute from '@/components/icons/IconVolumeMute.vue'
 import IconMessageCircle from '@/components/icons/IconMessageCircle.vue'
 import IconX from '@/components/icons/IconX.vue'
 import IconPlay from '@/components/icons/IconPlay.vue'
+import ThumbImage from '@/components/ThumbImage.vue'
 
 const props = defineProps<{
   clip: ClipFeedItem
@@ -273,11 +274,13 @@ onBeforeUnmount(() => {
 
 <template>
   <article class="relative flex h-full w-full items-center justify-center overflow-hidden bg-black">
-    <!-- Thumbnail layer — visible until video element mounts. -->
-    <img
+    <!-- Thumbnail layer — visible until the video element mounts. `eager`: this is the whole
+         slot the viewer is looking at, so deferring it would defer the only thing on screen. -->
+    <ThumbImage
       v-if="!detail"
       :src="clip.thumbnailUrl"
       :alt="clip.title"
+      eager
       class="block max-h-full max-w-full object-contain"
     />
 

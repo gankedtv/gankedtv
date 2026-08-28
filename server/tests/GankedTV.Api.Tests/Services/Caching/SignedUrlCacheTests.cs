@@ -79,9 +79,9 @@ public class SignedUrlCacheTests
     public void CachedCopyNeverOutlivesTheSignature()
     {
         // One hour on purpose: longer widens the window in which a leaked private-clip poster
-        // URL still resolves.
+        // URL still resolves. `private` for the same reason — the bucket isn't anonymous-read.
         SignedUrlCache.UrlLifetime.Should().Be(TimeSpan.FromHours(1));
-        SignedUrlCache.CacheControlHeader.Should().Be("public, max-age=900");
+        SignedUrlCache.CacheControlHeader.Should().Be("private, max-age=900");
         // A URL from the memo's last tick has UrlLifetime minus the memo window left on it.
         (SignedUrlCache.MemoLifetime + TimeSpan.FromSeconds(900))
             .Should().BeLessThanOrEqualTo(SignedUrlCache.UrlLifetime);

@@ -154,7 +154,7 @@ Sanctioned exceptions (the only allowed hits): nav backdrop-blur, game-tile lift
 - Dynamic values (user accent, avatar fills) via inline `:style`.
 - Icons: stroke-based SVG components inheriting `currentColor` ([src/components/icons/](src/components/icons/)).
 - Images from user input: `<img>`, never CSS `background-image`.
-- Game cover art: `object-cover aspect-3/4`. Clip thumbnails: `object-cover aspect-video`. Both render through [ThumbImage.vue](src/components/ThumbImage.vue), never a bare `<img>` and never a CSS `background-image` — it carries the lazy/async loading and the 150ms fade over the placeholder. Pass `eager` only for the LCP element on a page (the home hero, the trending feature, a game's cover).
+- Game cover art: `object-cover aspect-3/4`. Clip thumbnails: `object-cover aspect-video`. Both render through [ThumbImage.vue](src/components/ThumbImage.vue), never a bare `<img>` and never a CSS `background-image` — it carries the lazy/async loading and the 150ms fade over the placeholder. Pass `eager` for the LCP element on a page (the home hero, the trending feature, a game's cover) and in Reels, where the thumbnail *is* the slot being viewed.
 - **Loading placeholder is `bg-surface-high`, not `bg-black`.** The wrapper is visible only until the image paints, and a black box reads as a broken video. `bg-black` is reserved for real letterboxing behind a `<video>`.
 - Theme mechanism: `.light` class on `<html>` via `useThemeStore` — do not introduce `data-theme`.
 

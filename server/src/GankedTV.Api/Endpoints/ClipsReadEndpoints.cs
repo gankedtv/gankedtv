@@ -410,7 +410,7 @@ public static class ClipsReadEndpoints
         int? limit,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
-                ISignedUrlCache signedUrls,
+        ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
@@ -428,7 +428,7 @@ public static class ClipsReadEndpoints
         DateTimeOffset since,
         int? limit,
         GankedTvDbContext db,
-                ISignedUrlCache signedUrls,
+        ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
@@ -498,7 +498,7 @@ public static class ClipsReadEndpoints
         IQueryable<Clip> baseQuery,
         string? cursor,
         int? limit,
-                ISignedUrlCache signedUrls,
+        ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
@@ -562,7 +562,7 @@ public static class ClipsReadEndpoints
         IQueryable<Clip> baseQuery,
         string? cursor,
         int? limit,
-                ISignedUrlCache signedUrls,
+        ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
@@ -612,7 +612,7 @@ public static class ClipsReadEndpoints
         IReadOnlyList<Clip> clips,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
-                ISignedUrlCache signedUrls,
+        ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         CancellationToken ct)
     {

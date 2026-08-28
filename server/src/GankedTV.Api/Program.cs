@@ -539,6 +539,7 @@ builder.Services.AddRateLimiter(opts => opts
     .AddCredentialsPolicy()
     .AddDevicePolicy()
     .AddClipsWritePolicy()
+    .AddLikesPolicy()
     .AddClipsViewPolicy()
     .AddGamesSearchPolicy()
     .AddPresencePolicy());

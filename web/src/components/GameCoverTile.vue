@@ -8,10 +8,11 @@
 // (GamesView counts from a loaded feed page; SearchView has no clip count).
 // `rank` renders a catalogue position numeral on the cover (Home / Trending strips).
 //
-// Cover rendered as <img> (never as a background-image url()) so a hostile coverUrl
-// can't break out of a CSS string. Lazy-loaded for catalogs of hundreds of tiles.
+// Cover goes through ThumbImage (never a background-image url()) so a hostile coverUrl can't
+// break out of a CSS string, and lazily — catalogs run to hundreds of tiles.
 
 import type { GameListItem } from '@/api/games'
+import ThumbImage from '@/components/ThumbImage.vue'
 
 defineProps<{
   game: GameListItem
@@ -30,12 +31,9 @@ defineProps<{
     >
       <!-- alt="" — decorative: the game name is rendered as visible text in this same
            link, so a non-empty alt would make screen readers announce it twice. -->
-      <img
+      <ThumbImage
         v-if="game.coverUrl"
         :src="game.coverUrl"
-        alt=""
-        loading="lazy"
-        decoding="async"
         class="absolute inset-0 h-full w-full object-cover"
       />
       <span

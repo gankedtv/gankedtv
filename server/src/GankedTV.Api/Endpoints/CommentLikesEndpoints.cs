@@ -19,7 +19,7 @@ public static class CommentLikesEndpoints
     {
         var group = app.MapGroup("/comments")
             .RequireAuthorization()
-            .RequireRateLimiting(ClipsRateLimiting.ClipsWritePolicy);
+            .RequireRateLimiting(ClipsRateLimiting.LikesPolicy);
         group.MapPost("/{id:guid}/like", LikeComment);
         group.MapDelete("/{id:guid}/like", UnlikeComment);
         return app;

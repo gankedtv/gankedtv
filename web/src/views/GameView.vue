@@ -212,8 +212,8 @@ watch(slug, () => {
       >
         <!-- Crisp portrait cover (real box-art aspect, no crop). alt="" — decorative: the game
              name is the visible <h1> right beside it, so a bound alt would re-announce it.
-             Covers are <img> not background-image so a hostile coverUrl can't break out of a
-             CSS url() string. -->
+             Covers render as an element, never a background-image, so a hostile coverUrl
+             can't break out of a CSS url() string. -->
         <ThumbImage
           v-if="game.coverUrl"
           :src="game.coverUrl"

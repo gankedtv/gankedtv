@@ -244,19 +244,21 @@ public sealed class ThumbnailJobService : IThumbnailJobService
             "-i", inputUrl,
         };
 
-        // Poster and master go through the SAME filter builder. The feed renders the poster,
-        // so a poster that kept the bars while the video lost them would make the whole
-        // feature look broken exactly where most people see it.
+        // One -vf slot, composed, mirroring CompressJobService. ffmpeg honours only the LAST
+        // -vf, so two of them silently drop one filter — a poster that kept the pillarbox bars
+        // while the video lost them, on the surface most people see. Crop comes FIRST so the
+        // edge cap measures the kept region, not the source frame.
+        var filters = new List<string>();
         if (crop is not null)
         {
-            args.Add("-vf");
-            args.Add(MediaFilters.Crop(crop));
+            filters.Add(MediaFilters.Crop(crop));
         }
+        filters.Add(BuildScaleFilter(maxEdge));
 
         args.AddRange(new[]
         {
             "-frames:v", "1",
-            "-vf", BuildScaleFilter(maxEdge),
+            "-vf", string.Join(",", filters),
             "-q:v", "4",
             "-f", "mjpeg",
             outputPath,

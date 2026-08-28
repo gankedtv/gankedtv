@@ -23,6 +23,12 @@ namespace GankedTV.Api.Data.Migrations
             // Collapse duplicate igdb_id groups, repointing clips onto the survivor: curated
             // rows win (they carry the slug existing links use), then lowest id. Keyed on the
             // data, not row ids — the duplicate's id differs per environment.
+            //
+            // The survivor inherits the duplicate's cover art first: the mirrored cover lives on
+            // the importer-managed row, and the curated seed's columns are NULL in prod, so
+            // deleting without this leaves the game coverless until someone runs the importer
+            // (IgdbSyncHostedService is off by default). The duplicate's blob in the game-covers
+            // bucket is left behind — harmless, and the survivor now points at it.
             migrationBuilder.Sql("""
                 DO $$
                 DECLARE
@@ -38,6 +44,14 @@ namespace GankedTV.Api.Data.Migrations
                         WHERE igdb_id = grp.igdb_id
                         ORDER BY igdb_managed ASC, id ASC
                         LIMIT 1;
+
+                        UPDATE games k
+                        SET cover_image_id = d.cover_image_id, cover_url = d.cover_url
+                        FROM (SELECT cover_image_id, cover_url FROM games
+                              WHERE igdb_id = grp.igdb_id AND id <> keep_id
+                                AND cover_image_id IS NOT NULL
+                              LIMIT 1) d
+                        WHERE k.id = keep_id AND k.cover_image_id IS NULL;
 
                         UPDATE clips SET game_id = keep_id
                         WHERE game_id IN (

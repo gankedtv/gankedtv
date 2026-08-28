@@ -141,7 +141,7 @@ public class ThumbnailJobServiceTests
             Arg.Any<Stream>(),
             "image/jpeg",
             Arg.Any<CancellationToken>(),
-            "public, max-age=900");
+            "private, max-age=900");
     }
 
     [Fact]
@@ -421,6 +421,37 @@ public class ThumbnailJobServiceTests
     private static ClaimedMediaJob NewJob() =>
         new(Guid.NewGuid(), Guid.NewGuid(), GameId: null, VideoKey: "k.mp4", SourceHeight: null, AttemptNumber: 1);
 
+    [Fact]
+    public async Task ExtractAsync_CropAndScale_ShareOneFilterSlot_CropFirst()
+    {
+        // ffmpeg honours only the LAST -vf, so emitting two silently drops one — a poster that
+        // kept the pillarbox bars while the video lost them. Crop leads so the edge cap measures
+        // the kept region.
+        var (svc, ffmpeg, _) = Build();
+        StubFfprobe(ffmpeg, """{"streams":[{"width":3440,"height":1440,"duration":"5.0"}]}""");
+        StubFfmpegFrame(ffmpeg, new byte[] { 0xFF, 0xD8, 0xFF });
+
+        await svc.ExtractAsync(JobWithCrop(new CropRect(0.1279, 0, 0.7442, 1)), null, CancellationToken.None);
+
+        var args = ffmpeg.ReceivedCalls()
+            .Where(c => c.GetArguments()[0] as string == "ffmpeg")
+            .Select(c => (IReadOnlyList<string>)c.GetArguments()[1]!)
+            .Single();
+
+        args.Count(a => a == "-vf").Should().Be(1, "a second -vf would silently discard the first");
+        var filter = args[args.ToList().IndexOf("-vf") + 1];
+        filter.Should().StartWith("crop=", "crop must run before the edge cap");
+        filter.Should().Contain("," + ThumbnailJobService.BuildScaleFilter(1280));
+    }
+
+    // The single composed -vf value. The poster always carries the edge cap, so crop assertions
+    // look inside the filter chain rather than at the presence of the flag.
+    private static string VfFilter(IReadOnlyList<string> args)
+    {
+        var i = args.ToList().IndexOf("-vf");
+        return i < 0 ? string.Empty : args[i + 1];
+    }
+
     // ---- crop ----
 
     private static ClaimedMediaJob JobWithCrop(CropRect crop) =>
@@ -585,7 +616,7 @@ public class ThumbnailJobServiceTests
 
         var result = await svc.ExtractAsync(NewJob(), null, CancellationToken.None);
 
-        args.Should().NotContain("-vf");
+        VfFilter(args!).Should().NotContain("crop=", "the edge cap still ships; only the crop is absent");
         result.Crop.Should().BeNull();
         result.Width.Should().Be(1920);
         result.Height.Should().Be(1080);
@@ -611,7 +642,7 @@ public class ThumbnailJobServiceTests
 
         result.ThumbnailKey.Should().NotBeNullOrEmpty();
         result.Crop.Should().BeNull();
-        args.Should().NotContain("-vf");
+        VfFilter(args!).Should().NotContain("crop=", "the edge cap still ships; only the crop is absent");
     }
 
     [Fact]
@@ -642,7 +673,7 @@ public class ThumbnailJobServiceTests
         var result = await svc.ExtractAsync(
             JobWithCrop(new CropRect(0.1279, 0, 0.7442, 1)), null, CancellationToken.None);
 
-        args.Should().NotContain("-vf");
+        VfFilter(args!).Should().NotContain("crop=", "the edge cap still ships; only the crop is absent");
         result.Crop.Should().BeNull();
         result.Width.Should().Be(3440);
         result.Height.Should().Be(1440);
@@ -675,7 +706,7 @@ public class ThumbnailJobServiceTests
         var result = await svc.ExtractAsync(
             JobWithCrop(new CropRect(0.1279, 0, 0.7442, 1)), null, CancellationToken.None);
 
-        args.Should().NotContain("-vf");
+        VfFilter(args!).Should().NotContain("crop=", "the edge cap still ships; only the crop is absent");
         result.Crop.Should().BeNull();
         result.Width.Should().Be(3440);
         result.Height.Should().Be(1440);
