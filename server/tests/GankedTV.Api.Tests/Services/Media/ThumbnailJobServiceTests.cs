@@ -87,8 +87,8 @@ public class ThumbnailJobServiceTests
             $"{userId}/valorant/{clipId}.jpg",
             Arg.Any<Stream>(),
             "image/jpeg",
-            Arg.Any<CancellationToken>(),
-            SignedUrlCache.CacheControlHeader);
+            SignedUrlCache.CacheControlHeader,
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -140,8 +140,8 @@ public class ThumbnailJobServiceTests
             Arg.Any<string>(),
             Arg.Any<Stream>(),
             "image/jpeg",
-            Arg.Any<CancellationToken>(),
-            "private, max-age=900");
+            "private, max-age=900",
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]

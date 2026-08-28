@@ -57,6 +57,29 @@ namespace GankedTV.Api.Data.Migrations
                         WHERE game_id IN (
                             SELECT id FROM games WHERE igdb_id = grp.igdb_id AND id <> keep_id);
 
+                        -- The Discord bot owns its own tables and EF doesn't model them, so
+                        -- discord_subscriptions.game_id is a bare integer with no FK: the DELETE
+                        -- below neither cascades nor errors, it just leaves subscribed channels
+                        -- pointing at a row that no longer exists and quietly stops posting.
+                        -- to_regclass guards the databases the bot has never booted against.
+                        IF to_regclass('discord_subscriptions') IS NOT NULL THEN
+                            -- Drop the ones that would collide first: the table has
+                            -- UNIQUE NULLS NOT DISTINCT (channel_id, game_id, creator_id), so a
+                            -- channel subscribed to BOTH rows can't simply be repointed.
+                            DELETE FROM discord_subscriptions d
+                            WHERE d.game_id IN (
+                                SELECT id FROM games WHERE igdb_id = grp.igdb_id AND id <> keep_id)
+                              AND EXISTS (
+                                SELECT 1 FROM discord_subscriptions k
+                                WHERE k.channel_id = d.channel_id
+                                  AND k.game_id = keep_id
+                                  AND k.creator_id IS NOT DISTINCT FROM d.creator_id);
+
+                            UPDATE discord_subscriptions SET game_id = keep_id
+                            WHERE game_id IN (
+                                SELECT id FROM games WHERE igdb_id = grp.igdb_id AND id <> keep_id);
+                        END IF;
+
                         DELETE FROM games WHERE igdb_id = grp.igdb_id AND id <> keep_id;
                     END LOOP;
                 END $$;

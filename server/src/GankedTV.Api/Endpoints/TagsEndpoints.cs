@@ -108,7 +108,6 @@ public static class TagsEndpoints
         int? limit,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
-        IObjectStorageService storage,
         IOptions<S3Options> s3,
         IFeedCache feedCache,
         ISignedUrlCache signedUrls,

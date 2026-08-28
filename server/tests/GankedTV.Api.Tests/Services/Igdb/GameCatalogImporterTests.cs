@@ -272,12 +272,12 @@ public class GameCatalogImporterTests : IAsyncLifetime
 
         await using (var first = _fx.CreateContext())
         {
-            (await Build(first, igdb, storage).ImportAsync([game], CancellationToken.None))
+            (await Build(first, igdb, storage).ImportAsync([game], adoptByAlias: true, CancellationToken.None))
                 .Created.Should().Be(1);
         }
 
         await using var second = _fx.CreateContext();
-        var again = await Build(second, igdb, storage).ImportAsync([game], CancellationToken.None);
+        var again = await Build(second, igdb, storage).ImportAsync([game], adoptByAlias: true, CancellationToken.None);
 
         again.Processed.Should().Be(1);
         again.Created.Should().Be(0);
@@ -307,7 +307,7 @@ public class GameCatalogImporterTests : IAsyncLifetime
         var storage = new InMemoryObjectStorage();
 
         await using var db = _fx.CreateContext();
-        await Build(db, igdb, storage).ImportAsync([new IgdbGame(9100, "Hot", "imgHot")], CancellationToken.None);
+        await Build(db, igdb, storage).ImportAsync([new IgdbGame(9100, "Hot", "imgHot")], adoptByAlias: true, CancellationToken.None);
 
         await using var verify = _fx.CreateContext();
         var hot = await verify.Games.SingleAsync(g => g.IgdbId == 9100);
@@ -464,6 +464,27 @@ public class GameCatalogImporterTests : IAsyncLifetime
             .Should().Be(7840, "the entry whose current title matches owns the row");
         (await verify.Games.SingleAsync(g => g.IgdbId == 7841)).Slug
             .Should().Be("roundtrip-test-2", "the alias claimant gets its own row");
+    }
+
+    [Fact]
+    public async Task AliasAdoptionOff_LeavesCuratedRowsAlone()
+    {
+        // The on-demand search import feeds this IGDB's own fuzzy hits, so an unrelated game
+        // whose alias list happens to contain a curated title must not claim that row — the
+        // unique index would make the mislink unrecoverable.
+        var storage = new InMemoryObjectStorage();
+        var igdb = StubIgdb();
+        var poacher = new IgdbGame(7850, "Totally Other Game", "img", ["Rocket League"]);
+
+        await using (var db = _fx.CreateContext())
+        {
+            await Build(db, igdb, storage).ImportAsync([poacher], adoptByAlias: false, CancellationToken.None);
+        }
+
+        await using var verify = _fx.CreateContext();
+        (await verify.Games.SingleAsync(g => g.Slug == "rocket-league")).IgdbId
+            .Should().BeNull("the curated row keeps its identity");
+        (await verify.Games.SingleAsync(g => g.IgdbId == 7850)).Slug.Should().Be("totally-other-game");
     }
 
     [Fact]

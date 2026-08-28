@@ -82,8 +82,14 @@ public class SignedUrlCacheTests
         // URL still resolves. `private` for the same reason — the bucket isn't anonymous-read.
         SignedUrlCache.UrlLifetime.Should().Be(TimeSpan.FromHours(1));
         SignedUrlCache.CacheControlHeader.Should().Be("private, max-age=900");
-        // A URL from the memo's last tick has UrlLifetime minus the memo window left on it.
-        (SignedUrlCache.MemoLifetime + TimeSpan.FromSeconds(900))
-            .Should().BeLessThanOrEqualTo(SignedUrlCache.UrlLifetime);
+
+        // Worst case for one URL: minted at T, still handed out at T+MemoLifetime, folded into a
+        // feed page cached for another FeedCacheTtl, then sat in a browser for max-age — and
+        // thumbnails are lazy, so the fetch can be later still. All of it inside the signature.
+        var feedCacheTtl = TimeSpan.FromSeconds(60);
+        var worstCase = SignedUrlCache.MemoLifetime + feedCacheTtl + TimeSpan.FromSeconds(900);
+        worstCase.Should().BeLessThanOrEqualTo(SignedUrlCache.UrlLifetime);
+        (SignedUrlCache.UrlLifetime - worstCase).Should().BeGreaterThanOrEqualTo(
+            TimeSpan.FromMinutes(10), "a lazily-scrolled poster needs slack beyond the arithmetic");
     }
 }

@@ -202,7 +202,6 @@ public static class ClipsReadEndpoints
         string? window,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
-        IObjectStorageService storage,
         IOptions<S3Options> s3,
         IFeedCache feedCache,
         ISignedUrlCache signedUrls,

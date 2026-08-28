@@ -23,12 +23,11 @@ public sealed class SignedUrlCache(HybridCache cache, IObjectStorageService stor
     // Left at the hour thumbnails have always used: a longer signature widens the window in which
     // a leaked poster URL for a private clip still resolves, and the memo already covers a session.
     public static readonly TimeSpan UrlLifetime = TimeSpan.FromHours(1);
-    public static readonly TimeSpan MemoLifetime = TimeSpan.FromMinutes(45);
+    public static readonly TimeSpan MemoLifetime = TimeSpan.FromMinutes(30);
 
     // `private`, not `public`: the thumbnails bucket is deliberately not anonymous-read, so
     // licensing shared caches to store a private clip's poster buys nothing the browser cache
-    // doesn't already give. Bounded by what is left of the signature at the end of the memo
-    // window (60 − 45), so a URL handed out on the last tick can't outlive the point it resolves.
+    // doesn't already give.
     public const string CacheControlHeader = "private, max-age=900";
 
     private static readonly HybridCacheEntryOptions Entry = new()

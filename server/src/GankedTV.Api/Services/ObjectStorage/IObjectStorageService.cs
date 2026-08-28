@@ -40,13 +40,21 @@ public interface IObjectStorageService
 
     // Direct PUT for server-generated artifacts (thumbnails, future transcodes). Browser
     // uploads still use GetPresignedPutUrl — this path is for the API process / worker
-    // writing bytes it produced itself. `cacheControl` is stored on the object and returned
-    // on every GET, including presigned ones.
+    // writing bytes it produced itself.
     Task PutObjectAsync(
         string bucket,
         string key,
         Stream content,
         string contentType,
-        CancellationToken ct = default,
-        string? cacheControl = null);
+        CancellationToken ct = default);
+
+    // As above, plus a `Cache-Control` stored on the object and returned on every GET, including
+    // presigned ones. A separate overload so `ct` stays last on both (CA1068).
+    Task PutObjectAsync(
+        string bucket,
+        string key,
+        Stream content,
+        string contentType,
+        string? cacheControl,
+        CancellationToken ct = default);
 }

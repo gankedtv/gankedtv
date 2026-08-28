@@ -67,7 +67,10 @@ public sealed class GameSearchImportService(
             var relevant = matches.Where(m => Matches(m.Name, normalized)).ToList();
             if (relevant.Count > 0)
             {
-                var result = await importer.ImportAsync(relevant, budget.Token);
+                // adoptByAlias: false — these are IGDB's own fuzzy search hits. An unrelated
+                // game whose alias list happens to contain "Rocket League" would otherwise claim
+                // that curated row, and the unique index makes the mislink unrecoverable.
+                var result = await importer.ImportAsync(relevant, adoptByAlias: false, budget.Token);
                 return result.Created > 0 || result.Renamed > 0;
             }
         }

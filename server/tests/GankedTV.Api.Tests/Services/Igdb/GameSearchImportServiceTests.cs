@@ -55,7 +55,7 @@ public class GameSearchImportServiceTests
         var imported = await Build().TryImportMatchesAsync("satisfactory");
 
         imported.Should().BeFalse();
-        await _importer.DidNotReceive().ImportAsync(Arg.Any<IReadOnlyList<IgdbGame>>(), Arg.Any<CancellationToken>());
+        await _importer.DidNotReceive().ImportAsync(Arg.Any<IReadOnlyList<IgdbGame>>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -63,14 +63,14 @@ public class GameSearchImportServiceTests
     {
         _igdb.SearchGamesAsync("satisfactory", Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns([new IgdbGame(100, "Satisfactory", "sat1")]);
-        _importer.ImportAsync(Arg.Any<IReadOnlyList<IgdbGame>>(), Arg.Any<CancellationToken>())
+        _importer.ImportAsync(Arg.Any<IReadOnlyList<IgdbGame>>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new GameCatalogImportResult(1, 1, 1, 0));
 
         var imported = await Build().TryImportMatchesAsync("  Satisfactory ");
 
         imported.Should().BeTrue();
         await _importer.Received(1).ImportAsync(
-            Arg.Is<IReadOnlyList<IgdbGame>>(g => g.Single().Id == 100), Arg.Any<CancellationToken>());
+            Arg.Is<IReadOnlyList<IgdbGame>>(g => g.Single().Id == 100), false, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -83,14 +83,14 @@ public class GameSearchImportServiceTests
                 new IgdbGame(100, "Satisfactory", "sat1"),
                 new IgdbGame(101, "Factorio", "fac1"),
             ]);
-        _importer.ImportAsync(Arg.Any<IReadOnlyList<IgdbGame>>(), Arg.Any<CancellationToken>())
+        _importer.ImportAsync(Arg.Any<IReadOnlyList<IgdbGame>>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new GameCatalogImportResult(1, 1, 1, 0));
 
         var imported = await Build().TryImportMatchesAsync("satisfactory");
 
         imported.Should().BeTrue();
         await _importer.Received(1).ImportAsync(
-            Arg.Is<IReadOnlyList<IgdbGame>>(g => g.Count == 1 && g[0].Id == 100), Arg.Any<CancellationToken>());
+            Arg.Is<IReadOnlyList<IgdbGame>>(g => g.Count == 1 && g[0].Id == 100), false, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -102,7 +102,7 @@ public class GameSearchImportServiceTests
         var imported = await Build().TryImportMatchesAsync("satisfactory");
 
         imported.Should().BeFalse();
-        await _importer.DidNotReceive().ImportAsync(Arg.Any<IReadOnlyList<IgdbGame>>(), Arg.Any<CancellationToken>());
+        await _importer.DidNotReceive().ImportAsync(Arg.Any<IReadOnlyList<IgdbGame>>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -112,7 +112,7 @@ public class GameSearchImportServiceTests
             .Returns([new IgdbGame(100, "Satisfactory", "sat1")]);
         // Processed counts every input game; nothing was created or renamed, so a retried local
         // query returns the same miss.
-        _importer.ImportAsync(Arg.Any<IReadOnlyList<IgdbGame>>(), Arg.Any<CancellationToken>())
+        _importer.ImportAsync(Arg.Any<IReadOnlyList<IgdbGame>>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(new GameCatalogImportResult(1, 0, 0, 0));
 
         var imported = await Build().TryImportMatchesAsync("satisfactory");

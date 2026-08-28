@@ -108,8 +108,8 @@ public sealed class ThumbnailJobService : IThumbnailJobService
                     thumbnailKey,
                     stream,
                     "image/jpeg",
-                    ct,
-                    SignedUrlCache.CacheControlHeader);
+                    SignedUrlCache.CacheControlHeader,
+                    ct);
             }
 
             // Dimensions are POST-crop: they drive the player's aspect ratio and the JIT ladder's

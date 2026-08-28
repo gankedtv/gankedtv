@@ -39,10 +39,13 @@ public sealed class GameCatalogImporter(
         var games = await igdb.GetPopularGamesAsync(igdbOpts.PopularImportCount, ct);
         logger.LogInformation("IGDB returned {Count} games with cover art.", games.Count);
 
-        return await ImportAsync(games, ct);
+        return await ImportAsync(games, adoptByAlias: true, ct);
     }
 
-    public async Task<GameCatalogImportResult> ImportAsync(IReadOnlyList<IgdbGame> games, CancellationToken ct = default)
+    public async Task<GameCatalogImportResult> ImportAsync(
+        IReadOnlyList<IgdbGame> games,
+        bool adoptByAlias = true,
+        CancellationToken ct = default)
     {
         var s3 = s3Options.Value;
         await storage.EnsureBucketsAsync(ct);
@@ -71,7 +74,7 @@ public sealed class GameCatalogImporter(
             .Select(g => g.Slug)
             .ToHashSetAsync(StringComparer.Ordinal, ct);
 
-        var adopted = ResolveAdoptions(games, byIgdbId, byName);
+        var adopted = ResolveAdoptions(games, byIgdbId, byName, adoptByAlias);
 
         var processed = 0;
         var created = 0;
@@ -183,12 +186,14 @@ public sealed class GameCatalogImporter(
     /// must win over one that only matches through an old alias. Overwatch went Overwatch →
     /// Overwatch 2 → Overwatch, so the 2016 entry and the sequel can both answer to "Overwatch" —
     /// resolving aliases second stops whichever happened to come first in the batch from taking
-    /// the other's row.
+    /// the other's row. The alias pass is skipped entirely when the caller's candidates are a
+    /// fuzzy search (see <c>adoptByAlias</c>).
     /// </summary>
     private static Dictionary<int, Game> ResolveAdoptions(
         IReadOnlyList<IgdbGame> games,
         Dictionary<int, Game> byIgdbId,
-        Dictionary<string, Game> byName)
+        Dictionary<string, Game> byName,
+        bool adoptByAlias)
     {
         var adopted = new Dictionary<int, Game>();
 
@@ -198,6 +203,11 @@ public sealed class GameCatalogImporter(
             {
                 adopted[meta.Id] = row;
             }
+        }
+
+        if (!adoptByAlias)
+        {
+            return adopted;
         }
 
         foreach (var meta in games.Where(m => !byIgdbId.ContainsKey(m.Id) && !adopted.ContainsKey(m.Id)))

@@ -32,7 +32,6 @@ public static class LeaderboardsEndpoints
         int? gamesLimit,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
-        IObjectStorageService storage,
         ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         IFeedCache feedCache,

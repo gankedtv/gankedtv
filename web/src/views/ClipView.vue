@@ -296,6 +296,7 @@ async function tryAutoplay(el: HTMLVideoElement) {
     if (myToken !== playerToken) return
   }
 
+  const wasMuted = el.muted
   try {
     el.muted = true
     await Promise.resolve(el.play())
@@ -303,7 +304,9 @@ async function tryAutoplay(el: HTMLVideoElement) {
     markAutoplayedMuted(el)
   } catch {
     if (myToken !== playerToken) return
-    el.muted = false
+    // Put back what the viewer had, not `false` — Plyr restores a deliberate mute from
+    // localStorage, and forcing sound on at the next tap would override it.
+    el.muted = wasMuted
     needsTapToPlay.value = true
     watchForPlay(el)
   }
@@ -333,8 +336,8 @@ function unmute() {
   if (videoEl.value) videoEl.value.muted = false
 }
 
-// Plyr's controls sit above this overlay, so playback can start without it being clicked — and
-// a play circle left over a playing video swallows clicks on the picture.
+// The overlay clears the control bar, so playback can start without it being clicked — and a
+// play circle left over a playing video is wrong on its face.
 function watchForPlay(el: HTMLVideoElement) {
   detachPlayWatch()
   const onPlay = () => {
@@ -750,11 +753,13 @@ async function onConfirmDelete() {
           ]"
         ></video>
 
-        <!-- Autoplay was refused outright — offer the gesture the browser is waiting for. -->
+        <!-- Autoplay was refused outright — offer the gesture the browser is waiting for.
+             Stops short of the control bar: `.plyr` sets `z-index: 0`, which traps its own
+             controls in that stacking context, so a full-bleed sibling would paint over them. -->
         <button
           v-if="needsTapToPlay"
           type="button"
-          class="absolute inset-0 flex cursor-pointer items-center justify-center bg-transparent"
+          class="absolute inset-x-0 top-0 bottom-14 flex cursor-pointer items-center justify-center bg-transparent"
           :aria-label="`Play ${clip.title}`"
           @click="handleTapToPlay"
         >

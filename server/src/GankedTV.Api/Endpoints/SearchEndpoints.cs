@@ -64,7 +64,6 @@ public static class SearchEndpoints
         int? limit,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
-        IObjectStorageService storage,
         ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         CancellationToken ct)
