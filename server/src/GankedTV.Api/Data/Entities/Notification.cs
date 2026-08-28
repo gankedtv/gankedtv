@@ -6,14 +6,16 @@ public class Notification
     public Guid RecipientId { get; set; }
     public Guid ActorId { get; set; }
 
-    // 'like' | 'comment' | 'follow'. Kept as a short string to mirror Clip.Status / Visibility —
-    // an EF enum mapping would add ceremony for three values that the UI also treats as strings.
+    // 'like' | 'comment' | 'comment_like' | 'follow'. Kept as a short string to mirror
+    // Clip.Status / Visibility — an EF enum mapping would add ceremony for a handful of values
+    // the UI also treats as strings.
     public required string Type { get; set; }
 
-    // Populated on like and comment notifications (so the UI can link to the clip); null on follow.
+    // Populated on like, comment and comment_like notifications (so the UI can link to the
+    // clip); null on follow.
     public Guid? ClipId { get; set; }
 
-    // Populated on comment notifications only.
+    // Populated on comment and comment_like notifications.
     public Guid? CommentId { get; set; }
 
     public DateTimeOffset? ReadAt { get; set; }

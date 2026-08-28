@@ -623,4 +623,40 @@ public class GamesEndpointsTests : IAsyncLifetime
         var slugs = games.EnumerateArray().Select(g => g.GetProperty("slug").GetString()).ToArray();
         slugs.Should().ContainSingle().Which.Should().Be("literal-percent-game");
     }
+
+    [Fact]
+    public async Task GetGames_SameName_OrdersDeterministically()
+    {
+        // Ordering by name alone leaves the tie unresolved, so which row survives `Take(limit)`
+        // varies between requests.
+        await _fx.ResetAsync();
+        int lowId, highId;
+        await using (var db = _fx.CreateContext())
+        {
+            await db.Games.Where(g => g.Slug.StartsWith("tie-test-")).ExecuteDeleteAsync();
+            var a = new Game { Name = "Tie Test Game", Slug = "tie-test-a", Tag = "TTA" };
+            var b = new Game { Name = "Tie Test Game", Slug = "tie-test-b", Tag = "TTB" };
+            db.Games.AddRange(a, b);
+            await db.SaveChangesAsync();
+            (lowId, highId) = a.Id < b.Id ? (a.Id, b.Id) : (b.Id, a.Id);
+        }
+
+        using var client = _factory!.CreateClient();
+        try
+        {
+            foreach (var _ in Enumerable.Range(0, 3))
+            {
+                var resp = await client.GetAsync("/games?search=Tie%20Test%20Game");
+                resp.IsSuccessStatusCode.Should().BeTrue();
+                var games = await resp.Content.ReadFromJsonAsync<JsonElement>();
+                games.EnumerateArray().Select(g => g.GetProperty("id").GetInt32())
+                    .Should().Equal(lowId, highId);
+            }
+        }
+        finally
+        {
+            await using var db = _fx.CreateContext();
+            await db.Games.Where(g => g.Slug.StartsWith("tie-test-")).ExecuteDeleteAsync();
+        }
+    }
 }

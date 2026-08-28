@@ -12,6 +12,7 @@ import SectionHeader from '@/components/SectionHeader.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import UnderlineTabs from '@/components/UnderlineTabs.vue'
+import ThumbImage from '@/components/ThumbImage.vue'
 
 const router = useRouter()
 
@@ -126,9 +127,9 @@ function openClip(id: string) {
               </h2>
             </div>
             <div
-              class="relative aspect-video overflow-hidden rounded-lg border border-border bg-black transition-colors duration-150 group-hover:border-border-strong"
+              class="relative aspect-video overflow-hidden rounded-lg border border-border bg-surface-high transition-colors duration-150 group-hover:border-border-strong"
             >
-              <img :src="feature.thumbnailUrl" alt="" class="h-full w-full object-cover" />
+              <ThumbImage :src="feature.thumbnailUrl" eager class="h-full w-full object-cover" />
               <div v-if="feature.game" class="absolute bottom-2 left-2">
                 <GameTag :tag="feature.game.tag" />
               </div>
@@ -158,9 +159,9 @@ function openClip(id: string) {
                 {{ String(i + 2).padStart(2, '0') }}
               </span>
               <span
-                class="relative aspect-video w-28 shrink-0 overflow-hidden rounded-md border border-border bg-black transition-colors duration-150 group-hover:border-border-strong"
+                class="relative aspect-video w-28 shrink-0 overflow-hidden rounded-md border border-border bg-surface-high transition-colors duration-150 group-hover:border-border-strong"
               >
-                <img :src="clip.thumbnailUrl" alt="" class="h-full w-full object-cover" />
+                <ThumbImage :src="clip.thumbnailUrl" class="h-full w-full object-cover" />
               </span>
               <span class="min-w-0 flex-1">
                 <span
@@ -213,9 +214,9 @@ function openClip(id: string) {
               {{ String(i + 6).padStart(2, '0') }}
             </span>
             <span
-              class="relative block aspect-video overflow-hidden rounded-md border border-border bg-black transition-colors duration-150 group-hover:border-border-strong"
+              class="relative block aspect-video overflow-hidden rounded-md border border-border bg-surface-high transition-colors duration-150 group-hover:border-border-strong"
             >
-              <img :src="clip.thumbnailUrl" alt="" class="h-full w-full object-cover" />
+              <ThumbImage :src="clip.thumbnailUrl" class="h-full w-full object-cover" />
             </span>
             <span class="min-w-0">
               <span

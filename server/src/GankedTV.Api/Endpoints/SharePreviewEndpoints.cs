@@ -5,6 +5,7 @@ using GankedTV.Api.Auth;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Problems;
+using GankedTV.Api.Services.Caching;
 using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -48,6 +49,7 @@ public static class SharePreviewEndpoints
         ClaimsPrincipal principal,
         GankedTvDbContext db,
         IObjectStorageService storage,
+        ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
@@ -56,7 +58,7 @@ public static class SharePreviewEndpoints
         var viewerId = principal.GetUserIdOrNull();
         var result = await ClipsReadEndpoints.LoadClipWithUrlsAsync(
             c => c.ShareCode == code && c.Status == ClipStatuses.Ready,
-            viewerId, db, storage, s3, ct);
+            viewerId, db, storage, signedUrls, s3, ct);
 
         if (result is null)
             return ProblemResults.NotFound("not_found");
@@ -85,6 +87,7 @@ public static class SharePreviewEndpoints
         ClaimsPrincipal principal,
         GankedTvDbContext db,
         IObjectStorageService storage,
+        ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
@@ -96,7 +99,7 @@ public static class SharePreviewEndpoints
 
         var result = await ClipsReadEndpoints.LoadClipWithUrlsAsync(
             c => c.Id == id && c.Status == ClipStatuses.Ready,
-            viewerId, db, storage, s3, ct);
+            viewerId, db, storage, signedUrls, s3, ct);
 
         if (result is null)
             return ProblemResults.NotFound("not_found");
@@ -108,7 +111,7 @@ public static class SharePreviewEndpoints
         string code,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
-        IObjectStorageService storage,
+        ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
@@ -116,7 +119,8 @@ public static class SharePreviewEndpoints
         if (clip is null)
             return ProblemResults.NotFound("not_found");
 
-        var url = ClipsReadEndpoints.BuildThumbnailUrl(storage, s3.Value.ThumbnailsBucket, clip.ThumbnailKey);
+        var url = await ClipsReadEndpoints.BuildThumbnailUrlAsync(
+            signedUrls, s3.Value.ThumbnailsBucket, clip, ct);
         return Results.Redirect(url, permanent: false);
     }
 

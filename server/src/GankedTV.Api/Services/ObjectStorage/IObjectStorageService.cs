@@ -47,4 +47,14 @@ public interface IObjectStorageService
         Stream content,
         string contentType,
         CancellationToken ct = default);
+
+    // As above, plus a `Cache-Control` stored on the object and returned on every GET, including
+    // presigned ones. A separate overload so `ct` stays last on both (CA1068).
+    Task PutObjectAsync(
+        string bucket,
+        string key,
+        Stream content,
+        string contentType,
+        string? cacheControl,
+        CancellationToken ct = default);
 }

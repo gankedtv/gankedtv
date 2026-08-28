@@ -5,6 +5,7 @@ using GankedTV.Api.Contracts.Users;
 using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Problems;
+using GankedTV.Api.Services.Caching;
 using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -37,7 +38,7 @@ public static class UsersEndpoints
         string username,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
-        IObjectStorageService storage,
+        ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
@@ -73,10 +74,12 @@ public static class UsersEndpoints
             db, principal, clips.Select(c => c.Id), ct);
 
         var thumbnailsBucket = s3.Value.ThumbnailsBucket;
+        // Batched for the same reason as the feed projection: one Redis round-trip per clip,
+        // serialised, is a slow profile page on a cold pod.
+        var thumbnailUrls = await Task.WhenAll(clips.Select(c =>
+            ClipsReadEndpoints.BuildThumbnailUrlAsync(signedUrls, thumbnailsBucket, c, ct).AsTask()));
         var clipDtos = clips
-            .Select(c => c.ToFeedItem(
-                ClipsReadEndpoints.BuildThumbnailUrl(storage, thumbnailsBucket, c.ThumbnailKey),
-                likedIds.Contains(c.Id)))
+            .Select((c, i) => c.ToFeedItem(thumbnailUrls[i], likedIds.Contains(c.Id)))
             .ToList();
 
         var followerCount = await db.Follows.AsNoTracking()

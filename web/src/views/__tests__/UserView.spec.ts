@@ -167,4 +167,30 @@ describe('UserView (issue #92 regression)', () => {
     expect(router.currentRoute.value.name).toBe('clip')
     expect(router.currentRoute.value.params.id).toBe('clp_01')
   })
+
+  it('renders a multi-line bio as paragraphs and lists', async () => {
+    getByUsername.mockResolvedValue({
+      id: 'u1',
+      username: 'seeduser',
+      bio: 'Mains:\n- Support\n- Jungle\n\nFind me at [ganked](https://ganked.tv)',
+      avatarUrl: null,
+      createdAt: new Date().toISOString(),
+      followerCount: 0,
+      followingCount: 0,
+      followedByMe: null,
+      clips: [],
+    })
+    const router = makeRouter()
+    await router.push({ name: 'user', params: { username: 'seeduser' } })
+    await router.isReady()
+    const wrapper = mount(UserView, { global: { plugins: [router, createPinia()] } })
+    await flushPromises()
+
+    const bio = wrapper.find('.rich-text')
+    expect(bio.findAll('li').map((li) => li.text())).toEqual(['Support', 'Jungle'])
+    expect(bio.findAll('p')).toHaveLength(2)
+    const link = bio.find('a')
+    expect(link.attributes('href')).toBe('https://ganked.tv')
+    expect(link.attributes('rel')).toContain('noopener')
+  })
 })

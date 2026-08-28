@@ -32,7 +32,7 @@ public static class LeaderboardsEndpoints
         int? gamesLimit,
         ClaimsPrincipal principal,
         GankedTvDbContext db,
-        IObjectStorageService storage,
+        ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         IFeedCache feedCache,
         CancellationToken ct)
@@ -59,7 +59,7 @@ public static class LeaderboardsEndpoints
             {
                 var clipsBase = db.Clips.AsNoTracking()
                     .WherePublicReady();
-                var topClips = await BuildAnonymousEntriesAsync(clipsBase, since, clipsCap, db, storage, s3, c);
+                var topClips = await BuildAnonymousEntriesAsync(clipsBase, since, clipsCap, db, signedUrls, s3, c);
                 var topGames = await BuildTopGamesAsync(since, gamesCap, db, c);
                 return new GlobalLeaderboardResponse(windowKey, topClips, topGames);
             },
@@ -83,7 +83,7 @@ public static class LeaderboardsEndpoints
         DateTimeOffset since,
         int limit,
         GankedTvDbContext db,
-        IObjectStorageService storage,
+        ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         CancellationToken ct)
     {
@@ -121,7 +121,8 @@ public static class LeaderboardsEndpoints
         var hydratedOrdered = await RankedFeedBuilder.HydrateOrderedAsync(
             topIds, db, reapplyPublicReadyFilter: true, ct);
 
-        var feedItems = ClipsReadEndpoints.ProjectAnonymousFeedItems(hydratedOrdered, storage, s3);
+        var feedItems = await ClipsReadEndpoints.ProjectAnonymousFeedItemsAsync(
+            hydratedOrdered, signedUrls, s3, ct);
 
         // hydratedOrdered/feedItems are in `ranked` order with dropped IDs already removed,
         // so we walk a parallel index into the windowed-like counts kept on `ranked`.

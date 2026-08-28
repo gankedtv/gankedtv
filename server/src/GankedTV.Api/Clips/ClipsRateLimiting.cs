@@ -17,6 +17,7 @@ public static class ClipsRateLimiting
 {
     public const string ClipsWritePolicy = "clips-write";
     public const string ClipsViewPolicy = "clips-view";
+    public const string LikesPolicy = "likes";
 
     // 30 writes per minute. Per-user when the caller is authenticated, per-IP otherwise.
     // Fixed window (not sliding) — same shape as the credentials policy, no extra state.
@@ -24,8 +25,8 @@ public static class ClipsRateLimiting
     // The 30 covers the WHOLE clip-write surface AND the moderation-report submission
     // endpoints — every endpoint that attaches this policy shares one bucket per user:
     // POST /clips, POST /clips/{id}/upload-url, POST /clips/{id}/complete, PATCH /clips/{id},
-    // DELETE /clips/{id}, POST /clips/{id}/like, DELETE /clips/{id}/like,
-    // POST /clips/{id}/report, POST /comments/{id}/report, POST /users/{id}/report.
+    // DELETE /clips/{id}, POST /clips/{id}/report, POST /comments/{id}/report,
+    // POST /users/{id}/report. Likes have their own bucket — see LikesPolicy.
     // A happy-path upload burns 3 (create + upload-url + complete), so the floor is ~10 clips/min
     // per user before the bucket exhausts. Reports share the same bucket on purpose: it caps
     // mass-report abuse without needing a second per-user keyed limiter. Pinned by
@@ -44,6 +45,13 @@ public static class ClipsRateLimiting
     // window above this layer) but tight enough that a single host can't run a write storm.
     public const int ViewPermitLimit = 20;
     public static readonly TimeSpan ViewWindow = TimeSpan.FromMinutes(1);
+
+    // Likes (clip and comment, like and unlike) get their own per-user bucket rather than
+    // sharing the 30/min write budget. Liking is the cheapest, highest-frequency action in the
+    // product — a run down a comment thread would otherwise lock the same user out of uploading
+    // for a minute. Still bounded: 120/min is far above human tapping and far below a script.
+    public const int LikePermitLimit = 120;
+    public static readonly TimeSpan LikeWindow = TimeSpan.FromMinutes(1);
 
     // Machine-readable code stamped into the ProblemDetails extensions when any policy
     // rejects. Mirrors the convention from ProblemResults.* used elsewhere in the API.
@@ -83,6 +91,17 @@ public static class ClipsRateLimiting
             var key = ResolvePartitionKey(ctx);
             var factory = ctx.RequestServices.GetRequiredService<RedisRateLimiterFactory>();
             return RateLimitPartition.Get(key, _ => factory.Create(ClipsWritePolicy, key, WritePermitLimit, WriteWindow));
+        });
+        return options;
+    }
+
+    public static RateLimiterOptions AddLikesPolicy(this RateLimiterOptions options)
+    {
+        options.AddPolicy<string>(LikesPolicy, ctx =>
+        {
+            var key = ResolvePartitionKey(ctx);
+            var factory = ctx.RequestServices.GetRequiredService<RedisRateLimiterFactory>();
+            return RateLimitPartition.Get(key, _ => factory.Create(LikesPolicy, key, LikePermitLimit, LikeWindow));
         });
         return options;
     }

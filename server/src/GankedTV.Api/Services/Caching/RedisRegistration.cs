@@ -12,7 +12,7 @@ namespace GankedTV.Api.Services.Caching;
 /// Lives in a service (not Program.cs) so the conditional logic stays inside the coverage
 /// denominator per CLAUDE.md.
 ///
-/// Always registers <see cref="HybridCache"/>, <see cref="FeedCache"/>, and
+/// Always registers <see cref="HybridCache"/>, <see cref="FeedCache"/>, <see cref="SignedUrlCache"/>, and
 /// <see cref="RedisRateLimiterFactory"/>. When <c>REDIS_URL</c> is set and parses, also
 /// registers a shared <see cref="IConnectionMultiplexer"/> and attaches Redis as HybridCache's
 /// L2 (the <c>IDistributedCache</c>) — so the same connection backs both caching and the
@@ -26,6 +26,7 @@ public static class RedisRegistration
         services.AddHybridCache();
         services.AddSingleton<IFeedCache, FeedCache>();
         services.AddSingleton<IGamesCache, GamesCache>();
+        services.AddSingleton<ISignedUrlCache, SignedUrlCache>();
         services.AddSingleton<RedisRateLimiterFactory>();
 
         if (options.TryBuildConfiguration(out var configuration))

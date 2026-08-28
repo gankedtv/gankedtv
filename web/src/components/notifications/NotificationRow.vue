@@ -12,6 +12,8 @@ const actionLabel = computed(() => {
       return 'liked your clip'
     case 'comment':
       return 'commented on your clip'
+    case 'comment_like':
+      return 'liked your comment'
     case 'follow':
       return 'started following you'
     default:
@@ -19,7 +21,11 @@ const actionLabel = computed(() => {
   }
 })
 
-const clipTitle = computed(() => props.notification.clip?.title ?? null)
+// Suppressed for comment_like: the row already carries the comment snippet below, so
+// "liked your comment \u201cInsane 1v5 clutch\u201d" reads as if the clip title were the comment.
+const clipTitle = computed(() =>
+  props.notification.type === 'comment_like' ? null : (props.notification.clip?.title ?? null),
+)
 const commentSnippet = computed(() => {
   const body = props.notification.comment?.body
   if (!body) return null

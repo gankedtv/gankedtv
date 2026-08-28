@@ -138,6 +138,7 @@ public static class ClipsMutateEndpoints
         GankedTvDbContext db,
         IObjectStorageService storage,
         ITagsResolver tagsResolver,
+        ISignedUrlCache signedUrls,
         IOptions<S3Options> s3,
         IOptions<ClipValidationOptions> validation,
         IFeedCache feedCache,
@@ -255,8 +256,8 @@ public static class ClipsMutateEndpoints
 
         var expiresAt = DateTimeOffset.UtcNow.Add(VideoUrlLifetime);
         var videoUrl = storage.GetPresignedGetUrl(s3.Value.ClipsBucket, clip.VideoKey, VideoUrlLifetime);
-        var thumbnailUrl = ClipsReadEndpoints.BuildThumbnailUrl(
-            storage, s3.Value.ThumbnailsBucket, clip.ThumbnailKey);
+        var thumbnailUrl = await ClipsReadEndpoints.BuildThumbnailUrlAsync(
+            signedUrls, s3.Value.ThumbnailsBucket, clip, ct);
         var likedByMe = await db.Likes.AsNoTracking()
             .AnyAsync(l => l.ClipId == clip.Id && l.UserId == userId, ct);
 

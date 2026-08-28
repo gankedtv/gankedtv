@@ -15,6 +15,7 @@ import NotificationsDropdown from './notifications/NotificationsDropdown.vue'
 import IconSearch from './icons/IconSearch.vue'
 import IconPlus from './icons/IconPlus.vue'
 import IconBell from './icons/IconBell.vue'
+import ThumbImage from '@/components/ThumbImage.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -477,11 +478,13 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onGlobalKeydown))
                     class="flex cursor-pointer items-center gap-3 px-3.5 py-2 transition-colors duration-150 hover:bg-surface-high"
                     @mousedown.prevent="onResultClick({ name: 'clip', params: { id: c.id } })"
                   >
-                    <img
-                      :src="c.thumbnailUrl"
-                      alt=""
-                      class="h-9 w-16 shrink-0 rounded-sm border border-border bg-black object-cover"
-                    />
+                    <!-- Placeholder on the wrapper, not the image: ThumbImage fades in from
+                         opacity-0, which would hide a background on the element itself. -->
+                    <span
+                      class="block h-9 w-16 shrink-0 overflow-hidden rounded-sm border border-border bg-surface-high"
+                    >
+                      <ThumbImage :src="c.thumbnailUrl" class="h-full w-full object-cover" />
+                    </span>
                     <span class="min-w-0 flex-1 truncate text-sm text-text-primary">
                       {{ c.title }}
                     </span>

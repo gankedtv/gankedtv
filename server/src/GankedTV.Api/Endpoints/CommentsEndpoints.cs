@@ -161,18 +161,31 @@ public static class CommentsEndpoints
 
         var repliesByParent = await LoadRepliesForParentsAsync(db, page.Select(c => c.Id), ct);
 
+        // One lookup over both levels; per-level or per-comment would be the N+1 that
+        // LoadRepliesForParentsAsync exists to avoid.
+        var likedIds = await LoadLikedCommentIdsAsync(
+            db,
+            principal,
+            page.Select(c => c.Id)
+                .Concat(repliesByParent.Values.SelectMany(e => e.Preview ?? []).Select(r => r.Id)),
+            ct);
+
         var items = page.Select(c =>
         {
             var entry = repliesByParent.GetValueOrDefault(c.Id);
             var previewRows = entry.Preview ?? [];
-            var preview = previewRows.Select(r => r.ToItem()).ToList();
+            var preview = previewRows.Select(r => r.ToItem(likedByMe: likedIds.Contains(r.Id))).ToList();
             // When the thread has more replies than fit in the inline preview, hand back a
             // cursor anchored on the last preview row. The web client seeds its per-thread
             // cursor from this so "show more replies" doesn't re-fetch the preview rows.
             var repliesNextCursor = entry.Count > previewRows.Count && previewRows.Count > 0
                 ? KeysetCursor.Build(previewRows[^1].CreatedAt, previewRows[^1].Id)
                 : null;
-            return c.ToItem(replyCount: entry.Count, replies: preview, repliesNextCursor: repliesNextCursor);
+            return c.ToItem(
+                replyCount: entry.Count,
+                replies: preview,
+                repliesNextCursor: repliesNextCursor,
+                likedByMe: likedIds.Contains(c.Id));
         }).ToList();
 
         return Results.Ok(new CommentListResponse(items, nextCursor));
@@ -219,7 +232,9 @@ public static class CommentsEndpoints
 
         var (page, nextCursor) = KeysetPagination.TakePage(rows, clampedLimit, c => c.CreatedAt, c => c.Id);
 
-        var items = page.Select(c => c.ToItem()).ToList();
+        var likedIds = await LoadLikedCommentIdsAsync(db, principal, page.Select(c => c.Id), ct);
+
+        var items = page.Select(c => c.ToItem(likedByMe: likedIds.Contains(c.Id))).ToList();
         return Results.Ok(new CommentListResponse(items, nextCursor));
     }
 
@@ -277,6 +292,32 @@ public static class CommentsEndpoints
         ClaimsPrincipal principal,
         CancellationToken ct) =>
         clips.Where(ClipQueryExtensions.NotVisibleTo(principal.GetUserIdOrNull())).AnyAsync(ct);
+
+    // Anonymous callers short-circuit, so the signed-out path costs nothing.
+    private static async Task<HashSet<Guid>> LoadLikedCommentIdsAsync(
+        GankedTvDbContext db,
+        ClaimsPrincipal principal,
+        IEnumerable<Guid> commentIds,
+        CancellationToken ct)
+    {
+        if (!principal.TryGetUserId(out var userId))
+        {
+            return [];
+        }
+
+        var ids = commentIds as IReadOnlyCollection<Guid> ?? commentIds.ToList();
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        var liked = await db.CommentLikes.AsNoTracking()
+            .Where(l => l.UserId == userId && ids.Contains(l.CommentId))
+            .Select(l => l.CommentId)
+            .ToListAsync(ct);
+
+        return [.. liked];
+    }
 
     // For each top-level comment id, returns the total live-reply count plus the oldest few replies
     // for the inline preview — never the full reply set, which is unbounded for a popular comment.

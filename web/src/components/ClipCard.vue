@@ -6,6 +6,7 @@ import DurationBadge from './DurationBadge.vue'
 import AuthorHandle from './AuthorHandle.vue'
 import IconHeart from './icons/IconHeart.vue'
 import IconEye from './icons/IconEye.vue'
+import ThumbImage from './ThumbImage.vue'
 
 const props = withDefaults(defineProps<{ clip: ClipFeedItem; showAuthor?: boolean }>(), {
   showAuthor: true,
@@ -42,8 +43,8 @@ function onLinkKeydown(e: KeyboardEvent) {
     @keydown="onKeydown"
   >
     <!-- Thumbnail -->
-    <div class="relative aspect-video overflow-hidden bg-black">
-      <img :src="props.clip.thumbnailUrl" alt="" class="h-full w-full object-cover" />
+    <div class="relative aspect-video overflow-hidden bg-surface-high">
+      <ThumbImage :src="props.clip.thumbnailUrl" class="h-full w-full object-cover" />
       <!-- Game tag — top-left. Links to /game/:slug. The handlers stop both
            pointer and keyboard activation from bubbling to the parent article,
            whose @click + @keydown otherwise route to the clip detail instead. -->

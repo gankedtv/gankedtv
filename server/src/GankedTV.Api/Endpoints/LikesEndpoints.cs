@@ -16,7 +16,7 @@ public static class LikesEndpoints
     {
         var group = app.MapGroup("/clips")
             .RequireAuthorization()
-            .RequireRateLimiting(ClipsRateLimiting.ClipsWritePolicy);
+            .RequireRateLimiting(ClipsRateLimiting.LikesPolicy);
         group.MapPost("/{id:guid}/like", LikeClip);
         group.MapDelete("/{id:guid}/like", UnlikeClip);
         return app;

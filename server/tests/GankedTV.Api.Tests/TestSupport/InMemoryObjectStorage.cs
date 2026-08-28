@@ -10,6 +10,8 @@ public sealed class InMemoryObjectStorage : IObjectStorageService
 {
     public Dictionary<(string Bucket, string Key), byte[]> Objects { get; } = new();
     public List<(string Bucket, string Key, string ContentType, byte[] Bytes)> PutCalls { get; } = new();
+    /// <summary>Cache-Control header recorded per stored object (null when the put omitted it).</summary>
+    public Dictionary<(string Bucket, string Key), string?> CacheControl { get; } = new();
     public int EnsureBucketsCallCount { get; private set; }
 
     public Task EnsureBucketsAsync(CancellationToken ct = default)
@@ -23,18 +25,34 @@ public sealed class InMemoryObjectStorage : IObjectStorageService
             ? new ObjectMetadata(bytes.Length, null)
             : null);
 
-    public async Task PutObjectAsync(string bucket, string key, Stream content, string contentType, CancellationToken ct = default)
+    public Task PutObjectAsync(
+        string bucket,
+        string key,
+        Stream content,
+        string contentType,
+        CancellationToken ct = default) =>
+        PutObjectAsync(bucket, key, content, contentType, cacheControl: null, ct);
+
+    public async Task PutObjectAsync(
+        string bucket,
+        string key,
+        Stream content,
+        string contentType,
+        string? cacheControl,
+        CancellationToken ct = default)
     {
         using var ms = new MemoryStream();
         await content.CopyToAsync(ms, ct);
         var bytes = ms.ToArray();
         Objects[(bucket, key)] = bytes;
+        CacheControl[(bucket, key)] = cacheControl;
         PutCalls.Add((bucket, key, contentType, bytes));
     }
 
     public Task DeleteObjectAsync(string bucket, string key, CancellationToken ct = default)
     {
         Objects.Remove((bucket, key));
+        CacheControl.Remove((bucket, key));
         return Task.CompletedTask;
     }
 
@@ -43,6 +61,7 @@ public sealed class InMemoryObjectStorage : IObjectStorageService
         foreach (var k in Objects.Keys.Where(k => k.Item1 == bucket && k.Item2.StartsWith(prefix, StringComparison.Ordinal)).ToList())
         {
             Objects.Remove(k);
+            CacheControl.Remove(k);
         }
         return Task.CompletedTask;
     }

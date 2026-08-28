@@ -99,7 +99,7 @@ public class ClipsRateLimitTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Like_ExceedsWritePermitLimit_Returns429()
+    public async Task Like_ExceedsLikePermitLimit_Returns429()
     {
         await _fx.ResetAsync();
         var (authorId, _) = await SeedUserAndIssueTokenAsync("rl-author");
@@ -107,11 +107,9 @@ public class ClipsRateLimitTests : IAsyncLifetime
         var clipId = await SeedClipAsync(authorId);
         using var client = ClientWithBearer(fanToken);
 
-        // Alternate like/unlike so the same single clip can absorb every accepted hit without
-        // a unique-key collision — the rate limiter cares about the request count, not the
-        // semantics of the underlying operation. Confirms the policy covers the likes group
-        // in addition to /clips POST.
-        for (var i = 0; i < ClipsRateLimiting.WritePermitLimit; i++)
+        // Alternate like/unlike so one clip can absorb every accepted hit without a unique-key
+        // collision — the limiter counts requests, not the semantics underneath.
+        for (var i = 0; i < ClipsRateLimiting.LikePermitLimit; i++)
         {
             var resp = (i % 2 == 0)
                 ? await client.PostAsync($"/clips/{clipId}/like", content: null)
@@ -132,36 +130,61 @@ public class ClipsRateLimitTests : IAsyncLifetime
     [Fact]
     public async Task MixedWrites_ShareBucket_AcrossEndpointGroups()
     {
-        // The three /clips write groups (Upload, Mutate, Likes) all attach ClipsWritePolicy by
-        // name, so one user shares one bucket across the entire write surface. Pin that as an
-        // intentional contract: a developer attaching the policy to a fourth group later can't
-        // accidentally widen the per-user budget without breaking this test.
+        // The /clips write groups attach ClipsWritePolicy by name, so one user shares one bucket
+        // across the write surface. Pin that as an intentional contract: attaching the policy to
+        // another group later can't widen the per-user budget without breaking this test.
+        // Likes are deliberately NOT part of it — see Likes_DoNotShareTheWriteBucket.
         await _fx.ResetAsync();
-        var (authorId, _) = await SeedUserAndIssueTokenAsync("rl-author");
-        var (_, fanToken) = await SeedUserAndIssueTokenAsync("rl-fan");
-        var clipId = await SeedClipAsync(authorId);
-        using var client = ClientWithBearer(fanToken);
+        var (_, token) = await SeedUserAndIssueTokenAsync("rl-mixed");
+        using var client = ClientWithBearer(token);
 
-        // Split the permit between two endpoint groups (POST /clips → Upload group,
-        // POST/DELETE /{id}/like → Likes group). Sum stays at WritePermitLimit.
+        // Split the permit between two groups: POST /clips (Upload) and DELETE /clips/{id}
+        // (Mutate). Each delete targets a clip this user just created, so both halves are
+        // legitimate requests rather than rejections the limiter would count differently.
         var half = ClipsRateLimiting.WritePermitLimit / 2;
+        var created = new List<string>();
         for (var i = 0; i < half; i++)
         {
             var create = await client.PostAsJsonAsync("/clips", new { title = $"mix-{i}" });
             create.StatusCode.Should().Be(HttpStatusCode.OK);
+            created.Add((await create.Content.ReadFromJsonAsync<JsonElement>())
+                .GetProperty("id").GetString()!);
         }
         for (var i = 0; i < ClipsRateLimiting.WritePermitLimit - half; i++)
         {
-            var like = (i % 2 == 0)
-                ? await client.PostAsync($"/clips/{clipId}/like", content: null)
-                : await client.DeleteAsync($"/clips/{clipId}/like");
-            like.StatusCode.Should().Be(HttpStatusCode.OK);
+            var del = await client.DeleteAsync($"/clips/{created[i]}");
+            del.StatusCode.Should().Be(HttpStatusCode.NoContent);
         }
 
-        // One more request — from EITHER group — must 429. Picking the like path here proves
-        // the bucket carries state across groups, not just within the group the budget was spent in.
-        var blocked = await client.PostAsync($"/clips/{clipId}/like", content: null);
+        // One more from EITHER group must 429 — the bucket carries state across groups, not just
+        // within the one the budget was spent in.
+        var blocked = await client.PostAsJsonAsync("/clips", new { title = "over" });
         blocked.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+    }
+
+    [Fact]
+    public async Task Likes_DoNotShareTheWriteBucket()
+    {
+        // Liking is the cheapest, highest-frequency action in the product. On the shared bucket a
+        // run down a comment thread would lock the same user out of uploading for a minute, so it
+        // has its own budget: exhausting the write bucket must leave liking unaffected.
+        await _fx.ResetAsync();
+        var (authorId, _) = await SeedUserAndIssueTokenAsync("rl-like-author");
+        var (_, fanToken) = await SeedUserAndIssueTokenAsync("rl-like-fan");
+        var clipId = await SeedClipAsync(authorId);
+        using var client = ClientWithBearer(fanToken);
+
+        for (var i = 0; i < ClipsRateLimiting.WritePermitLimit; i++)
+        {
+            (await client.PostAsJsonAsync("/clips", new { title = $"burn-{i}" }))
+                .StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        (await client.PostAsJsonAsync("/clips", new { title = "over" }))
+            .StatusCode.Should().Be(HttpStatusCode.TooManyRequests, "the write bucket is spent");
+
+        var like = await client.PostAsync($"/clips/{clipId}/like", content: null);
+
+        like.StatusCode.Should().Be(HttpStatusCode.OK, "likes have their own bucket");
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using FluentAssertions;
 using GankedTV.Api.Data;
+using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Services.Igdb;
 using GankedTV.Api.Services.ObjectStorage;
 using GankedTV.Api.Tests.TestSupport;
@@ -271,12 +272,12 @@ public class GameCatalogImporterTests : IAsyncLifetime
 
         await using (var first = _fx.CreateContext())
         {
-            (await Build(first, igdb, storage).ImportAsync([game], CancellationToken.None))
+            (await Build(first, igdb, storage).ImportAsync([game], adoptByAlias: true, CancellationToken.None))
                 .Created.Should().Be(1);
         }
 
         await using var second = _fx.CreateContext();
-        var again = await Build(second, igdb, storage).ImportAsync([game], CancellationToken.None);
+        var again = await Build(second, igdb, storage).ImportAsync([game], adoptByAlias: true, CancellationToken.None);
 
         again.Processed.Should().Be(1);
         again.Created.Should().Be(0);
@@ -306,11 +307,197 @@ public class GameCatalogImporterTests : IAsyncLifetime
         var storage = new InMemoryObjectStorage();
 
         await using var db = _fx.CreateContext();
-        await Build(db, igdb, storage).ImportAsync([new IgdbGame(9100, "Hot", "imgHot")], CancellationToken.None);
+        await Build(db, igdb, storage).ImportAsync([new IgdbGame(9100, "Hot", "imgHot")], adoptByAlias: true, CancellationToken.None);
 
         await using var verify = _fx.CreateContext();
         var hot = await verify.Games.SingleAsync(g => g.IgdbId == 9100);
         hot.Slug.Should().Be("hot-9100");
+    }
+
+    [Fact]
+    public async Task SeededOverwatch2_IsAdoptedByIgdbId_EvenAfterUpstreamRenamedIt()
+    {
+        // The reported bug: 125174 is titled "Overwatch" now, so neither id nor name matched the
+        // curated seed and a second row was minted. The seed ships pre-linked.
+        var igdb = StubIgdb(new IgdbGame(SeededGames.LinkedIgdbId, "Overwatch", "owImg"));
+        var storage = new InMemoryObjectStorage();
+
+        await using var db = _fx.CreateContext();
+        var result = await Build(db, igdb, storage).RunAsync(CancellationToken.None);
+
+        result.Created.Should().Be(0);
+        await using var verify = _fx.CreateContext();
+        var rows = await verify.Games.Where(g => g.IgdbId == SeededGames.LinkedIgdbId).ToListAsync();
+        rows.Should().ContainSingle();
+        rows[0].Slug.Should().Be(SeededGames.LinkedSlug, "existing /game/overwatch-2 links must survive");
+        rows[0].Name.Should().Be("Overwatch 2", "curated seed names are never overwritten by IGDB");
+    }
+
+    [Fact]
+    public async Task AlternativeName_AdoptsCuratedSeed_WhenDisplayNameIsTakenByAnotherGame()
+    {
+        // The general shape, on a seed that isn't pre-linked: one game holds the display name,
+        // another is only recognisable by its alias. Without the alias pass the seed duplicates.
+        var igdb = StubIgdb(
+            new IgdbGame(7801, "Rivals Test", "img1"),
+            new IgdbGame(7802, "Rivals Test", "img2", ["Marvel Rivals"]));
+        var storage = new InMemoryObjectStorage();
+
+        await using var db = _fx.CreateContext();
+        await Build(db, igdb, storage).RunAsync(CancellationToken.None);
+
+        await using var verify = _fx.CreateContext();
+        var adopted = await verify.Games.SingleAsync(g => g.IgdbId == 7802);
+        adopted.Slug.Should().Be("marvel-rivals", "the alias matched the curated seed");
+        adopted.Name.Should().Be("Marvel Rivals");
+        adopted.IgdbManaged.Should().BeFalse("adopted seeds stay curated/non-managed");
+        (await verify.Games.CountAsync(g => g.Name == "Marvel Rivals")).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task AlternativeName_CannotReAdoptARowAlreadyClaimedThisRun()
+    {
+        // Two games resolve to one row; the second must get its own rather than steal the link.
+        var igdb = StubIgdb(
+            new IgdbGame(7811, "Marvel Rivals", "i1"),
+            new IgdbGame(7812, "Zzz Rivals Test", "i2", ["Marvel Rivals"]));
+        var storage = new InMemoryObjectStorage();
+
+        await using var db = _fx.CreateContext();
+        await Build(db, igdb, storage).RunAsync(CancellationToken.None);
+
+        await using var verify = _fx.CreateContext();
+        (await verify.Games.SingleAsync(g => g.IgdbId == 7811)).Slug.Should().Be("marvel-rivals");
+        var second = await verify.Games.SingleAsync(g => g.IgdbId == 7812);
+        second.Slug.Should().Be("zzz-rivals-test");
+        second.IgdbManaged.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task AlternativeName_NeverStealsARowLinkedToAnotherGame()
+    {
+        // Repointing a row owned by another game would leave the owner to match it by id on a
+        // later run and rename it — wrong identity for one game, no row for the other.
+        var storage = new InMemoryObjectStorage();
+        var igdb = StubIgdb(new IgdbGame(7820, "Owned Test Game", "i1"));
+        await using (var db = _fx.CreateContext())
+        {
+            await Build(db, igdb, storage).RunAsync(CancellationToken.None);
+        }
+
+        var poacher = StubIgdb(new IgdbGame(7821, "Poacher Test", "i2", ["Owned Test Game"]));
+        await using (var db = _fx.CreateContext())
+        {
+            await Build(db, poacher, storage).RunAsync(CancellationToken.None);
+        }
+
+        await using var verify = _fx.CreateContext();
+        var owned = await verify.Games.SingleAsync(g => g.Slug == "owned-test-game");
+        owned.IgdbId.Should().Be(7820, "the original owner keeps its link");
+        owned.Name.Should().Be("Owned Test Game");
+        (await verify.Games.SingleAsync(g => g.IgdbId == 7821)).Slug.Should().Be("poacher-test");
+    }
+
+    [Fact]
+    public async Task SharedName_AdoptsTheUnlinkedRow_NotTheLinkedOne()
+    {
+        // Claiming skips linked rows, so a bucket that returned the linked one would mint a
+        // duplicate while the adoptable row sat behind it.
+        var storage = new InMemoryObjectStorage();
+        await using (var setup = _fx.CreateContext())
+        {
+            setup.Games.Add(new Game
+            {
+                Name = "Shared Name Test",
+                Slug = "shared-linked",
+                Tag = "SL",
+                IgdbId = 7830,
+                IgdbManaged = true,
+            });
+            setup.Games.Add(new Game
+            {
+                Name = "Shared Name Test",
+                Slug = "shared-unlinked",
+                Tag = "SU",
+            });
+            await setup.SaveChangesAsync();
+        }
+
+        var igdb = StubIgdb(new IgdbGame(7831, "Shared Name Test", "img"));
+        await using (var db = _fx.CreateContext())
+        {
+            var result = await Build(db, igdb, storage).RunAsync(CancellationToken.None);
+            result.Created.Should().Be(0, "the unlinked row is adoptable");
+        }
+
+        await using var verify = _fx.CreateContext();
+        (await verify.Games.SingleAsync(g => g.Slug == "shared-unlinked")).IgdbId.Should().Be(7831);
+        (await verify.Games.SingleAsync(g => g.Slug == "shared-linked")).IgdbId.Should().Be(7830);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task CurrentTitle_BeatsAnAlias_RegardlessOfBatchOrder(bool aliasGameFirst)
+    {
+        // Overwatch went Overwatch → Overwatch 2 → Overwatch, so two IGDB entries can both answer
+        // to "Overwatch": the 2016 game by its current title, the sequel by an old alias. The
+        // entry that still *is* called that must get the row whichever order the batch arrives in.
+        var storage = new InMemoryObjectStorage();
+        await using (var setup = _fx.CreateContext())
+        {
+            setup.Games.Add(new Game { Name = "Roundtrip Test", Slug = "roundtrip-test", Tag = "RT" });
+            await setup.SaveChangesAsync();
+        }
+
+        var byTitle = new IgdbGame(7840, "Roundtrip Test", "i1");
+        var byAlias = new IgdbGame(7841, "Roundtrip Test 2", "i2", ["Roundtrip Test"]);
+        var igdb = StubIgdb(aliasGameFirst ? [byAlias, byTitle] : [byTitle, byAlias]);
+
+        await using (var db = _fx.CreateContext())
+        {
+            await Build(db, igdb, storage).RunAsync(CancellationToken.None);
+        }
+
+        await using var verify = _fx.CreateContext();
+        (await verify.Games.SingleAsync(g => g.Slug == "roundtrip-test")).IgdbId
+            .Should().Be(7840, "the entry whose current title matches owns the row");
+        (await verify.Games.SingleAsync(g => g.IgdbId == 7841)).Slug
+            .Should().Be("roundtrip-test-2", "the alias claimant gets its own row");
+    }
+
+    [Fact]
+    public async Task AliasAdoptionOff_LeavesCuratedRowsAlone()
+    {
+        // The on-demand search import feeds this IGDB's own fuzzy hits, so an unrelated game
+        // whose alias list happens to contain a curated title must not claim that row — the
+        // unique index would make the mislink unrecoverable.
+        var storage = new InMemoryObjectStorage();
+        var igdb = StubIgdb();
+        var poacher = new IgdbGame(7850, "Totally Other Game", "img", ["Rocket League"]);
+
+        await using (var db = _fx.CreateContext())
+        {
+            await Build(db, igdb, storage).ImportAsync([poacher], adoptByAlias: false, CancellationToken.None);
+        }
+
+        await using var verify = _fx.CreateContext();
+        (await verify.Games.SingleAsync(g => g.Slug == "rocket-league")).IgdbId
+            .Should().BeNull("the curated row keeps its identity");
+        (await verify.Games.SingleAsync(g => g.IgdbId == 7850)).Slug.Should().Be("totally-other-game");
+    }
+
+    [Fact]
+    public async Task TwoRows_CannotClaimTheSameIgdbId()
+    {
+        // Backstop: even if reconciliation regresses, the database refuses the duplicate.
+        await using var db = _fx.CreateContext();
+        db.Games.Add(new Game { Name = "Dup A Test", Slug = "dup-a-test", Tag = "DA", IgdbId = 7899 });
+        db.Games.Add(new Game { Name = "Dup B Test", Slug = "dup-b-test", Tag = "DB", IgdbId = 7899 });
+
+        var act = () => db.SaveChangesAsync();
+
+        await act.Should().ThrowAsync<DbUpdateException>();
     }
 
     private static IIgdbMetadataService StubIgdb(params IgdbGame[] games)

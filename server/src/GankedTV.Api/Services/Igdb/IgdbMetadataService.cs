@@ -58,7 +58,8 @@ public sealed class IgdbMetadataService : IIgdbMetadataService
             // `category` field); version_parent = null → exclude alternate editions. Most-rated
             // first so the catalog leads with titles people actually clip.
             var query =
-                $"fields name, cover.image_id; where cover != null & game_type = 0 & version_parent = null; " +
+                $"fields name, cover.image_id, alternative_names.name; " +
+                $"where cover != null & game_type = 0 & version_parent = null; " +
                 $"sort total_rating_count desc; limit {MaxPageSize}; offset {offset};";
 
             var page = await PostGamesQueryAsync(query, ct);
@@ -75,7 +76,7 @@ public sealed class IgdbMetadataService : IIgdbMetadataService
                 }
                 if (g.Name is { Length: > 0 } && g.Cover?.ImageId is { Length: > 0 } imageId)
                 {
-                    results.Add(new IgdbGame(g.Id, g.Name, imageId));
+                    results.Add(new IgdbGame(g.Id, g.Name, imageId, Aliases(g)));
                 }
             }
 
@@ -95,13 +96,13 @@ public sealed class IgdbMetadataService : IIgdbMetadataService
         // a bigger import would have produced.
         var escaped = term.Replace(@"\", @"\\").Replace("\"", "\\\"");
         var query =
-            $"search \"{escaped}\"; fields name, cover.image_id; " +
+            $"search \"{escaped}\"; fields name, cover.image_id, alternative_names.name; " +
             $"where cover != null & game_type = 0 & version_parent = null; limit {limit};";
 
         var page = await PostGamesQueryAsync(query, ct);
         return page
             .Where(g => g.Name is { Length: > 0 } && g.Cover?.ImageId is { Length: > 0 })
-            .Select(g => new IgdbGame(g.Id, g.Name!, g.Cover!.ImageId))
+            .Select(g => new IgdbGame(g.Id, g.Name!, g.Cover!.ImageId, Aliases(g)))
             .ToList();
     }
 
@@ -222,7 +223,28 @@ public sealed class IgdbMetadataService : IIgdbMetadataService
         }
     }
 
-    private sealed record IgdbGameDto(int Id, string? Name, IgdbCoverDto? Cover);
+    // Null rather than empty, so an alias-less IgdbGame stays record-equal to one built without.
+    private static IReadOnlyList<string>? Aliases(IgdbGameDto dto)
+    {
+        if (dto.AlternativeNames is null)
+        {
+            return null;
+        }
+
+        List<string> names = [.. dto.AlternativeNames
+            .Select(a => a.Name)
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Select(n => n!)];
+        return names.Count == 0 ? null : names;
+    }
+
+    private sealed record IgdbGameDto(
+        int Id,
+        string? Name,
+        IgdbCoverDto? Cover,
+        [property: JsonPropertyName("alternative_names")] IReadOnlyList<IgdbAlternativeNameDto>? AlternativeNames);
+
+    private sealed record IgdbAlternativeNameDto(string? Name);
 
     private sealed record IgdbCoverDto(int Id, [property: JsonPropertyName("image_id")] string? ImageId);
 

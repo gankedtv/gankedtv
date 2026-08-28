@@ -114,6 +114,9 @@ public static partial class MeEndpoints
             }
         }
 
+        // Stored verbatim, markup characters included. The web profile renders a markdown subset
+        // by building elements, never HTML — a consumer that puts a bio into markup owes it the
+        // encoding.
         if (req.Bio is not null)
         {
             if (req.Bio.Length > MaxBioLength)

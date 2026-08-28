@@ -10,6 +10,7 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
     public DbSet<Game> Games => Set<Game>();
     public DbSet<Clip> Clips => Set<Clip>();
     public DbSet<Like> Likes => Set<Like>();
+    public DbSet<CommentLike> CommentLikes => Set<CommentLike>();
     public DbSet<ClipView> ClipViews => Set<ClipView>();
     public DbSet<Follow> Follows => Set<Follow>();
     public DbSet<Comment> Comments => Set<Comment>();
@@ -89,6 +90,11 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             e.Property(g => g.IgdbManaged).HasDefaultValue(false);
             e.HasIndex(g => g.Slug).IsUnique().HasDatabaseName("idx_games_slug");
             e.HasIndex(g => g.Name).HasDatabaseName("idx_games_name");
+            // One row per IGDB game. Partial so never-linked curated rows stay exempt.
+            e.HasIndex(g => g.IgdbId)
+                .IsUnique()
+                .HasFilter("igdb_id IS NOT NULL")
+                .HasDatabaseName("idx_games_igdb_id");
             // Full-text search vector, stored generated column. EF emits ALTER TABLE …
             // GENERATED ALWAYS AS … STORED so the value is maintained by Postgres on every
             // INSERT/UPDATE of name. Companion GIN index makes `@@` lookups index-driven.
@@ -106,7 +112,9 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
                 new Game { Id = 4, Name = "Fortnite", Slug = "fortnite", Tag = "FN" },
                 new Game { Id = 5, Name = "Apex Legends", Slug = "apex-legends", Tag = "APEX" },
                 new Game { Id = 6, Name = "Rocket League", Slug = "rocket-league", Tag = "RL" },
-                new Game { Id = 7, Name = "Overwatch 2", Slug = "overwatch-2", Tag = "OW2" },
+                // Pinned: IGDB 125174 is titled "Overwatch" now, so without the id the importer
+                // matches neither id nor name and mints a duplicate.
+                new Game { Id = 7, Name = "Overwatch 2", Slug = "overwatch-2", Tag = "OW2", IgdbId = 125174 },
                 new Game { Id = 8, Name = "Dota 2", Slug = "dota-2", Tag = "DOTA2" },
                 new Game { Id = 9, Name = "Marvel Rivals", Slug = "marvel-rivals", Tag = "RIVALS" });
         });
@@ -325,6 +333,7 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             e.HasKey(c => c.Id);
             e.Property(c => c.Id).HasDefaultValueSql("gen_random_uuid()");
             e.Property(c => c.Body).HasMaxLength(CommentValidationLimits.MaxBodyLength);
+            e.Property(c => c.LikeCount).HasDefaultValue(0);
             e.Property(c => c.CreatedAt).HasDefaultValueSql("now()");
             e.Property(c => c.UpdatedAt).HasDefaultValueSql("now()");
 
@@ -351,6 +360,26 @@ public class GankedTvDbContext(DbContextOptions<GankedTvDbContext> options) : Db
             // EF auto-generates an index on the UserId FK; name it explicitly to match the
             // `idx_*` convention used elsewhere (otherwise it lands as `ix_comments_user_id`).
             e.HasIndex(c => c.UserId).HasDatabaseName("idx_comments_user_id");
+        });
+
+        modelBuilder.Entity<CommentLike>(e =>
+        {
+            e.HasKey(l => new { l.UserId, l.CommentId });
+            e.Property(l => l.CreatedAt).HasDefaultValueSql("now()");
+
+            // Parameterless WithMany: nothing reads a user's comment likes as a collection.
+            e.HasOne(l => l.User)
+                .WithMany()
+                .HasForeignKey(l => l.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(l => l.Comment)
+                .WithMany(c => c.Likes)
+                .HasForeignKey(l => l.CommentId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The PK leads with user_id, so "who liked this comment" would otherwise scan.
+            e.HasIndex(l => l.CommentId).HasDatabaseName("idx_comment_likes_comment_id");
         });
 
         modelBuilder.Entity<Notification>(e =>

@@ -39,6 +39,10 @@ public sealed class MediaJobOptions
     // if the clip is shorter than this.
     public TimeSpan ThumbnailFrameOffset { get; set; } = TimeSpan.FromSeconds(1);
 
+    // Longest-edge cap for the poster JPEG — the long edge rather than the height, so portrait
+    // captures (which reels renders full-height) get the same pixel budget as landscape.
+    public int ThumbnailMaxEdge { get; set; } = 1280;
+
     // --- Compression + just-in-time playback (issue #102) -------------------------------
     // The pipeline runs as two upload-time queue stages — thumbnail (status 'processing') and
     // compress (status 'transcoding') — plus a watch-time JIT stage (clip_stream_jobs). The

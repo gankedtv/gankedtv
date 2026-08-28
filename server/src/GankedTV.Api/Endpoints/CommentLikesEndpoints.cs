@@ -1,0 +1,144 @@
+using System.Security.Claims;
+using GankedTV.Api.Auth;
+using GankedTV.Api.Clips;
+using GankedTV.Api.Contracts.Clips;
+using GankedTV.Api.Data;
+using GankedTV.Api.Notifications;
+using GankedTV.Api.Problems;
+using Microsoft.EntityFrameworkCore;
+
+namespace GankedTV.Api.Endpoints;
+
+/// <summary>
+/// Likes on comments and replies. Mirrors <see cref="LikesEndpoints"/>, with the visibility gate
+/// reached through the comment's clip.
+/// </summary>
+public static class CommentLikesEndpoints
+{
+    public static IEndpointRouteBuilder MapCommentLikesEndpoints(this IEndpointRouteBuilder app)
+    {
+        var group = app.MapGroup("/comments")
+            .RequireAuthorization()
+            .RequireRateLimiting(ClipsRateLimiting.LikesPolicy);
+        group.MapPost("/{id:guid}/like", LikeComment);
+        group.MapDelete("/{id:guid}/like", UnlikeComment);
+        return app;
+    }
+
+    private static async Task<IResult> LikeComment(
+        Guid id,
+        ClaimsPrincipal principal,
+        GankedTvDbContext db,
+        INotificationService notifications,
+        CancellationToken ct)
+    {
+        if (!principal.TryGetUserId(out var userId))
+        {
+            return ProblemResults.Unauthorized("unauthorized");
+        }
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+
+        var target = await LoadLikeableAsync(db, id, userId, ct);
+        if (target is null)
+        {
+            return ProblemResults.NotFound("not_found");
+        }
+
+        // ON CONFLICT collapses a double-click into a 0-row insert, so the counter only moves
+        // when the row was actually new.
+        var inserted = await db.Database.ExecuteSqlInterpolatedAsync(
+            $"INSERT INTO comment_likes (user_id, comment_id) VALUES ({userId}, {id}) ON CONFLICT DO NOTHING",
+            ct);
+
+        if (inserted == 1)
+        {
+            await db.Comments.Where(c => c.Id == id)
+                .ExecuteUpdateAsync(
+                    s => s.SetProperty(c => c.LikeCount, c => c.LikeCount + 1),
+                    ct);
+
+            // ClipId rides along so the notification deep-links; self-likes are dropped by the
+            // service, and the transaction rolls the like back if this fails.
+            await notifications.RecordAsync(
+                target.AuthorId, userId, NotificationTypes.CommentLike, target.ClipId, id, ct);
+        }
+
+        var count = await CurrentCountAsync(db, id, ct);
+        await tx.CommitAsync(ct);
+
+        return Results.Ok(new LikeResponse(count, true));
+    }
+
+    private static async Task<IResult> UnlikeComment(
+        Guid id,
+        ClaimsPrincipal principal,
+        GankedTvDbContext db,
+        CancellationToken ct)
+    {
+        if (!principal.TryGetUserId(out var userId))
+        {
+            return ProblemResults.Unauthorized("unauthorized");
+        }
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+
+        var target = await LoadLikeableAsync(db, id, userId, ct);
+        if (target is null)
+        {
+            return ProblemResults.NotFound("not_found");
+        }
+
+        // Set-based so concurrent unlikes resolve to 1-row and 0-row rather than throwing.
+        var deleted = await db.CommentLikes
+            .Where(l => l.UserId == userId && l.CommentId == id)
+            .ExecuteDeleteAsync(ct);
+
+        if (deleted > 0)
+        {
+            // `LikeCount > 0` is the clamp: a counter already at zero must not go negative.
+            await db.Comments.Where(c => c.Id == id && c.LikeCount > 0)
+                .ExecuteUpdateAsync(
+                    s => s.SetProperty(c => c.LikeCount, c => c.LikeCount - 1),
+                    ct);
+        }
+
+        var count = await CurrentCountAsync(db, id, ct);
+        await tx.CommitAsync(ct);
+
+        return Results.Ok(new LikeResponse(count, false));
+    }
+
+    /// <summary>
+    /// Null when the comment is missing, soft-deleted (nothing left to endorse), or on a clip
+    /// hidden from this viewer.
+    /// </summary>
+    private static async Task<LikeTarget?> LoadLikeableAsync(
+        GankedTvDbContext db,
+        Guid commentId,
+        Guid userId,
+        CancellationToken ct)
+    {
+        var target = await db.Comments.AsNoTracking()
+            .Where(c => c.Id == commentId && c.DeletedAt == null)
+            .Select(c => new LikeTarget(c.ClipId, c.UserId))
+            .FirstOrDefaultAsync(ct);
+        if (target is null)
+        {
+            return null;
+        }
+
+        // A second query, not a subquery, so it goes through the shared WhereVisibleTo.
+        var visible = await db.Clips.AsNoTracking()
+            .Where(c => c.Id == target.ClipId)
+            .WhereVisibleTo(userId)
+            .AnyAsync(ct);
+
+        return visible ? target : null;
+    }
+
+    private static Task<int> CurrentCountAsync(GankedTvDbContext db, Guid id, CancellationToken ct) =>
+        db.Comments.AsNoTracking().Where(c => c.Id == id).Select(c => c.LikeCount).FirstAsync(ct);
+
+    private sealed record LikeTarget(Guid ClipId, Guid AuthorId);
+}

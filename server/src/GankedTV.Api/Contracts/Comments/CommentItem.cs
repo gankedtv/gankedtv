@@ -19,4 +19,6 @@ public sealed record CommentItem(
     int ReplyCount,
     IReadOnlyList<CommentItem> Replies,
     string? RepliesNextCursor,
-    bool Deleted);
+    bool Deleted,
+    int LikeCount,
+    bool LikedByMe);

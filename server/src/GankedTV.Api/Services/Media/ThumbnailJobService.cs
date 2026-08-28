@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
+using GankedTV.Api.Services.Caching;
 using GankedTV.Api.Services.Clips;
 using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.Extensions.Options;
@@ -101,7 +102,14 @@ public sealed class ThumbnailJobService : IThumbnailJobService
             var thumbnailKey = ClipKeys.BuildThumbnailKey(job.UserId, job.ClipId, gameSlug);
             await using (var stream = File.OpenRead(thumbPath))
             {
-                await _storage.PutObjectAsync(buckets.ThumbnailsBucket, thumbnailKey, stream, "image/jpeg", ct);
+                // Safe to cache because the URL is versioned on edit_count (see SignedUrlCache).
+                await _storage.PutObjectAsync(
+                    buckets.ThumbnailsBucket,
+                    thumbnailKey,
+                    stream,
+                    "image/jpeg",
+                    SignedUrlCache.CacheControlHeader,
+                    ct);
             }
 
             // Dimensions are POST-crop: they drive the player's aspect ratio and the JIT ladder's
@@ -225,6 +233,10 @@ public sealed class ThumbnailJobService : IThumbnailJobService
         // -ss before -i = fast seek (decode-skip to nearest keyframe). For a thumbnail
         // we don't care about exact frame accuracy; speed matters more.
         // -frames:v 1 = single frame; -q:v 4 = JPEG quality (~lossy but small).
+        //
+        // Runs BEFORE compress, so the input is the raw upload — uncapped, a 4K capture yields a
+        // 4K poster for a ~320px card. See BuildScaleFilter for the clamping.
+        var maxEdge = Math.Max(2, opts.ThumbnailMaxEdge);
         var args = new List<string>
         {
             "-y",
@@ -232,18 +244,21 @@ public sealed class ThumbnailJobService : IThumbnailJobService
             "-i", inputUrl,
         };
 
-        // Poster and master go through the SAME filter builder. The feed renders the poster,
-        // so a poster that kept the bars while the video lost them would make the whole
-        // feature look broken exactly where most people see it.
+        // One -vf slot, composed, mirroring CompressJobService. ffmpeg honours only the LAST
+        // -vf, so two of them silently drop one filter — a poster that kept the pillarbox bars
+        // while the video lost them, on the surface most people see. Crop comes FIRST so the
+        // edge cap measures the kept region, not the source frame.
+        var filters = new List<string>();
         if (crop is not null)
         {
-            args.Add("-vf");
-            args.Add(MediaFilters.Crop(crop));
+            filters.Add(MediaFilters.Crop(crop));
         }
+        filters.Add(BuildScaleFilter(maxEdge));
 
         args.AddRange(new[]
         {
             "-frames:v", "1",
+            "-vf", string.Join(",", filters),
             "-q:v", "4",
             "-f", "mjpeg",
             outputPath,
@@ -256,6 +271,10 @@ public sealed class ThumbnailJobService : IThumbnailJobService
                 $"ffmpeg frame extraction failed (exit {result.ExitCode}): {RedactUrls(result.Stderr)}");
         }
     }
+
+    internal static string BuildScaleFilter(int maxEdge) => string.Create(
+        CultureInfo.InvariantCulture,
+        $"scale=w='min(iw,{maxEdge})':h='min(ih,{maxEdge})':force_original_aspect_ratio=decrease:force_divisible_by=2");
 
     private void TryDelete(string path)
     {

@@ -1,7 +1,7 @@
 import { api } from './client'
 import type { AuthorSummary } from './clips'
 
-export type NotificationType = 'like' | 'comment' | 'follow'
+export type NotificationType = 'like' | 'comment' | 'comment_like' | 'follow'
 
 // Slim shape — the dropdown only needs enough to label the row and route on click. Full clip
 // thumbnails would force presigning into the unread-count hot path, so the server keeps the

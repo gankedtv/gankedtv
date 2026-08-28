@@ -39,31 +39,42 @@ public sealed class GameCatalogImporter(
         var games = await igdb.GetPopularGamesAsync(igdbOpts.PopularImportCount, ct);
         logger.LogInformation("IGDB returned {Count} games with cover art.", games.Count);
 
-        return await ImportAsync(games, ct);
+        return await ImportAsync(games, adoptByAlias: true, ct);
     }
 
-    public async Task<GameCatalogImportResult> ImportAsync(IReadOnlyList<IgdbGame> games, CancellationToken ct = default)
+    public async Task<GameCatalogImportResult> ImportAsync(
+        IReadOnlyList<IgdbGame> games,
+        bool adoptByAlias = true,
+        CancellationToken ct = default)
     {
         var s3 = s3Options.Value;
         await storage.EnsureBucketsAsync(ct);
 
-        // Reconcile by igdb_id, then by name so curated seeds (hand-picked slug/tag, e.g.
-        // "cs2"/"CS2") get adopted in place rather than duplicated. Track only the rows this
-        // batch can touch — the on-demand search import runs this on a request path. Slugs are
-        // still read from the whole table (untracked) so generated slugs stay globally unique.
+        // Only the rows this batch can touch — the on-demand search import runs this on a request
+        // path. Slugs are read from the whole table so generated ones stay globally unique.
         var incomingIds = games.Select(g => g.Id).ToHashSet();
-        var incomingNames = games.Select(g => g.Name.ToLowerInvariant()).ToHashSet();
+        var incomingNames = games
+            .SelectMany(g => Aliases(g).Prepend(g.Name))
+            .Select(n => n.ToLowerInvariant())
+            .ToHashSet();
         var existing = await db.Games
             .Where(g => (g.IgdbId != null && incomingIds.Contains(g.IgdbId.Value))
                 || incomingNames.Contains(g.Name.ToLower()))
             .ToListAsync(ct);
         var byIgdbId = existing.Where(g => g.IgdbId is not null).ToDictionary(g => g.IgdbId!.Value);
+        // Unlinked first, then lowest id: claiming skips linked rows, so an arbitrary First()
+        // could hand back a linked one and mint a duplicate while the adoptable row sat behind it.
         var byName = existing
             .GroupBy(g => g.Name, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(grp => grp.Key, grp => grp.First(), StringComparer.OrdinalIgnoreCase);
+            .ToDictionary(
+                grp => grp.Key,
+                grp => grp.OrderBy(g => g.IgdbId is null ? 0 : 1).ThenBy(g => g.Id).First(),
+                StringComparer.OrdinalIgnoreCase);
         var usedSlugs = await db.Games.AsNoTracking()
             .Select(g => g.Slug)
             .ToHashSetAsync(StringComparer.Ordinal, ct);
+
+        var adopted = ResolveAdoptions(games, byIgdbId, byName, adoptByAlias);
 
         var processed = 0;
         var created = 0;
@@ -77,13 +88,10 @@ public sealed class GameCatalogImporter(
             {
                 // already linked
             }
-            else if (byName.TryGetValue(meta.Name, out game))
+            else if (adopted.TryGetValue(meta.Id, out game))
             {
                 game.IgdbId = meta.Id; // adopt the curated seed row (IgdbManaged stays false)
                 byIgdbId[meta.Id] = game;
-                // Don't let a second IGDB game with the same name re-adopt this row — it should
-                // become a new (slug-disambiguated) row instead.
-                byName.Remove(meta.Name);
             }
             else
             {
@@ -167,6 +175,78 @@ public sealed class GameCatalogImporter(
         await storage.PutObjectAsync(s3.GameCoversBucket, key, stream, GameCovers.ContentType, ct);
         game.CoverUrl = GameCovers.BuildCoverUrl(s3, key);
         game.CoverImageId = imageId;
+        return true;
+    }
+
+    /// <summary>
+    /// Decides which existing row (if any) each unlinked IGDB game adopts, for the whole batch,
+    /// before anything is written.
+    ///
+    /// Two passes, and the order is the point: a game whose <em>current</em> title matches a row
+    /// must win over one that only matches through an old alias. Overwatch went Overwatch →
+    /// Overwatch 2 → Overwatch, so the 2016 entry and the sequel can both answer to "Overwatch" —
+    /// resolving aliases second stops whichever happened to come first in the batch from taking
+    /// the other's row. The alias pass is skipped entirely when the caller's candidates are a
+    /// fuzzy search (see <c>adoptByAlias</c>).
+    /// </summary>
+    private static Dictionary<int, Game> ResolveAdoptions(
+        IReadOnlyList<IgdbGame> games,
+        Dictionary<int, Game> byIgdbId,
+        Dictionary<string, Game> byName,
+        bool adoptByAlias)
+    {
+        var adopted = new Dictionary<int, Game>();
+
+        foreach (var meta in games.Where(m => !byIgdbId.ContainsKey(m.Id)))
+        {
+            if (TryClaim(byName, meta.Name, out var row))
+            {
+                adopted[meta.Id] = row;
+            }
+        }
+
+        if (!adoptByAlias)
+        {
+            return adopted;
+        }
+
+        foreach (var meta in games.Where(m => !byIgdbId.ContainsKey(m.Id) && !adopted.ContainsKey(m.Id)))
+        {
+            foreach (var alias in Aliases(meta))
+            {
+                if (TryClaim(byName, alias, out var row))
+                {
+                    adopted[meta.Id] = row;
+                    break;
+                }
+            }
+        }
+
+        return adopted;
+    }
+
+    private static IEnumerable<string> Aliases(IgdbGame meta) =>
+        (meta.AlternativeNames ?? []).Where(a => !string.IsNullOrWhiteSpace(a));
+
+    /// <summary>
+    /// Takes an unlinked row for <paramref name="name"/>, removing it from every bucket it sits
+    /// in so nothing else in the batch can claim it too. Rows that already carry an
+    /// <c>igdb_id</c> belong to another game and are left alone.
+    /// </summary>
+    private static bool TryClaim(Dictionary<string, Game> byName, string name, out Game game)
+    {
+        if (!byName.TryGetValue(name, out var match) || match.IgdbId is not null)
+        {
+            game = null!;
+            return false;
+        }
+
+        foreach (var claimed in byName.Where(kv => ReferenceEquals(kv.Value, match)).Select(kv => kv.Key).ToList())
+        {
+            byName.Remove(claimed);
+        }
+
+        game = match;
         return true;
     }
 

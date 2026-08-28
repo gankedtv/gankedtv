@@ -10,6 +10,7 @@ import { formatNum } from '@/lib/format'
 import ClipCard from '@/components/ClipCard.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
+import RichText from '@/components/RichText.vue'
 import TelemetryStrip, { type TelemetryCell } from '@/components/TelemetryStrip.vue'
 import UnderlineTabs from '@/components/UnderlineTabs.vue'
 import IconShare from '@/components/icons/IconShare.vue'
@@ -336,12 +337,11 @@ const TABS: { key: Tab; label: string }[] = [
 
             <div class="mt-1.5 text-sm font-semibold text-accent">@{{ profile.username }}</div>
 
-            <p
+            <RichText
               v-if="profile.bio"
-              class="m-0 mt-2.5 max-w-130 text-[13px] leading-[1.55] text-text-secondary"
-            >
-              {{ profile.bio }}
-            </p>
+              :text="profile.bio"
+              class="mt-2.5 max-w-130 text-[13px] leading-[1.55] text-text-secondary"
+            />
 
             <!-- Social links row. Rendered only when at least one handle exists; each opens
                  in a new tab with rel=noopener so the destination can't navigate this window. -->
