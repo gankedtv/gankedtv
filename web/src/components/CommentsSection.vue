@@ -259,17 +259,16 @@ async function toggleLike(commentId: string) {
 
   try {
     const result = wasLiked ? await comments.unlike(commentId) : await comments.like(commentId)
-    // Re-locate, not reuse `target`: the clip can change mid-request.
-    const current = findComment(commentId)
-    if (current) {
-      current.likeCount = result.likeCount
-      current.likedByMe = result.liked
+    // Identity, not id: a reload mid-request replaces the row with one already carrying server
+    // state, and applying our delta to that would double-count.
+    if (findComment(commentId) === target) {
+      target.likeCount = result.likeCount
+      target.likedByMe = result.liked
     }
   } catch {
-    const current = findComment(commentId)
-    if (current) {
-      current.likedByMe = wasLiked
-      current.likeCount = Math.max(0, current.likeCount + (wasLiked ? 1 : -1))
+    if (findComment(commentId) === target) {
+      target.likedByMe = wasLiked
+      target.likeCount = Math.max(0, target.likeCount + (wasLiked ? 1 : -1))
     }
     actionError.value = 'Could not update your like — try again.'
   } finally {
