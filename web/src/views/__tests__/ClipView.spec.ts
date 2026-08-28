@@ -190,12 +190,13 @@ describe('ClipView autoplay', () => {
 
     const tap = wrapper.find('button[aria-label="Play No-scope wallbang"]')
     expect(tap.exists()).toBe(true)
-    // The failed muted attempt must not leave the element muted for the click that follows.
+    // The failed attempt restores the viewer's own mute state (false here), rather than
+    // forcing sound on for the click that follows.
     expect(wrapper.find('video').element.muted).toBe(false)
   })
 
   it('retires the tap overlay when playback starts from Plyr\u2019s own controls', async () => {
-    // Plyr's controls render above the overlay, so playback can start without it being clicked.
+    // The overlay clears the control bar, so playback can start without it being clicked.
     play.mockRejectedValue(new DOMException('blocked', 'NotAllowedError'))
     const wrapper = await mountClip()
     expect(wrapper.find('button[aria-label="Play No-scope wallbang"]').exists()).toBe(true)
