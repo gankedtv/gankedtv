@@ -79,8 +79,8 @@ Behavioural consequences:
   IP for dedup, so shared networks don't penalise distinct viewers.
 - Cache is **in-process**. An API restart resets all dedup state; the next view
   from any (clip, viewer) pair counts again. Acceptable for a single-instance
-  deployment; the Phase-4 follow-up (per [PLAN.md §4](../PLAN.md)) swaps for
-  Redis for cluster-wide + restart-stable dedup.
+  deployment; swapping it for Redis would give cluster-wide + restart-stable
+  dedup.
 
 > **This is not "unique viewers" forever.** It's time-windowed dedup. If you
 > ever need lifetime-unique-per-account semantics (à la YouTube unique viewers),
@@ -265,7 +265,7 @@ review:
   prior cached run.
 - **No Redis dedup.** `IMemoryCache` works for a single API instance. Two API
   pods would each maintain their own dedup state — at worst, a viewer
-  alternating between pods would count twice instead of once. Phase 4.
+  alternating between pods would count twice instead of once.
 - **No `1h` / `30d` / `all` windows.** The UI shows these tabs as disabled so
   the product intent is visible; the server returns 400 for them by design.
   Adding a window is a one-line change in `TryParseTrendingWindow`.

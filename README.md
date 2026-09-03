@@ -102,9 +102,10 @@ This points git at `.githooks/` (via `core.hooksPath`). On `git push`, the hook 
 To run the full CI matrix manually (format + build + test + coverage on both halves):
 
 ```bash
-make ci          # both halves
+make ci          # server + web
 make ci-server   # server only
 make ci-web      # web only
+make ci-discord  # discord bot only
 ```
 
 ### Parallel worktrees
@@ -134,7 +135,7 @@ Use these credentials at `http://localhost:5173/login` (or `POST /auth/login` wi
 ### Start Infrastructure
 
 ```bash
-docker-compose up -d
+make up    # docker compose -f docker-compose.dev.yml up -d
 ```
 
 ### Access MinIO Console
@@ -155,10 +156,17 @@ gankedtv/
 ├── web/                    # Vue Frontend
 │   ├── src/
 │   └── public/
+├── discord/                # Discord bot (Bun + discord.js, off by default)
+│   ├── src/
+│   └── tests/
+├── shared/                 # Code shared across web + discord
 ├── .github/workflows/      # CI/CD
 │   ├── server.yml
-│   └── web.yml
-├── docker-compose.yml      # PostgreSQL + MinIO
+│   ├── web.yml
+│   ├── discord.yml
+│   └── release.yml
+├── docker-compose.dev.yml  # PostgreSQL + MinIO (local dev)
+├── docker-compose.prod.yml # Full production stack
 └── .env.example
 ```
 

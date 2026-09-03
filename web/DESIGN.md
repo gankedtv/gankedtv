@@ -151,7 +151,8 @@ Sanctioned exceptions (the only allowed hits): nav backdrop-blur, game-tile lift
 ## 10 — Component conventions
 
 - Tailwind utility classes in templates; tokens via `@theme`. Scoped CSS only when utilities can't express it (custom keyframes live in base.css).
-- Dynamic values (user accent, avatar fills) via inline `:style`.
+- Dynamic values (user accent, avatar fills) via inline `:style` — runtime values only, never static styling that a utility class could express.
+- **Nav is `sticky`, not `fixed`** ([AppNav.vue](src/components/AppNav.vue)) — it occupies layout space, so page content must not compensate with top padding (`pt-16` and friends).
 - Icons: stroke-based SVG components inheriting `currentColor` ([src/components/icons/](src/components/icons/)).
 - Images from user input: `<img>`, never CSS `background-image`.
 - Game cover art: `object-cover aspect-3/4`. Clip thumbnails: `object-cover aspect-video`. Both render through [ThumbImage.vue](src/components/ThumbImage.vue), never a bare `<img>` and never a CSS `background-image` — it carries the lazy/async loading and the 150ms fade over the placeholder. Pass `eager` for the LCP element on a page (the home hero, the trending feature, a game's cover) and in Reels, where the thumbnail *is* the slot being viewed.

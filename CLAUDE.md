@@ -318,13 +318,14 @@ gankedtv/
 
 **Before writing any frontend (Vue components, CSS, Tailwind classes):** Read [web/DESIGN.md](web/DESIGN.md).
 
-It defines the "Underground Arena" design system: typography (Rajdhani, Barlow Condensed, DM Sans, DM Mono), color tokens (`--color-surface-base`, `--color-brand`, `--color-neon`, etc.), layout rules, motion principles, and anti-patterns to avoid. All tokens are CSS custom properties defined in `web/src/assets/base.css`.
+It defines the "Arena" design system: typography (`--font-condensed` Barlow Condensed, `--font-body` Inter), color tokens (`--color-surface-base`, `--color-surface-raised`, `--color-accent`, etc.), layout rules, motion principles, and anti-patterns to avoid. All tokens are CSS custom properties defined in the `@theme` block of `web/src/assets/base.css`.
 
 ## graphify
 
-This project has a graphify knowledge graph at graphify-out/.
+Optional, per-checkout: `graphify-out/` is gitignored and absent unless you ran `graphify init`
+yourself. The tooling below no-ops when it isn't there, so nothing depends on it.
 
-Rules:
+Rules (all conditional on `graphify-out/` existing):
 - Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
 - If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
 - After modifying code files in this session, run `graphify update .` to keep the graph current (AST-only, no API cost)
