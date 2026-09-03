@@ -79,8 +79,10 @@ Behavioural consequences:
   IP for dedup, so shared networks don't penalise distinct viewers.
 - Cache is **in-process**. An API restart resets all dedup state; the next view
   from any (clip, viewer) pair counts again. Acceptable for a single-instance
-  deployment; swapping it for Redis would give cluster-wide + restart-stable
-  dedup.
+  deployment. A shared Redis store would extend dedup across pods and — with
+  persistence enabled — survive restarts, but it would not make the sequence
+  atomic: the check-then-write ordering above still permits a concurrent
+  over-count.
 
 > **This is not "unique viewers" forever.** It's time-windowed dedup. If you
 > ever need lifetime-unique-per-account semantics (à la YouTube unique viewers),

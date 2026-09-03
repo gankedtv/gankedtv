@@ -135,7 +135,7 @@ Use these credentials at `http://localhost:5173/login` (or `POST /auth/login` wi
 ### Start Infrastructure
 
 ```bash
-make up    # docker compose -f docker-compose.dev.yml up -d
+make up    # docker-compose -f docker-compose.dev.yml up -d
 ```
 
 ### Access MinIO Console
