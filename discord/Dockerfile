@@ -1,4 +1,4 @@
-FROM oven/bun:1.3.14-alpine
+FROM oven/bun:1.4.0-alpine
 
 # Build context is the repo ROOT (see docker-compose.dev.yml) so the image can include the shared
 # shared/ TypeScript module the bot imports. We keep the repo-relative layout (/app/discord +
