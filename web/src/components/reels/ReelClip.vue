@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { clips, type ClipDetail, type ClipFeedItem } from '@/api/clips'
 import { useAuthStore } from '@/stores/auth'
 import { formatNum } from '@/lib/format'
+import type { CropRect } from '@/lib/crop'
+import { contentFillTransform, detectPosterBars } from '@/lib/letterbox'
 import UserAvatar from '@/components/UserAvatar.vue'
 import AuthorHandle from '@/components/AuthorHandle.vue'
 import CommentsSection from '@/components/CommentsSection.vue'
@@ -35,7 +37,10 @@ const router = useRouter()
 const auth = useAuthStore()
 
 const videoEl = useTemplateRef<HTMLVideoElement>('videoEl')
+const slotEl = useTemplateRef<HTMLElement>('slotEl')
 const needsTapToPlay = ref(false)
+const isPaused = ref(false)
+const boosting = ref(false)
 const spinnerVisible = ref(false)
 const commentsOpen = ref(false)
 const codecUnsupported = ref(false)
@@ -134,6 +139,7 @@ watch(
     if (active) {
       el.muted = props.globalMuted
       el.currentTime = 0
+      el.playbackRate = 1
       needsTapToPlay.value = false
       // jsdom returns undefined from play(); real browsers return a Promise.
       // Normalise so .catch is always safe and tests can run without a media
@@ -145,6 +151,9 @@ watch(
     } else {
       el.pause()
       detachViewTracking()
+      // A skim must not survive the scroll that ends it.
+      clearHold()
+      endBoost()
       playedMs = 0
       viewRecorded = false
     }
@@ -194,18 +203,162 @@ onBeforeUnmount(() => {
   if (spinnerTimer !== null) clearTimeout(spinnerTimer)
 })
 
-// --- Interactions -------------------------------------------------------------
+// --- Black-bar reframing ------------------------------------------------------
+// A master with bars baked in pays twice in reels: once for its own bars, once for the
+// letterboxing a 9:16 column adds to landscape footage, and the clip ends up a stamp in the
+// middle of the screen. Detection runs off the poster (see lib/letterbox) and only ever changes
+// how the master is framed on screen — the clip itself is untouched.
 
-function handleTapToPlay() {
-  if (!videoEl.value) return
-  Promise.resolve(videoEl.value.play())
-    .then(() => {
-      needsTapToPlay.value = false
+const contentRect = ref<CropRect | null>(null)
+const slotSize = ref({ w: 0, h: 0 })
+
+// Guards against a late detection landing on a slot whose clip has since swapped.
+let barsRequestId = 0
+
+watch(
+  () => props.clip.thumbnailUrl,
+  (url) => {
+    const myId = ++barsRequestId
+    contentRect.value = null
+    if (!url) return
+    void detectPosterBars(url).then((rect) => {
+      if (myId === barsRequestId) contentRect.value = rect
     })
-    .catch(() => {
-      // User gesture didn't help — leave the overlay visible.
-    })
+  },
+  { immediate: true },
+)
+
+function measureSlot() {
+  const el = slotEl.value
+  if (!el) return
+  slotSize.value = { w: el.clientWidth, h: el.clientHeight }
 }
+
+onMounted(() => {
+  measureSlot()
+  if (typeof window !== 'undefined') window.addEventListener('resize', measureSlot)
+})
+
+onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') window.removeEventListener('resize', measureSlot)
+})
+
+// Zoom the master past its baked-in bars so the real content fills the reels column instead of
+// being letterboxed twice. The bars this pushes outside the slot are already clipped by the
+// article's overflow-hidden.
+const videoStyle = computed(() => {
+  const rect = contentRect.value
+  const detail = props.detail
+  const { w, h } = slotSize.value
+  if (!rect || !detail) return undefined
+  const transform = contentFillTransform(rect, detail.width, detail.height, w, h)
+  return transform ? { transform } : undefined
+})
+
+// --- Pause + hold-to-skim -----------------------------------------------------
+// Tap toggles playback; press-and-hold runs at 2x while held. The hold is cancelled by any
+// meaningful pointer movement, because in a vertical snap feed most presses are the start of a
+// scroll, not a request to skim.
+
+const BOOST_RATE = 2
+const HOLD_MS = 220
+const HOLD_MOVE_TOLERANCE = 12
+
+let holdTimer: ReturnType<typeof setTimeout> | null = null
+let holdOrigin: { x: number; y: number } | null = null
+let pointerMovedAway = false
+
+function clearHold() {
+  if (holdTimer !== null) {
+    clearTimeout(holdTimer)
+    holdTimer = null
+  }
+  holdOrigin = null
+}
+
+function endBoost() {
+  if (!boosting.value) return
+  boosting.value = false
+  if (videoEl.value) videoEl.value.playbackRate = 1
+}
+
+function togglePlayback() {
+  const el = videoEl.value
+  if (!el) return
+  if (el.paused) {
+    Promise.resolve(el.play())
+      .then(() => {
+        needsTapToPlay.value = false
+      })
+      .catch(() => {
+        needsTapToPlay.value = true
+      })
+  } else {
+    el.pause()
+  }
+}
+
+function onPointerDown(e: PointerEvent) {
+  if (!props.isActive) return
+  pointerMovedAway = false
+  holdOrigin = { x: e.clientX, y: e.clientY }
+  // Capture so a press that drifts off the button still delivers its up/cancel here; without it
+  // a boost could be left running with nothing to switch it off.
+  const target = e.currentTarget as Element & { setPointerCapture?: (id: number) => void }
+  try {
+    target.setPointerCapture?.(e.pointerId)
+  } catch {
+    // Capture is an optimisation, not a requirement.
+  }
+  holdTimer = setTimeout(() => {
+    holdTimer = null
+    const el = videoEl.value
+    // Holding a paused clip shouldn't silently speed it up; the release toggles play instead.
+    if (!el || el.paused) return
+    boosting.value = true
+    el.playbackRate = BOOST_RATE
+  }, HOLD_MS)
+}
+
+function onPointerMove(e: PointerEvent) {
+  if (!holdOrigin) return
+  const dx = e.clientX - holdOrigin.x
+  const dy = e.clientY - holdOrigin.y
+  if (Math.hypot(dx, dy) < HOLD_MOVE_TOLERANCE) return
+  pointerMovedAway = true
+  clearHold()
+  endBoost()
+}
+
+function onPointerUp() {
+  const wasBoosting = boosting.value
+  clearHold()
+  endBoost()
+  // A release that ends a skim is not also a pause request.
+  if (wasBoosting || pointerMovedAway) return
+  togglePlayback()
+}
+
+function onPointerCancel() {
+  // Fired when the browser takes the gesture over for a scroll.
+  pointerMovedAway = true
+  clearHold()
+  endBoost()
+}
+
+// Pointer releases already toggle; this catches keyboard activation only, which reports no
+// click count. Without the guard every tap would toggle twice.
+function onPlaybackClick(e: MouseEvent) {
+  if (e.detail === 0) togglePlayback()
+}
+
+const showPlayBadge = computed(() => needsTapToPlay.value || (isPaused.value && props.isActive))
+
+const playbackLabel = computed(() =>
+  showPlayBadge.value ? `Play ${props.clip.title}` : `Pause ${props.clip.title}`,
+)
+
+// --- Interactions -------------------------------------------------------------
 
 async function toggleLike() {
   if (likeBusy.value) return
@@ -273,7 +426,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <article class="relative flex h-full w-full items-center justify-center overflow-hidden bg-black">
+  <article
+    ref="slotEl"
+    class="relative flex h-full w-full items-center justify-center overflow-hidden bg-black"
+  >
     <!-- Thumbnail layer — visible until the video element mounts. `eager`: this is the whole
          slot the viewer is looking at, so deferring it would defer the only thing on screen. -->
     <ThumbImage
@@ -292,9 +448,12 @@ onBeforeUnmount(() => {
       :poster="clip.thumbnailUrl"
       :loop="true"
       :muted="globalMuted"
+      :style="videoStyle"
       playsinline
       preload="metadata"
       class="block max-h-full max-w-full object-contain"
+      @play="isPaused = false"
+      @pause="isPaused = true"
     />
 
     <!-- Delayed loading ticker. -->
@@ -342,20 +501,40 @@ onBeforeUnmount(() => {
       </RouterLink>
     </div>
 
-    <!-- Tap-to-play fallback (autoplay rejection). -->
+    <!-- Playback surface: tap toggles pause, press-and-hold skims at 2x. Also carries the
+         tap-to-play recovery when autoplay is rejected. Sits ahead of the right rail and the
+         bottom overlay in DOM order, so those keep taking their own clicks. -->
     <button
-      v-if="needsTapToPlay && detail"
+      v-if="detail && !codecUnsupported"
       type="button"
       class="absolute inset-0 flex cursor-pointer items-center justify-center bg-transparent"
-      :aria-label="`Play ${clip.title}`"
-      @click="handleTapToPlay"
+      :aria-label="playbackLabel"
+      @pointerdown="onPointerDown"
+      @pointermove="onPointerMove"
+      @pointerup="onPointerUp"
+      @pointercancel="onPointerCancel"
+      @click="onPlaybackClick"
     >
       <span
+        v-if="showPlayBadge"
         class="inline-flex size-16 items-center justify-center rounded-full border border-white/25 bg-black/55 text-[#f4f1e8]"
       >
         <IconPlay :size="26" />
       </span>
     </button>
+
+    <!-- Skim indicator. Purely informational, so it never intercepts the hold that spawned it. -->
+    <div
+      v-if="boosting"
+      class="pointer-events-none absolute inset-x-0 top-4 flex justify-center"
+      aria-hidden="true"
+    >
+      <span
+        class="rounded-full border border-white/20 bg-black/60 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[#f4f1e8]"
+      >
+        2x speed
+      </span>
+    </div>
 
     <!-- Bottom legibility gradient — sanctioned overlay for text over video. -->
     <div

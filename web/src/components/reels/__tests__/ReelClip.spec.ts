@@ -2,10 +2,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { createRouter, createMemoryHistory, type Router } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, nextTick } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import type { ClipDetail, ClipFeedItem } from '@/api/clips'
 import ReelClip from '../ReelClip.vue'
+
+const detectPosterBars = vi.fn<(url: string) => Promise<unknown>>()
+// Only the pixel-reading half is stubbed; the framing math stays real so these tests exercise
+// the transform the component actually ships.
+vi.mock('@/lib/letterbox', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/letterbox')>('@/lib/letterbox')
+  return { ...actual, detectPosterBars: (url: string) => detectPosterBars(url) }
+})
 
 const like = vi.fn()
 const unlike = vi.fn()
@@ -110,15 +118,31 @@ async function mountReel(props: {
   return wrapper
 }
 
+// jsdom's play/pause are unimplemented stubs that never move `paused`, so anything that branches
+// on playback state would test nothing. Back it with a flag and fire the events the component
+// binds, which is what makes "tap pauses a playing clip" a real assertion.
+let mediaPaused = true
+
 beforeEach(() => {
   like.mockReset()
   unlike.mockReset()
   recordView.mockReset()
-  // jsdom's HTMLMediaElement.play/pause are unimplemented stubs that log
-  // "Not implemented" to stderr. The component defensively wraps the return
-  // in Promise.resolve, so the code path works — silencing the noise here.
-  HTMLMediaElement.prototype.play = vi.fn(() => Promise.resolve())
-  HTMLMediaElement.prototype.pause = vi.fn()
+  detectPosterBars.mockReset()
+  detectPosterBars.mockResolvedValue(null)
+  mediaPaused = true
+  Object.defineProperty(HTMLMediaElement.prototype, 'paused', {
+    configurable: true,
+    get: () => mediaPaused,
+  })
+  HTMLMediaElement.prototype.play = vi.fn(function (this: HTMLMediaElement) {
+    mediaPaused = false
+    this.dispatchEvent(new Event('play'))
+    return Promise.resolve()
+  })
+  HTMLMediaElement.prototype.pause = vi.fn(function (this: HTMLMediaElement) {
+    mediaPaused = true
+    this.dispatchEvent(new Event('pause'))
+  })
 })
 
 afterEach(() => {
@@ -320,5 +344,235 @@ describe('ReelClip — comments sheet', () => {
       .forEach((el) => el.dispatchEvent(new Event('transitionend')))
     await flushPromises()
     expect(document.querySelector('[role="dialog"][aria-label="Comments"]')).toBeNull()
+  })
+})
+
+// The playback surface is the only control whose label flips between Play and Pause.
+function playbackSurface(wrapper: VueWrapper) {
+  return wrapper
+    .findAll('button')
+    .find((b) => /^(Play|Pause) /.test(b.attributes('aria-label') ?? ''))!
+}
+
+// jsdom has no PointerEvent, and VTU's trigger() can't set clientX/detail on the MouseEvent it
+// falls back to (both are getter-only). Constructing the event directly is the way to express a
+// gesture with real coordinates.
+function fire(
+  wrapper: ReturnType<typeof playbackSurface>,
+  type: string,
+  init: MouseEventInit = {},
+) {
+  const ev = new MouseEvent(type, { bubbles: true, cancelable: true, ...init })
+  Object.defineProperty(ev, 'pointerId', { value: 1, configurable: true })
+  wrapper.element.dispatchEvent(ev)
+  return nextTick()
+}
+
+function tap(surface: ReturnType<typeof playbackSurface>, x = 10, y = 10) {
+  return fire(surface, 'pointerdown', { clientX: x, clientY: y }).then(() =>
+    fire(surface, 'pointerup', { clientX: x, clientY: y }),
+  )
+}
+
+describe('ReelClip \u2014 pause', () => {
+  it('pauses a playing clip on tap and resumes it on the next tap', async () => {
+    const wrapper = await mountReel({ detail: makeDetail(), isActive: true })
+    await flushPromises()
+    expect(mediaPaused).toBe(false)
+
+    await tap(playbackSurface(wrapper))
+    expect(mediaPaused).toBe(true)
+
+    await tap(playbackSurface(wrapper))
+    await flushPromises()
+    expect(mediaPaused).toBe(false)
+  })
+
+  it('advertises the paused state through the control label', async () => {
+    const wrapper = await mountReel({ detail: makeDetail(), isActive: true })
+    await flushPromises()
+    expect(playbackSurface(wrapper).attributes('aria-label')).toBe('Pause No-scope wallbang')
+
+    await tap(playbackSurface(wrapper))
+    expect(playbackSurface(wrapper).attributes('aria-label')).toBe('Play No-scope wallbang')
+  })
+
+  // Keyboard activation fires a click with no pointer sequence behind it. Pointer taps must not
+  // also run that path, or every tap would toggle twice and land back where it started.
+  it('toggles from the keyboard without double-toggling on a pointer tap', async () => {
+    const wrapper = await mountReel({ detail: makeDetail(), isActive: true })
+    await flushPromises()
+    const surface = playbackSurface(wrapper)
+
+    await fire(surface, 'click', { detail: 0 })
+    expect(mediaPaused).toBe(true)
+
+    // A real tap: pointerdown/up (which toggles) plus the click the browser synthesises after it.
+    await tap(surface)
+    await fire(surface, 'click', { detail: 1 })
+    await flushPromises()
+    expect(mediaPaused).toBe(false)
+  })
+})
+
+describe('ReelClip \u2014 hold to skim', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  async function mountHeld() {
+    vi.useFakeTimers()
+    const wrapper = await mountReel({ detail: makeDetail(), isActive: true })
+    await vi.runOnlyPendingTimersAsync()
+    return {
+      wrapper,
+      surface: playbackSurface(wrapper),
+      video: wrapper.find('video').element as HTMLVideoElement,
+    }
+  }
+
+  it('runs at 2x while held and restores normal speed on release', async () => {
+    const { wrapper, surface, video } = await mountHeld()
+
+    await fire(surface, 'pointerdown', { clientX: 10, clientY: 10 })
+    await vi.advanceTimersByTimeAsync(300)
+    expect(video.playbackRate).toBe(2)
+    expect(wrapper.text()).toContain('2x speed')
+
+    await fire(surface, 'pointerup', { clientX: 10, clientY: 10 })
+    expect(video.playbackRate).toBe(1)
+    expect(wrapper.text()).not.toContain('2x speed')
+  })
+
+  // The release that ends a skim is not also a request to pause.
+  it('does not pause the clip when the hold ends', async () => {
+    const { surface } = await mountHeld()
+
+    await fire(surface, 'pointerdown', { clientX: 10, clientY: 10 })
+    await vi.advanceTimersByTimeAsync(300)
+    await fire(surface, 'pointerup', { clientX: 10, clientY: 10 })
+    expect(mediaPaused).toBe(false)
+  })
+
+  // Most presses in a vertical snap feed are the start of a scroll, not a request to skim.
+  it('abandons the hold once the pointer moves like a scroll', async () => {
+    const { surface, video } = await mountHeld()
+
+    await fire(surface, 'pointerdown', { clientX: 10, clientY: 10 })
+    await fire(surface, 'pointermove', { clientX: 10, clientY: 90 })
+    await vi.advanceTimersByTimeAsync(300)
+    expect(video.playbackRate).toBe(1)
+
+    // And the drag must not read as a tap either.
+    await fire(surface, 'pointerup', { clientX: 10, clientY: 90 })
+    expect(mediaPaused).toBe(false)
+  })
+
+  it('ends a skim when the browser takes the gesture over for a scroll', async () => {
+    const { surface, video } = await mountHeld()
+
+    await fire(surface, 'pointerdown', { clientX: 10, clientY: 10 })
+    await vi.advanceTimersByTimeAsync(300)
+    expect(video.playbackRate).toBe(2)
+
+    await fire(surface, 'pointercancel')
+    expect(video.playbackRate).toBe(1)
+  })
+
+  it('does not let a skim survive scrolling to the next reel', async () => {
+    const { wrapper, surface, video } = await mountHeld()
+
+    await fire(surface, 'pointerdown', { clientX: 10, clientY: 10 })
+    await vi.advanceTimersByTimeAsync(300)
+    expect(video.playbackRate).toBe(2)
+
+    await wrapper.setProps({ isActive: false })
+    await vi.runOnlyPendingTimersAsync()
+    expect(video.playbackRate).toBe(1)
+  })
+
+  it('leaves a paused clip alone when it is held', async () => {
+    const { surface, video } = await mountHeld()
+
+    await tap(surface, 1, 1)
+    expect(mediaPaused).toBe(true)
+
+    await fire(surface, 'pointerdown', { clientX: 1, clientY: 1 })
+    await vi.advanceTimersByTimeAsync(300)
+    expect(video.playbackRate).toBe(1)
+  })
+})
+
+describe('ReelClip — black-bar reframing', () => {
+  // The reels column, and a frame that reports 1920x1080.
+  const SLOT_W = 400
+  const SLOT_H = 800
+
+  beforeEach(() => {
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+      configurable: true,
+      get: () => SLOT_W,
+    })
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      get: () => SLOT_H,
+    })
+  })
+
+  afterEach(() => {
+    // @ts-expect-error restoring jsdom's own accessors by deleting the overrides
+    delete HTMLElement.prototype.clientWidth
+    // @ts-expect-error see above
+    delete HTMLElement.prototype.clientHeight
+  })
+
+  it('zooms past a pillarbox so the content fills the column width', async () => {
+    detectPosterBars.mockResolvedValue({ x: 0.15, y: 0, width: 0.7, height: 1 })
+    const wrapper = await mountReel({ detail: makeDetail(), isActive: true })
+    await flushPromises()
+
+    // Content is 70% of a 400px-wide contain-fit box, so it takes 1/0.7 to fill the column.
+    const style = wrapper.find('video').attributes('style')
+    expect(style).toContain('scale(1.4286)')
+  })
+
+  it('re-centres content that sits off-centre between uneven bars', async () => {
+    detectPosterBars.mockResolvedValue({ x: 0.3, y: 0, width: 0.6, height: 1 })
+    const wrapper = await mountReel({ detail: makeDetail(), isActive: true })
+    await flushPromises()
+
+    const style = wrapper.find('video').attributes('style')
+    expect(style).toContain('scale(1.6667)')
+    expect(style).toContain('translate(-16.6667%')
+  })
+
+  it('leaves the framing untouched when no bars are found', async () => {
+    detectPosterBars.mockResolvedValue(null)
+    const wrapper = await mountReel({ detail: makeDetail(), isActive: true })
+    await flushPromises()
+    expect(wrapper.find('video').attributes('style')).toBeUndefined()
+  })
+
+  // Detection is async and slots are recycled as the feed scrolls; a late answer must not be
+  // applied to whatever clip now occupies the slot.
+  it('ignores a detection that lands after the slot has swapped clips', async () => {
+    let resolveStale: (rect: unknown) => void = () => {}
+    detectPosterBars.mockImplementationOnce(
+      () => new Promise((resolve) => (resolveStale = resolve)),
+    )
+    detectPosterBars.mockResolvedValue(null)
+
+    const wrapper = await mountReel({
+      clip: makeClip({ thumbnailUrl: 'https://cdn.test/a.jpg' }),
+      detail: makeDetail(),
+      isActive: true,
+    })
+    await wrapper.setProps({
+      clip: makeClip({ id: 'clp_02', thumbnailUrl: 'https://cdn.test/b.jpg' }),
+    })
+
+    resolveStale({ x: 0.15, y: 0, width: 0.7, height: 1 })
+    await flushPromises()
+    expect(wrapper.find('video').attributes('style')).toBeUndefined()
   })
 })
