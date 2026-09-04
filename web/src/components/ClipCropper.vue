@@ -373,7 +373,7 @@ const kbdClass =
 
 const decodeFailedMessage = computed(() =>
   props.file
-    ? "This browser can't preview this file — it will upload uncropped."
+    ? "This browser can't preview this file. It will upload uncropped."
     : "This browser can't play this clip, so it can't be cropped here.",
 )
 </script>
@@ -434,9 +434,9 @@ const decodeFailedMessage = computed(() =>
     >
       <input v-model="applyCrop" type="checkbox" class="mt-0.5 size-3.5 shrink-0 accent-accent" />
       <span class="text-[11px] leading-relaxed text-text-muted">
-        <span class="font-semibold text-text-primary">Crop this clip</span>
-        <template v-if="output"> to {{ output.width }} × {{ output.height }}</template>
-        — everything outside the box is removed permanently. Untick to publish the full frame.
+        <span class="font-semibold text-text-primary">Crop this clip</span
+        ><template v-if="output"> to {{ output.width }} × {{ output.height }}</template
+        >. Everything outside the box is removed permanently. Untick to publish the full frame.
       </span>
     </label>
 
@@ -555,7 +555,7 @@ const decodeFailedMessage = computed(() =>
       </div>
 
       <p v-if="suggestionMissed" class="m-0 text-[10px] text-text-muted">
-        We couldn't find black bars to remove — drag the edges to crop manually.
+        We couldn't find black bars to remove. Drag the edges to crop manually.
       </p>
 
       <!-- Feed cards stay aspect-video object-cover, so anything far from 16:9 centre-crops

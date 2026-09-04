@@ -312,7 +312,7 @@ onMounted(() => {
     </StatusPanel>
 
     <!-- Empty state — Following gets its own CTA per the issue spec; For You falls
-         through to the original "no clips yet — be the first" path. -->
+         through to the original "no clips yet. Be the first." path. -->
     <StatusPanel
       v-else-if="showFollowingEmpty"
       kind="empty"
@@ -337,7 +337,7 @@ onMounted(() => {
     <StatusPanel
       v-else-if="!loading && items.length === 0 && !errored"
       kind="empty"
-      message="No clips yet — be the first."
+      message="No clips yet. Be the first."
     >
       <RouterLink
         to="/upload"

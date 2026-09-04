@@ -109,7 +109,7 @@ function validationError(err: ApiError): string | null {
           Create account
         </h1>
         <p class="m-0 text-[13px] text-text-secondary">
-          Pick a handle, set a password — no third-party account required.
+          Pick a handle, set a password. No third-party account required.
         </p>
       </div>
 

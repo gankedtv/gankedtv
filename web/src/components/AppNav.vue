@@ -509,7 +509,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onGlobalKeydown))
           href="https://rewynd.dev"
           target="_blank"
           rel="noopener noreferrer"
-          title="Rewynd — instant-replay clip recorder"
+          title="Rewynd: instant-replay clip recorder"
           aria-label="Rewynd, our instant-replay clip recorder (opens in a new tab)"
           class="inline-flex h-8.5 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-transparent px-2.5 text-xs font-semibold text-text-secondary no-underline transition-colors duration-150 hover:border-accent hover:text-accent max-lg:hidden"
         >

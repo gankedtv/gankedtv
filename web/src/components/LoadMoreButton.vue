@@ -16,9 +16,7 @@ defineEmits<{
 
 <template>
   <div class="flex flex-col items-center gap-2">
-    <span v-if="errored" class="text-[11px] text-text-muted">
-      Couldn't load more — try again.
-    </span>
+    <span v-if="errored" class="text-[11px] text-text-muted"> Couldn't load more. Try again. </span>
     <button
       :disabled="loading"
       @click="$emit('load')"
