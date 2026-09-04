@@ -284,14 +284,14 @@ function pickFile(f: File | null) {
     file.value = null
     trimRange.value = null
     cropRect.value = null
-    errorMsg.value = `Unsupported file type "${f.type || 'unknown'}" — pick a video.`
+    errorMsg.value = `Unsupported file type "${f.type || 'unknown'}". Pick a video.`
     return
   }
   if (f.size > MAX_UPLOAD_BYTES) {
     file.value = null
     trimRange.value = null
     cropRect.value = null
-    errorMsg.value = `File is ${formatSize(f.size)} — limit is ${MAX_UPLOAD_MB} MB.`
+    errorMsg.value = `File is ${formatSize(f.size)}. The limit is ${MAX_UPLOAD_MB} MB.`
     return
   }
   errorMsg.value = null
@@ -350,7 +350,7 @@ function putWithProgress(url: string, body: File, contentType: string): Promise<
     }
     xhr.ontimeout = () => {
       activeXhr = null
-      reject(new Error('Upload timed out — check your connection and try again'))
+      reject(new Error('Upload timed out. Check your connection and try again.'))
     }
     xhr.send(body)
   })
@@ -552,7 +552,7 @@ async function runImportPreview(): Promise<boolean> {
     previewData.value = preview
     if (preview.durationSecs != null && preview.durationSecs > preview.maxClipDurationSecs) {
       previewError.value =
-        `Clip is ${fmtSeconds(preview.durationSecs)} — max allowed is ${fmtSeconds(preview.maxClipDurationSecs)}. ` +
+        `Clip is ${fmtSeconds(preview.durationSecs)}. Max allowed is ${fmtSeconds(preview.maxClipDurationSecs)}. ` +
         'Pick a shorter clip.'
       return false
     }
@@ -561,7 +561,7 @@ async function runImportPreview(): Promise<boolean> {
       // bite at submit time. Inline note (not blocking) — the worker's ffprobe is the
       // authoritative gate.
       previewError.value =
-        `Couldn't read this source's duration up front — max allowed is ${fmtSeconds(preview.maxClipDurationSecs)}. ` +
+        `Couldn't read this source's duration up front. Max allowed is ${fmtSeconds(preview.maxClipDurationSecs)}. ` +
         "We'll re-check after fetching; longer clips will be rejected at that point."
       // Don't block: Medal.tv / niche extractors sometimes omit duration; we still trust
       // the post-download enforcement.
@@ -585,7 +585,7 @@ async function runImportPreview(): Promise<boolean> {
       const code = (err.body as { code?: string } | null)?.code
       previewError.value =
         code === 'source_unavailable'
-          ? 'The source is unavailable — it may be private, geo-blocked, or removed.'
+          ? 'The source is unavailable. It may be private, geo-blocked, or removed.'
           : code === 'unsupported_host'
             ? 'Only Medal.tv and YouTube URLs are supported right now.'
             : code === 'invalid_url'
@@ -619,18 +619,18 @@ function describePipelineFailure(status: ClipStatus): string {
       const actual = status.durationSecs ? fmtSeconds(status.durationSecs) : 'too long'
       const cap =
         status.maxClipDurationSecs != null ? fmtSeconds(status.maxClipDurationSecs) : 'the limit'
-      return `Clip is ${actual} — max allowed is ${cap}. Pick a shorter clip.`
+      return `Clip is ${actual}. Max allowed is ${cap}. Pick a shorter clip.`
     }
     case 'source_too_large':
       return 'The source file is larger than the upload limit. Pick a shorter or lower-quality clip.'
     case 'source_unavailable':
-      return 'The source is unavailable — it may be private, geo-blocked, or removed.'
+      return 'The source is unavailable. It may be private, geo-blocked, or removed.'
     case 'fetch_failed':
       return 'The server could not fetch this clip. Double-check the URL or try a different source.'
     case 'thumbnail_failed':
-      return "We couldn't generate a thumbnail for this clip. Try again — if it persists, the source may be corrupted."
+      return "We couldn't generate a thumbnail for this clip. Try again. If it persists, the source may be corrupted."
     case 'transcode_failed':
-      return "We couldn't process this clip's video. Try again — if it persists, the source may be in an unsupported format."
+      return "We couldn't process this clip's video. Try again. If it persists, the source may be in an unsupported format."
     case 'trim_unverifiable':
       return "We couldn't verify the trim against this file (its duration is unreadable). Re-upload without trimming, or trim it locally first."
     default:
@@ -727,7 +727,7 @@ const IMPORT_HOSTS_HINT = IMPORT_ALLOWED_HOSTS.filter(
   <main class="mx-auto max-w-300 px-7 pt-7 pb-16 max-tablet:px-4">
     <div class="mx-auto max-w-3xl">
       <PageHeader title="Upload a clip" class="mb-7">
-        <template #caption>Share — drop a file or paste a URL</template>
+        <template #caption>Share: drop a file or paste a URL</template>
       </PageHeader>
 
       <!-- Step indicator -->
@@ -808,7 +808,7 @@ const IMPORT_HOSTS_HINT = IMPORT_ALLOWED_HOSTS.filter(
                 Drop your clip here
               </div>
               <div class="text-sm text-text-secondary">
-                MP4 or video — up to {{ MAX_UPLOAD_MB }} MB
+                MP4 or video, up to {{ MAX_UPLOAD_MB }} MB
               </div>
             </div>
 
@@ -856,7 +856,7 @@ const IMPORT_HOSTS_HINT = IMPORT_ALLOWED_HOSTS.filter(
                 Paste a clip URL
               </div>
               <div class="text-sm text-text-secondary">
-                Medal.tv or YouTube — we fetch + process it for you
+                Medal.tv or YouTube. We fetch + process it for you
               </div>
             </div>
             <input
@@ -970,13 +970,13 @@ const IMPORT_HOSTS_HINT = IMPORT_ALLOWED_HOSTS.filter(
               <template v-if="editTab === 'crop'">
                 We only keep the area inside the box. Everything outside it is
                 <span class="font-semibold text-text-secondary">removed permanently</span> when the
-                clip is processed — the full-frame original isn't stored, so this can't be undone
+                clip is processed. The full-frame original isn't stored, so this can't be undone
                 later.
               </template>
               <template v-else>
                 We only keep the selected range. Everything outside it is
                 <span class="font-semibold text-text-secondary">removed permanently</span> when the
-                clip is processed — the untrimmed original isn't stored, so this can't be undone
+                clip is processed. The untrimmed original isn't stored, so this can't be undone
                 later.
               </template>
             </p>
@@ -1026,7 +1026,7 @@ const IMPORT_HOSTS_HINT = IMPORT_ALLOWED_HOSTS.filter(
                 <label :class="labelClass + ' mb-0'"
                   >Title
                   <span v-if="mode === 'import'" class="text-[9px] text-text-muted"
-                    >(optional — we'll fill it from the source)</span
+                    >(optional: we'll fill it from the source)</span
                   >
                 </label>
                 <span class="text-[10px] text-text-muted"> {{ title.length }}/100 </span>
@@ -1054,7 +1054,7 @@ const IMPORT_HOSTS_HINT = IMPORT_ALLOWED_HOSTS.filter(
                 v-model="desc"
                 maxlength="500"
                 rows="4"
-                placeholder="Add context, callouts, settings — anything worth knowing"
+                placeholder="Add context, callouts, settings, or anything worth knowing"
                 :class="inputClass + ' resize-y min-h-24'"
               ></textarea>
             </div>

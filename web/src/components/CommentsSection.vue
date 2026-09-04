@@ -97,7 +97,7 @@ async function loadMore() {
     seedReplyCursors(page.items)
   } catch {
     if (requestId !== latestRequestId) return
-    actionError.value = 'Could not load more comments — try again.'
+    actionError.value = 'Could not load more comments. Try again.'
   } finally {
     if (requestId === latestRequestId) loadingMore.value = false
   }
@@ -156,7 +156,7 @@ async function postComment() {
   } catch {
     threads.value = threads.value.filter((c) => c.id !== optimistic.id)
     newBody.value = body
-    actionError.value = 'Could not post your comment — try again.'
+    actionError.value = 'Could not post your comment. Try again.'
   } finally {
     posting.value = false
   }
@@ -195,7 +195,7 @@ async function postReply(parentId: string) {
     // Reopen the composer with the failed body so the user can retry without retyping.
     replyingTo.value = parentId
     replyBody.value = body
-    actionError.value = 'Could not post your reply — try again.'
+    actionError.value = 'Could not post your reply. Try again.'
   } finally {
     replyPosting.value = false
   }
@@ -214,7 +214,7 @@ async function showMoreReplies(thread: CommentItem) {
     }
     replyCursors.value[thread.id] = page.nextCursor
   } catch {
-    actionError.value = 'Could not load replies — try again.'
+    actionError.value = 'Could not load replies. Try again.'
   } finally {
     replyLoading.value[thread.id] = false
   }
@@ -238,7 +238,7 @@ async function confirmDelete() {
       markDeleted(id)
       pendingDelete.value = null
     } else {
-      actionError.value = 'Could not delete the comment — try again.'
+      actionError.value = 'Could not delete the comment. Try again.'
     }
   } finally {
     deleting.value = false

@@ -137,7 +137,7 @@ const appLabel = computed(() => clientName.value || 'A device')
         class="m-0 rounded-md border border-border-strong bg-surface-overlay px-3 py-2 font-mono text-[11px] leading-relaxed text-text-muted"
       >
         Only approve if <em>you</em> just started this on your own device. Never approve a code
-        someone else gave you — it would give them access to your account.
+        someone else gave you. It would give them access to your account.
       </p>
       <div class="flex gap-2.5">
         <button
@@ -165,7 +165,7 @@ const appLabel = computed(() => clientName.value || 'A device')
     >
       <p class="m-0 font-heading text-lg font-bold uppercase text-neon">Device connected</p>
       <p class="m-0 font-body text-sm text-text-secondary">
-        You can return to the app — it's ready to upload. Manage or revoke this connection anytime
+        You can return to the app. It's ready to upload. Manage or revoke this connection anytime
         under Connected apps.
       </p>
     </div>

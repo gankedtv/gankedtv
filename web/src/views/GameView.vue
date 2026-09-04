@@ -277,7 +277,7 @@ watch(slug, () => {
            observer is detached when paginationErrored flips, so the only way
            back to loading is this button — retryLoadMore re-attaches on success. -->
       <div v-if="paginationErrored" class="mt-2 flex flex-col items-center gap-2">
-        <span class="text-[11px] text-text-muted">Couldn't load more — try again.</span>
+        <span class="text-[11px] text-text-muted">Couldn't load more. Try again.</span>
         <button
           :disabled="loading"
           @click="retryLoadMore"

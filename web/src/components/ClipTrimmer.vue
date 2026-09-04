@@ -283,7 +283,7 @@ const kbdClass =
 
 const decodeFailedMessage = computed(() =>
   props.file
-    ? "This browser can't preview this file — it will upload untrimmed."
+    ? "This browser can't preview this file. It will upload untrimmed."
     : "This browser can't play this clip, so it can't be trimmed here.",
 )
 </script>

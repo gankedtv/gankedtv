@@ -4,7 +4,7 @@
   >
     <h1 class="m-0 font-condensed text-[96px] font-black leading-none text-text-muted">404</h1>
     <p class="m-0 max-w-[40ch] text-sm text-text-secondary">
-      This page doesn't exist — it may have been moved or never existed.
+      This page doesn't exist. It may have been moved or never existed.
     </p>
     <RouterLink
       to="/"
