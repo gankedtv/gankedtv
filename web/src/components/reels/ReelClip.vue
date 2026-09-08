@@ -212,15 +212,30 @@ onBeforeUnmount(() => {
 const contentRect = ref<CropRect | null>(null)
 const slotSize = ref({ w: 0, h: 0 })
 
+// Detection costs a second, CORS-mode download of the poster plus a canvas readback, and every
+// loaded item is mounted at once. `detail` is the parent's active-plus-neighbours prefetch window
+// and is also what the transform below needs to apply at all, so gating on it keeps the slots the
+// viewer can reach warm and spares the rest of the page. `isActive` is in there so the first slot
+// detects at mount rather than waiting on its own detail fetch and reframing under the viewer.
+const barsWanted = computed(() => props.isActive || props.detail !== null)
+
 // Guards against a late detection landing on a slot whose clip has since swapped.
 let barsRequestId = 0
+let detectedUrl: string | null = null
 
 watch(
-  () => props.clip.thumbnailUrl,
-  (url) => {
+  [() => props.clip.thumbnailUrl, barsWanted],
+  ([url, wanted]) => {
+    if (url !== detectedUrl) {
+      barsRequestId++
+      detectedUrl = null
+      contentRect.value = null
+    }
+    // `detectedUrl` is what keeps a slot from re-detecting the same poster when it merely
+    // becomes active after its detail already landed.
+    if (!wanted || !url || detectedUrl === url) return
+    detectedUrl = url
     const myId = ++barsRequestId
-    contentRect.value = null
-    if (!url) return
     void detectPosterBars(url).then((rect) => {
       if (myId === barsRequestId) contentRect.value = rect
     })
@@ -267,6 +282,10 @@ const HOLD_MOVE_TOLERANCE = 12
 let holdTimer: ReturnType<typeof setTimeout> | null = null
 let holdOrigin: { x: number; y: number } | null = null
 let pointerMovedAway = false
+// Only a release that belongs to a press this surface accepted may toggle. The surface mounts
+// with the slot it controls, so a drag that started on the neighbouring reel can otherwise land
+// its pointerup on a surface that has just appeared under the finger.
+let pressAccepted = false
 
 function clearHold() {
   if (holdTimer !== null) {
@@ -300,6 +319,7 @@ function togglePlayback() {
 
 function onPointerDown(e: PointerEvent) {
   if (!props.isActive) return
+  pressAccepted = true
   pointerMovedAway = false
   holdOrigin = { x: e.clientX, y: e.clientY }
   // Capture so a press that drifts off the button still delivers its up/cancel here; without it
@@ -331,6 +351,8 @@ function onPointerMove(e: PointerEvent) {
 }
 
 function onPointerUp() {
+  if (!pressAccepted) return
+  pressAccepted = false
   const wasBoosting = boosting.value
   clearHold()
   endBoost()
@@ -341,6 +363,7 @@ function onPointerUp() {
 
 function onPointerCancel() {
   // Fired when the browser takes the gesture over for a scroll.
+  pressAccepted = false
   pointerMovedAway = true
   clearHold()
   endBoost()
@@ -349,13 +372,16 @@ function onPointerCancel() {
 // Pointer releases already toggle; this catches keyboard activation only, which reports no
 // click count. Without the guard every tap would toggle twice.
 function onPlaybackClick(e: MouseEvent) {
+  if (!props.isActive) return
   if (e.detail === 0) togglePlayback()
 }
 
-const showPlayBadge = computed(() => needsTapToPlay.value || (isPaused.value && props.isActive))
+const showPlayBadge = computed(() => needsTapToPlay.value || isPaused.value)
 
+// Tracks the media state, not the badge: the badge is a visibility decision, the label is what a
+// screen reader is told the button will do.
 const playbackLabel = computed(() =>
-  showPlayBadge.value ? `Play ${props.clip.title}` : `Pause ${props.clip.title}`,
+  isPaused.value || needsTapToPlay.value ? `Play ${props.clip.title}` : `Pause ${props.clip.title}`,
 )
 
 // --- Interactions -------------------------------------------------------------
@@ -503,9 +529,12 @@ onBeforeUnmount(() => {
 
     <!-- Playback surface: tap toggles pause, press-and-hold skims at 2x. Also carries the
          tap-to-play recovery when autoplay is rejected. Sits ahead of the right rail and the
-         bottom overlay in DOM order, so those keep taking their own clicks. -->
+         bottom overlay in DOM order, so those keep taking their own clicks. Only the active slot
+         gets one — its neighbours are prefetched and mounted too, and an inset-0 button over an
+         off-screen reel is both a tab stop that reads as playback controls and a surface a
+         mid-scroll tap can land on. -->
     <button
-      v-if="detail && !codecUnsupported"
+      v-if="detail && !codecUnsupported && isActive"
       type="button"
       class="absolute inset-0 flex cursor-pointer items-center justify-center bg-transparent"
       :aria-label="playbackLabel"

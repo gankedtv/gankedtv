@@ -415,6 +415,26 @@ describe('ReelClip \u2014 pause', () => {
   })
 })
 
+// Neighbouring slots are prefetched and mounted, so the surface must belong to the reel the
+// viewer is actually on — nothing pauses an off-screen clip once it starts.
+describe('ReelClip \u2014 inactive slots', () => {
+  it('renders no playback surface on a prefetched slot the viewer is not on', async () => {
+    const wrapper = await mountReel({ detail: makeDetail(), isActive: false })
+    await flushPromises()
+    expect(playbackSurface(wrapper)).toBeUndefined()
+  })
+
+  it('does not start an inactive clip when a release lands on a surface that just appeared', async () => {
+    const wrapper = await mountReel({ detail: makeDetail(), isActive: true })
+    await flushPromises()
+    const surface = playbackSurface(wrapper)
+
+    // A press the surface never accepted (it belonged to the neighbouring slot) must not toggle.
+    await fire(surface, 'pointerup', { clientX: 10, clientY: 10 })
+    expect(mediaPaused).toBe(false)
+  })
+})
+
 describe('ReelClip \u2014 hold to skim', () => {
   afterEach(() => {
     vi.useRealTimers()
@@ -551,6 +571,28 @@ describe('ReelClip — black-bar reframing', () => {
     const wrapper = await mountReel({ detail: makeDetail(), isActive: true })
     await flushPromises()
     expect(wrapper.find('video').attributes('style')).toBeUndefined()
+  })
+
+  // Every loaded item is mounted, and detection costs a poster download plus a canvas readback.
+  // Only the slots the viewer can reach without another scroll are worth that.
+  it('skips detection for a slot outside the prefetch window', async () => {
+    await mountReel({ detail: null, isActive: false })
+    await flushPromises()
+    expect(detectPosterBars).not.toHaveBeenCalled()
+  })
+
+  it('detects once the slot enters the prefetch window, and not again when it goes active', async () => {
+    const wrapper = await mountReel({ detail: null, isActive: false })
+    await flushPromises()
+    expect(detectPosterBars).not.toHaveBeenCalled()
+
+    await wrapper.setProps({ detail: makeDetail() })
+    await flushPromises()
+    expect(detectPosterBars).toHaveBeenCalledTimes(1)
+
+    await wrapper.setProps({ isActive: true })
+    await flushPromises()
+    expect(detectPosterBars).toHaveBeenCalledTimes(1)
   })
 
   // Detection is async and slots are recycled as the feed scrolls; a late answer must not be
