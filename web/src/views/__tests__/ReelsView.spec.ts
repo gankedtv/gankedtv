@@ -23,6 +23,7 @@ vi.mock('@/api/clips', async () => {
 })
 
 import ReelsView from '../ReelsView.vue'
+import ReelClip from '@/components/reels/ReelClip.vue'
 
 // jsdom doesn't ship IntersectionObserver. The implementation never relies on
 // it firing during these tests (we drive activeIndex through direct route
@@ -160,14 +161,11 @@ describe('ReelsView — deep link', () => {
     const { wrapper } = await mountAt('/feed/reels/seed')
     await flushPromises()
 
-    // The seed appears exactly once (head), followed by the rest of the page.
-    const html = wrapper.html()
-    const firstIdx = html.indexOf('Clip seed')
-    const lastIdx = html.lastIndexOf('Clip seed')
-    expect(firstIdx).toBeGreaterThanOrEqual(0)
-    expect(firstIdx).toBe(lastIdx)
-    expect(wrapper.text()).toContain('Clip b')
-    expect(wrapper.text()).toContain('Clip c')
+    // The seed gets exactly one slot (the head), followed by the rest of the page. Counted over
+    // mounted slots rather than occurrences of the title in the markup, which also shows up in
+    // labels and alt text.
+    const slotIds = wrapper.findAllComponents(ReelClip).map((c) => c.props('clip').id)
+    expect(slotIds).toEqual(['seed', 'b', 'c'])
   })
 
   it('falls back to the top of the feed and rewrites the URL when the seed 404s', async () => {

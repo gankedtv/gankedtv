@@ -269,7 +269,7 @@ const resolvedInputClass = computed(
       v-if="props.modelValue.length > 0 || draft.length > 0"
       class="mt-1.5 text-[11px] text-text-muted"
     >
-      {{ props.modelValue.length }} / {{ max }} — comma, space or enter to add
+      {{ props.modelValue.length }} / {{ max }}. Comma, space or enter to add
     </p>
   </div>
 </template>

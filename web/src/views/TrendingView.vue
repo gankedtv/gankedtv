@@ -96,7 +96,7 @@ function openClip(id: string) {
     <StatusPanel
       v-else-if="!loading && topClips.length === 0"
       kind="empty"
-      message="No clips trending yet — check back soon."
+      message="No clips trending yet. Check back soon."
     />
 
     <template v-else-if="feature">

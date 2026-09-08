@@ -53,7 +53,7 @@ export function putToPresignedUrl(
     }
     xhr.ontimeout = () => {
       cleanup()
-      reject(new Error('Upload timed out — check your connection and try again'))
+      reject(new Error('Upload timed out. Check your connection and try again.'))
     }
     xhr.send(body)
   })

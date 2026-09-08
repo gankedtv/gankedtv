@@ -210,7 +210,7 @@ watch(slug, () => {
       </div>
 
       <div v-if="paginationErrored" class="mt-2 flex flex-col items-center gap-2">
-        <span class="text-[11px] text-text-muted">Couldn't load more — try again.</span>
+        <span class="text-[11px] text-text-muted">Couldn't load more. Try again.</span>
         <button
           :disabled="loading"
           @click="retryLoadMore"

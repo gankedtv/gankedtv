@@ -238,7 +238,7 @@ function friendlyError(err: unknown): string {
     if (code === 'bio_too_long') return 'Bio is too long.'
     return `Save failed (${err.status}).`
   }
-  return 'Save failed — please try again.'
+  return 'Save failed. Please try again.'
 }
 
 // Build a PATCH /auth/me payload containing only the fields the user actually changed.
@@ -368,7 +368,7 @@ const currentBannerUrl = computed(() => bannerPreview.value ?? safeImageUrl(auth
                   class="h-full w-full object-cover"
                 />
                 <div v-else class="flex h-full items-center justify-center text-xs text-text-muted">
-                  No banner yet — pick a 4:1 image
+                  No banner yet. Pick a 4:1 image
                 </div>
               </div>
               <div class="flex items-center gap-2">

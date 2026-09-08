@@ -58,12 +58,12 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 const canSave = computed(() => (range.value !== null || crop.value !== null) && !submitting.value)
 
 const ERROR_CODES: Record<string, string> = {
-  invalid_trim: 'That trim range is invalid — try again',
-  invalid_crop: 'That crop is invalid — try again',
+  invalid_trim: 'That trim range is invalid. Try again.',
+  invalid_crop: 'That crop is invalid. Try again.',
   trim_unavailable: 'Trimming is unavailable on this server right now',
   crop_unavailable: 'Cropping is unavailable on this server right now',
-  no_operations: 'Nothing to apply — trim or crop the clip first',
-  invalid_state: 'This clip is already being processed — try again once it finishes',
+  no_operations: 'Nothing to apply. Trim or crop the clip first.',
+  invalid_state: 'This clip is already being processed. Try again once it finishes.',
   moderated: 'This clip is under moderation and can’t be edited',
   forbidden: "You don't have permission to edit this clip",
   not_found: 'Clip not found',
@@ -85,7 +85,7 @@ async function save() {
     emit('edited')
     emit('close')
   } catch (err) {
-    let msg = 'Failed to edit — please try again'
+    let msg = 'Failed to edit. Please try again.'
     if (err instanceof ApiError) {
       const code = (err.body as { code?: string } | null)?.code
       if (code && ERROR_CODES[code]) msg = ERROR_CODES[code]
@@ -165,8 +165,8 @@ async function save() {
             <p class="m-0 text-[11px] leading-relaxed text-text-muted">
               Editing re-encodes the clip, so it drops out of feeds for a moment and comes back with
               an <span class="font-semibold text-text-secondary">Edited</span> badge. Whatever you
-              cut away is permanent — the previous version isn't stored. Setting both at once
-              applies them in a single re-encode.
+              cut away is permanent: the previous version isn't stored. Setting both at once applies
+              them in a single re-encode.
             </p>
           </div>
 

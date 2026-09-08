@@ -43,7 +43,7 @@ const errored = ref(false)
 // hasn't finished / failed. The latter looks fine (thumbnail loaded) so a generic message is
 // confusing.
 const DEFAULT_ERROR = "Couldn't load this clip."
-const JIT_ERROR = 'This clip is still being prepared for your device — try again in a moment.'
+const JIT_ERROR = 'This clip is still being prepared for your device. Try again in a moment.'
 const errorMessage = ref(DEFAULT_ERROR)
 // A freshly-uploaded clip 404s until the pipeline (thumbnail + compress) finishes. Rather than
 // bounce the owner straight to not-found, we treat a 404 as "maybe still processing" and keep
@@ -561,7 +561,7 @@ async function toggleLike() {
     if (clip.value?.id !== targetId) return
     liked.value = wasLiked
     likeCount.value += wasLiked ? 1 : -1
-    fireToast('Could not update like — try again')
+    fireToast('Could not update like. Try again.')
   } finally {
     likeBusy.value = false
   }

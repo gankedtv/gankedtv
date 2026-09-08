@@ -354,7 +354,7 @@ function onLikedChanged(payload: { id: string; liked: boolean; count: number }) 
     <StatusPanel
       v-else-if="!loading && items.length === 0"
       kind="empty"
-      message="No clips yet — be the first."
+      message="No clips yet. Be the first."
     >
       <RouterLink
         to="/upload"
@@ -399,7 +399,7 @@ function onLikedChanged(payload: { id: string; liked: boolean; count: number }) 
           class="cursor-pointer rounded-lg border border-white/20 bg-black/60 px-4 py-2 text-xs font-semibold text-[#f4f1e8] transition-colors duration-150 hover:border-accent hover:text-accent"
           @click="loadMore"
         >
-          Couldn't load more — retry
+          Couldn't load more. Retry
         </button>
       </div>
     </div>

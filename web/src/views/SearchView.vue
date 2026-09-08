@@ -116,7 +116,7 @@ const hasQuery = () => typeof route.query.q === 'string' && route.query.q.trim()
       <StatusPanel
         v-if="!hasResults()"
         kind="empty"
-        :message="`No results for “${lastQuery}” — try a different term.`"
+        :message="`No results for “${lastQuery}”. Try a different term.`"
       />
 
       <!-- Clips — section headers render only when the section has results. -->

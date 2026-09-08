@@ -102,7 +102,7 @@ async function save() {
     emit('saved', updated)
     emit('close')
   } catch (err) {
-    let msg = 'Failed to save — please try again'
+    let msg = 'Failed to save. Please try again.'
     if (err instanceof ApiError) {
       const code = (err.body as { code?: string } | null)?.code
       if (code && ERROR_CODES[code]) msg = ERROR_CODES[code]
