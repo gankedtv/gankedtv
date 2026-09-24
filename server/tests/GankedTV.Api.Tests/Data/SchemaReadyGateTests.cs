@@ -7,11 +7,19 @@ using NSubstitute.ExceptionExtensions;
 
 namespace GankedTV.Api.Tests.Data;
 
-public class SchemaReadyGateTests
+public sealed class SchemaReadyGateTests : IDisposable
 {
     private static readonly TimeSpan FastPoll = TimeSpan.FromMilliseconds(5);
 
-    private static (SchemaReadyGate gate, IPendingMigrationsProbe probe, LevelCountingLogger logger) Build()
+    // A gate left waiting keeps polling every FastPoll for the rest of the run.
+    private readonly List<SchemaReadyGate> _gates = new();
+
+    public void Dispose()
+    {
+        foreach (var gate in _gates) gate.Dispose();
+    }
+
+    private (SchemaReadyGate gate, IPendingMigrationsProbe probe, LevelCountingLogger logger) Build()
     {
         var probe = Substitute.For<IPendingMigrationsProbe>();
         var services = new ServiceCollection();
@@ -19,6 +27,7 @@ public class SchemaReadyGateTests
         var logger = new LevelCountingLogger();
         var gate = new SchemaReadyGate(
             services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(), logger, FastPoll);
+        _gates.Add(gate);
         return (gate, probe, logger);
     }
 
@@ -144,6 +153,7 @@ public class SchemaReadyGateTests
         gate.Dispose();
 
         await waiter.Invoking(t => t).Should().ThrowAsync<OperationCanceledException>();
+        gate.Invoking(g => g.Dispose()).Should().NotThrow();
     }
 
     [Fact]

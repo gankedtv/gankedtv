@@ -46,6 +46,7 @@ public sealed class SchemaReadyGate : ISchemaReadyGate, IDisposable
     // One poll loop shared by every waiter: they all wait on the same schema, so N workers must not
     // mean N queries per interval (or N copies of the warning).
     private Task? _poll;
+    private int _isDisposed;
 
     public SchemaReadyGate(IServiceScopeFactory scopeFactory, ILogger<SchemaReadyGate> logger)
         : this(scopeFactory, logger, DefaultPollInterval)
@@ -118,6 +119,7 @@ public sealed class SchemaReadyGate : ISchemaReadyGate, IDisposable
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _isDisposed, 1) == 1) return;
         _disposed.Cancel();
         _disposed.Dispose();
     }

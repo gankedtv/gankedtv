@@ -211,9 +211,11 @@ to software via env (`MEDIA_VIDEO_ENCODER=libsvtav1`/`MEDIA_JIT_VIDEO_ENCODER=li
    so there's no gap where nothing processes.
 
 The worker owns no schema and runs no migrations — it only leases media jobs from the shared DB and
-reads/writes the shared object store. Deploy order doesn't matter: a worker that boots a newer image
-than the DB's schema waits for the app host to migrate (see
-[Startup database migrations](#startup-database-migrations)).
+reads/writes the shared object store. A worker whose image carries migrations the DB hasn't applied
+yet waits for the app host to migrate (see
+[Startup database migrations](#startup-database-migrations)). That only covers the new-image,
+old-schema side: an **older** worker image is not protected from a newer schema, so when a migration
+drops or renames a column the workers use, update the worker before or alongside that migration.
 
 ### Media-worker storage access + TLS
 
