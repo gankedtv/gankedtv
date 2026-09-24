@@ -153,6 +153,23 @@ describe('ReelsView — initial load', () => {
   })
 })
 
+describe('ReelsView — detail retry', () => {
+  it('refetches a cached detail when a slot asks for a fresh one', async () => {
+    feed.mockResolvedValue(makePage([makeClip('a')]))
+    const { wrapper } = await mountAt('/feed/reels')
+    await flushPromises()
+    getDetail.mockResolvedValue(makeDetail('a', { videoUrl: 'https://cdn.test/a-fresh.mp4' }))
+
+    wrapper.findComponent(ReelClip).vm.$emit('retry-detail', 'a')
+    await flushPromises()
+
+    expect(getDetail).toHaveBeenCalledTimes(2)
+    expect(wrapper.findComponent(ReelClip).props('detail')?.videoUrl).toBe(
+      'https://cdn.test/a-fresh.mp4',
+    )
+  })
+})
+
 describe('ReelsView — deep link', () => {
   it('dedupes the seed clip when it also appears in the first page', async () => {
     const seed = makeDetail('seed')

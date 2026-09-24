@@ -179,6 +179,48 @@ describe('ReelClip — render gates', () => {
   })
 })
 
+describe('ReelClip — media errors', () => {
+  const failVideo = async (wrapper: VueWrapper) => {
+    wrapper.find('video').element.dispatchEvent(new Event('error'))
+    await nextTick()
+  }
+
+  it('asks for a fresh detail the first time its video fails', async () => {
+    const wrapper = await mountReel({ detail: makeDetail(), isActive: true })
+
+    await failVideo(wrapper)
+
+    expect(wrapper.emitted('retry-detail')).toEqual([['clp_01']])
+    expect(wrapper.text()).not.toContain("Couldn't play this clip here")
+  })
+
+  it('hands off to the full player when the refreshed video fails too', async () => {
+    const wrapper = await mountReel({ detail: makeDetail(), isActive: true })
+    await failVideo(wrapper)
+    await wrapper.setProps({ detail: makeDetail({ videoUrl: 'https://cdn.test/fresh.mp4' }) })
+
+    await failVideo(wrapper)
+
+    expect(wrapper.emitted('retry-detail')).toHaveLength(1)
+    expect(wrapper.text()).toContain("Couldn't play this clip here")
+    const link = wrapper.findAll('a').find((a) => a.text().includes('Open in detail'))
+    expect(link?.attributes('href')).toBe('/clip/clp_01')
+    const surface = '[aria-label="Play No-scope wallbang"], [aria-label="Pause No-scope wallbang"]'
+    expect(wrapper.find(surface).exists()).toBe(false)
+  })
+
+  it('clears the hand-off once another detail arrives', async () => {
+    const wrapper = await mountReel({ detail: makeDetail(), isActive: true })
+    await failVideo(wrapper)
+    await wrapper.setProps({ detail: makeDetail({ videoUrl: 'https://cdn.test/fresh.mp4' }) })
+    await failVideo(wrapper)
+
+    await wrapper.setProps({ detail: makeDetail({ videoUrl: 'https://cdn.test/fresher.mp4' }) })
+
+    expect(wrapper.text()).not.toContain("Couldn't play this clip here")
+  })
+})
+
 describe('ReelClip — like flow', () => {
   it('optimistically flips like state and emits liked-changed on success', async () => {
     like.mockResolvedValue({ liked: true, likeCount: 8 })

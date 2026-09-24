@@ -96,6 +96,20 @@ public class DatabaseMigratorTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task PendingMigrationsProbe_ListsPendingUntilMigrated()
+    {
+        await using var db = CreateContext();
+        var probe = new EfPendingMigrationsProbe(db);
+
+        // Fresh DB: no history table yet, so every migration is pending.
+        (await probe.GetPendingAsync(CancellationToken.None)).Should().Equal(db.Database.GetMigrations());
+
+        await DatabaseMigrator.ApplyMigrationsAsync(db, NullLogger.Instance);
+
+        (await probe.GetPendingAsync(CancellationToken.None)).Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Readiness_ReportsUnhealthy_WhenDatabaseUnreachable()
     {
         var options = new DbContextOptionsBuilder<GankedTvDbContext>()

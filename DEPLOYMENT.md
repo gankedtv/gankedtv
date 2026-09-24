@@ -211,7 +211,11 @@ to software via env (`MEDIA_VIDEO_ENCODER=libsvtav1`/`MEDIA_JIT_VIDEO_ENCODER=li
    so there's no gap where nothing processes.
 
 The worker owns no schema and runs no migrations — it only leases media jobs from the shared DB and
-reads/writes the shared object store.
+reads/writes the shared object store. A worker whose image carries migrations the DB hasn't applied
+yet waits for the app host to migrate (see
+[Startup database migrations](#startup-database-migrations)). That only covers the new-image,
+old-schema side: an **older** worker image is not protected from a newer schema, so when a migration
+drops or renames a column the workers use, update the worker before or alongside that migration.
 
 ### Media-worker storage access + TLS
 
@@ -335,6 +339,14 @@ serialises migration runs via a `__EFMigrationsHistory` lock, so multiple replic
 flag enabled apply migrations safely (they wait, they don't race). For clarity you may still prefer
 to gate the flag to one replica or run migrations as a separate init step, but it isn't required for
 correctness. The flag accepts `true`/`1`/`yes`/`on`.
+
+Instances that **don't** migrate (the GPU encoder in a split deployment) hold their DB-backed
+background work (media workers, maintenance sweeps, IGDB sync) until the schema has no pending
+migrations ([SchemaReadyGate](server/src/GankedTV.Api/Data/SchemaReadyGate.cs)). So an encoder that
+pulls a new image before the app host has migrated logs one `Background work paused until the
+database schema is current` warning and resumes on its own, instead of failing every query against
+columns that don't exist yet. Those services also wait out a DB that's unreachable at boot; one-shot
+startup hooks such as the admin bootstrap are not gated.
 
 ## Admin bootstrap (`ADMIN_EMAILS`)
 

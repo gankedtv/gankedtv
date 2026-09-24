@@ -1,3 +1,4 @@
+using GankedTV.Api.Data;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -75,6 +76,16 @@ public abstract class MediaStageWorker<TJob> : BackgroundService
         if (FetchesFromStorage)
         {
             await ProbeStorageAsync(stoppingToken);
+        }
+
+        // Before the timer: a tick that elapses while we wait would fire the first pass twice.
+        try
+        {
+            await _scopeFactory.WaitForSchemaAsync(stoppingToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
         }
 
         using var timer = new PeriodicTimer(snapshot.PollInterval);

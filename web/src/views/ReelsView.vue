@@ -170,8 +170,11 @@ function refreshPrefetchWindow() {
   for (const id of window) prefetchDetailFor(id)
 }
 
+// Also covers a slot whose video failed on a cached detail: its presigned URL has likely expired,
+// so the cached copy has to go before the refetch.
 function retryDetail(id: string) {
   detailErrors.delete(id)
+  details.delete(id)
   prefetchDetailFor(id)
 }
 

@@ -10,6 +10,12 @@ import { games } from '@/api/games'
 import { formatNum, formatDuration, formatRelativeTime } from '@/lib/format'
 import { useAuthStore } from '@/stores/auth'
 import { safeImageUrl } from '@/lib/url'
+import {
+  notePlaybackRecovery,
+  reportPlaybackFailure,
+  type PlaybackFailure,
+  type PlaybackMode,
+} from '@/lib/sentry'
 import TagChip from '@/components/TagChip.vue'
 import AuthorHandle from '@/components/AuthorHandle.vue'
 import StatusPanel from '@/components/StatusPanel.vue'
@@ -44,6 +50,7 @@ const errored = ref(false)
 // confusing.
 const DEFAULT_ERROR = "Couldn't load this clip."
 const JIT_ERROR = 'This clip is still being prepared for your device. Try again in a moment.'
+const PLAYBACK_ERROR = "This clip couldn't be played. Try again in a moment."
 const errorMessage = ref(DEFAULT_ERROR)
 // A freshly-uploaded clip 404s until the pipeline (thumbnail + compress) finishes. Rather than
 // bounce the owner straight to not-found, we treat a 404 as "maybe still processing" and keep
@@ -70,6 +77,21 @@ let hls: Hls | null = null
 // Bumped on every teardown so an in-flight JIT poll loop knows to stop (clip switched away
 // or component unmounted).
 let playerToken = 0
+// Keys the player wrapper. Restarting playback has to re-render it: Plyr.destroy() swaps the
+// <video> for a clone of the original, so the old element is detached and can't be reused.
+const playerKey = ref(0)
+// A failure that follows a recovery before anything played means the source itself is broken;
+// the per-load cap stops a clip that breaks at the same spot from restarting forever. A clip
+// that played in between gets another go, which is what a long-open tab needs once its
+// presigned URL expires.
+const MAX_RECOVERIES = 3
+let recoveriesLeft = MAX_RECOVERIES
+let awaitingPlayback = false
+let forceJit = false
+// Where a restart picks up: a recovery shouldn't turn a failed seek into a replay from 0:00.
+let resumeFrom: { time: number; paused: boolean } | null = null
+let skipAutoplay = false
+let mediaWatch: { el: HTMLVideoElement; onError: () => void; onPlaying: () => void } | null = null
 // A representative AV1 codec string for capability detection.
 const AV1_MIME = 'video/mp4; codecs="av01.0.05M.08"'
 const JIT_POLL_MS = 2000
@@ -195,12 +217,13 @@ async function loadClip(isPoll = false) {
     clip.value = null
     errorMessage.value = DEFAULT_ERROR
     teardownPlayer()
+    recoveriesLeft = MAX_RECOVERIES
+    awaitingPlayback = false
+    forceJit = false
   }
   errored.value = false
   try {
-    const fetched = shareCode.value
-      ? await clips.getByShareCode(shareCode.value)
-      : await clips.getDetail(clipId.value!)
+    const fetched = await fetchClip()
     if (myLoadId !== latestLoadId) return
     processing.value = false
     clip.value = fetched
@@ -237,6 +260,10 @@ async function loadClip(isPoll = false) {
   }
 }
 
+function fetchClip(): Promise<ClipDetail> {
+  return shareCode.value ? clips.getByShareCode(shareCode.value) : clips.getDetail(clipId.value!)
+}
+
 function clearProcessingTimer() {
   if (processingTimer !== null) {
     clearTimeout(processingTimer)
@@ -260,6 +287,12 @@ watch(
   ([detail, el]) => {
     if (!detail || !el || player) return
     playerMountedAt = Date.now()
+    const resume = resumeFrom
+    resumeFrom = null
+    skipAutoplay = resume?.paused ?? false
+    if (resume && resume.time > 0) {
+      el.addEventListener('loadedmetadata', () => (el.currentTime = resume.time), { once: true })
+    }
     setupPlayer(detail, el)
     attachViewTracking(detail.id, el)
   },
@@ -277,6 +310,7 @@ async function tryAutoplay(el: HTMLVideoElement) {
 
   // Reduced motion and backgrounded tabs opt out.
   if (
+    skipAutoplay ||
     window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ||
     document.visibilityState !== 'visible' ||
     Date.now() - playerMountedAt > AUTOPLAY_GRACE_MS
@@ -410,8 +444,9 @@ function attachViewTracking(targetClipId: string, el: HTMLVideoElement) {
 // always; AV1 only on capable devices), play it as a plain progressive file. Otherwise fall
 // back to a just-in-time H.264 HLS stream the server transcodes on demand.
 function setupPlayer(detail: ClipDetail, el: HTMLVideoElement) {
-  if (canPlayMaster(detail.videoCodec, el)) {
+  if (!forceJit && canPlayMaster(detail.videoCodec, el)) {
     el.src = detail.videoUrl
+    watchMediaElement(el, 'direct')
     player = new Plyr(el, { controls: BASE_CONTROLS, tooltips: { controls: true, seek: true } })
     void tryAutoplay(el)
     return
@@ -461,6 +496,7 @@ function failJitPlayback() {
 function attachHlsStream(el: HTMLVideoElement, hlsUrl: string) {
   if (el.canPlayType('application/vnd.apple.mpegurl') !== '') {
     el.src = hlsUrl
+    watchMediaElement(el, 'native-hls')
     player = new Plyr(el, { controls: BASE_CONTROLS, tooltips: { controls: true, seek: true } })
     void tryAutoplay(el)
     return
@@ -471,6 +507,21 @@ function attachHlsStream(el: HTMLVideoElement, hlsUrl: string) {
     hls = instance
     instance.loadSource(hlsUrl)
     instance.attachMedia(el)
+    watchMediaElement(el, 'hls.js')
+    let mediaRecoveryTried = false
+    instance.on(Hls.Events.ERROR, (_event, data) => {
+      if (!data.fatal) return
+      if (data.type === Hls.ErrorTypes.MEDIA_ERROR && !mediaRecoveryTried) {
+        mediaRecoveryTried = true
+        notePlaybackRecovery('hls.js media error; attempting in-place recovery', {
+          details: data.details,
+        })
+        instance.recoverMediaError()
+        return
+      }
+      const failure = playbackFailure('hls.js', null, data.details)
+      if (failure) void recoverOrFail(failure)
+    })
     instance.on(Hls.Events.MANIFEST_PARSED, () => {
       // Highest-first list of distinct rendition heights for the quality menu.
       const heights = [...new Set(instance.levels.map((l) => l.height))].sort((a, b) => b - a)
@@ -502,8 +553,95 @@ function attachHlsStream(el: HTMLVideoElement, hlsUrl: string) {
   failJitPlayback()
 }
 
+function watchMediaElement(el: HTMLVideoElement, mode: PlaybackMode) {
+  detachMediaWatch()
+  const onError = () => {
+    const failure = playbackFailure(mode, el.error?.code ?? null, el.error?.message || null)
+    if (failure) void recoverOrFail(failure)
+  }
+  const onPlaying = () => {
+    awaitingPlayback = false
+  }
+  // hls.js surfaces the element's errors through Hls.Events.ERROR; handling both would spend
+  // two recoveries on one failure.
+  if (mode !== 'hls.js') el.addEventListener('error', onError)
+  el.addEventListener('playing', onPlaying)
+  mediaWatch = { el, onError, onPlaying }
+}
+
+function detachMediaWatch() {
+  if (mediaWatch) {
+    mediaWatch.el.removeEventListener('error', mediaWatch.onError)
+    mediaWatch.el.removeEventListener('playing', mediaWatch.onPlaying)
+    mediaWatch = null
+  }
+}
+
+function playbackFailure(
+  mode: PlaybackMode,
+  mediaErrorCode: number | null,
+  detail: string | null,
+): PlaybackFailure | null {
+  const current = clip.value
+  if (!current) return null
+  return { clipId: current.id, mode, codec: current.videoCodec, mediaErrorCode, detail }
+}
+
+// A direct play of anything but H.264 that fails (AV1 canPlayType over-promised, or an
+// unrecorded codec) goes to the H.264 ladder. A failed h264 master is most often a presigned URL
+// that expired while the tab sat open. A stream failure re-requests the ladder, which
+// re-enqueues it if the cache evicted it.
+async function recoverOrFail(failure: PlaybackFailure) {
+  if (awaitingPlayback || recoveriesLeft === 0) {
+    failPlayback(failure)
+    return
+  }
+  recoveriesLeft--
+  awaitingPlayback = true
+
+  if (failure.mode !== 'direct') {
+    notePlaybackRecovery('Stream playback failed; re-requesting the stream', { ...failure })
+    restartPlayer()
+    return
+  }
+  if (failure.codec !== 'h264') {
+    notePlaybackRecovery('Direct playback failed; falling back to the JIT stream', { ...failure })
+    forceJit = true
+    restartPlayer()
+    return
+  }
+
+  notePlaybackRecovery('Direct playback failed; retrying with a fresh URL', { ...failure })
+  const myToken = playerToken
+  try {
+    const fresh = await fetchClip()
+    if (myToken !== playerToken || !clip.value) return
+    clip.value.videoUrl = fresh.videoUrl
+    clip.value.videoUrlExpiresAt = fresh.videoUrlExpiresAt
+    restartPlayer()
+  } catch {
+    if (myToken === playerToken) failPlayback(failure)
+  }
+}
+
+// The [clip, videoEl] watcher sets the player up again once the re-keyed wrapper renders.
+function restartPlayer() {
+  const el = videoEl.value
+  resumeFrom = el ? { time: el.currentTime, paused: el.paused } : null
+  teardownPlayer()
+  playerKey.value++
+}
+
+function failPlayback(failure: PlaybackFailure) {
+  reportPlaybackFailure(failure)
+  teardownPlayer()
+  errorMessage.value = PLAYBACK_ERROR
+  errored.value = true
+}
+
 function teardownPlayer() {
   detachViewTracking()
+  detachMediaWatch()
   detachUnmuteWatch()
   detachPlayWatch()
   needsTapToPlay.value = false
@@ -734,7 +872,14 @@ async function onConfirmDelete() {
     <div v-else-if="clip">
       <!-- Player. The poster matters more now that playback starts on its own: a blocked
            autoplay shows the thumbnail rather than a black box. -->
-      <div class="relative overflow-hidden rounded-lg border border-border bg-black">
+      <!-- `@error.stop`: Plyr re-dispatches the video's `error` as a bubbling CustomEvent, which
+           window.onerror (and so Sentry) would otherwise report as an opaque exception.
+           recoverOrFail() already handles and reports the failure. -->
+      <div
+        :key="playerKey"
+        class="relative overflow-hidden rounded-lg border border-border bg-black"
+        @error.stop
+      >
         <!-- The two fullscreen variants drop the in-page size cap: `:fullscreen` covers the
              native path, `.plyr--fullscreen-fallback` covers Plyr's own fallback when the
              Fullscreen API isn't available. Without them the video can't fill the screen. -->

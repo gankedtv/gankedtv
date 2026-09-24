@@ -1,3 +1,4 @@
+using GankedTV.Api.Data;
 using Microsoft.Extensions.Options;
 
 namespace GankedTV.Api.Services.Igdb;
@@ -25,6 +26,16 @@ public sealed class IgdbSyncHostedService(
         if (!snapshot.IsConfigured)
         {
             logger.LogInformation("IGDB sync hosted service idle: IGDB credentials not configured.");
+            return;
+        }
+
+        // Before the timer: a tick that elapses while we wait would fire the first pass twice.
+        try
+        {
+            await scopeFactory.WaitForSchemaAsync(stoppingToken);
+        }
+        catch (OperationCanceledException)
+        {
             return;
         }
 
