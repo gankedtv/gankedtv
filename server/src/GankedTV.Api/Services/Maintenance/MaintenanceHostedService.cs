@@ -37,6 +37,16 @@ public sealed class MaintenanceHostedService : BackgroundService
             return;
         }
 
+        // Before the timer: a tick that elapses while we wait would fire the first pass twice.
+        try
+        {
+            await _scopeFactory.WaitForSchemaAsync(stoppingToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
         // SweepInterval is captured at startup and frozen for the life of the process.
         // The other thresholds are read fresh from IOptionsMonitor each tick, so config
         // reload affects them; changing the interval requires a restart.
@@ -47,8 +57,6 @@ public sealed class MaintenanceHostedService : BackgroundService
 
         try
         {
-            await _scopeFactory.WaitForSchemaAsync(stoppingToken);
-
             // Run an immediate sweep on startup, then on each tick.
             do
             {

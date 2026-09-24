@@ -78,6 +78,16 @@ public abstract class MediaStageWorker<TJob> : BackgroundService
             await ProbeStorageAsync(stoppingToken);
         }
 
+        // Before the timer: a tick that elapses while we wait would fire the first pass twice.
+        try
+        {
+            await _scopeFactory.WaitForSchemaAsync(stoppingToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
         using var timer = new PeriodicTimer(snapshot.PollInterval);
         _logger.LogInformation(
             "{Stage} worker started (pollInterval={Interval}, lease={Lease}, maxAttempts={Max}).",
@@ -85,8 +95,6 @@ public abstract class MediaStageWorker<TJob> : BackgroundService
 
         try
         {
-            await _scopeFactory.WaitForSchemaAsync(stoppingToken);
-
             // Drain greedily on each tick (capped by MaxDrainPerTick) so a backlog isn't
             // drip-fed at PollInterval cadence while still yielding to graceful shutdown.
             do

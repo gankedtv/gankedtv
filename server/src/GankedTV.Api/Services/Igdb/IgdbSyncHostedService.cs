@@ -29,6 +29,16 @@ public sealed class IgdbSyncHostedService(
             return;
         }
 
+        // Before the timer: a tick that elapses while we wait would fire the first pass twice.
+        try
+        {
+            await scopeFactory.WaitForSchemaAsync(stoppingToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
         // Interval is captured at startup and frozen for the life of the process (a change
         // requires a restart) — same contract as MaintenanceHostedService.SweepInterval.
         using var timer = new PeriodicTimer(snapshot.SyncInterval);
@@ -36,8 +46,6 @@ public sealed class IgdbSyncHostedService(
 
         try
         {
-            await scopeFactory.WaitForSchemaAsync(stoppingToken);
-
             // Run once on startup, then on each tick.
             do
             {

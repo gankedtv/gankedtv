@@ -98,6 +98,55 @@ public class SchemaReadyGateTests
     }
 
     [Fact]
+    public async Task ConcurrentWaiters_ShareOneProbeInFlight()
+    {
+        var (gate, probe, _) = Build();
+        var answer = new TaskCompletionSource<IReadOnlyList<string>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        probe.GetPendingAsync(Arg.Any<CancellationToken>()).Returns(answer.Task);
+
+        var waiters = Enumerable.Range(0, 5)
+            .Select(_ => gate.WaitUntilReadyAsync(CancellationToken.None))
+            .ToArray();
+        await Task.Delay(50);
+
+        await probe.Received(1).GetPendingAsync(Arg.Any<CancellationToken>());
+        answer.SetResult(Pending());
+        await Task.WhenAll(waiters).WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task OneWaiterCancelling_DoesNotReleaseOrCancelTheOthers()
+    {
+        var (gate, probe, _) = Build();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        probe.GetPendingAsync(Arg.Any<CancellationToken>())
+            .Returns(_ => release.Task.IsCompleted ? Pending() : Pending("m1"));
+        using var cts = new CancellationTokenSource();
+
+        var cancelled = gate.WaitUntilReadyAsync(cts.Token);
+        var patient = gate.WaitUntilReadyAsync(CancellationToken.None);
+        cts.Cancel();
+
+        await cancelled.Invoking(t => t).Should().ThrowAsync<OperationCanceledException>();
+        patient.IsCompleted.Should().BeFalse();
+        release.SetResult();
+        await patient.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task Dispose_StopsTheWaitForEveryone()
+    {
+        var (gate, probe, _) = Build();
+        probe.GetPendingAsync(Arg.Any<CancellationToken>()).Returns(Pending("m1"));
+
+        var waiter = gate.WaitUntilReadyAsync(CancellationToken.None);
+        await Task.Delay(20);
+        gate.Dispose();
+
+        await waiter.Invoking(t => t).Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
     public async Task WaitForSchema_NoGateRegistered_CompletesImmediately()
     {
         var scopes = new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();

@@ -343,7 +343,8 @@ background work (media workers, maintenance sweeps, IGDB sync) until the schema 
 migrations ([SchemaReadyGate](server/src/GankedTV.Api/Data/SchemaReadyGate.cs)). So an encoder that
 pulls a new image before the app host has migrated logs one `Background work paused until the
 database schema is current` warning and resumes on its own, instead of failing every query against
-columns that don't exist yet. The same wait covers a DB that's unreachable at boot.
+columns that don't exist yet. Those services also wait out a DB that's unreachable at boot; one-shot
+startup hooks such as the admin bootstrap are not gated.
 
 ## Admin bootstrap (`ADMIN_EMAILS`)
 

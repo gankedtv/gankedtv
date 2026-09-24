@@ -3,11 +3,8 @@ using Microsoft.EntityFrameworkCore;
 namespace GankedTV.Api.Data;
 
 /// <summary>
-/// Holds DB-backed background work until the database has no pending EF migrations. Only the
-/// app-host api migrates (<see cref="DatabaseMigrator"/>); any other host running the same image —
-/// the split-deployment GPU encoder — would otherwise start querying a schema that doesn't have the
-/// new columns yet whenever it picks up a new image before the app host has migrated. On the
-/// migrating host the first check already passes, since migrations run before hosted services start.
+/// Holds DB-backed background work until the database has no pending EF migrations, so a host that
+/// doesn't migrate never queries a schema older than its code.
 /// </summary>
 public interface ISchemaReadyGate
 {
@@ -25,18 +22,18 @@ public sealed class EfPendingMigrationsProbe(GankedTvDbContext db) : IPendingMig
         (await db.Database.GetPendingMigrationsAsync(ct)).ToList();
 }
 
-public sealed class SchemaReadyGate : ISchemaReadyGate
+public sealed class SchemaReadyGate : ISchemaReadyGate, IDisposable
 {
     private static readonly TimeSpan DefaultPollInterval = TimeSpan.FromSeconds(5);
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<SchemaReadyGate> _logger;
     private readonly TimeSpan _pollInterval;
-    private volatile bool _ready;
-    // Shared across callers: every gated service waits on the same schema, so one warning (and
-    // one "resuming" line) says it all instead of one per worker.
-    private int _waitAnnounced;
-    private int _resumeAnnounced;
+    private readonly CancellationTokenSource _disposed = new();
+    private readonly object _lock = new();
+    // One poll loop shared by every waiter: they all wait on the same schema, so N workers must not
+    // mean N queries per interval (or N copies of the warning).
+    private Task? _poll;
 
     public SchemaReadyGate(IServiceScopeFactory scopeFactory, ILogger<SchemaReadyGate> logger)
         : this(scopeFactory, logger, DefaultPollInterval)
@@ -50,12 +47,22 @@ public sealed class SchemaReadyGate : ISchemaReadyGate
         _pollInterval = pollInterval;
     }
 
-    public async Task WaitUntilReadyAsync(CancellationToken ct)
+    public Task WaitUntilReadyAsync(CancellationToken ct)
     {
-        while (!_ready)
+        Task poll;
+        lock (_lock)
         {
-            ct.ThrowIfCancellationRequested();
+            _poll ??= Task.Run(() => PollUntilReadyAsync(_disposed.Token));
+            poll = _poll;
+        }
+        return poll.IsCompletedSuccessfully ? Task.CompletedTask : poll.WaitAsync(ct);
+    }
 
+    private async Task PollUntilReadyAsync(CancellationToken ct)
+    {
+        var announced = false;
+        while (true)
+        {
             string reason;
             Exception? error = null;
             try
@@ -66,8 +73,7 @@ public sealed class SchemaReadyGate : ISchemaReadyGate
                     .GetPendingAsync(ct);
                 if (pending.Count == 0)
                 {
-                    _ready = true;
-                    if (Volatile.Read(ref _waitAnnounced) == 1 && Interlocked.Exchange(ref _resumeAnnounced, 1) == 0)
+                    if (announced)
                     {
                         _logger.LogInformation("Database schema is current; resuming background work.");
                     }
@@ -86,8 +92,9 @@ public sealed class SchemaReadyGate : ISchemaReadyGate
                 error = ex;
             }
 
-            if (Interlocked.Exchange(ref _waitAnnounced, 1) == 0)
+            if (!announced)
             {
+                announced = true;
                 _logger.LogWarning(error,
                     "Background work paused until the database schema is current ({Reason}); rechecking every {Interval}.",
                     reason, _pollInterval);
@@ -95,6 +102,12 @@ public sealed class SchemaReadyGate : ISchemaReadyGate
 
             await Task.Delay(_pollInterval, ct);
         }
+    }
+
+    public void Dispose()
+    {
+        _disposed.Cancel();
+        _disposed.Dispose();
     }
 }
 
