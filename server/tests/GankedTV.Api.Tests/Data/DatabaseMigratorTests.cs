@@ -101,7 +101,8 @@ public class DatabaseMigratorTests : IAsyncLifetime
         await using var db = CreateContext();
         var probe = new EfPendingMigrationsProbe(db);
 
-        (await probe.GetPendingAsync(CancellationToken.None)).Should().NotBeEmpty();
+        // Fresh DB: no history table yet, so every migration is pending.
+        (await probe.GetPendingAsync(CancellationToken.None)).Should().Equal(db.Database.GetMigrations());
 
         await DatabaseMigrator.ApplyMigrationsAsync(db, NullLogger.Instance);
 

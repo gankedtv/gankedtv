@@ -18,8 +18,20 @@ public interface IPendingMigrationsProbe
 
 public sealed class EfPendingMigrationsProbe(GankedTvDbContext db) : IPendingMigrationsProbe
 {
-    public async Task<IReadOnlyList<string>> GetPendingAsync(CancellationToken ct) =>
-        (await db.Database.GetPendingMigrationsAsync(ct)).ToList();
+    public async Task<IReadOnlyList<string>> GetPendingAsync(CancellationToken ct)
+    {
+        // Without a history table EF logs the failed history SELECT at Error level on every call,
+        // which Sentry would turn into an event per poll. IHistoryRepository.ExistsAsync can't
+        // guard it: on Npgsql it reports true for a database that has no history table.
+        var hasHistory = await db.Database
+            .SqlQueryRaw<bool>("""SELECT to_regclass('"__EFMigrationsHistory"') IS NOT NULL AS "Value" """)
+            .SingleAsync(ct);
+        if (!hasHistory)
+        {
+            return db.Database.GetMigrations().ToList();
+        }
+        return (await db.Database.GetPendingMigrationsAsync(ct)).ToList();
+    }
 }
 
 public sealed class SchemaReadyGate : ISchemaReadyGate, IDisposable
