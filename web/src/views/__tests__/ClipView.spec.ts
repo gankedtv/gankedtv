@@ -363,6 +363,60 @@ describe('ClipView playback errors', () => {
     expect(wrapper.find('video').exists()).toBe(true)
   })
 
+  it('gives a clip that played since its last recovery another retry', async () => {
+    const wrapper = await mountClip()
+
+    await failMedia(wrapper)
+    video(wrapper).dispatchEvent(new Event('playing'))
+    await failMedia(wrapper)
+
+    expect(getDetail).toHaveBeenCalledTimes(3)
+    expect(wrapper.text()).not.toContain(PLAYBACK_ERROR)
+  })
+
+  it('caps recoveries per load so a clip that keeps breaking stops restarting', async () => {
+    const wrapper = await mountClip()
+
+    for (let i = 0; i < 3; i++) {
+      await failMedia(wrapper)
+      video(wrapper).dispatchEvent(new Event('playing'))
+    }
+    await failMedia(wrapper)
+
+    expect(wrapper.text()).toContain(PLAYBACK_ERROR)
+    expect(reportPlaybackFailure).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends a master with no recorded codec to the JIT stream', async () => {
+    getDetail.mockResolvedValue(makeDetail({ videoCodec: null }))
+    getStream.mockResolvedValue({ status: 'ready', hlsUrl: 'https://cache.test/master.m3u8' })
+    const wrapper = await mountClip()
+
+    await failMedia(wrapper)
+
+    expect(getStream).toHaveBeenCalledWith('clp_01')
+    expect(getDetail).toHaveBeenCalledTimes(1)
+  })
+
+  it('resumes where playback failed instead of replaying a paused clip from the start', async () => {
+    const wrapper = await mountClip()
+    expect(play).toHaveBeenCalledTimes(1)
+    Object.defineProperty(video(wrapper), 'currentTime', { value: 40, configurable: true })
+
+    await failMedia(wrapper)
+    const restarted = video(wrapper)
+    let resumedAt = 0
+    Object.defineProperty(restarted, 'currentTime', {
+      configurable: true,
+      get: () => resumedAt,
+      set: (t: number) => (resumedAt = t),
+    })
+    restarted.dispatchEvent(new Event('loadedmetadata'))
+
+    expect(resumedAt).toBe(40)
+    expect(play).toHaveBeenCalledTimes(1)
+  })
+
   it("keeps the player's bubbling error event away from window.onerror", async () => {
     const wrapper = await mountClip({ attach: true })
     const onWindowError = vi.fn()

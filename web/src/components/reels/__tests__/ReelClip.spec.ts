@@ -180,12 +180,28 @@ describe('ReelClip — render gates', () => {
 })
 
 describe('ReelClip — media errors', () => {
-  it('hands a clip that fails to play off to the full player instead of a black slot', async () => {
-    const wrapper = await mountReel({ detail: makeDetail(), isActive: true })
-
+  const failVideo = async (wrapper: VueWrapper) => {
     wrapper.find('video').element.dispatchEvent(new Event('error'))
     await nextTick()
+  }
 
+  it('asks for a fresh detail the first time its video fails', async () => {
+    const wrapper = await mountReel({ detail: makeDetail(), isActive: true })
+
+    await failVideo(wrapper)
+
+    expect(wrapper.emitted('retry-detail')).toEqual([['clp_01']])
+    expect(wrapper.text()).not.toContain("Couldn't play this clip here")
+  })
+
+  it('hands off to the full player when the refreshed video fails too', async () => {
+    const wrapper = await mountReel({ detail: makeDetail(), isActive: true })
+    await failVideo(wrapper)
+    await wrapper.setProps({ detail: makeDetail({ videoUrl: 'https://cdn.test/fresh.mp4' }) })
+
+    await failVideo(wrapper)
+
+    expect(wrapper.emitted('retry-detail')).toHaveLength(1)
     expect(wrapper.text()).toContain("Couldn't play this clip here")
     const link = wrapper.findAll('a').find((a) => a.text().includes('Open in detail'))
     expect(link?.attributes('href')).toBe('/clip/clp_01')
@@ -193,12 +209,13 @@ describe('ReelClip — media errors', () => {
     expect(wrapper.find(surface).exists()).toBe(false)
   })
 
-  it('clears the failure once a fresh detail arrives', async () => {
+  it('clears the hand-off once another detail arrives', async () => {
     const wrapper = await mountReel({ detail: makeDetail(), isActive: true })
-    wrapper.find('video').element.dispatchEvent(new Event('error'))
-    await nextTick()
-
+    await failVideo(wrapper)
     await wrapper.setProps({ detail: makeDetail({ videoUrl: 'https://cdn.test/fresh.mp4' }) })
+    await failVideo(wrapper)
+
+    await wrapper.setProps({ detail: makeDetail({ videoUrl: 'https://cdn.test/fresher.mp4' }) })
 
     expect(wrapper.text()).not.toContain("Couldn't play this clip here")
   })

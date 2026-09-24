@@ -44,9 +44,11 @@ const boosting = ref(false)
 const spinnerVisible = ref(false)
 const commentsOpen = ref(false)
 const codecUnsupported = ref(false)
-// Set by the <video>'s own error (expired URL, a codec canPlayType over-promised). The detail page
-// can recover from both, so the slot hands off to it rather than sitting black.
+// A <video> error first asks the parent for a fresh detail (its cached presigned URL has most
+// likely expired). If that one fails too, the slot hands off to the detail page, which can also
+// fall back to the JIT stream, rather than sitting black.
 const mediaFailed = ref(false)
+let freshDetailRequested = false
 const needsFullPlayer = computed(() => codecUnsupported.value || mediaFailed.value)
 let spinnerTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -133,6 +135,21 @@ watch(
     mediaFailed.value = false
   },
 )
+watch(
+  () => props.clip.id,
+  () => {
+    freshDetailRequested = false
+  },
+)
+
+function onMediaError() {
+  if (freshDetailRequested) {
+    mediaFailed.value = true
+    return
+  }
+  freshDetailRequested = true
+  emit('retry-detail', props.clip.id)
+}
 
 watch(
   [() => props.isActive, () => props.detail, videoEl],
@@ -492,7 +509,7 @@ onBeforeUnmount(() => {
       class="block max-h-full max-w-full object-contain"
       @play="isPaused = false"
       @pause="isPaused = true"
-      @error="mediaFailed = true"
+      @error="onMediaError"
     />
 
     <!-- Delayed loading ticker. -->
