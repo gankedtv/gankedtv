@@ -141,6 +141,8 @@ var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL")
 
 builder.Services.AddDbContext<GankedTvDbContext>(opts =>
     opts.UseNpgsql(connectionString).UseSnakeCaseNamingConvention());
+builder.Services.AddScoped<IPendingMigrationsProbe, EfPendingMigrationsProbe>();
+builder.Services.AddSingleton<ISchemaReadyGate, SchemaReadyGate>();
 
 builder.Services.Configure<S3Options>(opts =>
 {

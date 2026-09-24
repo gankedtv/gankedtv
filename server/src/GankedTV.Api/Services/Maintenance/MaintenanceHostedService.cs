@@ -47,6 +47,8 @@ public sealed class MaintenanceHostedService : BackgroundService
 
         try
         {
+            await _scopeFactory.WaitForSchemaAsync(stoppingToken);
+
             // Run an immediate sweep on startup, then on each tick.
             do
             {

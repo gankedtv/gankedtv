@@ -1,3 +1,4 @@
+using GankedTV.Api.Data;
 using Microsoft.Extensions.Options;
 
 namespace GankedTV.Api.Services.Igdb;
@@ -35,6 +36,8 @@ public sealed class IgdbSyncHostedService(
 
         try
         {
+            await scopeFactory.WaitForSchemaAsync(stoppingToken);
+
             // Run once on startup, then on each tick.
             do
             {

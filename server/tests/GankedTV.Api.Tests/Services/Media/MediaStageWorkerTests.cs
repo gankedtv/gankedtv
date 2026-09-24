@@ -1,4 +1,5 @@
 using FluentAssertions;
+using GankedTV.Api.Data;
 using GankedTV.Api.Data.Entities;
 using GankedTV.Api.Services.Caching;
 using GankedTV.Api.Services.Media;
@@ -237,6 +238,54 @@ public class MediaStageWorkerTests
         await svc.StopAsync(CancellationToken.None);
 
         store.ReceivedCalls().Count(c => c.GetMethodInfo().Name == nameof(IClipMediaJobStore.AdvanceThumbnailAsync)).Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Thumbnail_WaitsForSchemaGateBeforeClaiming()
+    {
+        var store = Substitute.For<IClipMediaJobStore>();
+        var thumbnailer = Substitute.For<IThumbnailJobService>();
+        var schemaReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = Substitute.For<ISchemaReadyGate>();
+        gate.WaitUntilReadyAsync(Arg.Any<CancellationToken>()).Returns(schemaReady.Task);
+        var claimed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        store.ClaimNextAsync(ClipStatuses.Processing, Arg.Any<TimeSpan>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                claimed.TrySetResult();
+                return (ClaimedMediaJob?)null;
+            });
+        var sp = Scope(s => { s.AddScoped(_ => store); s.AddScoped(_ => thumbnailer); s.AddSingleton(gate); });
+        var svc = new ThumbnailWorker(sp.GetRequiredService<IServiceScopeFactory>(), Ffmpeg(),
+            Monitor(new MediaJobOptions { Enabled = true, PollInterval = TimeSpan.FromMinutes(5) }),
+            NullLogger<ThumbnailWorker>.Instance);
+
+        await svc.StartAsync(CancellationToken.None);
+        await Task.Delay(100);
+        claimed.Task.IsCompleted.Should().BeFalse();
+
+        schemaReady.SetResult();
+        await claimed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await svc.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Thumbnail_StoppedWhileGated_ExitsWithoutClaiming()
+    {
+        var store = Substitute.For<IClipMediaJobStore>();
+        var gate = Substitute.For<ISchemaReadyGate>();
+        gate.WaitUntilReadyAsync(Arg.Any<CancellationToken>())
+            .Returns(ci => Task.Delay(Timeout.Infinite, ci.Arg<CancellationToken>()));
+        var sp = Scope(s => { s.AddScoped(_ => store); s.AddSingleton(gate); });
+        var svc = new ThumbnailWorker(sp.GetRequiredService<IServiceScopeFactory>(), Ffmpeg(),
+            Monitor(new MediaJobOptions { Enabled = true, PollInterval = TimeSpan.FromMinutes(5) }),
+            NullLogger<ThumbnailWorker>.Instance);
+
+        await svc.StartAsync(CancellationToken.None);
+        var stop = async () => await svc.StopAsync(CancellationToken.None);
+
+        await stop.Should().NotThrowAsync();
+        await store.DidNotReceive().ClaimNextAsync(Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

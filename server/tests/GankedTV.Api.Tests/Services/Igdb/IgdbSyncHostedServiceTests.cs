@@ -1,4 +1,5 @@
 using FluentAssertions;
+using GankedTV.Api.Data;
 using GankedTV.Api.Services.Igdb;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -53,16 +54,40 @@ public class IgdbSyncHostedServiceTests
         await importer.Received().RunAsync(Arg.Any<CancellationToken>());
     }
 
-    private static (IgdbSyncHostedService svc, IGameCatalogImporter importer) Build(bool enabled, bool configured)
+    [Fact]
+    public async Task EnabledAndConfigured_WaitsForSchemaGateBeforeFirstSync()
+    {
+        var schemaReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = Substitute.For<ISchemaReadyGate>();
+        gate.WaitUntilReadyAsync(Arg.Any<CancellationToken>()).Returns(schemaReady.Task);
+        var ran = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (svc, importer) = Build(enabled: true, configured: true, gate);
+        importer.RunAsync(Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            ran.TrySetResult();
+            return GameCatalogImportResult.Skipped;
+        });
+
+        await svc.StartAsync(CancellationToken.None);
+        await Task.Delay(100);
+        ran.Task.IsCompleted.Should().BeFalse();
+
+        schemaReady.SetResult();
+        await ran.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await svc.StopAsync(CancellationToken.None);
+    }
+
+    private static (IgdbSyncHostedService svc, IGameCatalogImporter importer) Build(
+        bool enabled, bool configured, ISchemaReadyGate? gate = null)
     {
         var importer = Substitute.For<IGameCatalogImporter>();
         importer.RunAsync(Arg.Any<CancellationToken>()).Returns(GameCatalogImportResult.Skipped);
 
         // The hosted service resolves the importer per-tick from a fresh scope, so wire a real
         // scope factory backed by a container that hands out the mock.
-        var provider = new ServiceCollection()
-            .AddScoped(_ => importer)
-            .BuildServiceProvider();
+        var services = new ServiceCollection().AddScoped(_ => importer);
+        if (gate is not null) services.AddSingleton(gate);
+        var provider = services.BuildServiceProvider();
 
         var options = new StaticOptionsMonitor<IgdbOptions>(new IgdbOptions
         {

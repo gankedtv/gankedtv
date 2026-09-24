@@ -1,4 +1,5 @@
 using FluentAssertions;
+using GankedTV.Api.Data;
 using GankedTV.Api.Services.Maintenance;
 using GankedTV.Api.Services.ObjectStorage;
 using Microsoft.Extensions.DependencyInjection;
@@ -65,5 +66,37 @@ public class MaintenanceHostedServiceTests
         // StopAsync should observe cancellation and return without throwing.
         var act = async () => await svc.StopAsync(CancellationToken.None);
         await act.Should().NotThrowAsync();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WaitsForSchemaGateBeforeFirstSweep()
+    {
+        var schemaReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = Substitute.For<ISchemaReadyGate>();
+        gate.WaitUntilReadyAsync(Arg.Any<CancellationToken>()).Returns(schemaReady.Task);
+        var swept = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var provider = new ServiceCollection()
+            .AddSingleton(gate)
+            // The first sweep resolves the DbContext; failing that resolution is enough to prove
+            // the sweep ran (RunSweepAsync logs and moves on).
+            .AddScoped<GankedTvDbContext>(_ =>
+            {
+                swept.TrySetResult();
+                throw new InvalidOperationException("no db in this test");
+            })
+            .BuildServiceProvider();
+        var svc = Build(provider.GetRequiredService<IServiceScopeFactory>(), new MaintenanceOptions
+        {
+            Enabled = true,
+            SweepInterval = TimeSpan.FromHours(1),
+        });
+
+        await svc.StartAsync(CancellationToken.None);
+        await Task.Delay(100);
+        swept.Task.IsCompleted.Should().BeFalse();
+
+        schemaReady.SetResult();
+        await swept.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await svc.StopAsync(CancellationToken.None);
     }
 }

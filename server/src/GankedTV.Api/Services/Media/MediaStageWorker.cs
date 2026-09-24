@@ -1,3 +1,4 @@
+using GankedTV.Api.Data;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -84,6 +85,8 @@ public abstract class MediaStageWorker<TJob> : BackgroundService
 
         try
         {
+            await _scopeFactory.WaitForSchemaAsync(stoppingToken);
+
             // Drain greedily on each tick (capped by MaxDrainPerTick) so a backlog isn't
             // drip-fed at PollInterval cadence while still yielding to graceful shutdown.
             do

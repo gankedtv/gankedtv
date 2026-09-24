@@ -96,6 +96,19 @@ public class DatabaseMigratorTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task PendingMigrationsProbe_ListsPendingUntilMigrated()
+    {
+        await using var db = CreateContext();
+        var probe = new EfPendingMigrationsProbe(db);
+
+        (await probe.GetPendingAsync(CancellationToken.None)).Should().NotBeEmpty();
+
+        await DatabaseMigrator.ApplyMigrationsAsync(db, NullLogger.Instance);
+
+        (await probe.GetPendingAsync(CancellationToken.None)).Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Readiness_ReportsUnhealthy_WhenDatabaseUnreachable()
     {
         var options = new DbContextOptionsBuilder<GankedTvDbContext>()
