@@ -32,6 +32,36 @@ export function scrubBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb {
   return breadcrumb
 }
 
+export type PlaybackMode = 'direct' | 'native-hls' | 'hls.js'
+
+export interface PlaybackFailure {
+  clipId: string
+  mode: PlaybackMode
+  codec: string | null
+  mediaErrorCode: number | null
+  /** MediaError.message, or the hls.js error `details` string. */
+  detail?: string | null
+}
+
+/** One actionable event per failed playback; the player's own `error` events carry no context. */
+export function reportPlaybackFailure(failure: PlaybackFailure): void {
+  Sentry.captureMessage('Clip playback failed', {
+    level: 'warning',
+    tags: {
+      'playback.mode': failure.mode,
+      'playback.codec': failure.codec ?? 'unknown',
+      'playback.media_error':
+        failure.mediaErrorCode === null ? 'none' : String(failure.mediaErrorCode),
+    },
+    extra: { clipId: failure.clipId, detail: failure.detail ?? null },
+  })
+}
+
+/** A recovery the player attempted; only surfaces as context on a later event. */
+export function notePlaybackRecovery(message: string, data: Record<string, unknown>): void {
+  Sentry.addBreadcrumb({ category: 'playback', level: 'warning', message, data })
+}
+
 /** No DSN ⇒ no-op. Must run before `app.use(router)` so the router/tracing integration binds. */
 export function initSentry(app: App, router: Router): void {
   const dsn = config.sentryDsn

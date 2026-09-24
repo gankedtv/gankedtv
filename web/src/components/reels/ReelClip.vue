@@ -44,6 +44,10 @@ const boosting = ref(false)
 const spinnerVisible = ref(false)
 const commentsOpen = ref(false)
 const codecUnsupported = ref(false)
+// Set by the <video>'s own error (expired URL, a codec canPlayType over-promised). The detail page
+// can recover from both, so the slot hands off to it rather than sitting black.
+const mediaFailed = ref(false)
+const needsFullPlayer = computed(() => codecUnsupported.value || mediaFailed.value)
 let spinnerTimer: ReturnType<typeof setTimeout> | null = null
 
 // AV1 capability probe — same MIME string ClipView uses. ClipView falls back to a
@@ -122,12 +126,20 @@ function detachViewTracking() {
 
 // --- Playback lifecycle -------------------------------------------------------
 
+// A re-fetched detail carries a freshly signed URL, so give it a clean slate.
+watch(
+  () => props.detail,
+  () => {
+    mediaFailed.value = false
+  },
+)
+
 watch(
   [() => props.isActive, () => props.detail, videoEl],
   ([active, detail, el]) => {
     if (!detail || !el) return
     codecUnsupported.value = !canPlayCodec(detail.videoCodec, el)
-    if (codecUnsupported.value) {
+    if (needsFullPlayer.value) {
       // Bail before play() — calling it on a clip the browser can't decode
       // just produces a silent black slot. The template renders an "Open in
       // detail" affordance so the user can fall through to the JIT-capable
@@ -480,6 +492,7 @@ onBeforeUnmount(() => {
       class="block max-h-full max-w-full object-contain"
       @play="isPaused = false"
       @pause="isPaused = true"
+      @error="mediaFailed = true"
     />
 
     <!-- Delayed loading ticker. -->
@@ -511,14 +524,18 @@ onBeforeUnmount(() => {
       </button>
     </div>
 
-    <!-- Codec the browser can't decode directly (e.g. AV1 on Safari). The detail
-         page handles the just-in-time HLS fallback; reels just delegates rather
-         than pulling hls.js + JIT polling into every slot. -->
+    <!-- Codec the browser can't decode directly (e.g. AV1 on Safari), or a video that failed
+         to play. The detail page handles the just-in-time HLS fallback and URL refresh; reels
+         just delegates rather than pulling hls.js + JIT polling into every slot. -->
     <div
-      v-else-if="detail && codecUnsupported"
+      v-else-if="detail && needsFullPlayer"
       class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/60 px-6 text-center"
     >
-      <p class="m-0 text-sm text-[#f4f1e8]/80">This format needs the full player</p>
+      <p class="m-0 text-sm text-[#f4f1e8]/80">
+        {{
+          codecUnsupported ? 'This format needs the full player' : "Couldn't play this clip here"
+        }}
+      </p>
       <RouterLink
         :to="detailHref"
         class="rounded-lg border border-white/20 bg-black/60 px-4 py-2 text-xs font-semibold text-[#f4f1e8] no-underline transition-colors duration-150 hover:border-accent hover:text-accent"
@@ -534,7 +551,7 @@ onBeforeUnmount(() => {
          off-screen reel is both a tab stop that reads as playback controls and a surface a
          mid-scroll tap can land on. -->
     <button
-      v-if="detail && !codecUnsupported && isActive"
+      v-if="detail && !needsFullPlayer && isActive"
       type="button"
       class="absolute inset-0 flex cursor-pointer items-center justify-center bg-transparent"
       :aria-label="playbackLabel"
