@@ -27,7 +27,7 @@ public sealed class S3Fixture : IAsyncLifetime
     // lightweight S3-compatible module. Swapping to a different S3 server (LocalStack,
     // SeaweedFS, Garage, ...) would replace this builder and the port constant; the rest
     // of the fixture is generic S3 SDK usage.
-    private readonly MinioContainer _container = new MinioBuilder("minio/minio:RELEASE.2024-12-18T13-15-44Z")
+    private readonly MinioContainer _container = new MinioBuilder("quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z")
         .WithUsername(TestAccessKey)
         .WithPassword(TestSecretKey)
         .Build();
