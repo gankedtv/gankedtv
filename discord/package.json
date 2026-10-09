@@ -20,21 +20,21 @@
     "test:coverage": "bun test --coverage --coverage-reporter=text --coverage-reporter=lcov && bun run scripts/check-coverage.ts"
   },
   "dependencies": {
-    "@sentry/bun": "^10.72.0",
+    "@sentry/bun": "^11.1.0",
     "discord.js": "^14.27.0",
     "postgres": "^3.4.9",
-    "zod": "^4.5.4"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/bun": "^1.4.0",
-    "@types/node": "^26.4.0",
-    "eslint": "^10.9.1",
+    "@types/bun": "^1.4.2",
+    "@types/node": "^26.6.3",
+    "eslint": "^10.11.0",
     "eslint-config-prettier": "^10.1.8",
     "npm-run-all2": "^9.0.3",
-    "oxlint": "^1.80.0",
-    "prettier": "^3.9.6",
-    "typescript": "~6.0.3",
-    "typescript-eslint": "^8.68.0"
+    "oxlint": "^1.86.0",
+    "prettier": "^3.9.9",
+    "typescript": "~7.0.2",
+    "typescript-eslint": "^8.71.0"
   }
 }
